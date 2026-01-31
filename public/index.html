@@ -1,0 +1,698 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>GLP Control</title>
+
+  <style>
+    :root{
+      --bg0:#070a12;
+      --bg1:#0b0f18;
+      --text:#eaf0ff;
+      --muted:rgba(234,240,255,.72);
+
+      --card:#0b2f97;
+      --card2:#0a2a86;
+      --cardLine: rgba(255,255,255,.10);
+
+      --pillBg: rgba(255,255,255,.10);
+      --pillLine: rgba(255,255,255,.14);
+
+      --inputBg: rgba(0,0,0,.16);
+      --inputLine: rgba(255,255,255,.16);
+      --inputFocus: rgba(77,163,255,.95);
+
+      --btnBg: rgba(255,255,255,.09);
+      --btnBg2: rgba(255,255,255,.06);
+      --btnLine: rgba(255,255,255,.14);
+
+      --shadow: 0 14px 28px rgba(0,0,0,.45);
+      --r: 18px;
+    }
+
+    *{ box-sizing:border-box; }
+    html,body{ height:100%; }
+
+    body{
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      margin: 0;
+      padding: 16px 14px 80px;
+      max-width: 520px;
+      margin-left: auto;
+      margin-right: auto;
+
+      color: var(--text);
+      background:
+        radial-gradient(1200px 700px at 18% -10%, #121a2b 0%, var(--bg1) 55%, var(--bg0) 100%);
+    }
+
+    h2{
+      margin: 6px 0 4px;
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing:.2px;
+      opacity:.98;
+    }
+
+    .small{
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .row{
+      display:flex;
+      gap:12px;
+      flex-wrap:wrap;
+      margin-bottom: 12px;
+      align-items:center;
+    }
+
+    .space-between{
+      justify-content:space-between;
+      align-items:center;
+    }
+
+    /* ===== Cards ===== */
+    .card{
+      background: linear-gradient(180deg, var(--card) 0%, var(--card2) 100%);
+      border: 1px solid var(--cardLine);
+      border-radius: 22px;
+      padding: 16px;
+      margin-top: 14px;
+      box-shadow: var(--shadow);
+    }
+
+    .card h3{
+      margin: 0 0 10px;
+      font-size: 20px;
+      font-weight: 850;
+      letter-spacing:.2px;
+    }
+    .card h4{
+      margin: 0 0 8px;
+      font-size: 16px;
+      font-weight: 800;
+      opacity:.95;
+    }
+
+    input, select, textarea{
+      padding: 12px 12px;
+      font-size: 15px;
+      border-radius: 12px;
+      border: 2px solid var(--inputLine);
+      background: var(--inputBg);
+      color: var(--text);
+      outline:none;
+    }
+    input::placeholder, textarea::placeholder{
+      color: rgba(234,240,255,.55);
+    }
+    input:focus, select:focus, textarea:focus{
+      border-color: var(--inputFocus);
+      box-shadow: 0 0 0 3px rgba(77,163,255,.18);
+    }
+
+    textarea{
+      width: 100%;
+      max-width: 100%;
+      height: 92px;
+      resize: vertical;
+    }
+
+    button{
+      cursor:pointer;
+      padding: 12px 14px;
+      font-size: 14px;
+      font-weight: 850;
+      border-radius: 12px;
+      border: 1px solid var(--btnLine);
+      background: linear-gradient(180deg, var(--btnBg) 0%, var(--btnBg2) 100%);
+      color: rgba(234,240,255,.92);
+      transition: .12s ease;
+      user-select:none;
+    }
+    button:hover{ filter: brightness(1.06); }
+    button:active{ transform: scale(.99); }
+    button:disabled{
+      opacity: 0.55;
+      cursor: not-allowed;
+      transform:none;
+    }
+
+    /* User pill */
+    .pill{
+      border: 1px solid var(--pillLine);
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: var(--pillBg);
+      color: rgba(234,240,255,.90);
+    }
+
+    pre{
+      background: rgba(255,255,255,.06);
+      color: rgba(234,240,255,.92);
+      padding: 12px;
+      border-radius: 14px;
+      overflow:auto;
+      border: 1px solid rgba(255,255,255,.10);
+    }
+
+    .menu button{
+      padding: 12px 14px;
+      border-radius: 14px;
+    }
+
+    /* ===== VIN input with QR button ===== */
+    .vinWrap{
+      position: relative;
+      width: 100%;
+      flex: 1;
+      min-width: 260px;
+    }
+    #vin{
+      width: 100%;
+      padding-right: 52px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      letter-spacing: .6px;
+      font-weight: 800;
+    }
+    #btnQR{
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 40px;
+      height: 40px;
+      padding: 0;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      font-size: 18px;
+    }
+
+    /* ===== Figma-like Actions Grid ===== */
+    .actionsGrid{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 12px;
+    }
+    .actionBtn{
+      height: 88px;
+      border-radius: 18px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size: 16px;
+      letter-spacing:.2px;
+    }
+    .bStart{ border-color: rgba(16,185,129,.28); background: rgba(16,185,129,.10); }
+    .bPause{ border-color: rgba(245,158,11,.28); background: rgba(245,158,11,.10); }
+    .bResume{ border-color: rgba(59,130,246,.28); background: rgba(59,130,246,.10); }
+    .bEnd{ border-color: rgba(244,63,94,.28); background: rgba(244,63,94,.10); }
+
+    .noteOnly{
+      width:100%;
+      margin-top: 10px;
+      background: transparent;
+      border-color: rgba(255,255,255,.12);
+      color: rgba(234,240,255,.72);
+    }
+
+    /* ===== Overlay Loading ===== */
+    .overlay{
+      position: fixed;
+      inset: 0;
+      background: rgba(7,10,18,.72);
+      backdrop-filter: blur(6px);
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .overlay.hidden{ display:none; }
+
+    .overlay-box{
+      background: linear-gradient(180deg, rgba(11,47,151,.96) 0%, rgba(10,42,134,.96) 100%);
+      border: 1px solid rgba(255,255,255,.14);
+      border-radius: 22px;
+      padding: 18px;
+      width: min(340px, 92vw);
+      box-shadow: var(--shadow);
+      text-align:center;
+    }
+
+    .overlay-text{
+      margin-top: 12px;
+      font-size: 15px;
+      color: rgba(234,240,255,.92);
+    }
+
+    .spinner{
+      width:48px;
+      height:48px;
+      border:5px solid rgba(255,255,255,.20);
+      border-top:5px solid rgba(234,240,255,.95);
+      border-radius:50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ===== QR Modal ===== */
+    .modal{
+      position: fixed;
+      inset: 0;
+      z-index: 10000;
+      display: none;
+      background: rgba(7,10,18,.78);
+      backdrop-filter: blur(8px);
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .modal.show{ display:flex; }
+    .modalBox{
+      width: min(420px, 96vw);
+      background: linear-gradient(180deg, rgba(11,47,151,.96) 0%, rgba(10,42,134,.96) 100%);
+      border: 1px solid rgba(255,255,255,.14);
+      border-radius: 22px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .modalHead{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      padding: 12px 14px;
+      border-bottom: 1px solid rgba(255,255,255,.10);
+    }
+    .modalTitle{
+      font-weight: 900;
+      letter-spacing:.2px;
+    }
+    .modalBody{
+      padding: 12px 14px 14px;
+    }
+    #qrReader{
+      width: 100%;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,.14);
+      background: rgba(0,0,0,.2);
+    }
+
+    /* ====== ACTIVA CARD: COMPACTA + EXPANDIBLE ====== */
+
+  /* =========================
+   SOLO UNA CARD ABIERTA
+   ========================= */
+
+    /* Por defecto: todo lo interactivo oculto */
+    #activasBox .jobCard .jobActionsGrid,
+    #activasBox .jobCard .jobNoteBlock,
+    #activasBox .jobCard textarea.notaCard,
+    #activasBox .jobCard .btnNota {
+      display: none;
+    }
+
+    /* Cuando la card está abierta */
+    #activasBox .jobCard.open .jobActionsGrid {
+      display: grid;
+    }
+
+    /* ===== CRONÓMETRO DINÁMICO ===== */
+
+    /* Base */
+    #activasBox .jobTimePill {
+      transition: background .2s ease, border-color .2s ease, color .2s ease;
+    }
+
+    /* SIN INICIAR */
+    #activasBox .jobCard.state-SIN_INICIAR .jobTimePill {
+      border-color: rgba(148,163,184,.45);
+      background: rgba(148,163,184,.18);
+      color: #e5e7eb;
+    }
+
+    /* TRABAJANDO */
+    #activasBox .jobCard.state-TRABAJANDO .jobTimePill {
+      border-color: rgba(234,179,8,.45);
+      background: rgba(234,179,8,.18);
+      color: #fef9c3;
+    }
+
+    /* PAUSADO */
+    #activasBox .jobCard.state-PAUSADO .jobTimePill {
+      border-color: rgba(59,130,246,.45);
+      background: rgba(59,130,246,.18);
+      color: #dbeafe;
+    }
+
+    /* FINALIZADO */
+    #activasBox .jobCard.state-FINALIZADO .jobTimePill {
+      border-color: rgba(34,197,94,.45);
+      background: rgba(34,197,94,.18);
+      color: #dcfce7;
+    }
+
+
+
+    /* VERDE – INICIO / REANUDAR */
+    #activasBox .btnInicio,
+    #activasBox .btnReanudar {
+      border-color: rgba(34,197,94,.45);
+      background: rgba(34,197,94,.14);
+      color: #dcfce7;
+    }
+
+    /* AMARILLO – PAUSA */
+    #activasBox .btnPausa {
+      border-color: rgba(234,179,8,.45);
+      background: rgba(234,179,8,.16);
+      color: #fef9c3;
+    }
+
+    /* AZUL – FINALIZAR (mantiene identidad actual) */
+    #activasBox .btnFin {
+      border-color: rgba(59,130,246,.45);
+      background: rgba(59,130,246,.16);
+      color: #dbeafe;
+    }
+
+    #activasBox .jobCard.open textarea.notaCard {
+      display: block;
+    }
+
+    #activasBox .jobCard.open .btnNota {
+      /* OJO: el JS controla si aparece o no según texto */
+      display: block;
+    }
+
+
+  #activasBox .jobCard {
+    cursor: pointer;
+    padding: 14px;
+  }
+
+  #activasBox .jobCard .jobTop {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: flex-start;
+  }
+
+  #activasBox .jobCard .jobMeta {
+    min-width: 0;
+  }
+
+  #activasBox .jobCard .jobTitle {
+    font-weight: 900;
+    letter-spacing: .2px;
+    font-size: 18px;
+    line-height: 1.1;
+    margin-bottom: 6px;
+  }
+
+  #activasBox .jobCard .jobTitle span {
+    font-weight: 700;
+    font-size: 12px;
+    opacity: .75;
+    margin-left: 6px;
+  }
+
+  #activasBox .jobCard .jobSub {
+    font-size: 13px;
+    color: var(--muted);
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  #activasBox .jobCard .jobRight {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-end;
+    flex-shrink: 0;
+  }
+
+  #activasBox .jobCard .jobTimePill {
+    border: 1px solid var(--pillLine);
+    background: var(--pillBg);
+    border-radius: 999px;
+    padding: 8px 12px;
+    font-size: 18px;
+    font-weight: 900;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  #activasBox .jobCard .jobChevron {
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,.12);
+    background: rgba(255,255,255,.06);
+    opacity: .85;
+  }
+
+  #activasBox .jobCard .jobChevron::before {
+    content: "▾";
+    font-size: 18px;
+    transform: translateY(-1px);
+  }
+
+  #activasBox .jobCard.open .jobChevron::before {
+    content: "▴";
+  }
+
+  /* zona expandible */
+  #activasBox .jobCard .jobExpand {
+    display: none;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255,255,255,.10);
+  }
+
+  #activasBox .jobCard.open .jobExpand {
+    display: block;
+  }
+
+  /* Grid de acciones tipo Figma:
+    [ INICIO INICIO ]
+    [ PAUSA  FIN    ]
+    (y PAUSA se cambia por REANUDAR cuando corresponda) */
+  /* Grid de acciones full-width tipo "Guardar nota" */
+  #activasBox .jobActionsGrid{
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    width: 100%;
+    margin-top: 10px;
+  }
+
+  #activasBox .jobActionsGrid button{
+    width: 100%;
+    height: 66px;
+    font-size: 16px;
+    font-weight: 900;
+    border-radius: 16px;
+  }
+
+  /* INICIO ocupa 2 columnas => full width */
+  #activasBox .jobActionsGrid .btnInicio{
+    grid-column: 1 / span 2;
+  }
+
+  /* En estados con 2 botones, cada uno ocupa 1 columna,
+    juntos llenan el mismo ancho que "Guardar nota" */
+  #activasBox .jobActionsGrid .btnPausa,
+  #activasBox .jobActionsGrid .btnReanudar,
+  #activasBox .jobActionsGrid .btnFin{
+    grid-column: auto; /* 1 columna */
+  }
+
+  /* Nota dentro de la card (compacta) */
+  #activasBox .jobNoteBlock {
+    margin-top: 12px;
+  }
+
+  #activasBox .jobNoteBlock textarea.notaCard {
+    height: 72px;
+    border-radius: 14px;
+  }
+
+  #activasBox .jobNoteBlock .btnNota {
+    width: 100%;
+    margin-top: 8px;
+    border-radius: 14px;
+  }
+
+  </style>
+</head>
+
+<body>
+  <h2>Control de Trabajo GLP</h2>
+  <div class="small">Node → Apps Script → Google Sheets</div>
+
+  <!-- LOGIN -->
+  <div id="viewLogin" class="card">
+    <h3>Iniciar sesión</h3>
+    <div class="row">
+      <input id="email" type="email" placeholder="tu_email@gmail.com" />
+      <button id="btnMe">Iniciar sesión</button>
+    </div>
+    <div id="loginMsg" class="small"></div>
+  </div>
+
+  <!-- APP -->
+  <div id="viewApp" style="display:none;">
+
+    <div class="row space-between">
+      <span id="userPill" class="pill small"></span>
+      <button id="btnLogout">Cerrar sesión</button>
+    </div>
+
+    <!-- HUB (solo si tiene varios módulos) -->
+    <div id="viewHub" class="card" style="display:none;">
+      <h3>Selecciona un módulo</h3>
+      <div id="hubButtons" class="row menu"></div>
+      <div class="small">Si tienes varios permisos, puedes cambiar de módulo cuando quieras.</div>
+    </div>
+
+    <!-- VISTA TECNICO -->
+    <div id="viewTECNICO" style="display:none;">
+      <div class="card">
+        <h3>Técnico (Conversión)</h3>
+
+        <!-- VIN + QR -->
+        <div class="row" style="margin-bottom:10px;">
+          <div class="vinWrap">
+            <input id="vin" placeholder="Ingresa VIN o escanea QR" />
+            <button id="btnQR" title="Escanear QR">📷</button>
+          </div>
+        </div>
+
+        <!-- Rol + Buscar + Finalizados + Refresh -->
+        <div class="row">
+          <select id="rol" style="width: 140px;">
+            <option value="MOTOR">MOTOR</option>
+            <option value="TANQUE">TANQUE</option>
+          </select>
+
+          <button id="btnEstado" style="flex:1;" title="Busca la OT por VIN o la crea si no existe">
+            Buscar / Crear
+          </button>
+
+          <button id="btnFinalizados">Ver finalizados</button>
+          <button id="btnActivas" title="Refrescar conversiones">🔄</button>
+        </div>
+
+        <div id="estadoBox" class="small"></div>
+        <div id="activasBox"></div>
+
+        <div id="finalizadosWrap" style="display:none; margin-top:12px;">
+          <h4>Finalizados</h4>
+          <div id="finalizadosBox"></div>
+        </div>
+      </div>
+
+      <!-- ACCIONES estilo Figma -->
+      <div class="card">
+        <h3>Registrar evento</h3>
+
+        <!-- (mantenemos el select para compatibilidad, pero oculto si quieres) -->
+        <div class="row" style="display:none;">
+          <select id="accion">
+            <option value="INICIO">INICIO</option>
+            <option value="PAUSA">PAUSA</option>
+            <option value="REANUDAR">REANUDAR</option>
+            <option value="FIN">FIN</option>
+            <option value="NOTA">NOTA</option>
+          </select>
+        </div>
+
+        <div class="actionsGrid">
+          <button class="actionBtn bStart" data-quick="INICIO">INICIO</button>
+          <button class="actionBtn bPause" data-quick="PAUSA">PAUSA</button>
+          <button class="actionBtn bResume" data-quick="REANUDAR">REANUDAR</button>
+          <button class="actionBtn bEnd" data-quick="FIN">FIN</button>
+        </div>
+
+        <textarea id="nota" placeholder="Escribe una nota o observación (opcional)..."></textarea>
+
+        <button id="btnNotaOnly" class="noteOnly" data-quick="NOTA">
+          Solo guardar nota
+        </button>
+
+        <!-- Botón clásico (por si lo quieres mantener) -->
+        <div class="row" style="display:none;">
+          <button id="btnEnviar" style="width:100%;">Enviar evento</button>
+        </div>
+      </div>
+
+      <h3 style="margin-top:14px;">Respuesta</h3>
+      <pre id="out">{}</pre>
+    </div>
+
+    <!-- PLACEHOLDERS -->
+    <div id="viewRAMALERO" class="card" style="display:none;">
+      <h3>Ramalero</h3>
+      <div class="small">Aquí irá la vista de Ramalero.</div>
+    </div>
+
+    <div id="viewCALIDAD" class="card" style="display:none;">
+      <h3>Control de Calidad</h3>
+      <div class="small">Aquí irá la vista de Calidad.</div>
+    </div>
+
+    <div id="viewMOVILIZADOR" class="card" style="display:none;">
+      <h3>Movilizador</h3>
+      <div class="small">Aquí irá la vista de Movilizador.</div>
+    </div>
+
+    <div id="viewSUPERVISOR" class="card" style="display:none;">
+      <h3>Supervisor</h3>
+      <div class="small">Aquí irá la vista de Supervisor.</div>
+    </div>
+
+    <div id="viewADMIN" class="card" style="display:none;">
+      <h3>Admin</h3>
+      <div class="small">Aquí irá la vista Admin.</div>
+    </div>
+
+  </div>
+
+  <!-- OVERLAY DE CARGA -->
+  <div id="loadingOverlay" class="overlay hidden">
+    <div class="overlay-box">
+      <div class="spinner"></div>
+      <div class="overlay-text">Procesando…</div>
+    </div>
+  </div>
+
+  <!-- MODAL QR -->
+  <div id="qrModal" class="modal" aria-hidden="true">
+    <div class="modalBox">
+      <div class="modalHead">
+        <div class="modalTitle">Escanear QR</div>
+        <button id="btnCloseQR" title="Cerrar">✕</button>
+      </div>
+      <div class="modalBody">
+        <div id="qrReader"></div>
+        <div id="qrMsg" class="small" style="margin-top:10px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Librería QR (cámara real) -->
+  <script src="https://unpkg.com/html5-qrcode"></script>
+
+  <!-- Tu app -->
+  <script src="app.js"></script>
+</body>
+</html>
