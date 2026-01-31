@@ -532,6 +532,71 @@
     border-radius: 14px;
   }
 
+  /* =========================
+   MOBILE OPTIMIZATIONS
+   ========================= */
+  @media (max-width: 480px){
+    body{
+      padding: 12px 10px 70px;
+    }
+
+    .card{
+      padding: 14px;
+      border-radius: 20px;
+    }
+
+    .row{
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    /* VIN más compacto */
+    #vin{
+      font-size: 14px;
+      padding-top: 11px;
+      padding-bottom: 11px;
+    }
+
+    /* Selección MOTOR/TANQUE + Buscar/Create */
+    #rol{
+      width: 120px !important;
+    }
+
+    /* ===== Barra Finalizados + Refrescar ===== */
+    .rowFinal{
+      display:flex;
+      gap: 10px;
+      width: 100%;
+      margin-top: 6px;
+    }
+    #btnFinalizados{
+      flex: 1;
+      height: 44px;
+      border-radius: 14px;
+      padding: 10px 12px;
+      font-weight: 850;
+    }
+    #btnActivas{
+      width: 120px;
+      height: 44px;
+      border-radius: 14px;
+      padding: 10px 12px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      gap: 8px;
+    }
+
+    /* Cartillas más compactas */
+    #activasBox .jobCard .jobTitle{
+      font-size: 16px;
+    }
+    #activasBox .jobCard .jobTimePill{
+      font-size: 16px;
+      padding: 7px 10px;
+    }
+  }
+
   </style>
 </head>
 
@@ -588,8 +653,14 @@
             Buscar / Crear
           </button>
 
-          <button id="btnFinalizados">Ver finalizados</button>
-          <button id="btnActivas" title="Refrescar conversiones">🔄</button>
+          <div class="rowFinal">
+            <button id="btnFinalizados">Ver finalizados</button>
+
+            <button id="btnActivas" title="Refrescar conversiones">
+              🔄 <span>Refrescar</span>
+            </button>
+          </div>
+
         </div>
 
         <div id="estadoBox" class="small"></div>

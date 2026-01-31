@@ -580,7 +580,7 @@ function restoreNotasActivas_(snap) {
     const target = document.querySelector(
       `#activasBox .card[data-vin="${cssEsc_(v)}"][data-rol="${cssEsc_(r)}"] textarea.notaCard`
     );
-    if (target) target.focus();
+    //if (target) target.focus();
   }
 }
 
@@ -1085,7 +1085,7 @@ window.addEventListener("load", async () => {
       $("rol").value = rol;
 
       if (accion === "NOTA") {
-        const ta = card.querySelector("textarea.notaCard");
+        //const ta = card.querySelector("textarea.notaCard");
         const texto = ta ? String(ta.value || "").trim() : "";
         $("nota").value = texto; // reutiliza tu input global
       }
@@ -1111,7 +1111,7 @@ window.addEventListener("load", async () => {
 
       // (opcional) enfoca el textarea al abrir
       const ta = card.querySelector("textarea.notaCard");
-      if (ta) ta.focus();
+      //if (ta) ta.focus();
     } else {
       // si la cierras, no queda ninguna abierta
       openCardKey = null;
