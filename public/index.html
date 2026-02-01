@@ -673,41 +673,22 @@
       </div>
 
       <!-- ACCIONES estilo Figma -->
-      <div class="card">
-        <h3>Registrar evento</h3>
-
-        <!-- (mantenemos el select para compatibilidad, pero oculto si quieres) -->
-        <div class="row" style="display:none;">
-          <select id="accion">
-            <option value="INICIO">INICIO</option>
-            <option value="PAUSA">PAUSA</option>
-            <option value="REANUDAR">REANUDAR</option>
-            <option value="FIN">FIN</option>
-            <option value="NOTA">NOTA</option>
-          </select>
-        </div>
-
-        <div class="actionsGrid">
-          <button class="actionBtn bStart" data-quick="INICIO">INICIO</button>
-          <button class="actionBtn bPause" data-quick="PAUSA">PAUSA</button>
-          <button class="actionBtn bResume" data-quick="REANUDAR">REANUDAR</button>
-          <button class="actionBtn bEnd" data-quick="FIN">FIN</button>
-        </div>
-
-        <textarea id="nota" placeholder="Escribe una nota o observación (opcional)..."></textarea>
-
-        <button id="btnNotaOnly" class="noteOnly" data-quick="NOTA">
-          Solo guardar nota
-        </button>
-
-        <!-- Botón clásico (por si lo quieres mantener) -->
-        <div class="row" style="display:none;">
-          <button id="btnEnviar" style="width:100%;">Enviar evento</button>
-        </div>
-      </div>
 
       <h3 style="margin-top:14px;">Respuesta</h3>
       <pre id="out">{}</pre>
+
+      <!-- Stubs invisibles para mantener la lógica sin la cartilla -->
+      <select id="accion" style="display:none;">
+        <option value="INICIO">INICIO</option>
+        <option value="PAUSA">PAUSA</option>
+        <option value="REANUDAR">REANUDAR</option>
+        <option value="FIN">FIN</option>
+        <option value="NOTA">NOTA</option>
+      </select>
+      <textarea id="nota" style="display:none;"></textarea>
+      <button id="btnNotaOnly" style="display:none;"></button>
+      <button id="btnEnviar" style="display:none;"></button>
+
     </div>
 
     <!-- PLACEHOLDERS -->
