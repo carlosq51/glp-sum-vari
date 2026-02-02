@@ -2,10 +2,12 @@
 <html lang="es">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1, viewport-fit=cover" />
   <title>GLP Control</title>
 
+  <!-- TU CSS (idéntico al tuyo) -->
   <style>
+    /* ========================= ROOT / RESET ========================= */
     :root{
       --bg0:#070a12;
       --bg1:#0b0f18;
@@ -14,588 +16,321 @@
 
       --card:#0b2f97;
       --card2:#0a2a86;
-      --cardLine: rgba(255,255,255,.10);
+      --cardLine:rgba(255,255,255,.10);
 
-      --pillBg: rgba(255,255,255,.10);
-      --pillLine: rgba(255,255,255,.14);
+      --pillBg:rgba(255,255,255,.10);
+      --pillLine:rgba(255,255,255,.14);
 
-      --inputBg: rgba(0,0,0,.16);
-      --inputLine: rgba(255,255,255,.16);
-      --inputFocus: rgba(77,163,255,.95);
+      --inputBg:rgba(0,0,0,.16);
+      --inputLine:rgba(255,255,255,.16);
+      --inputFocus:rgba(77,163,255,.95);
 
-      --btnBg: rgba(255,255,255,.09);
-      --btnBg2: rgba(255,255,255,.06);
-      --btnLine: rgba(255,255,255,.14);
+      --btnBg:rgba(255,255,255,.09);
+      --btnBg2:rgba(255,255,255,.06);
+      --btnLine:rgba(255,255,255,.14);
 
-      --shadow: 0 14px 28px rgba(0,0,0,.45);
-      --r: 18px;
+      --shadow:0 14px 28px rgba(0,0,0,.45);
+      --r:18px;
     }
 
     *{ box-sizing:border-box; }
-    html,body{ height:100%; }
+    html, body{ height:100%; }
 
     body{
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-      margin: 0;
-      padding: 16px 14px 80px;
-      max-width: 520px;
-      margin-left: auto;
-      margin-right: auto;
-
-      color: var(--text);
-      background:
-        radial-gradient(1200px 700px at 18% -10%, #121a2b 0%, var(--bg1) 55%, var(--bg0) 100%);
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+      margin:0;
+      padding:16px 14px 80px;
+      max-width:520px;
+      margin-inline:auto;
+      color:var(--text);
+      background: radial-gradient(
+        1200px 700px at 18% -10%,
+        #121a2b 0%,
+        var(--bg1) 55%,
+        var(--bg0) 100%
+      );
     }
 
+    /* ========================= TYPOGRAPHY / HELPERS ========================= */
     h2{
-      margin: 6px 0 4px;
-      font-size: 18px;
-      font-weight: 800;
+      margin:6px 0 4px;
+      font-size:18px;
+      font-weight:800;
       letter-spacing:.2px;
       opacity:.98;
     }
-
-    .small{
-      color: var(--muted);
-      font-size: 13px;
-    }
-
+    .small{ color:var(--muted); font-size:13px; }
     .row{
       display:flex;
       gap:12px;
       flex-wrap:wrap;
-      margin-bottom: 12px;
+      margin-bottom:12px;
       align-items:center;
     }
+    .space-between{ justify-content:space-between; align-items:center; }
 
-    .space-between{
-      justify-content:space-between;
-      align-items:center;
-    }
-
-    /* ===== Cards ===== */
+    /* ========================= CARDS ========================= */
     .card{
-      background: linear-gradient(180deg, var(--card) 0%, var(--card2) 100%);
-      border: 1px solid var(--cardLine);
-      border-radius: 22px;
-      padding: 16px;
-      margin-top: 14px;
-      box-shadow: var(--shadow);
+      background:linear-gradient(180deg,var(--card) 0%,var(--card2) 100%);
+      border:1px solid var(--cardLine);
+      border-radius:22px;
+      padding:16px;
+      margin-top:14px;
+      box-shadow:var(--shadow);
     }
+    .card h3{ margin:0 0 10px; font-size:20px; font-weight:850; }
+    .card h4{ margin:0 0 8px; font-size:16px; font-weight:800; opacity:.95; }
 
-    .card h3{
-      margin: 0 0 10px;
-      font-size: 20px;
-      font-weight: 850;
-      letter-spacing:.2px;
-    }
-    .card h4{
-      margin: 0 0 8px;
-      font-size: 16px;
-      font-weight: 800;
-      opacity:.95;
-    }
-
+    /* ========================= INPUTS / BUTTONS ========================= */
     input, select, textarea{
-      padding: 12px 12px;
-      font-size: 15px;
-      border-radius: 12px;
-      border: 2px solid var(--inputLine);
-      background: var(--inputBg);
-      color: var(--text);
+      padding:12px;
+      font-size:15px;
+      border-radius:12px;
+      border:2px solid var(--inputLine);
+      background:var(--inputBg);
+      color:var(--text);
       outline:none;
     }
-    input::placeholder, textarea::placeholder{
-      color: rgba(234,240,255,.55);
-    }
+    input::placeholder, textarea::placeholder{ color:rgba(234,240,255,.55); }
     input:focus, select:focus, textarea:focus{
-      border-color: var(--inputFocus);
-      box-shadow: 0 0 0 3px rgba(77,163,255,.18);
+      border-color:var(--inputFocus);
+      box-shadow:0 0 0 3px rgba(77,163,255,.18);
     }
-
     textarea{
-      width: 100%;
-      max-width: 100%;
-      height: 92px;
-      resize: vertical;
+      width:100%;
+      height:92px;
+      resize:vertical;
     }
-
     button{
       cursor:pointer;
-      padding: 12px 14px;
-      font-size: 14px;
-      font-weight: 850;
-      border-radius: 12px;
-      border: 1px solid var(--btnLine);
-      background: linear-gradient(180deg, var(--btnBg) 0%, var(--btnBg2) 100%);
-      color: rgba(234,240,255,.92);
-      transition: .12s ease;
+      padding:12px 14px;
+      font-size:14px;
+      font-weight:850;
+      border-radius:12px;
+      border:1px solid var(--btnLine);
+      background:linear-gradient(180deg,var(--btnBg) 0%,var(--btnBg2) 100%);
+      color:rgba(234,240,255,.92);
+      transition:.12s ease;
       user-select:none;
     }
-    button:hover{ filter: brightness(1.06); }
-    button:active{ transform: scale(.99); }
-    button:disabled{
-      opacity: 0.55;
-      cursor: not-allowed;
-      transform:none;
-    }
+    button:hover{ filter:brightness(1.06); }
+    button:active{ transform:scale(.99); }
+    button:disabled{ opacity:.55; cursor:not-allowed; transform:none; }
 
-    /* User pill */
+    /* ========================= PILL / CODE ========================= */
     .pill{
-      border: 1px solid var(--pillLine);
-      padding: 6px 10px;
-      border-radius: 999px;
-      background: var(--pillBg);
-      color: rgba(234,240,255,.90);
+      border:1px solid var(--pillLine);
+      padding:6px 10px;
+      border-radius:999px;
+      background:var(--pillBg);
     }
-
     pre{
-      background: rgba(255,255,255,.06);
-      color: rgba(234,240,255,.92);
-      padding: 12px;
-      border-radius: 14px;
+      background:rgba(255,255,255,.06);
+      padding:12px;
+      border-radius:14px;
       overflow:auto;
-      border: 1px solid rgba(255,255,255,.10);
+      border:1px solid rgba(255,255,255,.10);
     }
 
-    .menu button{
-      padding: 12px 14px;
-      border-radius: 14px;
-    }
-
-    /* ===== VIN input with QR button ===== */
+    /* ========================= VIN + QR ========================= */
     .vinWrap{
-      position: relative;
-      width: 100%;
-      flex: 1;
-      min-width: 260px;
+      position:relative;
+      width:100%;
+      flex:1;
+      min-width:260px;
     }
     #vin{
-      width: 100%;
-      padding-right: 52px;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-      letter-spacing: .6px;
-      font-weight: 800;
+      width:100%;
+      padding-right:52px;
+      font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+      letter-spacing:.6px;
+      font-weight:800;
     }
     #btnQR{
-      position: absolute;
-      right: 8px;
-      top: 50%;
-      transform: translateY(-50%);
-      width: 40px;
-      height: 40px;
-      padding: 0;
-      border-radius: 12px;
-      display: grid;
-      place-items: center;
-      font-size: 18px;
+      position:absolute;
+      right:8px;
+      top:50%;
+      transform:translateY(-50%);
+      width:40px;
+      height:40px;
+      padding:0;
+      border-radius:12px;
+      display:grid;
+      place-items:center;
+      font-size:18px;
     }
 
-    /* ===== Figma-like Actions Grid ===== */
+    /* ========================= ACTION GRID ========================= */
     .actionsGrid{
       display:grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-      margin-top: 12px;
+      grid-template-columns:1fr 1fr;
+      gap:12px;
+      margin-top:12px;
     }
     .actionBtn{
-      height: 88px;
-      border-radius: 18px;
+      height:88px;
+      border-radius:18px;
       display:flex;
       align-items:center;
       justify-content:center;
-      font-size: 16px;
-      letter-spacing:.2px;
-    }
-    .bStart{ border-color: rgba(16,185,129,.28); background: rgba(16,185,129,.10); }
-    .bPause{ border-color: rgba(245,158,11,.28); background: rgba(245,158,11,.10); }
-    .bResume{ border-color: rgba(59,130,246,.28); background: rgba(59,130,246,.10); }
-    .bEnd{ border-color: rgba(244,63,94,.28); background: rgba(244,63,94,.10); }
-
-    .noteOnly{
-      width:100%;
-      margin-top: 10px;
-      background: transparent;
-      border-color: rgba(255,255,255,.12);
-      color: rgba(234,240,255,.72);
+      font-size:16px;
+      font-weight:900;
     }
 
-    /* ===== Overlay Loading ===== */
+    /* ========================= OVERLAY / SPINNER ========================= */
     .overlay{
-      position: fixed;
-      inset: 0;
-      background: rgba(7,10,18,.72);
-      backdrop-filter: blur(6px);
-      z-index: 9999;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      position:fixed;
+      inset:0;
+      background:rgba(7,10,18,.72);
+      backdrop-filter:blur(6px);
+      z-index:9999;
+      display:flex;
+      align-items:center;
+      justify-content:center;
     }
     .overlay.hidden{ display:none; }
-
-    .overlay-box{
-      background: linear-gradient(180deg, rgba(11,47,151,.96) 0%, rgba(10,42,134,.96) 100%);
-      border: 1px solid rgba(255,255,255,.14);
-      border-radius: 22px;
-      padding: 18px;
-      width: min(340px, 92vw);
-      box-shadow: var(--shadow);
-      text-align:center;
-    }
-
-    .overlay-text{
-      margin-top: 12px;
-      font-size: 15px;
-      color: rgba(234,240,255,.92);
-    }
-
     .spinner{
       width:48px;
       height:48px;
       border:5px solid rgba(255,255,255,.20);
       border-top:5px solid rgba(234,240,255,.95);
       border-radius:50%;
-      animation: spin 1s linear infinite;
-      margin: 0 auto;
+      animation:spin 1s linear infinite;
     }
-    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes spin{ to{ transform:rotate(360deg); } }
 
-    /* ===== QR Modal ===== */
-    .modal{
-      position: fixed;
-      inset: 0;
-      z-index: 10000;
-      display: none;
-      background: rgba(7,10,18,.78);
-      backdrop-filter: blur(8px);
-      align-items: center;
-      justify-content: center;
-      padding: 16px;
-    }
-    .modal.show{ display:flex; }
-    .modalBox{
-      width: min(420px, 96vw);
-      background: linear-gradient(180deg, rgba(11,47,151,.96) 0%, rgba(10,42,134,.96) 100%);
-      border: 1px solid rgba(255,255,255,.14);
-      border-radius: 22px;
-      box-shadow: var(--shadow);
-      overflow: hidden;
-    }
-    .modalHead{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      padding: 12px 14px;
-      border-bottom: 1px solid rgba(255,255,255,.10);
-    }
-    .modalTitle{
-      font-weight: 900;
-      letter-spacing:.2px;
-    }
-    .modalBody{
-      padding: 12px 14px 14px;
-    }
-    #qrReader{
-      width: 100%;
-      border-radius: 16px;
-      overflow: hidden;
-      border: 1px solid rgba(255,255,255,.14);
-      background: rgba(0,0,0,.2);
+    /* ========================= MOBILE ========================= */
+    @media (max-width:480px){
+      body{ padding:12px 10px 70px; }
+      .card{ padding:14px; border-radius:20px; }
+      #vin{ font-size:14px; }
     }
 
-    /* ====== ACTIVA CARD: COMPACTA + EXPANDIBLE ====== */
+    /* =========================
+  MODAL QR (FIX: oculto por defecto)
+  ========================= */
+  .modal{
+    position:fixed;
+    inset:0;
+    background:rgba(7,10,18,.72);
+    backdrop-filter:blur(6px);
+    z-index:10000;
+
+    /* CLAVE: no se muestra si no está abierto */
+    display:none;
+
+    align-items:center;
+    justify-content:center;
+    padding:16px;
+  }
+
+  .modal.show{
+    display:flex;
+  }
+
+  .modalBox{
+    width:min(520px, 100%);
+    background:linear-gradient(180deg,var(--card) 0%,var(--card2) 100%);
+    border:1px solid var(--cardLine);
+    border-radius:22px;
+    box-shadow:var(--shadow);
+    overflow:hidden;
+  }
+
+  .modalHead{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:14px 14px 10px;
+    border-bottom:1px solid rgba(255,255,255,.10);
+  }
+
+  .modalTitle{
+    font-weight:900;
+    letter-spacing:.2px;
+  }
+
+  #btnCloseQR{
+    width:40px;
+    height:40px;
+    padding:0;
+    border-radius:12px;
+    display:grid;
+    place-items:center;
+    font-size:18px;
+  }
+
+  .modalBody{
+    padding:14px;
+  }
+
+  /* donde se dibuja la cámara */
+  #qrReader{
+    width:100%;
+    border-radius:16px;
+    overflow:hidden;
+    border:1px solid rgba(255,255,255,.12);
+    background:rgba(0,0,0,.18);
+
+    /* evita que colapse y se vaya abajo raro */
+    min-height:280px;
+  }
 
   /* =========================
-   SOLO UNA CARD ABIERTA
+   VIN AUTOCOMPLETE
    ========================= */
+  .vinSuggest{
+    position:absolute;
+    left:0;
+    right:0;
+    top:calc(100% + 8px);
+    z-index:999;
+    background:linear-gradient(180deg, rgba(9,30,96,.98) 0%, rgba(8,26,86,.98) 100%);
+    border:1px solid rgba(255,255,255,.16);
+    border-radius:16px;
+    box-shadow:0 18px 40px rgba(0,0,0,.55);
+    overflow:hidden;
+    max-height:260px;
+  }
+  .vinSuggest.hidden{ display:none; }
 
-    /* Por defecto: todo lo interactivo oculto */
-    #activasBox .jobCard .jobActionsGrid,
-    #activasBox .jobCard .jobNoteBlock,
-    #activasBox .jobCard textarea.notaCard,
-    #activasBox .jobCard .btnNota {
-      display: none;
-    }
+  .vinSuggest .vsItem{
+    padding:12px 12px;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    border-bottom:1px solid rgba(255,255,255,.08);
+    user-select:none;
+  }
+  .vinSuggest .vsItem:last-child{ border-bottom:none; }
 
-    /* Cuando la card está abierta */
-    #activasBox .jobCard.open .jobActionsGrid {
-      display: grid;
-    }
-
-    /* ===== CRONÓMETRO DINÁMICO ===== */
-
-    /* Base */
-    #activasBox .jobTimePill {
-      transition: background .2s ease, border-color .2s ease, color .2s ease;
-    }
-
-    /* SIN INICIAR */
-    #activasBox .jobCard.state-SIN_INICIAR .jobTimePill {
-      border-color: rgba(148,163,184,.45);
-      background: rgba(148,163,184,.18);
-      color: #e5e7eb;
-    }
-
-    /* TRABAJANDO */
-    #activasBox .jobCard.state-TRABAJANDO .jobTimePill {
-      border-color: rgba(234,179,8,.45);
-      background: rgba(234,179,8,.18);
-      color: #fef9c3;
-    }
-
-    /* PAUSADO */
-    #activasBox .jobCard.state-PAUSADO .jobTimePill {
-      border-color: rgba(59,130,246,.45);
-      background: rgba(59,130,246,.18);
-      color: #dbeafe;
-    }
-
-    /* FINALIZADO */
-    #activasBox .jobCard.state-FINALIZADO .jobTimePill {
-      border-color: rgba(34,197,94,.45);
-      background: rgba(34,197,94,.18);
-      color: #dcfce7;
-    }
-
-
-
-    /* VERDE – INICIO / REANUDAR */
-    #activasBox .btnInicio,
-    #activasBox .btnReanudar {
-      border-color: rgba(34,197,94,.45);
-      background: rgba(34,197,94,.14);
-      color: #dcfce7;
-    }
-
-    /* AMARILLO – PAUSA */
-    #activasBox .btnPausa {
-      border-color: rgba(234,179,8,.45);
-      background: rgba(234,179,8,.16);
-      color: #fef9c3;
-    }
-
-    /* AZUL – FINALIZAR (mantiene identidad actual) */
-    #activasBox .btnFin {
-      border-color: rgba(59,130,246,.45);
-      background: rgba(59,130,246,.16);
-      color: #dbeafe;
-    }
-
-    #activasBox .jobCard.open textarea.notaCard {
-      display: block;
-    }
-
-    #activasBox .jobCard.open .btnNota {
-      /* OJO: el JS controla si aparece o no según texto */
-      display: block;
-    }
-
-
-  #activasBox .jobCard {
-    cursor: pointer;
-    padding: 14px;
+  .vinSuggest .vsVin{
+    font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+    letter-spacing:.6px;
+    font-weight:900;
+    font-size:14px;
+  }
+  .vinSuggest .vsHint{
+    font-size:12px;
+    color:rgba(234,240,255,.70);
+  }
+  .vinSuggest .vsItem:hover{ filter:brightness(1.08); }
+  .vinSuggest .vsItem.active{
+    outline:2px solid rgba(77,163,255,.85);
+    outline-offset:-2px;
+    background:rgba(255,255,255,.06);
   }
 
-  #activasBox .jobCard .jobTop {
-    display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    align-items: flex-start;
-  }
-
-  #activasBox .jobCard .jobMeta {
-    min-width: 0;
-  }
-
-  #activasBox .jobCard .jobTitle {
-    font-weight: 900;
-    letter-spacing: .2px;
-    font-size: 18px;
-    line-height: 1.1;
-    margin-bottom: 6px;
-  }
-
-  #activasBox .jobCard .jobTitle span {
-    font-weight: 700;
-    font-size: 12px;
-    opacity: .75;
-    margin-left: 6px;
-  }
-
-  #activasBox .jobCard .jobSub {
-    font-size: 13px;
-    color: var(--muted);
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
-
-  #activasBox .jobCard .jobRight {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    align-items: flex-end;
-    flex-shrink: 0;
-  }
-
-  #activasBox .jobCard .jobTimePill {
-    border: 1px solid var(--pillLine);
-    background: var(--pillBg);
-    border-radius: 999px;
-    padding: 8px 12px;
-    font-size: 18px;
-    font-weight: 900;
-    line-height: 1;
-    white-space: nowrap;
-  }
-
-  #activasBox .jobCard .jobChevron {
-    width: 34px;
-    height: 34px;
-    display: grid;
-    place-items: center;
-    border-radius: 12px;
-    border: 1px solid rgba(255,255,255,.12);
-    background: rgba(255,255,255,.06);
-    opacity: .85;
-  }
-
-  #activasBox .jobCard .jobChevron::before {
-    content: "▾";
-    font-size: 18px;
-    transform: translateY(-1px);
-  }
-
-  #activasBox .jobCard.open .jobChevron::before {
-    content: "▴";
-  }
-
-  /* zona expandible */
-  #activasBox .jobCard .jobExpand {
+  /* =========================
+   DEBUG (solo ADMIN)
+   ========================= */
+  .debug-hidden {
     display: none;
-    margin-top: 12px;
-    padding-top: 12px;
-    border-top: 1px solid rgba(255,255,255,.10);
   }
 
-  #activasBox .jobCard.open .jobExpand {
-    display: block;
-  }
 
-  /* Grid de acciones tipo Figma:
-    [ INICIO INICIO ]
-    [ PAUSA  FIN    ]
-    (y PAUSA se cambia por REANUDAR cuando corresponda) */
-  /* Grid de acciones full-width tipo "Guardar nota" */
-  #activasBox .jobActionsGrid{
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    width: 100%;
-    margin-top: 10px;
-  }
-
-  #activasBox .jobActionsGrid button{
-    width: 100%;
-    height: 66px;
-    font-size: 16px;
-    font-weight: 900;
-    border-radius: 16px;
-  }
-
-  /* INICIO ocupa 2 columnas => full width */
-  #activasBox .jobActionsGrid .btnInicio{
-    grid-column: 1 / span 2;
-  }
-
-  /* En estados con 2 botones, cada uno ocupa 1 columna,
-    juntos llenan el mismo ancho que "Guardar nota" */
-  #activasBox .jobActionsGrid .btnPausa,
-  #activasBox .jobActionsGrid .btnReanudar,
-  #activasBox .jobActionsGrid .btnFin{
-    grid-column: auto; /* 1 columna */
-  }
-
-  /* Nota dentro de la card (compacta) */
-  #activasBox .jobNoteBlock {
-    margin-top: 12px;
-  }
-
-  #activasBox .jobNoteBlock textarea.notaCard {
-    height: 72px;
-    border-radius: 14px;
-  }
-
-  #activasBox .jobNoteBlock .btnNota {
-    width: 100%;
-    margin-top: 8px;
-    border-radius: 14px;
-  }
-
-  /* =========================
-   MOBILE OPTIMIZATIONS
-   ========================= */
-  @media (max-width: 480px){
-    body{
-      padding: 12px 10px 70px;
-    }
-
-    .card{
-      padding: 14px;
-      border-radius: 20px;
-    }
-
-    .row{
-      gap: 10px;
-      margin-bottom: 10px;
-    }
-
-    /* VIN más compacto */
-    #vin{
-      font-size: 14px;
-      padding-top: 11px;
-      padding-bottom: 11px;
-    }
-
-    /* Selección MOTOR/TANQUE + Buscar/Create */
-    #rol{
-      width: 120px !important;
-    }
-
-    /* ===== Barra Finalizados + Refrescar ===== */
-    .rowFinal{
-      display:flex;
-      gap: 10px;
-      width: 100%;
-      margin-top: 6px;
-    }
-    #btnFinalizados{
-      flex: 1;
-      height: 44px;
-      border-radius: 14px;
-      padding: 10px 12px;
-      font-weight: 850;
-    }
-    #btnActivas{
-      width: 120px;
-      height: 44px;
-      border-radius: 14px;
-      padding: 10px 12px;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      gap: 8px;
-    }
-
-    /* Cartillas más compactas */
-    #activasBox .jobCard .jobTitle{
-      font-size: 16px;
-    }
-    #activasBox .jobCard .jobTimePill{
-      font-size: 16px;
-      padding: 7px 10px;
-    }
-  }
 
   </style>
 </head>
@@ -616,35 +351,32 @@
 
   <!-- APP -->
   <div id="viewApp" style="display:none;">
-
     <div class="row space-between">
       <span id="userPill" class="pill small"></span>
       <button id="btnLogout">Cerrar sesión</button>
     </div>
 
-    <!-- HUB (solo si tiene varios módulos) -->
     <div id="viewHub" class="card" style="display:none;">
       <h3>Selecciona un módulo</h3>
       <div id="hubButtons" class="row menu"></div>
       <div class="small">Si tienes varios permisos, puedes cambiar de módulo cuando quieras.</div>
     </div>
 
-    <!-- VISTA TECNICO -->
     <div id="viewTECNICO" style="display:none;">
       <div class="card">
         <h3>Técnico (Conversión)</h3>
 
-        <!-- VIN + QR -->
         <div class="row" style="margin-bottom:10px;">
           <div class="vinWrap">
             <input id="vin" placeholder="Ingresa VIN o escanea QR" />
             <button id="btnQR" title="Escanear QR">📷</button>
+            <div id="vinSuggest" class="vinSuggest hidden" role="listbox"></div>
+          
           </div>
         </div>
 
-        <!-- Rol + Buscar + Finalizados + Refresh -->
         <div class="row">
-          <select id="rol" style="width: 140px;">
+          <select id="rol" style="width:140px;">
             <option value="MOTOR">MOTOR</option>
             <option value="TANQUE">TANQUE</option>
           </select>
@@ -655,12 +387,8 @@
 
           <div class="rowFinal">
             <button id="btnFinalizados">Ver finalizados</button>
-
-            <button id="btnActivas" title="Refrescar conversiones">
-              🔄 <span>Refrescar</span>
-            </button>
+            <button id="btnActivas" title="Refrescar conversiones">🔄 <span>Refrescar</span></button>
           </div>
-
         </div>
 
         <div id="estadoBox" class="small"></div>
@@ -672,12 +400,13 @@
         </div>
       </div>
 
-      <!-- ACCIONES estilo Figma -->
+      <div id="debugWrap" class="debug-hidden">
+        <h3 style="margin-top:14px;">Respuesta</h3>
+        <pre id="out">{}</pre>
+      </div>
 
-      <h3 style="margin-top:14px;">Respuesta</h3>
-      <pre id="out">{}</pre>
 
-      <!-- Stubs invisibles para mantener la lógica sin la cartilla -->
+      <!-- stubs -->
       <select id="accion" style="display:none;">
         <option value="INICIO">INICIO</option>
         <option value="PAUSA">PAUSA</option>
@@ -688,10 +417,8 @@
       <textarea id="nota" style="display:none;"></textarea>
       <button id="btnNotaOnly" style="display:none;"></button>
       <button id="btnEnviar" style="display:none;"></button>
-
     </div>
 
-    <!-- PLACEHOLDERS -->
     <div id="viewRAMALERO" class="card" style="display:none;">
       <h3>Ramalero</h3>
       <div class="small">Aquí irá la vista de Ramalero.</div>
@@ -716,10 +443,8 @@
       <h3>Admin</h3>
       <div class="small">Aquí irá la vista Admin.</div>
     </div>
-
   </div>
 
-  <!-- OVERLAY DE CARGA -->
   <div id="loadingOverlay" class="overlay hidden">
     <div class="overlay-box">
       <div class="spinner"></div>
@@ -727,7 +452,6 @@
     </div>
   </div>
 
-  <!-- MODAL QR -->
   <div id="qrModal" class="modal" aria-hidden="true">
     <div class="modalBox">
       <div class="modalHead">
@@ -741,10 +465,7 @@
     </div>
   </div>
 
-  <!-- Librería QR (cámara real) -->
   <script src="https://unpkg.com/html5-qrcode"></script>
-
-  <!-- Tu app -->
   <script src="app.js"></script>
 </body>
 </html>

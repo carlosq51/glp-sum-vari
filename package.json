@@ -13,5 +13,13 @@
   "dependencies": {
     "dotenv": "^17.2.3",
     "express": "^5.2.1"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/carlosq51/glp-sum-vari.git"
+  },
+  "bugs": {
+    "url": "https://github.com/carlosq51/glp-sum-vari/issues"
+  },
+  "homepage": "https://github.com/carlosq51/glp-sum-vari#readme"
 }
