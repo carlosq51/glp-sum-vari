@@ -30,6 +30,23 @@
       --btnLine:rgba(255,255,255,.14);
 
       --shadow:0 14px 28px rgba(0,0,0,.45);
+
+        /* =========================
+     ACTION COLORS (SEMÁNTICOS)
+     ========================= */
+      --ok:#22c55e;              /* INICIO */
+      --okBg:rgba(34,197,94,.18);
+
+      --warn:#facc15;            /* PAUSA / REANUDAR */
+      --warnBg:rgba(250,204,21,.18);
+
+      --danger:#ef4444;          /* FIN */
+      --dangerBg:rgba(239,68,68,.18);
+
+      --note:#60a5fa;            /* NOTA (opcional, azul) */
+      --noteBg:rgba(96,165,250,.16);
+
+      
       --r:18px;
     }
 
@@ -167,6 +184,49 @@
       gap:12px;
       margin-top:12px;
     }
+
+    /* =========================
+   ROW FINAL (2 botones 50/50)
+   ========================= */
+    .rowFinal{
+      display:grid;
+      grid-template-columns:1fr 1fr; /* 50/50 */
+      gap:12px;
+      width:100%;
+      flex: 1;            /* por si está dentro de .row (flex) */
+      min-width: 260px;   /* para que no colapse raro */
+    }
+
+    .rowFinal > button{
+      width:100%;
+      height:48px;
+      font-weight:900;
+    }
+
+
+    /* =========================
+   JOB ACTIONS GRID (cards)
+   ========================= */
+.jobActionsGrid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:12px;
+    margin-top:12px;
+  }
+
+  /* 👉 CASO: solo un botón (INICIO) */
+  .jobActionsGrid:has(.btnInicio:only-child){
+    grid-template-columns:1fr;
+  }
+
+  /* Botón ocupa todo el ancho */
+  .jobActionsGrid > button{
+    width:100%;
+    height:64px;
+    font-size:16px;
+    font-weight:900;
+  }
+
     .actionBtn{
       height:88px;
       border-radius:18px;
@@ -175,6 +235,35 @@
       justify-content:center;
       font-size:16px;
       font-weight:900;
+    }
+
+    /* =========================
+   BOTONES DE ACCIÓN (cards)
+   ========================= */
+    .btnInicio,
+    .btnReanudar{
+      border-color: var(--ok);
+      color: var(--ok);
+      background:linear-gradient(180deg, var(--okBg) 0%, rgba(34,197,94,.08) 100%);
+    }
+
+    .btnPausa{
+      border-color: var(--warn);
+      color: var(--warn);
+      background:linear-gradient(180deg, var(--warnBg) 0%, rgba(250,204,21,.08) 100%);
+    }
+
+    .btnFin{
+      border-color: var(--danger);
+      color: var(--danger);
+      background:linear-gradient(180deg, var(--dangerBg) 0%, rgba(239,68,68,.08) 100%);
+    }
+
+    /* Botón Guardar nota (dentro de card) */
+    .btnNota{
+      border-color: var(--note);
+      color: rgba(234,240,255,.92);
+      background:linear-gradient(180deg, var(--noteBg) 0%, rgba(96,165,250,.08) 100%);
     }
 
     /* ========================= OVERLAY / SPINNER ========================= */
