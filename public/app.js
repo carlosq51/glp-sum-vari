@@ -906,6 +906,22 @@ function ramalCacheGet_(conversionId) {
 
     c.lastSyncAtMs = Date.now();
     enforceRolLock_();
+
+    // ✅ CALIDAD: si el sync trajo OTs SIN_INICIAR, iniciar 1 por ciclo (para no spamear)
+    if (currentModule === "CALIDAD") {
+      const c = ctx_();
+
+      // Busca la primera OT sin iniciar
+      const first = c.activeKeys
+        .map(k => c.itemsByKey.get(k))
+        .find(it => it && String(it.rolTrabajo).toUpperCase() === "CALIDAD" && String(it.estado).toUpperCase() === "SIN_INICIAR");
+
+      if (first?.vin) {
+        // No bloquees el render; dispara y que el próximo ciclo lo termine de estabilizar
+        autoStartCalidadIfNeeded_(first.vin).catch(() => {});
+      }
+    }
+
   }
 
   function patchVisibleCards_() {
@@ -954,8 +970,14 @@ function ramalCacheGet_(conversionId) {
     const it = findItemByVinRol_(vin, rolTrabajo);
     if (it) {
       setEstadoText(`Estado: ${it.estado} | Tiempo: ${msToHMS_(computeLiveMs_(it))}`);
+
+      // ✅ CALIDAD: auto-inicio si está SIN_INICIAR
+      if (currentModule === "CALIDAD") {
+        await autoStartCalidadIfNeeded_(vin);
+      }
       return;
     }
+
 
     const j = await getJSON(`/api/estado?email=${encodeURIComponent(email)}&vin=${encodeURIComponent(vin)}&rolTrabajo=${encodeURIComponent(rolTrabajo)}`);
     if (showOut) setOut(j);
@@ -971,6 +993,13 @@ function ramalCacheGet_(conversionId) {
     renderFinalizados_();
 
     setEstadoText(`Estado: ${it2.estado} | Tiempo: ${msToHMS_(computeLiveMs_(it2))}`);
+
+    // ✅ AUTO-INICIO si CALIDAD quedó en SIN_INICIAR (OT recién creada o recién detectada)
+    if (currentModule === "CALIDAD") {
+      await autoStartCalidadIfNeeded_(vin);
+    }
+
+
   }
 
   // =========================
@@ -1350,6 +1379,51 @@ function ramalCacheGet_(conversionId) {
   }
 
   // =========================
+// AUTO-INICIO CALIDAD (cuando OT está SIN_INICIAR)
+// =========================
+let calidadAutoInFlight_ = false;
+const calidadAutoDone_ = new Set(); // session-only: evita repetir INICIO al mismo key
+
+function keyForAuto_(vin, rolTrabajo) {
+  const v = String(vin || "").trim().toUpperCase();
+  const r = String(rolTrabajo || "").trim().toUpperCase();
+  return `${v}|${r}`;
+}
+
+async function autoStartCalidadIfNeeded_(vin) {
+  // Solo en CALIDAD
+  if (currentModule !== "CALIDAD") return;
+
+  const v = String(vin || "").trim().toUpperCase();
+  if (!v) return;
+
+  const rol = "CALIDAD";
+
+  // Evita spam si ya estamos iniciando algo
+  if (calidadAutoInFlight_) return;
+
+  // Busca en store
+  const it = findItemByVinRol_(v, rol);
+  const estado = String(it?.estado || "").toUpperCase();
+
+  if (estado !== "SIN_INICIAR") return;
+
+  // Evita iniciar 2 veces la misma OT en la sesión
+  const kDone = keyForAuto_(v, rol);
+  if (calidadAutoDone_.has(kDone)) return;
+
+  calidadAutoInFlight_ = true;
+  try {
+    // Usa tu anti-doble-QR también (tú ya tienes lastAutoStart_)
+    await autoStartFromScan_(v, rol); // esto hace enviarEvento("INICIO") si SIN_INICIAR
+    calidadAutoDone_.add(kDone);
+  } finally {
+    calidadAutoInFlight_ = false;
+  }
+}
+
+
+  // =========================
   // AUTO-INICIO al escanear QR (solo si está SIN_INICIAR)
   // =========================
   let lastAutoStart_ = { k: "", t: 0 };
@@ -1424,6 +1498,9 @@ function ramalCacheGet_(conversionId) {
     await withLock(async () => {
       await refreshEstadoForVinRole({ showOut: true });
       await syncNow({ forceFull: true, showOut: false });
+      // al final del handler de btnEstadoQ:
+      await autoStartCalidadIfNeeded_(getVin());
+
     }, "Buscando / creando OT...");
   });
 
