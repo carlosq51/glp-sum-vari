@@ -12,6 +12,9 @@
   /* =========================
      FONDOS (más sólidos – mejor sol)
      ========================= */
+
+
+     
   --bg0:#05070d;
   --bg1:#0a1020;
 
@@ -57,7 +60,40 @@
   --noteBg:rgba(96,165,250,.22);
 
   --r:18px;
-}
+    }
+
+/* =========================
+   THEME: DAY (alto contraste)
+   ========================= */
+    :root[data-theme="day"]{
+      --bg0:#f6f8ff;
+      --bg1:#ffffff;
+
+      --text:#0b1220;
+      --muted:rgba(11,18,32,.72);
+
+      --card:#ffffff;
+      --card2:#f1f4ff;
+      --cardLine:rgba(0,0,0,.18);
+
+      --pillBg:rgba(0,0,0,.06);
+      --pillLine:rgba(0,0,0,.14);
+
+      --inputBg:#ffffff;
+      --inputLine:rgba(0,0,0,.22);
+      --inputFocus:#2563eb;
+
+      --btnBg:#0f2c72;
+      --btnBg2:#0b245e;
+      --btnLine:rgba(0,0,0,.18);
+
+      --shadow:0 10px 20px rgba(0,0,0,.12);
+
+      --ok:#16a34a;    --okBg:rgba(22,163,74,.16);
+      --warn:#ca8a04;  --warnBg:rgba(202,138,4,.16);
+      --danger:#dc2626;--dangerBg:rgba(220,38,38,.16);
+      --note:#2563eb;  --noteBg:rgba(37,99,235,.16);
+    }
 
 
     *{ box-sizing:border-box; }
@@ -76,6 +112,7 @@
         var(--bg1) 55%,
         var(--bg0) 100%
       );
+      background: linear-gradient(180deg, var(--bg1) 0%, var(--bg0) 100%);
     }
 
     /* ========================= TYPOGRAPHY / HELPERS ========================= */
@@ -336,18 +373,40 @@
     }
 
     .overlay-text{
-      width: 100%;
-      max-width: 240px;         /* ancho fijo para que el centro no “baile” */
-      text-align: center;
-      font-weight: 900;
-      letter-spacing: .2px;
-      color: rgba(248,251,255,.92);
+      width:100%;
+      max-width:260px;
+      text-align:center;
+      font-weight:900;
+      letter-spacing:.2px;
+      color:rgba(248,251,255,.92);
+      line-height:1.15;
 
-      /* mejora centrado visual en móviles */
-      line-height: 1.15;
-      font-kerning: normal;
-      font-variant-ligatures: none;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      gap:0; /* el espacio lo manejan los dots */
     }
+
+    /* bloque fijo de ancho para que NUNCA “baile” */
+    .overlay-text .dots{
+      display:inline-flex;
+      width:1.2em;            /* ancho fijo de los “…” */
+      justify-content:flex-start;
+    }
+
+    /* animación de puntitos (no mueve el texto) */
+    .overlay-text .dot{
+      opacity:.15;
+      animation:dotPulse 1.1s infinite;
+    }
+    .overlay-text .dot2{ animation-delay:.18s; }
+    .overlay-text .dot3{ animation-delay:.36s; }
+
+    @keyframes dotPulse{
+      0%, 100%{ opacity:.15; transform:translateY(0); }
+      50%{ opacity:1; transform:translateY(-1px); }
+    }
+
 
 
 
@@ -589,8 +648,12 @@
   <div id="viewApp" style="display:none;">
     <div class="row space-between">
       <span id="userPill" class="pill small"></span>
-      <button id="btnLogout">Cerrar sesión</button>
+      <div class="row" style="margin:0; gap:10px;">
+        <button id="btnTheme" title="Cambiar tema">☀️/🌙</button>
+        <button id="btnLogout">Cerrar sesión</button>
+      </div>
     </div>
+
 
     <div id="viewHub" class="card" style="display:none;">
       <h3>Selecciona un módulo</h3>
@@ -777,7 +840,13 @@
   <div id="loadingOverlay" class="overlay hidden">
     <div class="overlay-box">
       <div class="spinner"></div>
-      <div class="overlay-text">Procesando…</div>
+      <div class="overlay-text">
+        <span id="overlayMsg">Procesando</span>
+        <span class="dots" aria-hidden="true">
+          <span class="dot">.</span><span class="dot dot2">.</span><span class="dot dot3">.</span>
+        </span>
+      </div>
+
     </div>
   </div>
 

@@ -114,7 +114,9 @@
 
     if (overlay) {
       overlay.classList.toggle("hidden", !uiLocked);
-      if (overlayText) overlayText.textContent = msg;
+      const msgEl = document.getElementById("overlayMsg");
+      if (msgEl) msgEl.textContent = String(msg || "Procesando").replace(/\.*\s*$/, "");
+
     }
 
     // inputs base
@@ -188,6 +190,33 @@
   // =========================
   // STORAGE
   // =========================
+
+  const THEME_KEY = "glp_theme_v1"; // "night" | "day"
+
+function applyTheme_(t){
+  const theme = (t === "day") ? "day" : "night";
+  document.documentElement.dataset.theme = theme;
+  try { localStorage.setItem(THEME_KEY, theme); } catch {}
+}
+
+function loadTheme_(){
+  try { return localStorage.getItem(THEME_KEY) || ""; } catch { return ""; }
+}
+
+function initTheme_(){
+  const saved = loadTheme_();
+  if (saved) return applyTheme_(saved);
+
+  // si no hay preferencia guardada, usa el sistema
+  const prefersLight = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
+  applyTheme_(prefersLight ? "day" : "night");
+}
+
+function toggleTheme_(){
+  const cur = document.documentElement.dataset.theme || "night";
+  applyTheme_(cur === "day" ? "night" : "day");
+}
+
 
   const VIN_CACHE_KEY = "glp_vin_cache_v1"; // no lo cambies
 
@@ -1624,6 +1653,10 @@ async function autoStartCalidadIfNeeded_(vin) {
   // =========================
   // LISTENERS (globales)
   // =========================
+
+  $("btnTheme")?.addEventListener("click", toggleTheme_);
+
+
   $("btnMe").addEventListener("click", async () => {
     const email = getEmail();
     await doLogin(email);
@@ -2033,5 +2066,6 @@ async function autoStartCalidadIfNeeded_(vin) {
     const saved = loadEmail();
     if (!saved) return showLogin("");
     $("email").value = saved;
+    initTheme_();
     await doLogin(saved);
   });
