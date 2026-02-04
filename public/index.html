@@ -280,13 +280,19 @@
     .overlay{
       position:fixed;
       inset:0;
+
+      /* 🔑 CLAVE PARA CELULAR */
+      width:100vw;
+      height:100dvh;
+
       background:rgba(7,10,18,.72);
       backdrop-filter:blur(6px);
       z-index:9999;
-      display:flex;
-      align-items:center;
-      justify-content:center;
+
+      display:grid;
+      place-items:center; /* centro perfecto */
     }
+
     .overlay.hidden{ display:none; }
     .spinner{
       width:48px;
@@ -304,6 +310,37 @@
       .card{ padding:14px; border-radius:20px; }
       #vin{ font-size:14px; }
     }
+
+    /* =========================
+      OVERLAY BOX (CENTRADO REAL)
+      ========================= */
+    .overlay-box{
+      width:min(320px, calc(100vw - 48px));
+      max-width:360px;
+
+      padding:18px 16px;
+      border-radius:18px;
+      text-align:center;
+
+      background:linear-gradient(
+        180deg,
+        rgba(12,46,154,.92) 0%,
+        rgba(10,37,122,.92) 100%
+      );
+      border:1px solid rgba(255,255,255,.22);
+      box-shadow:var(--shadow);
+
+      display:grid;
+      gap:12px;
+      justify-items:center;
+    }
+
+    .overlay-text{
+      font-weight:900;
+      letter-spacing:.2px;
+      color:rgba(248,251,255,.92);
+    }
+
 
     /* =========================
   MODAL QR (FIX: oculto por defecto)
