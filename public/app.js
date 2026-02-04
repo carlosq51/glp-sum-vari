@@ -922,6 +922,35 @@ function ramalCacheGet_(conversionId) {
       }
     }
 
+    // ✅ TECNICO: si el sync trajo OTs SIN_INICIAR, iniciar automático
+    // - si rolLock existe: inicia ese rol
+    // - si rolLock null: inicia 1 rol por ciclo (de la cola)
+    if (currentModule === "TECNICO") {
+      const c = ctx_();
+
+      // buscamos VIN "candidato" (prioriza el VIN que esté en input si existe)
+      const vinInput = getVin();
+      let vinCandidato = vinInput;
+
+      if (!vinCandidato) {
+        // si no hay vin en input, toma el primero que tenga SIN_INICIAR (MOTOR/TANQUE)
+        const first = c.activeKeys
+          .map(k => c.itemsByKey.get(k))
+          .find(it => it &&
+            (String(it.rolTrabajo).toUpperCase() === "MOTOR" || String(it.rolTrabajo).toUpperCase() === "TANQUE") &&
+            String(it.estado).toUpperCase() === "SIN_INICIAR" &&
+            String(it.vin || "").trim()
+          );
+
+        vinCandidato = String(first?.vin || "").trim().toUpperCase();
+      }
+
+      if (vinCandidato) {
+        autoStartTecnicoIfNeeded_(vinCandidato).catch(() => {});
+      }
+    }
+
+
   }
 
   function patchVisibleCards_() {
@@ -971,10 +1000,13 @@ function ramalCacheGet_(conversionId) {
     if (it) {
       setEstadoText(`Estado: ${it.estado} | Tiempo: ${msToHMS_(computeLiveMs_(it))}`);
 
-      // ✅ CALIDAD: auto-inicio si está SIN_INICIAR
+      // ✅ AUTO-INICIO
       if (currentModule === "CALIDAD") {
         await autoStartCalidadIfNeeded_(vin);
+      } else if (currentModule === "TECNICO") {
+        await autoStartTecnicoIfNeeded_(vin);
       }
+
       return;
     }
 
@@ -997,6 +1029,8 @@ function ramalCacheGet_(conversionId) {
     // ✅ AUTO-INICIO si CALIDAD quedó en SIN_INICIAR (OT recién creada o recién detectada)
     if (currentModule === "CALIDAD") {
       await autoStartCalidadIfNeeded_(vin);
+    } else if (currentModule === "TECNICO") {
+      await autoStartTecnicoIfNeeded_(vin);
     }
 
 
@@ -1377,6 +1411,140 @@ function ramalCacheGet_(conversionId) {
       if (qr && qr.isScanning) await qr.stop();
     } catch {}
   }
+
+
+
+  // =========================
+// AUTO-INICIO TECNICO (cuando OT está SIN_INICIAR)
+// - si rolLock existe => solo ese rol
+// - si rolLock null => MOTOR y TANQUE (uno por ciclo)
+// =========================
+let tecnicoAutoInFlight_ = false;
+
+// evita repetir INICIO en la sesión por VIN|ROL
+const tecnicoAutoDone_ = new Set();
+
+// cola simple para iniciar "uno por ciclo" cuando rolLock == null
+let tecnicoAutoQueue_ = [];
+
+// helpers
+function rolesTecnicoTargets_() {
+  // si está bloqueado, solo uno
+  if (rolLock === "MOTOR") return ["MOTOR"];
+  if (rolLock === "TANQUE") return ["TANQUE"];
+
+  // sin lock => ambos
+  return ["MOTOR", "TANQUE"];
+}
+
+function makeAutoKey_(vin, rolTrabajo) {
+  const v = String(vin || "").trim().toUpperCase();
+  const r = String(rolTrabajo || "").trim().toUpperCase();
+  return `${v}|${r}`;
+}
+
+// Fuerza el INICIO para un rol específico SIN tocar tu backend
+// (porque enviarEvento usa getRolTrabajoCurrent_ / selector)
+async function enviarEventoRol_(accion, rolTrabajo, opts = {}) {
+  const prevLock = rolLock;
+
+  // si hay lock y no coincide con rol pedido, no hacemos nada
+  if (prevLock && prevLock !== rolTrabajo) return;
+
+  try {
+    // Forzar rol solo durante el envío
+    rolLock = rolTrabajo;
+
+    // si existe selector, lo alineamos (evita payload raro)
+    if ($("rol")) $("rol").value = rolTrabajo;
+
+    await enviarEvento(accion, opts);
+  } finally {
+    // volver al estado real
+    rolLock = prevLock;
+    enforceRolLock_();
+  }
+}
+
+// agrega a cola si aplica
+function tecnicoQueueMaybeAdd_(vin, rolTrabajo) {
+  const k = makeAutoKey_(vin, rolTrabajo);
+  if (tecnicoAutoDone_.has(k)) return;
+  if (tecnicoAutoQueue_.includes(k)) return;
+  tecnicoAutoQueue_.push(k);
+}
+
+// procesa 1 elemento de cola (para no spamear)
+async function tecnicoQueueDrainOne_() {
+  if (tecnicoAutoInFlight_) return;
+  if (!tecnicoAutoQueue_.length) return;
+
+  const k = tecnicoAutoQueue_.shift();
+  const [vin, rolTrabajo] = String(k).split("|");
+  if (!vin || !rolTrabajo) return;
+  if (tecnicoAutoDone_.has(k)) return;
+
+  tecnicoAutoInFlight_ = true;
+  try {
+    // Solo iniciar si sigue SIN_INICIAR en store
+    const it = findItemByVinRol_(vin, rolTrabajo);
+    const estado = String(it?.estado || "").toUpperCase();
+    if (estado === "SIN_INICIAR") {
+      await enviarEventoRol_("INICIO", rolTrabajo, {});
+      tecnicoAutoDone_.add(k);
+    }
+  } finally {
+    tecnicoAutoInFlight_ = false;
+  }
+}
+
+// Auto-start principal
+async function autoStartTecnicoIfNeeded_(vin) {
+  // Solo en TECNICO
+  if (currentModule !== "TECNICO") return;
+
+  const v = String(vin || "").trim().toUpperCase();
+  if (!v) return;
+
+  // si ya estamos haciendo auto-start, no reentrar
+  if (tecnicoAutoInFlight_) return;
+
+  // Ver roles objetivo
+  const roles = rolesTecnicoTargets_();
+
+  // Si rolLock está fijo => iniciar de frente si SIN_INICIAR
+  if (rolLock) {
+    const rol = roles[0];
+    const k = makeAutoKey_(v, rol);
+    if (tecnicoAutoDone_.has(k)) return;
+
+    const it = findItemByVinRol_(v, rol);
+    const estado = String(it?.estado || "").toUpperCase();
+    if (estado !== "SIN_INICIAR") return;
+
+    tecnicoAutoInFlight_ = true;
+    try {
+      await enviarEventoRol_("INICIO", rol, {});
+      tecnicoAutoDone_.add(k);
+    } finally {
+      tecnicoAutoInFlight_ = false;
+    }
+    return;
+  }
+
+  // Sin lock => encolar los que estén SIN_INICIAR
+  for (const rol of roles) {
+    const it = findItemByVinRol_(v, rol);
+    const estado = String(it?.estado || "").toUpperCase();
+    if (estado === "SIN_INICIAR") {
+      tecnicoQueueMaybeAdd_(v, rol);
+    }
+  }
+
+  // procesa solo 1 por llamada
+  await tecnicoQueueDrainOne_();
+}
+
 
   // =========================
 // AUTO-INICIO CALIDAD (cuando OT está SIN_INICIAR)
