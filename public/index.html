@@ -336,10 +336,19 @@
     }
 
     .overlay-text{
-      font-weight:900;
-      letter-spacing:.2px;
-      color:rgba(248,251,255,.92);
+      width: 100%;
+      max-width: 240px;         /* ancho fijo para que el centro no “baile” */
+      text-align: center;
+      font-weight: 900;
+      letter-spacing: .2px;
+      color: rgba(248,251,255,.92);
+
+      /* mejora centrado visual en móviles */
+      line-height: 1.15;
+      font-kerning: normal;
+      font-variant-ligatures: none;
     }
+
 
 
     /* =========================
