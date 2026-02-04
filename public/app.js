@@ -1389,6 +1389,69 @@ function ramalCacheGet_(conversionId) {
 
       if (!qr) qr = new Html5Qrcode("qrReader");
 
+      const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+
+      // 1) iPhone/Safari: fuerza trasera con EXACT primero
+      try {
+        await qr.start(
+          { facingMode: { exact: "environment" } },
+          config,
+          async (decodedText) => {
+            const code = String(decodedText || "").trim().toUpperCase();
+            if (!code) return;
+
+            const vinEl = el_("vin");
+            if (vinEl) vinEl.value = code;
+
+            if (msg) msg.textContent = `VIN detectado: ${code}`;
+            await closeQRModal();
+
+            await withLock(async () => {
+              await refreshEstadoForVinRole({ showOut: false });
+              const rolTrabajo = getRolTrabajoCurrent_();
+              await autoStartFromScan_(code, rolTrabajo);
+              await syncNow({ forceFull: true, showOut: false });
+              await refreshEstadoForVinRole({ showOut: false });
+            }, "Iniciando automáticamente...");
+          },
+          () => {}
+        );
+        return; // ✅ si funcionó, salimos
+      } catch (eExact) {
+        // sigue al fallback
+      }
+
+      // 2) Fallback: environment "normal" (Android/otros suele ir perfecto)
+      try {
+        await qr.start(
+          { facingMode: "environment" },
+          config,
+          async (decodedText) => {
+            const code = String(decodedText || "").trim().toUpperCase();
+            if (!code) return;
+
+            const vinEl = el_("vin");
+            if (vinEl) vinEl.value = code;
+
+            if (msg) msg.textContent = `VIN detectado: ${code}`;
+            await closeQRModal();
+
+            await withLock(async () => {
+              await refreshEstadoForVinRole({ showOut: false });
+              const rolTrabajo = getRolTrabajoCurrent_();
+              await autoStartFromScan_(code, rolTrabajo);
+              await syncNow({ forceFull: true, showOut: false });
+              await refreshEstadoForVinRole({ showOut: false });
+            }, "Iniciando automáticamente...");
+          },
+          () => {}
+        );
+        return;
+      } catch (eEnv) {
+        // sigue al fallback por cameraId
+      }
+
+      // 3) Último fallback: elegir cameraId (tu lógica original, pero más robusta)
       const devices = await Html5Qrcode.getCameras();
       let cameraId = null;
 
@@ -1398,42 +1461,34 @@ function ramalCacheGet_(conversionId) {
       }
 
       await qr.start(
-        cameraId ?? { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 250, height: 250 } },
+        cameraId ?? devices?.[0]?.id ?? { facingMode: "environment" },
+        config,
         async (decodedText) => {
           const code = String(decodedText || "").trim().toUpperCase();
           if (!code) return;
 
-          // 1) set VIN en el módulo actual
           const vinEl = el_("vin");
           if (vinEl) vinEl.value = code;
 
           if (msg) msg.textContent = `VIN detectado: ${code}`;
           await closeQRModal();
 
-          // 2) Auto iniciar SOLO si estaba SIN_INICIAR
           await withLock(async () => {
-            // refresca/crea OT + trae estado
             await refreshEstadoForVinRole({ showOut: false });
-
-            // IMPORTANTE: rol actual depende del módulo (TECNICO usa selector / CALIDAD fijo)
             const rolTrabajo = getRolTrabajoCurrent_();
-
-            // auto-start seguro
             await autoStartFromScan_(code, rolTrabajo);
-
-            // refresca UI/tiempos/listas
             await syncNow({ forceFull: true, showOut: false });
             await refreshEstadoForVinRole({ showOut: false });
           }, "Iniciando automáticamente...");
         },
-
         () => {}
       );
+
     } catch (e) {
       if (msg) msg.textContent = "No se pudo abrir la cámara. Revisa permisos (HTTPS o localhost).";
     }
   }
+
 
   async function stopQR() {
     try {
