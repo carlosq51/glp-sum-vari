@@ -236,6 +236,50 @@ function vinCacheGet_(conversionId, rolTrabajo) {
   return String(cache[k]?.vin || "").toUpperCase();
 }
 
+// =========================
+// RAMAL CACHE (tipoRamal)
+// =========================
+const RAMAL_CACHE_KEY = "glp_ramal_cache_v1";
+
+function ramalCacheLoad_() {
+  try { return JSON.parse(localStorage.getItem(RAMAL_CACHE_KEY) || "{}"); }
+  catch { return {}; }
+}
+
+function ramalCacheSave_(obj) {
+  try { localStorage.setItem(RAMAL_CACHE_KEY, JSON.stringify(obj)); } catch {}
+}
+
+function ramalCacheKey_(conversionId) {
+  const cid = String(conversionId || "").trim();
+  return cid ? `RAMAL|${cid}` : "";
+}
+
+function ramalCacheSet_(conversionId, tipoRamal) {
+  const cid = String(conversionId || "").trim();
+  const tipo = String(tipoRamal || "").trim();
+  if (!cid || !tipo) return;
+
+  const cache = ramalCacheLoad_();
+  cache[ramalCacheKey_(cid)] = { tipoRamal: tipo, ts: Date.now() };
+
+  // limpieza (14 días)
+  const maxAge = 14 * 24 * 3600 * 1000;
+  for (const k of Object.keys(cache)) {
+    if (!cache[k]?.ts || (Date.now() - cache[k].ts) > maxAge) delete cache[k];
+  }
+
+  ramalCacheSave_(cache);
+}
+
+function ramalCacheGet_(conversionId) {
+  const cid = String(conversionId || "").trim();
+  if (!cid) return "";
+  const cache = ramalCacheLoad_();
+  return String(cache[ramalCacheKey_(cid)]?.tipoRamal || "");
+}
+
+
 
   function saveEmail(email) { localStorage.setItem(EMAIL_KEY, email); }
   function loadEmail() { return localStorage.getItem(EMAIL_KEY) || ""; }
@@ -704,34 +748,39 @@ function vinCacheGet_(conversionId, rolTrabajo) {
   // SYNC
   // =========================
   function normalizeItem_(raw) {
-  const it = {
-    conversionId: String(raw.conversionId || raw.CONVERSION_ID || "").trim(),
-    vin: String(raw.vin || raw.VIN || "").toUpperCase(),
+    const it = {
+      conversionId: String(raw.conversionId || raw.CONVERSION_ID || "").trim(),
+      vin: String(raw.vin || raw.VIN || "").toUpperCase(),
 
-    tipoRamal: String(
-      raw.tipoRamal ??
-      raw.tipo_ramal ??
-      raw.tipo ??
-      raw.TIPO_RAMAL ??
-      ""
-    ),
+      tipoRamal: String(
+        raw.tipoRamal ??
+        raw.tipo_ramal ??
+        raw.tipo ??
+        raw.TIPO_RAMAL ??
+        ""
+      ),
 
-    rolTrabajo: String(raw.rolTrabajo || raw.rol || raw.ROL_TRABAJO || "").toUpperCase(),
-    estado: String(raw.estado || raw.ESTADO_ACTUAL || "").toUpperCase(),
-    tiempo_ms: Number(raw.tiempo_ms ?? raw.TIEMPO_TRAB_MS ?? 0),
-    running_since: raw.running_since || raw.RUNNING_SINCE || null,
-    last_nota: String(raw.last_nota || raw.LAST_NOTA || ""),
-    last_nota_ts: raw.last_nota_ts || raw.LAST_NOTA_TS || null,
-    updated_at: raw.updated_at || raw.UPDATED_AT || null,
-  };
+      rolTrabajo: String(raw.rolTrabajo || raw.rol || raw.ROL_TRABAJO || "").toUpperCase(),
+      estado: String(raw.estado || raw.ESTADO_ACTUAL || "").toUpperCase(),
+      tiempo_ms: Number(raw.tiempo_ms ?? raw.TIEMPO_TRAB_MS ?? 0),
+      running_since: raw.running_since || raw.RUNNING_SINCE || null,
+      last_nota: String(raw.last_nota || raw.LAST_NOTA || ""),
+      last_nota_ts: raw.last_nota_ts || raw.LAST_NOTA_TS || null,
+      updated_at: raw.updated_at || raw.UPDATED_AT || null,
+    };
 
-  // ✅ Si llega VIN, lo guardamos para sobrevivir al F5
-  if (it.conversionId && it.rolTrabajo && it.vin) {
-    vinCacheSet_(it.conversionId, it.rolTrabajo, it.vin);
+    // ✅ Si llega VIN, lo guardamos para sobrevivir al F5
+    if (it.conversionId && it.rolTrabajo && it.vin) {
+      vinCacheSet_(it.conversionId, it.rolTrabajo, it.vin);
+    }
+
+    // ✅ RAMALERO: guardar tipoRamal si llega
+    if (it.conversionId && it.rolTrabajo === "RAMALERO" && it.tipoRamal) {
+      ramalCacheSet_(it.conversionId, it.tipoRamal);
+    }
+
+    return it;
   }
-
-  return it;
-}
 
 
 
@@ -760,6 +809,13 @@ function vinCacheGet_(conversionId, rolTrabajo) {
       // ✅ AGREGA ESTO para RAMALERO (marca/tipo)
       if (prev && (!it.tipoRamal || it.tipoRamal === "")) it.tipoRamal = prev.tipoRamal || "";
 
+      // ✅ si backend no manda tipoRamal, recupéralo del cache
+      if (!it.tipoRamal && it.rolTrabajo === "RAMALERO") {
+        const cachedTipo = ramalCacheGet_(it.conversionId);
+        if (cachedTipo) it.tipoRamal = cachedTipo;
+      }
+
+
       // ✅ si el backend manda VIN vacío y no hay prev (o prev no tiene), lo recupero del cache
       if (!it.vin) {
         const cached = vinCacheGet_(it.conversionId, it.rolTrabajo);
@@ -778,6 +834,13 @@ function vinCacheGet_(conversionId, rolTrabajo) {
     c.itemsByKey.clear();
     for (const raw of allItems) {
       const it = normalizeItem_(raw);
+
+      if (!it.tipoRamal && it.rolTrabajo === "RAMALERO") {
+        const cachedTipo = ramalCacheGet_(it.conversionId);
+        if (cachedTipo) it.tipoRamal = cachedTipo;
+      }
+
+
       if (!it.vin) {
         const cached = vinCacheGet_(it.conversionId, it.rolTrabajo);
         if (cached) it.vin = cached;
@@ -1002,6 +1065,11 @@ function vinCacheGet_(conversionId, rolTrabajo) {
 
         // Si backend no devolvió tipoRamal, lo preservamos
         if (!it2.tipoRamal) it2.tipoRamal = tipoRamal || String(opts?.tipoRamal || "");
+
+        if (it2.conversionId && it2.tipoRamal) {
+          ramalCacheSet_(it2.conversionId, it2.tipoRamal);
+        }
+
 
         const k2 = keyOfItem_(it2);
 
