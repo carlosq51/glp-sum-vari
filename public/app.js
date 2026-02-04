@@ -1765,9 +1765,14 @@ async function autoStartCalidadIfNeeded_(vin) {
   // VIN input (TECNICO)
   $("vin")?.addEventListener("input", () => {
     if (currentModule !== "TECNICO") return;
-    refreshEstadoForVinRole({ showOut: false }).catch(() => {});
+
+    // ✅ SOLO autocomplete (NO crear/buscar OT)
     vinAcOnInput_();
+
+    // (opcional) limpiar estadoBox mientras escribe para que no “quede pegado”
+    setEstadoText("");
   });
+
   $("vin")?.addEventListener("keydown", (e) => {
     if (currentModule !== "TECNICO") return;
     vinAcOnKeyDown_(e);
@@ -1776,9 +1781,13 @@ async function autoStartCalidadIfNeeded_(vin) {
   // VIN input (CALIDAD)
   $("vinQ")?.addEventListener("input", () => {
     if (currentModule !== "CALIDAD") return;
-    refreshEstadoForVinRole({ showOut: false }).catch(() => {});
+
+    // ✅ SOLO autocomplete (NO crear/buscar OT)
     vinAcOnInput_();
+
+    setEstadoText("");
   });
+
   $("vinQ")?.addEventListener("keydown", (e) => {
     if (currentModule !== "CALIDAD") return;
     vinAcOnKeyDown_(e);
