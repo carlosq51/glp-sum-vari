@@ -95,6 +95,98 @@ app.get("/api/estado", async (req, res) => {
   }
 });
 
+// =========================
+// SUPERVISOR REPORT
+// =========================
+app.post("/api/supervisor/report", async (req, res) => {
+  try {
+    // filtros opcionales: role, q (nombre/email), from, to, month
+    const payload = req.body || {};
+    const j = await callAppsScript("supervisor_report", payload);
+    res.json(j);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
+// Alias GET para que el frontend actual (GET) funcione sin cambiar app.js
+app.get("/api/supervisor/report", async (req, res) => {
+  try {
+    // =========================
+    // 1) leer filtros
+    // =========================
+    const payload = {
+      q: String(req.query.q || "").trim(),
+      from: String(req.query.from || "").trim(),
+      to: String(req.query.to || "").trim(),
+      month: String(req.query.month || "").trim(),
+    };
+
+    const track = String(req.query.track || "CONVERSION").toUpperCase();
+
+    // =========================
+    // 2) llamar Apps Script
+    // =========================
+    const j = await callAppsScript("supervisor_report", payload);
+    if (!j.ok) return res.json(j);
+
+    let rows = Array.isArray(j.items) ? j.items : [];
+
+    // =========================
+    // 3) AGRUPACIÓN POR TRACK
+    // =========================
+    let outItems = [];
+
+    if (track === "CONVERSION") {
+      // ✅ NO agrupar aquí. Devuelve filas MOTOR y TANQUE tal cual.
+      outItems = rows.filter(r => ["MOTOR", "TANQUE"].includes(String(r.rol || "").toUpperCase()));
+    }
+
+
+    else if (track === "CALIDAD") {
+      outItems = rows.filter(r => String(r.rol || "").toUpperCase() === "CALIDAD");
+    }
+
+    else if (track === "RAMAL") {
+      outItems = rows.filter(r => String(r.rol || "").toUpperCase() === "RAMALERO");
+    }
+
+    else {
+      outItems = rows;
+    }
+
+    // =========================
+    // 4) RESPUESTA FINAL
+    // =========================
+    return res.json({ ok: true, items: outItems });
+
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
+// =========================
+// SUPERVISOR: CONVERSION DETAIL (INICIO / FIN por MOTOR y TANQUE)
+// =========================
+app.get("/api/supervisor/conversion-detail", async (req, res) => {
+  try {
+    const vin = String(req.query.vin || "").trim().toUpperCase();
+    if (!vin) return res.status(400).json({ ok: false, error: "Falta ?vin=" });
+
+    // ✅ Esto lo implementamos en Apps Script como action:
+    // action: "supervisor_conversion_detail"
+    // payload: { vin }
+    const j = await callAppsScript("supervisor_conversion_detail", { vin });
+
+    // esperamos algo como:
+    // { ok:true, vin, motor:{ tecnico,inicio,fin }, tanque:{ tecnico,inicio,fin } }
+    return res.json(j);
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
+
 
 
 app.listen(PORT, () => console.log(`Servidor corriendo en http://localhost:${PORT}`));

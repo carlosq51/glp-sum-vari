@@ -626,6 +626,14 @@
   width:100%;
 }
 
+/* =========================
+   SUPERVISOR TRACK BUTTONS
+   ========================= */
+button[data-suptrack].active{
+  outline: 2px solid rgba(77,163,255,.95);
+  transform: translateY(-1px);
+}
+
 
   </style>
 </head>
@@ -828,8 +836,42 @@
 
     <div id="viewSUPERVISOR" class="card" style="display:none;">
       <h3>Supervisor</h3>
-      <div class="small">Aquí irá la vista de Supervisor.</div>
+      <div class="small">Filtros opcionales: nombre/email, fechas o mes.</div>
+
+      <div class="row" style="gap:10px; margin:10px 0; flex-wrap:wrap;">
+        <button type="button" class="btn" data-suptrack="CONVERSION">CONVERSIÓN</button>
+        <button type="button" class="btn" data-suptrack="CALIDAD">CALIDAD</button>
+        <button type="button" class="btn" data-suptrack="RAMAL">RAMAL</button>
+
+        <div id="supTrackPill" class="pill small" style="margin-left:auto;">
+          CONVERSIÓN (MOTOR + TANQUE)
+        </div>
+      </div>
+
+
+      <div class="fullStack" style="margin-top:10px;">
+        <!-- NUEVO: 2 búsquedas separadas -->
+        <input id="supName" type="text" placeholder="Buscar por nombre o email..." />
+        <input id="supVin"  type="text" placeholder="Buscar por VIN..." />
+
+
+        <div class="twoWide">
+          <input id="supFrom" type="date" />
+          <input id="supTo" type="date" />
+        </div>
+
+        <input id="supMonth" type="month" placeholder="Mes (YYYY-MM)" />
+
+        <div class="twoWide">
+          <button id="btnSupApply">Aplicar filtros</button>
+          <button id="btnSupClear">Limpiar</button>
+        </div>
+      </div>
+
+      <div id="supSummary" class="small" style="margin-top:10px;"></div>
+      <div id="supTable" style="margin-top:10px;"></div>
     </div>
+
 
     <div id="viewADMIN" class="card" style="display:none;">
       <h3>Admin</h3>

@@ -471,6 +471,18 @@ function ramalCacheGet_(conversionId) {
   // =========================
   // HELPERS
   // =========================
+
+  function fmtShort_(iso){
+    if (!iso) return "-";
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "-";
+    return new Intl.DateTimeFormat("es-PE", {
+      day:"2-digit", month:"2-digit", year:"2-digit",
+      hour:"2-digit", minute:"2-digit"
+    }).format(d);
+  }
+
+
   function escapeHtml(s) {
     return String(s ?? "")
       .replaceAll("&", "&amp;")
@@ -620,6 +632,300 @@ function ramalCacheGet_(conversionId) {
   // =========================
   // RENDER
   // =========================
+
+  // =========================
+// SUPERVISOR: TRACK (pantalla 3 botones)
+// =========================
+let supTrack = "CONVERSION"; // "CONVERSION" | "CALIDAD" | "RAMAL"
+
+function setSupTrack_(t){
+  supTrack = (t === "CALIDAD" || t === "RAMAL") ? t : "CONVERSION";
+
+  // UI: marca activo
+  document.querySelectorAll("[data-suptrack]").forEach(b => {
+    const on = b.dataset.suptrack === supTrack;
+    b.classList.toggle("active", on);
+  });
+
+  // (opcional) texto visible
+  const pill = document.getElementById("supTrackPill");
+  if (pill) pill.textContent =
+    supTrack === "CONVERSION" ? "CONVERSIÓN (MOTOR + TANQUE)" :
+    supTrack === "CALIDAD" ? "CALIDAD" : "RAMAL";
+
+  // refresca reporte
+  if (currentModule === "SUPERVISOR") fetchSupervisorReport_().catch(() => {});
+}
+
+
+  let supTimer = null;
+
+  async function fetchSupervisorReport_(){
+    const name = String(document.getElementById("supName")?.value || "").trim();
+    const vin  = String(document.getElementById("supVin")?.value  || "").trim().toUpperCase();
+
+    const from  = String(document.getElementById("supFrom")?.value  || "").trim();   // YYYY-MM-DD
+    const to    = String(document.getElementById("supTo")?.value    || "").trim();   // YYYY-MM-DD
+    const month = String(document.getElementById("supMonth")?.value || "").trim();   // YYYY-MM
+
+    // ✅ compatibilidad: si tu backend solo tiene "q", armamos q = name + vin
+    const q = [name, vin].filter(Boolean).join(" ").trim();
+
+    const url =
+      `/api/supervisor/report` +
+      `?name=${encodeURIComponent(name)}` +
+      `&vin=${encodeURIComponent(vin)}` +
+      `&q=${encodeURIComponent(q)}` +          // 👈 compat
+      `&from=${encodeURIComponent(from)}` +
+      `&to=${encodeURIComponent(to)}` +
+      `&month=${encodeURIComponent(month)}` +
+      `&track=${encodeURIComponent(supTrack)}`;
+
+    const j = await getJSON_user(url, "Cargando reporte...");
+    if (!j || !j.ok) {
+      const s = document.getElementById("supSummary");
+      if (s) s.textContent = j?.error || "Error cargando reporte.";
+      return;
+    }
+    renderSupervisor_(j);
+  }
+
+
+function renderSupervisor_(j){
+  const sum = document.getElementById("supSummary");
+  const box = document.getElementById("supTable");
+
+  const items = Array.isArray(j.items) ? j.items : [];
+  if (sum) sum.textContent = `Resultados: ${items.length}`;
+  if (!box) return;
+
+  if (!items.length){
+    box.innerHTML = `<div class="small">No hay resultados con esos filtros.</div>`;
+    return;
+  }
+
+  // ✅ 1) RAMAL y CALIDAD se quedan como están (1 card por item)
+  if (supTrack === "CALIDAD" || supTrack === "RAMAL") {
+    box.innerHTML = items.map(it => renderSupItemCard_(it)).join("");
+    return;
+  }
+
+  // ✅ 2) CONVERSION => 1 card por VIN con MOTOR+TANQUE
+  // ✅ 2) CONVERSION => 1 card por VIN con MOTOR+TANQUE
+  const groups = groupByVinMotorTanque_(items);
+
+  // ✅ Si hay filtro "q", mostramos una cartilla extra con promedio por técnico
+  const q = String(document.getElementById("supName")?.value || "").trim().toLowerCase();
+
+  let avgCard = "";
+  if (q) {
+    let sumMotor = 0, nMotor = 0;
+    let sumTanque = 0, nTanque = 0;
+
+    for (const g of groups) {
+      const m = g.motor;
+      const t = g.tanque;
+
+      // ===== MOTOR =====
+      if (m) {
+        const who = String(m.userName || m.userEmail || m.userId || "").toLowerCase();
+        const est = String(m.estado || "").toUpperCase();
+
+        if (who.includes(q) && est === "FINALIZADO") {
+          const ms = hmsToMs_(m.tiempo_hms ?? m.tiempo_ms ?? m.tiempo);
+          if (ms > 0) { sumMotor += ms; nMotor++; }
+        }
+      }
+
+      // ===== TANQUE =====
+      if (t) {
+        const who = String(t.userName || t.userEmail || t.userId || "").toLowerCase();
+        const est = String(t.estado || "").toUpperCase();
+
+        if (who.includes(q) && est === "FINALIZADO") {
+          const ms = hmsToMs_(t.tiempo_hms ?? t.tiempo_ms ?? t.tiempo);
+          if (ms > 0) { sumTanque += ms; nTanque++; }
+        }
+      }
+    }
+
+
+    const sumTotal = sumMotor + sumTanque;
+    const nTotal = nMotor + nTanque;
+
+    // Evitar dividir entre 0
+    const avgMotor = nMotor ? (sumMotor / nMotor) : 0;
+    const avgTanque = nTanque ? (sumTanque / nTanque) : 0;
+    const avgTotal = nTotal ? (sumTotal / nTotal) : 0;
+
+    // Solo mostrar si encontró algo
+    if (nTotal > 0) {
+      avgCard = buildSupervisorAvgCardHTML_({
+        q,
+        countTotal: nTotal,
+        avgTotalMs: avgTotal,
+        countMotor: nMotor,
+        avgMotorMs: avgMotor,
+        countTanque: nTanque,
+        avgTanqueMs: avgTanque,
+      });
+    }
+  }
+
+  box.innerHTML = avgCard + groups.map(g => renderSupConversionCard_(g)).join("");
+
+
+  // ✅ bind click (solo una vez)
+  //bindSupervisorConversionClicksOnce_();
+}
+
+
+// ---------------------------
+// Card actual (tu versión base)
+// ---------------------------
+function renderSupItemCard_(it){
+  const who = (it.userName || it.userEmail || it.userId || "-");
+  const rolLabel = String(it.rol || it.rolTrabajo || "").toUpperCase() || "-";
+
+  const isRamal = (rolLabel === "RAMALERO" || rolLabel === "RAMAL");
+  const vinOrTipo = isRamal ? (`RAMAL: ${it.tipoRamal || "-"}`) : (it.vin || "-");
+
+  return `
+    <div class="card" style="margin-top:10px;">
+      <div style="font-weight:900;">
+        ${escapeHtml(who)} <span class="small">(${escapeHtml(rolLabel)})</span>
+      </div>
+
+      <div class="row space-between" style="margin-top:8px;">
+        <div class="small"><b>Trabajo:</b> ${escapeHtml(vinOrTipo)}</div>
+        <div class="pill small"><b>${escapeHtml(it.estado || "")}</b></div>
+      </div>
+
+      <div class="small" style="margin-top:6px;">
+        <b>Creación:</b> ${escapeHtml(fmtShort_(it.fecha_creacion))}
+        &nbsp;|&nbsp;
+        <b>Fecha de fin:</b> ${escapeHtml(fmtShort_(it.updated_at))}
+        &nbsp;|&nbsp;
+        <b>Últ. update:</b> ${escapeHtml(fmtShort_(it.updated_at))}
+      </div>
+
+      <div class="row space-between" style="margin-top:8px;">
+        <div class="small"><b>ID:</b> ${escapeHtml(it.workId || it.conversionId || "-")}</div>
+        <div class="pill" style="font-size:16px; font-weight:900;">⏱ ${escapeHtml(hmsOnly_(it.tiempo_hms ?? it.tiempo_ms ?? it.tiempo))}
+</div>
+      </div>
+    </div>
+  `;
+}
+
+
+// ---------------------------
+// ✅ Agrupar por VIN: MOTOR + TANQUE
+// ---------------------------
+function groupByVinMotorTanque_(items){
+  const map = new Map();
+
+  for (const it of items) {
+    const rol = String(it.rolTrabajo || it.rol || "").toUpperCase();
+    const vin = String(it.vin || "").toUpperCase().trim();
+    if (!vin) continue;
+
+    if (!map.has(vin)) {
+      map.set(vin, { vin, motor: null, tanque: null, updated_at: null });
+    }
+
+    const g = map.get(vin);
+    if (rol === "MOTOR") g.motor = it;
+    if (rol === "TANQUE") g.tanque = it;
+
+    // para orden/“última actividad” del grupo
+    const t = it.updated_at ? Date.parse(it.updated_at) : 0;
+    const prev = g.updated_at ? Date.parse(g.updated_at) : 0;
+    if (t > prev) g.updated_at = it.updated_at;
+  }
+
+  // convierte a array y ordena por última actualización (desc)
+  const arr = [...map.values()];
+  arr.sort((a,b) => (Date.parse(b.updated_at||0) - Date.parse(a.updated_at||0)));
+  return arr;
+}
+
+
+// ---------------------------
+// ✅ 1 Cartilla por VIN con 2 técnicos
+// ---------------------------
+function renderSupConversionCard_(g){
+  const vin = g.vin;
+
+  const m = g.motor;
+  const t = g.tanque;
+
+  const mWho = m ? (m.userName || m.userEmail || m.userId || "-") : "-";
+  const tWho = t ? (t.userName || t.userEmail || t.userId || "-") : "-";
+
+  const mEstado = m ? (m.estado || "-") : "-";
+  const tEstado = t ? (t.estado || "-") : "-";
+
+  const mTime = m ? hmsOnly_(m.tiempo_hms ?? m.tiempo_ms ?? m.tiempo) : "00:00:00";
+  const tTime = t ? hmsOnly_(t.tiempo_hms ?? t.tiempo_ms ?? t.tiempo) : "00:00:00";
+
+
+  return `
+    <div class="card supConvCard" data-vin="${escapeHtml(vin)}" style="margin-top:10px;">
+      <div style="font-weight:1000; font-size:18px;">
+        VIN: ${escapeHtml(vin)}
+        <span class="small" style="opacity:.85;">(MOTOR + TANQUE)</span>
+      </div>
+
+      <div style="margin-top:10px;" class="small">
+        <div class="row space-between">
+          <div><b>MOTOR:</b> ${escapeHtml(mWho)}</div>
+          <div class="pill small"><b>${escapeHtml(mEstado)}</b></div>
+        </div>
+        <div class="row space-between" style="margin-top:6px;">
+          <div class="small">
+            <b>Creación:</b> ${escapeHtml(fmtShort_(m?.fecha_creacion))}
+            &nbsp;|&nbsp;
+            <b>Fecha de fin:</b> ${escapeHtml(fmtShort_(m?.updated_at))}
+          </div>
+          <div class="pill" style="font-weight:900;">⏱ ${escapeHtml(mTime)}</div>
+        </div>
+      </div>
+
+      <div style="margin-top:12px;" class="small">
+        <div class="row space-between">
+          <div><b>TANQUE:</b> ${escapeHtml(tWho)}</div>
+          <div class="pill small"><b>${escapeHtml(tEstado)}</b></div>
+        </div>
+        <div class="row space-between" style="margin-top:6px;">
+          <div class="small">
+            <b>Creación:</b> ${escapeHtml(fmtShort_(t?.fecha_creacion))}
+            &nbsp;|&nbsp;
+            <b>Fecha de fin:</b> ${escapeHtml(fmtShort_(t?.updated_at))}
+          </div>
+          <div class="pill" style="font-weight:900;">⏱ ${escapeHtml(tTime)}</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+
+
+// ---------------------------
+// ✅ Click: abre/cierra y pide detalle al backend
+// ---------------------------
+
+
+
+  function supervisorDebounceFetch_(){
+    clearTimeout(supTimer);
+    supTimer = setTimeout(() => {
+      if (currentModule === "SUPERVISOR") fetchSupervisorReport_().catch(() => {});
+    }, 250);
+  }
+
+  
   function snapshotNotasActivas_() {
     const map = new Map();
     el_("activasBox")?.querySelectorAll(".jobCard[data-key]")?.forEach((card) => {
@@ -1526,6 +1832,87 @@ const tecnicoAutoDone_ = new Set();
 let tecnicoAutoQueue_ = [];
 
 // helpers
+
+
+function hmsToMs_(v){
+  if (v == null) return 0;
+
+  if (typeof v === "number" && isFinite(v)) return Math.max(0, v);
+
+  const s = String(v);
+  const m = s.match(/(\d{1,2}):(\d{2}):(\d{2})/);
+  if (!m) return 0;
+
+  const hh = Number(m[1] || 0);
+  const mm = Number(m[2] || 0);
+  const ss = Number(m[3] || 0);
+  return ((hh * 3600) + (mm * 60) + ss) * 1000;
+}
+
+function msToHMSh_(ms){
+  ms = Math.max(0, Number(ms) || 0);
+  const total = Math.floor(ms / 1000);
+  const hh = Math.floor(total / 3600);
+  const mm = String(Math.floor((total % 3600) / 60)).padStart(2, "0");
+  const ss = String(total % 60).padStart(2, "0");
+  return `${hh}h ${mm}m ${ss}s`;
+}
+
+function buildSupervisorAvgCardHTML_({ q, countTotal, avgTotalMs, countMotor, avgMotorMs, countTanque, avgTanqueMs }) {
+  const safeQ = escapeHtml(q || "-");
+
+  return `
+    <div class="card" style="margin-top:10px; border:1px solid rgba(255,255,255,.16);">
+      
+      <!-- NOMBRE GRANDE -->
+      <div style="font-weight:1000; font-size:22px; line-height:1.1;">
+        ${safeQ}
+      </div>
+
+      <!-- CRONÓMETRO GRANDE -->
+      <div style="margin-top:10px; font-weight:1000; font-size:34px; letter-spacing:.5px;">
+        ⏱ ${msToHMSh_(avgTotalMs)}
+      </div>
+
+      <!-- DETALLE PEQUEÑO -->
+      <div class="small" style="margin-top:10px; opacity:.9;">
+        <div><b>FINALIZADOS contados:</b> ${countTotal}</div>
+        <div style="margin-top:6px; opacity:.85;">
+          MOTOR: ${countMotor} &nbsp;|&nbsp; TANQUE: ${countTanque}
+        </div>
+      </div>
+
+      <div class="small" style="margin-top:10px; opacity:.7;">
+        (Solo se consideran trabajos en estado <b>FINALIZADO</b>)
+      </div>
+
+    </div>
+  `;
+}
+
+
+function hmsOnly_(v){
+  // Queremos SIEMPRE devolver "HH:MM:SS"
+  if (v == null) return "00:00:00";
+
+  // Si viene como milisegundos (número), lo convertimos
+  if (typeof v === "number" && isFinite(v)) return msToHMS_(v);
+
+  // Si viene como string, extraemos el patrón HH:MM:SS donde esté
+  const s = String(v);
+
+  // Caso típico: "00:07:10" o "2:07:10"
+  const m = s.match(/(\d{1,2}):(\d{2}):(\d{2})/);
+  if (m) {
+    const hh = String(m[1]).padStart(2, "0");
+    return `${hh}:${m[2]}:${m[3]}`;
+  }
+
+  // Si no calza, no mostramos basura tipo GMT
+  return "00:00:00";
+}
+
+
 function rolesTecnicoTargets_() {
   // si está bloqueado, solo uno
   if (rolLock === "MOTOR") return ["MOTOR"];
@@ -1720,6 +2107,39 @@ async function autoStartFromScan_(vin, rolTrabajo) {
   // =========================
   // LISTENERS (globales)
   // =========================
+
+  document.querySelectorAll("[data-suptrack]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    if (currentModule !== "SUPERVISOR") return;
+    setSupTrack_(btn.dataset.suptrack);
+  });
+});
+
+
+    document.getElementById("btnSupApply")?.addEventListener("click", () => {
+    if (currentModule !== "SUPERVISOR") return;
+    fetchSupervisorReport_().catch(() => {});
+  });
+
+  document.getElementById("btnSupClear")?.addEventListener("click", () => {
+    if (currentModule !== "SUPERVISOR") return;
+
+    const name = document.getElementById("supName");
+    const vin  = document.getElementById("supVin");
+    const f = document.getElementById("supFrom");
+    const t = document.getElementById("supTo");
+    const m = document.getElementById("supMonth");
+
+    if (name) name.value = "";
+    if (vin)  vin.value  = "";
+    if (f) f.value = "";
+    if (t) t.value = "";
+    if (m) m.value = "";
+
+    fetchSupervisorReport_().catch(() => {});
+  });
+
+
 
   $("btnTheme")?.addEventListener("click", toggleTheme_);
 
@@ -1971,8 +2391,10 @@ async function autoStartFromScan_(vin, rolTrabajo) {
     AUTO_SUBMIT_ON_PICK: false,
   };
 
-  if (!VIN_AC.APS_URL) VIN_AC.APS_URL = "https://script.google.com/macros/s/AKfycbykBM8J36OXyzV4oatpAkZqcwfWTvTosiGQNtHkBObT8Ke-6EqLg4pXRxvklF50WSeXcQ/exec";
-  if (!VIN_AC.APS_KEY) VIN_AC.APS_KEY = "glp-2026-super-secreta";
+  if (!VIN_AC.APS_URL || !VIN_AC.APS_KEY) {
+    console.warn("Falta APS_URL/APS_KEY. VIN autocomplete deshabilitado.");
+  }
+
 
   let vinAcTimer = null;
   let vinAcItems = [];
