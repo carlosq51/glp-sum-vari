@@ -186,6 +186,21 @@ app.get("/api/supervisor/conversion-detail", async (req, res) => {
   }
 });
 
+app.get("/api/vin-suggest", async (req, res) => {
+  try {
+    const q = String(req.query.q || "").trim().toUpperCase();
+    const limit = Number(req.query.limit || 12);
+
+    if (!q) return res.json({ ok: true, items: [] });
+
+    const j = await callAppsScript("vin_suggest", { q, limit });
+    return res.json(j);
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
+
 
 
 

@@ -2446,19 +2446,18 @@ async function autoStartFromScan_(vin, rolTrabajo) {
     if (el) el.scrollIntoView({ block: "nearest" });
   }
 
-  async function vinAcFetch_(q) {
-    try { vinAcAbort?.abort?.(); } catch {}
-    vinAcAbort = new AbortController();
+async function vinAcFetch_(q) {
+  try { vinAcAbort?.abort?.(); } catch {}
+  vinAcAbort = new AbortController();
 
-    const url =
-      `${VIN_AC.APS_URL}?action=vin_suggest&key=${encodeURIComponent(VIN_AC.APS_KEY)}` +
-      `&q=${encodeURIComponent(q)}&limit=${encodeURIComponent(VIN_AC.LIMIT)}`;
+  const url = `/api/vin-suggest?q=${encodeURIComponent(q)}&limit=${encodeURIComponent(VIN_AC.LIMIT)}`;
 
-    const r = await fetch(url, { signal: vinAcAbort.signal });
-    const j = await r.json();
-    if (!j || !j.ok) return [];
-    return Array.isArray(j.items) ? j.items : [];
-  }
+  const r = await fetch(url, { signal: vinAcAbort.signal });
+  const j = await r.json();
+  if (!j || !j.ok) return [];
+  return Array.isArray(j.items) ? j.items : [];
+}
+
 
   function vinAcOnInput_() {
     const input = el_("vin");
@@ -2550,11 +2549,15 @@ async function autoStartFromScan_(vin, rolTrabajo) {
     });
 
     document.addEventListener("click", (e) => {
-      const wrap = document.querySelector(".vinWrap"); // ambos usan misma clase
       if (!vinAcOpen) return;
-      if (wrap && wrap.contains(e.target)) return;
+
+      const wraps = document.querySelectorAll(".vinWrap"); // ✅ todos
+      const insideSomeWrap = [...wraps].some(w => w.contains(e.target));
+      if (insideSomeWrap) return;
+
       vinAcHide_();
     });
+
   })();
 
   // =========================
