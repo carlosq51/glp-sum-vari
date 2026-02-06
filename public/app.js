@@ -1680,29 +1680,27 @@ async function autoStartCalidadIfNeeded_(vin) {
   // =========================
   let lastAutoStart_ = { k: "", t: 0 };
 
-  async function autoStartFromScan_(vin, rolTrabajo) {
-    const v = String(vin || "").trim().toUpperCase();
-    const rol = String(rolTrabajo || "").trim().toUpperCase();
-    if (!v) return;
+async function autoStartFromScan_(vin, rolTrabajo) {
+  const v = String(vin || "").trim().toUpperCase();
+  const rol = String(rolTrabajo || "").trim().toUpperCase();
+  if (!v) return;
 
-    // anti-doble lectura del QR (misma pareja vin|rol en 1.2s)
-    const k = `${v}|${rol}`;
-    const now = Date.now();
-    if (lastAutoStart_.k === k && (now - lastAutoStart_.t) < 1200) return;
-    lastAutoStart_ = { k, t: now };
+  const k = `${v}|${rol}`;
+  const now = Date.now();
+  if (lastAutoStart_.k === k && (now - lastAutoStart_.t) < 1200) return;
+  lastAutoStart_ = { k, t: now };
 
-    // 1) Asegurar/leer estado (esto puede crear OT/assignment, pero NO inicia)
-    await refreshEstadoForVinRole({ showOut: false });
+  // ❌ QUITA esto (el caller ya hace refresh)
+  // await refreshEstadoForVinRole({ showOut: false });
 
-    // 2) Leer item del store
-    const it = findItemByVinRol_(v, rol);
-    const estado = String(it?.estado || "").toUpperCase();
+  const it = findItemByVinRol_(v, rol);
+  const estado = String(it?.estado || "").toUpperCase();
 
-    // 3) Si está SIN_INICIAR => enviar INICIO automático
-    if (estado === "SIN_INICIAR") {
-      await enviarEvento("INICIO");
-    }
+  if (estado === "SIN_INICIAR") {
+    await enviarEvento("INICIO");
   }
+}
+
 
 
   // =========================
