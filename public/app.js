@@ -494,6 +494,18 @@ function ramalCacheGet_(conversionId) {
     return `${hh}:${mm}:${ss}`;
   }
 
+  function fmtFechaCreacion_(iso) {
+  if (!iso) return "-";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "-";
+  // es-PE, hora Lima automática por navegador
+  return new Intl.DateTimeFormat("es-PE", {
+    day: "2-digit", month: "2-digit", year: "numeric",
+    hour: "2-digit", minute: "2-digit"
+  }).format(d);
+}
+
+
   // Key estable: CONVERSION_ID|ROL
   function keyOfItem_(it) {
     const cid = String(it?.conversionId || "").trim();
@@ -650,7 +662,7 @@ function ramalCacheGet_(conversionId) {
       const vin = escapeHtml(it.vin || "");
       const tipo = escapeHtml(it.tipoRamal || "");
       const live = msToHMS_(computeLiveMs_(it, nowMs));
-      const cid = escapeHtml(it.conversionId || "");
+      const cre = escapeHtml(fmtFechaCreacion_(it.created_at));
 
       const title =
         currentModule === "RAMALERO"
@@ -664,7 +676,7 @@ function ramalCacheGet_(conversionId) {
               <div class="jobTitle">${title} <span>(${rol})</span></div>
               <div class="jobSub">
                 <span><b>Estado:</b> <span class="js-estado">${estado}</span></span>
-                <span class="small">ID: ${cid}</span>
+                <span class="small">Creación: ${cre}</span>
               </div>
             </div>
             <div class="jobRight">
@@ -729,7 +741,7 @@ function ramalCacheGet_(conversionId) {
             <div class="small"><b>Estado:</b> ${estado}</div>
             <div class="pill" style="font-size:18px; font-weight:800;">⏱ ${live}</div>
           </div>
-          <div class="small">ConvID: ${cid}</div>
+          <div class="small">Creación: ${escapeHtml(fmtFechaCreacion_(it.created_at))}</div>
         </div>
       `;
     }).join("");
@@ -788,6 +800,8 @@ function ramalCacheGet_(conversionId) {
         raw.TIPO_RAMAL ??
         ""
       ),
+
+      created_at: raw.fecha_creacion || raw.created_at || raw.FECHA_CREACION || null, // ✅ NUEVO
 
       rolTrabajo: String(raw.rolTrabajo || raw.rol || raw.ROL_TRABAJO || "").toUpperCase(),
       estado: String(raw.estado || raw.ESTADO_ACTUAL || "").toUpperCase(),
