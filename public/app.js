@@ -1723,111 +1723,116 @@ function patchVisibleCards_() {
 
   async function startQR() {
     const msg = $("qrMsg");
+
     try {
       if (!window.Html5Qrcode) {
-        if (msg) msg.textContent = "No se pudo cargar la librería QR.";
+        if (msg) msg.textContent = "No se pudo cargar el lector.";
         return;
       }
 
       if (!qr) qr = new Html5Qrcode("qrReader");
 
-      const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+      // ✅ CONFIG: QR + BARCODES (solo cámara)
+      const config = {
+        fps: 12,
 
-      // 1) iPhone/Safari: fuerza trasera con EXACT primero
+        // 🔑 más grande = mejor para barcodes 1D
+        qrbox: { width: 320, height: 200 },
+
+        // 🔑 habilita QR + códigos de barras
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.QR_CODE,
+
+          // Barcodes 1D comunes
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+          Html5QrcodeSupportedFormats.ITF,
+          Html5QrcodeSupportedFormats.CODABAR,
+        ],
+
+        // 🔑 usa BarcodeDetector nativo si el navegador lo soporta
+        experimentalFeatures: {
+          useBarCodeDetectorIfSupported: true,
+        },
+      };
+
+      const onDecoded = async (decodedText) => {
+        const raw = String(decodedText || "").trim();
+        if (!raw) return;
+
+        // Limpieza típica (por si el barcode trae texto extra)
+        const code = raw
+          .replace(/^VIN\s*[:#-]?\s*/i, "")
+          .replace(/\s+/g, "")
+          .toUpperCase();
+
+        const vinEl = el_("vin");
+        if (vinEl) vinEl.value = code;
+
+        if (msg) msg.textContent = `Código detectado: ${code}`;
+        await closeQRModal();
+
+        await withLock(async () => {
+          await refreshEstadoForVinRole({ showOut: false });
+          const rolTrabajo = getRolTrabajoCurrent_();
+          await autoStartFromScan_(code, rolTrabajo);
+          await syncNow({ forceFull: true, showOut: false });
+          await refreshEstadoForVinRole({ showOut: false });
+        }, "Iniciando automáticamente...");
+      };
+
+      const onFail = () => {};
+
+      // =========================
+      // 1️⃣ iOS / Safari (trasera EXACT)
+      // =========================
       try {
         await qr.start(
           { facingMode: { exact: "environment" } },
           config,
-          async (decodedText) => {
-            const code = String(decodedText || "").trim().toUpperCase();
-            if (!code) return;
-
-            const vinEl = el_("vin");
-            if (vinEl) vinEl.value = code;
-
-            if (msg) msg.textContent = `VIN detectado: ${code}`;
-            await closeQRModal();
-
-            await withLock(async () => {
-              await refreshEstadoForVinRole({ showOut: false });
-              const rolTrabajo = getRolTrabajoCurrent_();
-              await autoStartFromScan_(code, rolTrabajo);
-              await syncNow({ forceFull: true, showOut: false });
-              await refreshEstadoForVinRole({ showOut: false });
-            }, "Iniciando automáticamente...");
-          },
-          () => {}
+          onDecoded,
+          onFail
         );
-        return; // ✅ si funcionó, salimos
-      } catch (eExact) {
-        // sigue al fallback
-      }
+        return;
+      } catch {}
 
-      // 2) Fallback: environment "normal" (Android/otros suele ir perfecto)
+      // =========================
+      // 2️⃣ Fallback estándar (Android)
+      // =========================
       try {
         await qr.start(
           { facingMode: "environment" },
           config,
-          async (decodedText) => {
-            const code = String(decodedText || "").trim().toUpperCase();
-            if (!code) return;
-
-            const vinEl = el_("vin");
-            if (vinEl) vinEl.value = code;
-
-            if (msg) msg.textContent = `VIN detectado: ${code}`;
-            await closeQRModal();
-
-            await withLock(async () => {
-              await refreshEstadoForVinRole({ showOut: false });
-              const rolTrabajo = getRolTrabajoCurrent_();
-              await autoStartFromScan_(code, rolTrabajo);
-              await syncNow({ forceFull: true, showOut: false });
-              await refreshEstadoForVinRole({ showOut: false });
-            }, "Iniciando automáticamente...");
-          },
-          () => {}
+          onDecoded,
+          onFail
         );
         return;
-      } catch (eEnv) {
-        // sigue al fallback por cameraId
-      }
+      } catch {}
 
-      // 3) Último fallback: elegir cameraId (tu lógica original, pero más robusta)
-      const devices = await Html5Qrcode.getCameras();
+      // =========================
+      // 3️⃣ Último fallback por cameraId
+      // =========================
+      const devices = await Html5Qrcode.getCameras().catch(() => []);
       let cameraId = null;
 
-      if (devices && devices.length) {
-        const env = devices.find(d => /back|rear|environment/i.test(d.label || ""));
-        cameraId = (env ? env.id : devices[0].id);
+      if (devices.length) {
+        const back = devices.find(d => /back|rear|environment/i.test(d.label || ""));
+        cameraId = back ? back.id : devices[devices.length - 1].id;
       }
 
       await qr.start(
-        cameraId ?? devices?.[0]?.id ?? { facingMode: "environment" },
+        cameraId ?? { facingMode: "environment" },
         config,
-        async (decodedText) => {
-          const code = String(decodedText || "").trim().toUpperCase();
-          if (!code) return;
-
-          const vinEl = el_("vin");
-          if (vinEl) vinEl.value = code;
-
-          if (msg) msg.textContent = `VIN detectado: ${code}`;
-          await closeQRModal();
-
-          await withLock(async () => {
-            await refreshEstadoForVinRole({ showOut: false });
-            const rolTrabajo = getRolTrabajoCurrent_();
-            await autoStartFromScan_(code, rolTrabajo);
-            await syncNow({ forceFull: true, showOut: false });
-            await refreshEstadoForVinRole({ showOut: false });
-          }, "Iniciando automáticamente...");
-        },
-        () => {}
+        onDecoded,
+        onFail
       );
 
     } catch (e) {
-      if (msg) msg.textContent = "No se pudo abrir la cámara. Revisa permisos (HTTPS o localhost).";
+      if (msg) msg.textContent = "No se pudo abrir la cámara. Revisa permisos (HTTPS).";
     }
   }
 
