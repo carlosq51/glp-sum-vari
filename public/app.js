@@ -110,14 +110,14 @@
     uiLocked = !!on;
 
     const overlay = $("loadingOverlay");
-    const overlayText = overlay?.querySelector(".overlay-text");
-
     if (overlay) {
       overlay.classList.toggle("hidden", !uiLocked);
       const msgEl = document.getElementById("overlayMsg");
       if (msgEl) msgEl.textContent = String(msg || "Procesando").replace(/\.*\s*$/, "");
-
     }
+
+    if (uiLocked) setEstadoText(msg);
+    else setEstadoText("");
 
     // inputs base
     const emailEl = $("email");
@@ -129,31 +129,30 @@
       if (vinEl) vinEl.disabled = uiLocked;
     }
 
-    // rol solo en TECNICO
+    // rol solo TECNICO
     const rolEl = $("rol");
     if (rolEl) rolEl.disabled = uiLocked || !!rolLock || (currentModule !== "TECNICO");
 
-
     // botones globales
-    ["btnMe", "btnLogout"].forEach((id) => {
-      const b = $(id);
-      if (b) b.disabled = uiLocked;
-    });
+    const bMe = $("btnMe");
+    if (bMe) bMe.disabled = uiLocked;
+    const bLo = $("btnLogout");
+    if (bLo) bLo.disabled = uiLocked;
 
-    // botones del módulo actual (con fallback)
-    ["btnEstado", "btnActivas", "btnFinalizados", "btnQR"].forEach((id) => {
+    // botones del módulo actual (con fallback el_)
+    const ids = ["btnEstado", "btnActivas", "btnFinalizados", "btnQR"];
+    for (const id of ids) {
       const b = el_(id);
       if (b) b.disabled = uiLocked;
-    });
+    }
 
-    // botones dinámicos (activas/finalizados del módulo actual)
+    // botones dinámicos dentro de cards (solo del módulo actual)
     const actBox = el_("activasBox");
     const finBox = el_("finalizadosBox");
-    actBox?.querySelectorAll("button[data-act]")?.forEach((b) => (b.disabled = uiLocked));
-    finBox?.querySelectorAll("button[data-act]")?.forEach((b) => (b.disabled = uiLocked));
-
-    if (uiLocked) setEstadoText(msg);
+    actBox?.querySelectorAll("button[data-act]")?.forEach(b => (b.disabled = uiLocked));
+    finBox?.querySelectorAll("button[data-act]")?.forEach(b => (b.disabled = uiLocked));
   }
+
 
   async function withLock(fn, msg) {
     if (uiLocked) return;
@@ -696,25 +695,30 @@ function renderSupervisor_(j){
   const box = document.getElementById("supTable");
 
   const items = Array.isArray(j.items) ? j.items : [];
-  if (sum) sum.textContent = `Resultados: ${items.length}`;
   if (!box) return;
 
   if (!items.length){
+    if (sum) sum.textContent = "Resultados: 0";
     box.innerHTML = `<div class="small">No hay resultados con esos filtros.</div>`;
     return;
   }
 
-  // ✅ 1) RAMAL y CALIDAD se quedan como están (1 card por item)
+  // ✅ 1) CALIDAD / RAMAL: 1 registro = 1 trabajo (contador normal)
   if (supTrack === "CALIDAD" || supTrack === "RAMAL") {
+    if (sum) sum.textContent = `Resultados: ${items.length}`;
     box.innerHTML = items.map(it => renderSupItemCard_(it)).join("");
     return;
   }
 
-  // ✅ 2) CONVERSION => 1 card por VIN con MOTOR+TANQUE
-  // ✅ 2) CONVERSION => 1 card por VIN con MOTOR+TANQUE
+  // ✅ 2) CONVERSION: contar VIN únicos (MOTOR+TANQUE se agrupan)
   const groups = groupByVinMotorTanque_(items);
 
-  // ✅ Si hay filtro "q", mostramos una cartilla extra con promedio por técnico
+  const vinCount = groups.length;     // ✅ VIN únicos
+  const regCount = items.length;      // registros crudos (motor+tanque)
+
+  if (sum) sum.textContent = `Resultados: ${vinCount}`;
+
+  // (tu lógica del avgCard se queda igual)
   const q = String(document.getElementById("supName")?.value || "").trim().toLowerCase();
 
   let avgCard = "";
@@ -726,22 +730,18 @@ function renderSupervisor_(j){
       const m = g.motor;
       const t = g.tanque;
 
-      // ===== MOTOR =====
       if (m) {
         const who = String(m.userName || m.userEmail || m.userId || "").toLowerCase();
         const est = String(m.estado || "").toUpperCase();
-
         if (who.includes(q) && est === "FINALIZADO") {
           const ms = hmsToMs_(m.tiempo_hms ?? m.tiempo_ms ?? m.tiempo);
           if (ms > 0) { sumMotor += ms; nMotor++; }
         }
       }
 
-      // ===== TANQUE =====
       if (t) {
         const who = String(t.userName || t.userEmail || t.userId || "").toLowerCase();
         const est = String(t.estado || "").toUpperCase();
-
         if (who.includes(q) && est === "FINALIZADO") {
           const ms = hmsToMs_(t.tiempo_hms ?? t.tiempo_ms ?? t.tiempo);
           if (ms > 0) { sumTanque += ms; nTanque++; }
@@ -749,34 +749,25 @@ function renderSupervisor_(j){
       }
     }
 
-
     const sumTotal = sumMotor + sumTanque;
     const nTotal = nMotor + nTanque;
 
-    // Evitar dividir entre 0
-    const avgMotor = nMotor ? (sumMotor / nMotor) : 0;
-    const avgTanque = nTanque ? (sumTanque / nTanque) : 0;
     const avgTotal = nTotal ? (sumTotal / nTotal) : 0;
 
-    // Solo mostrar si encontró algo
     if (nTotal > 0) {
       avgCard = buildSupervisorAvgCardHTML_({
         q,
         countTotal: nTotal,
         avgTotalMs: avgTotal,
         countMotor: nMotor,
-        avgMotorMs: avgMotor,
+        avgMotorMs: nMotor ? (sumMotor / nMotor) : 0,
         countTanque: nTanque,
-        avgTanqueMs: avgTanque,
+        avgTanqueMs: nTanque ? (sumTanque / nTanque) : 0,
       });
     }
   }
 
   box.innerHTML = avgCard + groups.map(g => renderSupConversionCard_(g)).join("");
-
-
-  // ✅ bind click (solo una vez)
-  //bindSupervisorConversionClicksOnce_();
 }
 
 
@@ -802,11 +793,10 @@ function renderSupItemCard_(it){
       </div>
 
       <div class="small" style="margin-top:6px;">
-        <b>Creación:</b> ${escapeHtml(fmtShort_(it.fecha_creacion))}
+        <b>Inicio:</b> ${escapeHtml(fmtShort_(it.fecha_inicio || it.inicio_at || it.created_at || it.fecha_creacion))}
+
         &nbsp;|&nbsp;
         <b>Fecha de fin:</b> ${escapeHtml(fmtShort_(it.updated_at))}
-        &nbsp;|&nbsp;
-        <b>Últ. update:</b> ${escapeHtml(fmtShort_(it.updated_at))}
       </div>
 
       <div class="row space-between" style="margin-top:8px;">
@@ -884,7 +874,8 @@ function renderSupConversionCard_(g){
         </div>
         <div class="row space-between" style="margin-top:6px;">
           <div class="small">
-            <b>Creación:</b> ${escapeHtml(fmtShort_(m?.fecha_creacion))}
+            <b>Inicio:</b> ${escapeHtml(fmtShort_(m?.fecha_inicio || m?.inicio_at || m?.created_at || m?.fecha_creacion))}
+
             &nbsp;|&nbsp;
             <b>Fecha de fin:</b> ${escapeHtml(fmtShort_(m?.updated_at))}
           </div>
@@ -899,7 +890,8 @@ function renderSupConversionCard_(g){
         </div>
         <div class="row space-between" style="margin-top:6px;">
           <div class="small">
-            <b>Creación:</b> ${escapeHtml(fmtShort_(t?.fecha_creacion))}
+            <b>Inicio:</b> ${escapeHtml(fmtShort_(t?.fecha_inicio || t?.inicio_at || t?.created_at || t?.fecha_creacion))}
+
             &nbsp;|&nbsp;
             <b>Fecha de fin:</b> ${escapeHtml(fmtShort_(t?.updated_at))}
           </div>
@@ -958,10 +950,11 @@ function renderSupConversionCard_(g){
     }
 
     const nowMs = Date.now();
+    let out = "";
 
-    const html = c.activeKeys.map((k) => {
+    for (const k of c.activeKeys) {
       const it = c.itemsByKey.get(k);
-      if (!it) return "";
+      if (!it) continue;
 
       const estado = String(it.estado || "").toUpperCase();
       const rol = escapeHtml(it.rolTrabajo || "");
@@ -975,14 +968,14 @@ function renderSupConversionCard_(g){
           ? `RAMAL: ${tipo || "-"}`
           : (vin || "<span class='small'>(sin VIN)</span>");
 
-      return `
+      out += `
         <div class="jobCard card state-${estado}" data-key="${escapeHtml(k)}">
           <div class="jobTop">
             <div class="jobMeta">
               <div class="jobTitle">${title} <span>(${rol})</span></div>
               <div class="jobSub">
                 <span><b>Estado:</b> <span class="js-estado">${estado}</span></span>
-                <span class="small">Creación: ${cre}</span>
+                <span class="small">Inicio: ${cre}</span>
               </div>
             </div>
             <div class="jobRight">
@@ -1005,9 +998,9 @@ function renderSupConversionCard_(g){
           </div>
         </div>
       `;
-    }).join("");
+    }
 
-    box.innerHTML = html;
+    box.innerHTML = out;
   }
 
 
@@ -1031,29 +1024,33 @@ function renderSupConversionCard_(g){
     }
 
     const nowMs = Date.now();
+    let out = "";
 
-    const html = c.finalKeys.map((k) => {
+    for (const k of c.finalKeys) {
       const it = c.itemsByKey.get(k);
-      if (!it) return "";
+      if (!it) continue;
+
       const vin = escapeHtml(String(it.vin || "").toUpperCase());
       const rol = escapeHtml(String(it.rolTrabajo || ""));
       const estado = escapeHtml(String(it.estado || "FINALIZADO").toUpperCase());
-      const cid = escapeHtml(String(it.conversionId || ""));
       const live = msToHMS_(computeLiveMs_(it, nowMs));
-      return `
+      const cre = escapeHtml(fmtFechaCreacion_(it.created_at));
+
+      out += `
         <div class="card" style="margin-top:10px;">
           <div><b>${vin}</b> <span class="small">(${rol})</span></div>
           <div class="row space-between" style="margin-top:6px;">
             <div class="small"><b>Estado:</b> ${estado}</div>
             <div class="pill" style="font-size:18px; font-weight:800;">⏱ ${live}</div>
           </div>
-          <div class="small">Creación: ${escapeHtml(fmtFechaCreacion_(it.created_at))}</div>
+          <div class="small">Inicio: ${cre}</div>
         </div>
       `;
-    }).join("");
+    }
 
-    box.innerHTML = html;
+    box.innerHTML = out;
   }
+
 
   // Filtrado por módulo:
   // - TECNICO: MOTOR/TANQUE
@@ -1094,36 +1091,75 @@ function renderSupConversionCard_(g){
   // =========================
   // SYNC
   // =========================
+
+  function mergePrevAndCache_(it, prev) {
+    // VIN: si backend manda vacío, usa prev o cache
+    if ((!it.vin || it.vin === "") && prev?.vin) it.vin = prev.vin;
+    if (!it.vin && it.conversionId && it.rolTrabajo) {
+      const cached = vinCacheGet_(it.conversionId, it.rolTrabajo);
+      if (cached) it.vin = cached;
+    }
+
+    // RAMAL: tipoRamal vacío => prev o cache
+    if (it.rolTrabajo === "RAMALERO") {
+      if ((!it.tipoRamal || it.tipoRamal === "") && prev?.tipoRamal) it.tipoRamal = prev.tipoRamal;
+      if (!it.tipoRamal && it.conversionId) {
+        const cachedTipo = ramalCacheGet_(it.conversionId);
+        if (cachedTipo) it.tipoRamal = cachedTipo;
+      }
+    }
+
+    // updated_at / last_nota_ts: conserva si el backend no manda
+    if (prev) {
+      if (!it.updated_at) it.updated_at = prev.updated_at || null;
+      if (!it.last_nota_ts) it.last_nota_ts = prev.last_nota_ts || null;
+      if (!it.created_at) it.created_at = prev.created_at || null;
+    }
+
+    return it;
+  }
+
+
   function normalizeItem_(raw) {
     const it = {
-      conversionId: String(raw.conversionId || raw.CONVERSION_ID || "").trim(),
-      vin: String(raw.vin || raw.VIN || "").toUpperCase(),
+      conversionId: String(raw?.conversionId ?? raw?.CONVERSION_ID ?? "").trim(),
+      vin: String(raw?.vin ?? raw?.VIN ?? "").trim().toUpperCase(),
 
       tipoRamal: String(
-        raw.tipoRamal ??
-        raw.tipo_ramal ??
-        raw.tipo ??
-        raw.TIPO_RAMAL ??
+        raw?.tipoRamal ??
+        raw?.tipo_ramal ??
+        raw?.tipo ??
+        raw?.TIPO_RAMAL ??
         ""
-      ),
+      ).trim(),
 
-      created_at: raw.fecha_creacion || raw.created_at || raw.FECHA_CREACION || null, // ✅ NUEVO
+      // ✅ fecha de creación / inicio (prioridad)
+      created_at:
+        raw?.fecha_asignacion ?? raw?.FECHA_ASIGNACION ??   // ✅ PRIMERO
+        raw?.fecha_inicio ?? raw?.inicio_at ?? raw?.FECHA_INICIO ??
+        raw?.created_at ??
+        raw?.fecha_creacion ?? raw?.FECHA_CREACION ??
+        null,
 
-      rolTrabajo: String(raw.rolTrabajo || raw.rol || raw.ROL_TRABAJO || "").toUpperCase(),
-      estado: String(raw.estado || raw.ESTADO_ACTUAL || "").toUpperCase(),
-      tiempo_ms: Number(raw.tiempo_ms ?? raw.TIEMPO_TRAB_MS ?? 0),
-      running_since: raw.running_since || raw.RUNNING_SINCE || null,
-      last_nota: String(raw.last_nota || raw.LAST_NOTA || ""),
-      last_nota_ts: raw.last_nota_ts || raw.LAST_NOTA_TS || null,
-      updated_at: raw.updated_at || raw.UPDATED_AT || null,
+
+      rolTrabajo: String(raw?.rolTrabajo ?? raw?.rol ?? raw?.ROL_TRABAJO ?? "").trim().toUpperCase(),
+      estado: String(raw?.estado ?? raw?.ESTADO_ACTUAL ?? "").trim().toUpperCase(),
+
+      tiempo_ms: Number(raw?.tiempo_ms ?? raw?.TIEMPO_TRAB_MS ?? 0) || 0,
+      running_since: raw?.running_since ?? raw?.RUNNING_SINCE ?? null,
+
+      last_nota: String(raw?.last_nota ?? raw?.LAST_NOTA ?? ""),
+      last_nota_ts: raw?.last_nota_ts ?? raw?.LAST_NOTA_TS ?? null,
+
+      updated_at: raw?.updated_at ?? raw?.UPDATED_AT ?? null,
     };
 
-    // ✅ Si llega VIN, lo guardamos para sobrevivir al F5
+    // cache VIN por conversionId|rol
     if (it.conversionId && it.rolTrabajo && it.vin) {
       vinCacheSet_(it.conversionId, it.rolTrabajo, it.vin);
     }
 
-    // ✅ RAMALERO: guardar tipoRamal si llega
+    // cache RAMAL por conversionId
     if (it.conversionId && it.rolTrabajo === "RAMALERO" && it.tipoRamal) {
       ramalCacheSet_(it.conversionId, it.tipoRamal);
     }
@@ -1145,60 +1181,37 @@ function renderSupConversionCard_(g){
 
   function applySyncResultToStore_(syncData) {
     const c = ctx_();
-    const items = Array.isArray(syncData.items) ? syncData.items : [];
+    const items = Array.isArray(syncData?.items) ? syncData.items : [];
+
     for (const raw of items) {
       const it = normalizeItem_(raw);
       const k = keyOfItem_(it);
-
       const prev = c.itemsByKey.get(k);
 
-      // ✅ ya lo tenías para VIN
-      if (prev && (!it.vin || it.vin === "")) it.vin = prev.vin || "";
-
-      // ✅ AGREGA ESTO para RAMALERO (marca/tipo)
-      if (prev && (!it.tipoRamal || it.tipoRamal === "")) it.tipoRamal = prev.tipoRamal || "";
-
-      // ✅ si backend no manda tipoRamal, recupéralo del cache
-      if (!it.tipoRamal && it.rolTrabajo === "RAMALERO") {
-        const cachedTipo = ramalCacheGet_(it.conversionId);
-        if (cachedTipo) it.tipoRamal = cachedTipo;
-      }
-
-
-      // ✅ si el backend manda VIN vacío y no hay prev (o prev no tiene), lo recupero del cache
-      if (!it.vin) {
-        const cached = vinCacheGet_(it.conversionId, it.rolTrabajo);
-        if (cached) it.vin = cached;
-      }
-
-
+      mergePrevAndCache_(it, prev);
 
       c.itemsByKey.set(k, it);
     }
   }
+
 
 
   function storeFullReplace_(allItems) {
     const c = ctx_();
     c.itemsByKey.clear();
-    for (const raw of allItems) {
+
+    const arr = Array.isArray(allItems) ? allItems : [];
+    for (const raw of arr) {
       const it = normalizeItem_(raw);
-
-      if (!it.tipoRamal && it.rolTrabajo === "RAMALERO") {
-        const cachedTipo = ramalCacheGet_(it.conversionId);
-        if (cachedTipo) it.tipoRamal = cachedTipo;
-      }
-
-
-      if (!it.vin) {
-        const cached = vinCacheGet_(it.conversionId, it.rolTrabajo);
-        if (cached) it.vin = cached;
-      }
-
       const k = keyOfItem_(it);
+
+      // en full replace no hay prev, solo cache
+      mergePrevAndCache_(it, null);
+
       c.itemsByKey.set(k, it);
     }
   }
+
 
   function detectIfNeedsFullRerender_(prevActiveKeys, prevFinalKeys) {
     const c = ctx_();
@@ -1302,34 +1315,42 @@ function renderSupConversionCard_(g){
 
   }
 
-  function patchVisibleCards_() {
-    const c = ctx_();
-    const nowMs = Date.now();
+function patchVisibleCards_() {
+  const c = ctx_();
+  const box = el_("activasBox");
+  if (!box) return;
 
-    for (const k of c.activeKeys) {
-      const it = c.itemsByKey.get(k);
-      if (!it) continue;
+  const nowMs = Date.now();
 
-      const card = el_("activasBox")?.querySelector(`.jobCard[data-key="${cssEsc_(k)}"]`);
-      if (!card) continue;
+  for (const k of c.activeKeys) {
+    const it = c.itemsByKey.get(k);
+    if (!it) continue;
 
-      const wasOpen = card.classList.contains("open");
-      const estado = String(it.estado || "").toUpperCase();
+    const card = box.querySelector(`.jobCard[data-key="${cssEsc_(k)}"]`);
+    if (!card) continue;
 
-      card.className = `jobCard card state-${estado}` + (wasOpen ? " open" : "");
+    const wasOpen = card.classList.contains("open");
+    const estado = String(it.estado || "").toUpperCase();
 
-      const estadoEl = card.querySelector(".js-estado");
-      if (estadoEl) estadoEl.textContent = estado;
+    // estado visual
+    card.className = `jobCard card state-${estado}` + (wasOpen ? " open" : "");
 
-      const timeEl = card.querySelector(".js-tiempo");
-      if (timeEl) timeEl.textContent = `⏱ ${msToHMS_(computeLiveMs_(it, nowMs))}`;
+    // texto estado
+    const estadoEl = card.querySelector(".js-estado");
+    if (estadoEl) estadoEl.textContent = estado;
 
-      if (wasOpen) {
-        const slot = card.querySelector(".jobActionsSlot");
-        if (slot) slot.innerHTML = buildBotonesByEstado_(estado);
-      }
+    // tiempo
+    const timeEl = card.querySelector(".js-tiempo");
+    if (timeEl) timeEl.textContent = `⏱ ${msToHMS_(computeLiveMs_(it, nowMs))}`;
+
+    // si está abierto, refresca botones para el nuevo estado
+    if (wasOpen) {
+      const slot = card.querySelector(".jobActionsSlot");
+      if (slot) slot.innerHTML = buildBotonesByEstado_(estado);
     }
   }
+}
+
 
   // =========================
   // ESTADO (1 VIN/ROL)
@@ -1585,22 +1606,18 @@ function renderSupConversionCard_(g){
   function startLoopsFor_(mod) {
     stopLoopsFor_(mod);
 
-    const prev = currentModule;
-    currentModule = mod;
+    withModule_(mod, () => {
+      syncNow({ forceFull: true, showOut: false }).catch(() => {});
 
-    syncNow({ forceFull: true, showOut: false }).catch(() => {});
+      const t = tctx_();
+      t.syncTimer = setInterval(() => syncNow({ forceFull: false, showOut: false }), 6000);
+      t.clockTimer = setInterval(() => tickClocksUI_(), 250);
 
-    const t = tctx_();
-    t.syncTimer = setInterval(() => syncNow({ forceFull: false, showOut: false }), 6000);
-    t.clockTimer = setInterval(() => tickClocksUI_(), 250);
-
-    // SOLO TECNICO/CALIDAD (RAMALERO no tiene VIN)
-    if (mod === "TECNICO" || mod === "CALIDAD") {
-      refreshEstadoForVinRole({ showOut: false }).catch(() => {});
-      t.estadoTimer = setInterval(() => refreshEstadoForVinRole({ showOut: false }), 2000);
-    }
-
-    currentModule = prev;
+      if (mod === "TECNICO" || mod === "CALIDAD") {
+        refreshEstadoForVinRole({ showOut: false }).catch(() => {});
+        t.estadoTimer = setInterval(() => refreshEstadoForVinRole({ showOut: false }), 2000);
+      }
+    });
   }
 
 
@@ -1613,27 +1630,32 @@ function renderSupConversionCard_(g){
   }
 
   function clearModuleUI_(mod) {
-    const prev = currentModule;
-    currentModule = mod;
+    withModule_(mod, () => {
+      const vinEl = el_("vin");
+      if (vinEl) vinEl.value = "";
 
-    el_("vin") && (el_("vin").value = "");
-    $("nota") && ($("nota").value = "");
-    el_("activasBox") && (el_("activasBox").innerHTML = "");
-    el_("finalizadosBox") && (el_("finalizadosBox").innerHTML = "");
-    setEstadoText("");
+      if ($("nota")) $("nota").value = "";
 
-    const c = ctx_();
-    c.showFinalizados = false;
-    c.openCardKey = null;
+      const act = el_("activasBox");
+      if (act) act.innerHTML = "";
 
-    c.itemsByKey.clear();
-    c.activeKeys = [];
-    c.finalKeys = [];
-    c.lastSyncSince = null;
-    c.lastSyncRev = null;
+      const fin = el_("finalizadosBox");
+      if (fin) fin.innerHTML = "";
 
-    currentModule = prev;
+      setEstadoText("");
+
+      const c = ctx_();
+      c.showFinalizados = false;
+      c.openCardKey = null;
+
+      c.itemsByKey.clear();
+      c.activeKeys = [];
+      c.finalKeys = [];
+      c.lastSyncSince = null;
+      c.lastSyncRev = null;
+    });
   }
+
 
   // =========================
   // LOGIN FLOW
@@ -1832,6 +1854,17 @@ const tecnicoAutoDone_ = new Set();
 let tecnicoAutoQueue_ = [];
 
 // helpers
+
+function withModule_(mod, fn) {
+  const prev = currentModule;
+  currentModule = mod;
+  try {
+    return fn();
+  } finally {
+    currentModule = prev;
+  }
+}
+
 
 
 function hmsToMs_(v){
@@ -2304,15 +2337,13 @@ async function autoStartFromScan_(vin, rolTrabajo) {
   // =========================
   // Delegación en activas (por módulo)
   // =========================
-  function attachActivasDelegationOnce_(mod) {
-    const prev = currentModule;
-    currentModule = mod;
-
+function attachActivasDelegationOnce_(mod) {
+  withModule_(mod, () => {
     const box = el_("activasBox");
-    if (!box) { currentModule = prev; return; }
+    if (!box) return;
 
     const markKey = `bound_${mod}`;
-    if (box.dataset[markKey] === "1") { currentModule = prev; return; }
+    if (box.dataset[markKey] === "1") return;
     box.dataset[markKey] = "1";
 
     // Mostrar botón guardar nota
@@ -2329,15 +2360,15 @@ async function autoStartFromScan_(vin, rolTrabajo) {
       if (!card) return;
 
       const c = ctx_();
-      const k = card.dataset.key;
+      const k = card.dataset.key || "";
       const it = c.itemsByKey.get(k);
       if (!it) return;
 
       if (btn) {
         e.stopPropagation();
-        const accion = btn.dataset.act.toUpperCase();
+        const accion = String(btn.dataset.act || "").toUpperCase();
 
-        // 🔴 RAMALERO (NO VIN)
+        // RAMALERO (no VIN)
         if (currentModule === "RAMALERO") {
           const nota =
             accion === "NOTA"
@@ -2353,15 +2384,16 @@ async function autoStartFromScan_(vin, rolTrabajo) {
           return;
         }
 
-        // 🟢 TECNICO / CALIDAD
-        el_("vin").value = it.vin || "";
+        // TECNICO / CALIDAD
+        const vinEl = el_("vin");
+        if (vinEl) vinEl.value = it.vin || "";
 
         if (currentModule === "TECNICO" && !rolLock) {
-          $("rol").value = it.rolTrabajo || "MOTOR";
+          if ($("rol")) $("rol").value = it.rolTrabajo || "MOTOR";
           enforceRolLock_();
         }
 
-        if (accion === "NOTA") {
+        if (accion === "NOTA" && $("nota")) {
           $("nota").value = String(card.querySelector("textarea.notaCard")?.value || "");
         }
 
@@ -2369,14 +2401,14 @@ async function autoStartFromScan_(vin, rolTrabajo) {
         return;
       }
 
-      // abrir / cerrar card
+      // abrir / cerrar card (solo 1 abierta)
       const wasOpen = card.classList.contains("open");
-      box.querySelectorAll(".jobCard.open").forEach(c => c.classList.remove("open"));
+      box.querySelectorAll(".jobCard.open").forEach(x => x.classList.remove("open"));
       if (!wasOpen) card.classList.add("open");
     });
+  });
+}
 
-    currentModule = prev;
-  }
 
 
   // =========================

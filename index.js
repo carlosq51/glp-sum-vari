@@ -120,7 +120,11 @@ app.get("/api/supervisor/report", async (req, res) => {
       from: String(req.query.from || "").trim(),
       to: String(req.query.to || "").trim(),
       month: String(req.query.month || "").trim(),
+
+      // ✅ NUEVO: viene del frontend cuando track=RAMAL
+      tipoRamal: String(req.query.tipoRamal || "").trim(),
     };
+
 
     const track = String(req.query.track || "CONVERSION").toUpperCase();
 
@@ -148,8 +152,22 @@ app.get("/api/supervisor/report", async (req, res) => {
     }
 
     else if (track === "RAMAL") {
-      outItems = rows.filter(r => String(r.rol || "").toUpperCase() === "RAMALERO");
+      const qMarca = String(req.query.tipoRamal || "").trim().toUpperCase();
+
+      outItems = rows.filter(r => {
+        const rol = String(r.rol || "").toUpperCase();
+        if (rol !== "RAMALERO") return false;
+
+        // si no hay filtro de marca, devuelve todos los RAMALERO
+        if (!qMarca) return true;
+
+        const tipo = String(r.tipoRamal || r.tipo_ramal || r.tipo || "").trim().toUpperCase();
+
+        // ✅ match flexible: contiene (JETOUR, X5, KYC V3, etc.)
+        return tipo.includes(qMarca);
+      });
     }
+
 
     else {
       outItems = rows;
