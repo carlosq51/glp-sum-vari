@@ -2176,6 +2176,11 @@ async function autoStartFromScan_(vin, rolTrabajo) {
 
   $("btnTheme")?.addEventListener("click", toggleTheme_);
 
+  $("btnRegistroFallas")?.addEventListener("click", () => {
+  window.open("https://glp-registro-fallas.pages.dev/", "_blank", "noopener");
+});
+
+
 
   $("btnMe").addEventListener("click", async () => {
     const email = getEmail();
