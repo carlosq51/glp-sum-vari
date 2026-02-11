@@ -459,37 +459,30 @@ function ramalCacheGet_(conversionId) {
   }
 
   function openModule(m) {
+  currentModule = m;
 
-    
-    currentModule = m;
-    
-    $("viewHub").style.display = "none";
-    hideAllModules();
+  $("viewHub").style.display = "none";
+  hideAllModules();
 
-    const el = document.getElementById(`view${m}`);
-    if (el) el.style.display = "block";
+  const el = document.getElementById(`view${m}`);
+  if (el) el.style.display = "block";
 
-    // antes de cambiar, parar loops del módulo actual (si era de trabajo)
-    if (m === "TECNICO") attachActivasDelegationOnce_("TECNICO");
-    if (m === "CALIDAD") attachActivasDelegationOnce_("CALIDAD");
-    if (m === "RAMALERO") attachActivasDelegationOnce_("RAMALERO");
+  // ✅ Bind delegación ACTIVAS (solo una vez)
+  if (m === "TECNICO") attachActivasDelegationOnce_("TECNICO");
+  if (m === "CALIDAD") attachActivasDelegationOnce_("CALIDAD");
+  if (m === "RAMALERO") attachActivasDelegationOnce_("RAMALERO");
 
+  // ✅ Bind delegación FINALIZADOS (solo TECNICO/CALIDAD)
+  if (m === "TECNICO") attachFinalizadosDelegationOnce_("TECNICO");
+  if (m === "CALIDAD") attachFinalizadosDelegationOnce_("CALIDAD");
 
+  // loops
+  if (m === "TECNICO") startLoopsFor_("TECNICO");
+  else if (m === "CALIDAD") startLoopsFor_("CALIDAD");
+  else if (m === "RAMALERO") startLoopsFor_("RAMALERO");
 
-
-
-
-    // Bind delegación del box de este módulo (solo una vez)
-    if (m === "TECNICO") attachActivasDelegationOnce_("TECNICO");
-    if (m === "CALIDAD") attachActivasDelegationOnce_("CALIDAD");
-    if (m === "RAMALERO") attachActivasDelegationOnce_("RAMALERO");
-
-    if (m === "TECNICO") startLoopsFor_("TECNICO");
-    else if (m === "CALIDAD") startLoopsFor_("CALIDAD");
-    else if (m === "RAMALERO") startLoopsFor_("RAMALERO");
-
-    enforceRolLock_();
-  }
+  enforceRolLock_();
+}
 
   // =========================
   // HELPERS
