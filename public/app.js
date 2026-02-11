@@ -460,9 +460,8 @@ function ramalCacheGet_(conversionId) {
 
   function openModule(m) {
     // antes de cambiar, parar loops del módulo actual (si era de trabajo)
-    if (currentModule === "TECNICO") stopLoopsFor_("TECNICO");
-    if (currentModule === "CALIDAD") stopLoopsFor_("CALIDAD");
-    if (currentModule === "RAMALERO") stopLoopsFor_("RAMALERO");
+    if (m === "TECNICO") attachFinalizadosDelegationOnce_("TECNICO");
+    if (m === "CALIDAD") attachFinalizadosDelegationOnce_("CALIDAD");
 
 
     currentModule = m;
@@ -999,13 +998,8 @@ function renderSupConversionCard_(g){
             <div class="jobRight">
               <div class="jobTimePill js-tiempo">⏱ ${live}</div>
 
-              ${
-                currentModule === "RAMALERO"
-                  ? ""
-                  : `<button class="btnRF" type="button" data-go="RF" title="Abrir Registro / Fallas">
-                      📸
-                    </button>`
-              }
+              ${ currentModule === "RAMALERO" ? "" : "" }
+
 
               <div class="jobChevron"></div>
             </div>
@@ -1016,6 +1010,15 @@ function renderSupConversionCard_(g){
             <div class="jobActionsSlot">
               ${buildBotonesByEstado_(estado)}
             </div>
+
+            ${
+              (currentModule === "TECNICO" || currentModule === "CALIDAD")
+                ? `<button class="btnRF" type="button" data-go="RF">
+                    📸 Registrar fotos / fallas
+                  </button>`
+                : ""
+            }
+
 
             <div class="jobNoteBlock">
               <textarea class="notaCard" rows="2" placeholder="Escribe una nota..."></textarea>
@@ -1072,6 +1075,20 @@ function renderSupConversionCard_(g){
             <div class="pill" style="font-size:18px; font-weight:800;">⏱ ${live}</div>
           </div>
           <div class="small">Inicio: ${cre}</div>
+
+          <button class="btnRF" type="button" data-go="RF" data-vin="${vin}">
+            📸 Registrar fotos / fallas
+          </button>
+
+
+          ${
+            (currentModule === "TECNICO" || currentModule === "CALIDAD")
+              ? `<button class="btnRF" type="button" data-go="RF" data-vin="${vin}">
+                  📸 Registrar fotos / fallas
+                </button>`
+              : ""
+          }
+
         </div>
       `;
     }
@@ -2460,6 +2477,40 @@ async function autoStartFromScan_(vin, rolTrabajo) {
     if (e.target === $("qrModal")) await closeQRModal();
   });
 
+
+  function attachFinalizadosDelegationOnce_(mod) {
+  withModule_(mod, () => {
+    const box = el_("finalizadosBox");
+    if (!box) return;
+
+    const markKey = `boundFin_${mod}`;
+    if (box.dataset[markKey] === "1") return;
+    box.dataset[markKey] = "1";
+
+    box.addEventListener("click", (e) => {
+      const go = e.target.closest("button[data-go]");
+      if (!go) return;
+      if (go.dataset.go !== "RF") return;
+
+      // Solo TECNICO/CALIDAD
+      if (!(currentModule === "TECNICO" || currentModule === "CALIDAD")) return;
+
+      // buscamos el VIN desde la card
+      const card = e.target.closest(".card");
+      if (!card) return;
+
+      // Opción simple: toma VIN del texto del card (no ideal)
+      // Mejor: guardar VIN como data-vin en la card finalizada si quieres.
+      // Por ahora, usamos el input actual si existe; si no, no abre.
+      const vin = getVin();
+      if (!vin) return;
+
+      openRegistroFallas_(vin);
+    });
+  });
+}
+
+
   // =========================
   // Delegación en activas (por módulo)
   // =========================
@@ -2495,7 +2546,7 @@ function attachActivasDelegationOnce_(mod) {
       if (go && go.dataset.go === "RF") {
         e.stopPropagation(); // para que no abra/cierre la cartilla
         if (currentModule === "RAMALERO") return; // no VIN
-        const vin = String(it.vin || "").trim().toUpperCase();
+        const vin = String(go.dataset.vin || it.vin || "").trim().toUpperCase();
         if (!vin) return;
         openRegistroFallas_(vin);
         return;
