@@ -1,33 +1,36 @@
- // =========================
-  // public/app.js  (REEMPLAZO TOTAL)
-  // =========================
+// =========================
+// public/app.js  (REEMPLAZO TOTAL - ORDENADO)
+// =========================
+/* global Html5Qrcode, Html5QrcodeSupportedFormats */
+
+(() => {
+  // ==========================================================
+  // 0) SHORTCUTS / CONSTANTES
+  // ==========================================================
   const $ = (id) => document.getElementById(id);
 
   const EMAIL_KEY = "glp_email";
 
-
   // =========================
-// LINK: Registro / Fallas (otra app)
-// =========================
-const REG_FALLAS_BASE = "https://glp-registro-fallas.pages.dev/";
-
-function buildRegistroFallasUrl_(vin) {
-  const v = String(vin || "").trim().toUpperCase();
-  if (!v) return REG_FALLAS_BASE;
-  return `${REG_FALLAS_BASE}?vin=${encodeURIComponent(v)}`;
-}
-
-function openRegistroFallas_(vin) {
-  const url = buildRegistroFallasUrl_(vin);
-  window.open(url, "_blank", "noopener");
-}
-
-
+  // LINK: Registro / Fallas (otra app)
   // =========================
-  // ROL LOCK (según especialidad)
-  // =========================
-  let rolLock = null; // "MOTOR" | "TANQUE" | null (null => ambos)
+  const REG_FALLAS_BASE = "https://glp-registro-fallas.pages.dev/";
 
+  function buildRegistroFallasUrl_(vin) {
+    const v = String(vin || "").trim().toUpperCase();
+    if (!v) return REG_FALLAS_BASE;
+    return `${REG_FALLAS_BASE}?vin=${encodeURIComponent(v)}`;
+  }
+
+  function openRegistroFallas_(vin) {
+    const url = buildRegistroFallasUrl_(vin);
+    window.open(url, "_blank", "noopener");
+  }
+
+  // ==========================================================
+  // 1) ESTADO GLOBAL (ROL/MÓDULO/LOCKS)
+  // ==========================================================
+  let rolLock = null; // "MOTOR" | "TANQUE" | null
   let currentProfile = null;
   let currentModule = null;
 
@@ -35,24 +38,22 @@ function openRegistroFallas_(vin) {
 
   let uiLocked = false;
 
-  // =========================
-  // UI / STORE por módulo
-  // =========================
+  // ==========================================================
+  // 2) STORE POR MÓDULO + TIMERS POR MÓDULO
+  // ==========================================================
   function modSuffix_() {
     if (currentModule === "CALIDAD") return "Q";
     if (currentModule === "RAMALERO") return "R";
     return "";
   }
 
-
-  // Elemento del módulo actual: id o id+Q (si no existe, cae al id base)
+  // Elemento del módulo actual: id o id+Q/R (fallback al id base)
   function el_(id) {
     const sfx = modSuffix_();
     const a = $(id + sfx);
     return a || $(id);
   }
 
-  // Estado "AppSheet style" (por módulo)
   const storeByModule = {
     TECNICO: {
       itemsByKey: new Map(),
@@ -92,17 +93,14 @@ function openRegistroFallas_(vin) {
     return storeByModule.TECNICO;
   }
 
-
   function isWorkModule_() {
     return currentModule === "TECNICO" || currentModule === "CALIDAD" || currentModule === "RAMALERO";
   }
 
-
-  // Timers (uno por módulo, para no mezclar)
   const timersByModule = {
     TECNICO: { syncTimer: null, clockTimer: null, estadoTimer: null },
     CALIDAD: { syncTimer: null, clockTimer: null, estadoTimer: null },
-    RAMALERO:{ syncTimer: null, clockTimer: null, estadoTimer: null },
+    RAMALERO: { syncTimer: null, clockTimer: null, estadoTimer: null },
   };
 
   function tctx_() {
@@ -111,11 +109,11 @@ function openRegistroFallas_(vin) {
     return timersByModule.TECNICO;
   }
 
-  // =========================
-  // UI LOCK
-  // =========================
+  // ==========================================================
+  // 3) UI LOCK / HELPERS FETCH
+  // ==========================================================
   function setOut(obj) {
-    const out = $("out"); // debug es global, solo se muestra para ADMIN
+    const out = $("out"); // debug global, solo visible para ADMIN
     if (out) out.textContent = JSON.stringify(obj, null, 2);
   }
 
@@ -157,7 +155,7 @@ function openRegistroFallas_(vin) {
     const bLo = $("btnLogout");
     if (bLo) bLo.disabled = uiLocked;
 
-    // botones del módulo actual (con fallback el_)
+    // botones del módulo actual
     const ids = ["btnEstado", "btnActivas", "btnFinalizados", "btnQR"];
     for (const id of ids) {
       const b = el_(id);
@@ -167,10 +165,9 @@ function openRegistroFallas_(vin) {
     // botones dinámicos dentro de cards (solo del módulo actual)
     const actBox = el_("activasBox");
     const finBox = el_("finalizadosBox");
-    actBox?.querySelectorAll("button[data-act]")?.forEach(b => (b.disabled = uiLocked));
-    finBox?.querySelectorAll("button[data-act]")?.forEach(b => (b.disabled = uiLocked));
+    actBox?.querySelectorAll("button[data-act]")?.forEach((b) => (b.disabled = uiLocked));
+    finBox?.querySelectorAll("button[data-act]")?.forEach((b) => (b.disabled = uiLocked));
   }
-
 
   async function withLock(fn, msg) {
     if (uiLocked) return;
@@ -204,146 +201,63 @@ function openRegistroFallas_(vin) {
     return await withLock(async () => await postJSON(url, body), msg);
   }
 
-  // =========================
-  // STORAGE
-  // =========================
-
+  // ==========================================================
+  // 4) STORAGE: THEME + EMAIL + INPUT GETTERS
+  // ==========================================================
   const THEME_KEY = "glp_theme_v1"; // "night" | "day"
 
-function applyTheme_(t){
-  const theme = (t === "day") ? "day" : "night";
-  document.documentElement.dataset.theme = theme;
-  try { localStorage.setItem(THEME_KEY, theme); } catch {}
-}
-
-function loadTheme_(){
-  try { return localStorage.getItem(THEME_KEY) || ""; } catch { return ""; }
-}
-
-function initTheme_(){
-  const saved = loadTheme_();
-  if (saved) return applyTheme_(saved);
-
-  // si no hay preferencia guardada, usa el sistema
-  const prefersLight = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
-  applyTheme_(prefersLight ? "day" : "night");
-}
-
-function toggleTheme_(){
-  const cur = document.documentElement.dataset.theme || "night";
-  applyTheme_(cur === "day" ? "night" : "day");
-}
-
-
-  const VIN_CACHE_KEY = "glp_vin_cache_v1"; // no lo cambies
-
-function vinCacheLoad_() {
-  try { return JSON.parse(localStorage.getItem(VIN_CACHE_KEY) || "{}"); }
-  catch { return {}; }
-}
-
-function vinCacheSave_(obj) {
-  try { localStorage.setItem(VIN_CACHE_KEY, JSON.stringify(obj)); } catch {}
-}
-
-function vinCacheKey_(conversionId, rolTrabajo) {
-  const cid = String(conversionId || "").trim();
-  const rol = String(rolTrabajo || "").toUpperCase().trim();
-  return cid && rol ? `${cid}|${rol}` : "";
-}
-
-function vinCacheSet_(conversionId, rolTrabajo, vin) {
-  const cid = String(conversionId || "").trim();
-  const v = String(vin || "").trim().toUpperCase();
-  if (!cid || !v) return;
-
-  const rol = String(rolTrabajo || "").toUpperCase().trim();
-  const k = vinCacheKey_(cid, rol);
-  if (!k) return;
-
-  const cache = vinCacheLoad_();
-  cache[k] = { vin: v, ts: Date.now() };
-
-  // (opcional) limpiar entradas viejas (> 14 días) para que no crezca infinito
-  const maxAge = 14 * 24 * 3600 * 1000;
-  for (const kk of Object.keys(cache)) {
-    if (!cache[kk]?.ts || (Date.now() - cache[kk].ts) > maxAge) delete cache[kk];
+  function applyTheme_(t) {
+    const theme = t === "day" ? "day" : "night";
+    document.documentElement.dataset.theme = theme;
+    try {
+      localStorage.setItem(THEME_KEY, theme);
+    } catch {}
   }
 
-  vinCacheSave_(cache);
-}
-
-function vinCacheGet_(conversionId, rolTrabajo) {
-  const cid = String(conversionId || "").trim();
-  const rol = String(rolTrabajo || "").toUpperCase().trim();
-  const k = vinCacheKey_(cid, rol);
-  if (!k) return "";
-  const cache = vinCacheLoad_();
-  return String(cache[k]?.vin || "").toUpperCase();
-}
-
-// =========================
-// RAMAL CACHE (tipoRamal)
-// =========================
-const RAMAL_CACHE_KEY = "glp_ramal_cache_v1";
-
-function ramalCacheLoad_() {
-  try { return JSON.parse(localStorage.getItem(RAMAL_CACHE_KEY) || "{}"); }
-  catch { return {}; }
-}
-
-function ramalCacheSave_(obj) {
-  try { localStorage.setItem(RAMAL_CACHE_KEY, JSON.stringify(obj)); } catch {}
-}
-
-function ramalCacheKey_(conversionId) {
-  const cid = String(conversionId || "").trim();
-  return cid ? `RAMAL|${cid}` : "";
-}
-
-function ramalCacheSet_(conversionId, tipoRamal) {
-  const cid = String(conversionId || "").trim();
-  const tipo = String(tipoRamal || "").trim();
-  if (!cid || !tipo) return;
-
-  const cache = ramalCacheLoad_();
-  cache[ramalCacheKey_(cid)] = { tipoRamal: tipo, ts: Date.now() };
-
-  // limpieza (14 días)
-  const maxAge = 14 * 24 * 3600 * 1000;
-  for (const k of Object.keys(cache)) {
-    if (!cache[k]?.ts || (Date.now() - cache[k].ts) > maxAge) delete cache[k];
+  function loadTheme_() {
+    try {
+      return localStorage.getItem(THEME_KEY) || "";
+    } catch {
+      return "";
+    }
   }
 
-  ramalCacheSave_(cache);
-}
+  function initTheme_() {
+    const saved = loadTheme_();
+    if (saved) return applyTheme_(saved);
+    const prefersLight =
+      window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
+    applyTheme_(prefersLight ? "day" : "night");
+  }
 
-function ramalCacheGet_(conversionId) {
-  const cid = String(conversionId || "").trim();
-  if (!cid) return "";
-  const cache = ramalCacheLoad_();
-  return String(cache[ramalCacheKey_(cid)]?.tipoRamal || "");
-}
+  function toggleTheme_() {
+    const cur = document.documentElement.dataset.theme || "night";
+    applyTheme_(cur === "day" ? "night" : "day");
+  }
 
+  function saveEmail(email) {
+    localStorage.setItem(EMAIL_KEY, email);
+  }
+  function loadEmail() {
+    return localStorage.getItem(EMAIL_KEY) || "";
+  }
+  function clearEmail() {
+    localStorage.removeItem(EMAIL_KEY);
+  }
 
-
-  function saveEmail(email) { localStorage.setItem(EMAIL_KEY, email); }
-  function loadEmail() { return localStorage.getItem(EMAIL_KEY) || ""; }
-  function clearEmail() { localStorage.removeItem(EMAIL_KEY); }
-
-  function getEmail() { return String($("email").value || "").trim().toLowerCase(); }
-  function getVin() { return String(el_("vin")?.value || "").trim().toUpperCase(); }
+  function getEmail() {
+    return String($("email")?.value || "").trim().toLowerCase();
+  }
+  function getVin() {
+    return String(el_("vin")?.value || "").trim().toUpperCase();
+  }
 
   function getRolTecnico_() {
-    // ✅ si está bloqueado por especialidad (MOTOR/TANQUE), usa ese valor
-    if (rolLock) return rolLock;
-
+    if (rolLock) return rolLock; // lock por especialidad
     const sel = $("rol");
     return sel ? String(sel.value || "MOTOR").toUpperCase() : "MOTOR";
   }
 
-
-  // Rol efectivo según módulo
   function getRolTrabajoCurrent_() {
     if (currentModule === "CALIDAD") return "CALIDAD";
     if (currentModule === "RAMALERO") return "RAMALERO";
@@ -359,9 +273,273 @@ function ramalCacheGet_(conversionId) {
     return email;
   }
 
-  // =========================
-  // PROFILE / MODULOS
-  // =========================
+  // ==========================================================
+  // 5) VIN CACHE + RAMAL CACHE
+  // ==========================================================
+  const VIN_CACHE_KEY = "glp_vin_cache_v1"; // no lo cambies
+
+  function vinCacheLoad_() {
+    try {
+      return JSON.parse(localStorage.getItem(VIN_CACHE_KEY) || "{}");
+    } catch {
+      return {};
+    }
+  }
+
+  function vinCacheSave_(obj) {
+    try {
+      localStorage.setItem(VIN_CACHE_KEY, JSON.stringify(obj));
+    } catch {}
+  }
+
+  function vinCacheKey_(conversionId, rolTrabajo) {
+    const cid = String(conversionId || "").trim();
+    const rol = String(rolTrabajo || "").toUpperCase().trim();
+    return cid && rol ? `${cid}|${rol}` : "";
+  }
+
+  function vinCacheSet_(conversionId, rolTrabajo, vin) {
+    const cid = String(conversionId || "").trim();
+    const v = String(vin || "").trim().toUpperCase();
+    if (!cid || !v) return;
+
+    const rol = String(rolTrabajo || "").toUpperCase().trim();
+    const k = vinCacheKey_(cid, rol);
+    if (!k) return;
+
+    const cache = vinCacheLoad_();
+    cache[k] = { vin: v, ts: Date.now() };
+
+    const maxAge = 14 * 24 * 3600 * 1000;
+    for (const kk of Object.keys(cache)) {
+      if (!cache[kk]?.ts || Date.now() - cache[kk].ts > maxAge) delete cache[kk];
+    }
+
+    vinCacheSave_(cache);
+  }
+
+  function vinCacheGet_(conversionId, rolTrabajo) {
+    const cid = String(conversionId || "").trim();
+    const rol = String(rolTrabajo || "").toUpperCase().trim();
+    const k = vinCacheKey_(cid, rol);
+    if (!k) return "";
+    const cache = vinCacheLoad_();
+    return String(cache[k]?.vin || "").toUpperCase();
+  }
+
+  // RAMAL CACHE (tipoRamal)
+  const RAMAL_CACHE_KEY = "glp_ramal_cache_v1";
+
+  function ramalCacheLoad_() {
+    try {
+      return JSON.parse(localStorage.getItem(RAMAL_CACHE_KEY) || "{}");
+    } catch {
+      return {};
+    }
+  }
+
+  function ramalCacheSave_(obj) {
+    try {
+      localStorage.setItem(RAMAL_CACHE_KEY, JSON.stringify(obj));
+    } catch {}
+  }
+
+  function ramalCacheKey_(conversionId) {
+    const cid = String(conversionId || "").trim();
+    return cid ? `RAMAL|${cid}` : "";
+  }
+
+  function ramalCacheSet_(conversionId, tipoRamal) {
+    const cid = String(conversionId || "").trim();
+    const tipo = String(tipoRamal || "").trim();
+    if (!cid || !tipo) return;
+
+    const cache = ramalCacheLoad_();
+    cache[ramalCacheKey_(cid)] = { tipoRamal: tipo, ts: Date.now() };
+
+    const maxAge = 14 * 24 * 3600 * 1000;
+    for (const k of Object.keys(cache)) {
+      if (!cache[k]?.ts || Date.now() - cache[k].ts > maxAge) delete cache[k];
+    }
+
+    ramalCacheSave_(cache);
+  }
+
+  function ramalCacheGet_(conversionId) {
+    const cid = String(conversionId || "").trim();
+    if (!cid) return "";
+    const cache = ramalCacheLoad_();
+    return String(cache[ramalCacheKey_(cid)]?.tipoRamal || "");
+  }
+
+  // ==========================================================
+  // 6) HELPERS: FORMATO, ESCAPE, TIEMPOS, KEYS
+  // ==========================================================
+  function fmtShort_(iso) {
+    if (!iso) return "-";
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "-";
+    return new Intl.DateTimeFormat("es-PE", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(d);
+  }
+
+  function escapeHtml(s) {
+    return String(s ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  function cssEsc_(s) {
+    if (window.CSS && typeof CSS.escape === "function") return CSS.escape(String(s));
+    return String(s).replace(/["\\]/g, "\\$&");
+  }
+
+  function msToHMS_(ms) {
+    ms = Math.max(0, Number(ms) || 0);
+    const total = Math.floor(ms / 1000);
+    const hh = String(Math.floor(total / 3600)).padStart(2, "0");
+    const mm = String(Math.floor((total % 3600) / 60)).padStart(2, "0");
+    const ss = String(total % 60).padStart(2, "0");
+    return `${hh}:${mm}:${ss}`;
+  }
+
+  function fmtFechaCreacion_(iso) {
+    if (!iso) return "-";
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "-";
+    return new Intl.DateTimeFormat("es-PE", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(d);
+  }
+
+  function keyOfItem_(it) {
+    const cid = String(it?.conversionId || "").trim();
+    const rol = String(it?.rolTrabajo || "").toUpperCase();
+    return `${cid}|${rol}`;
+  }
+
+  function findItemByVinRol_(vin, rol) {
+    const c = ctx_();
+    const v = String(vin || "").toUpperCase();
+    const r = String(rol || "").toUpperCase();
+    for (const it of c.itemsByKey.values()) {
+      if (
+        String(it.vin || "").toUpperCase() === v &&
+        String(it.rolTrabajo || "").toUpperCase() === r
+      ) {
+        return it;
+      }
+    }
+    return null;
+  }
+
+  function isFinalizado_(it) {
+    return String(it?.estado || "").toUpperCase() === "FINALIZADO";
+  }
+
+  function allowedActionsByEstado(estado) {
+    const e = String(estado || "").toUpperCase();
+    if (e === "SIN_INICIAR") return ["INICIO", "NOTA"];
+    if (e === "TRABAJANDO") return ["PAUSA", "FIN", "NOTA"];
+    if (e === "PAUSADO") return ["REANUDAR", "FIN", "NOTA"];
+    if (e === "FINALIZADO") return ["NOTA"];
+    return ["INICIO", "NOTA"];
+  }
+
+  function buildBotonesByEstado_(estado) {
+    const e = String(estado || "").toUpperCase();
+
+    if (e === "SIN_INICIAR") {
+      return `
+        <div class="jobActionsGrid">
+          <button class="btnInicio" data-act="INICIO">INICIO</button>
+        </div>
+      `;
+    }
+
+    if (e === "TRABAJANDO") {
+      return `
+        <div class="jobActionsGrid">
+          <button class="btnPausa" data-act="PAUSA">PAUSA</button>
+          <button class="btnFin" data-act="FIN">FIN</button>
+        </div>
+      `;
+    }
+
+    if (e === "PAUSADO") {
+      return `
+        <div class="jobActionsGrid">
+          <button class="btnReanudar" data-act="REANUDAR">REANUDAR</button>
+          <button class="btnFin" data-act="FIN">FIN</button>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="jobActionsGrid">
+        <button class="btnInicio" data-act="NOTA">GUARDAR NOTA</button>
+      </div>
+    `;
+  }
+
+  // ==========================================================
+  // 7) CRONÓMETRO (LIVE)
+  // ==========================================================
+  function computeLiveMs_(item, nowMs = Date.now()) {
+    const base = Number(item.tiempo_ms || 0);
+    const rs = item.running_since ? Date.parse(item.running_since) : NaN;
+    if (!isNaN(rs) && String(item.estado).toUpperCase() === "TRABAJANDO") {
+      return base + Math.max(0, nowMs - rs);
+    }
+    return base;
+  }
+
+  function tickClocksUI_() {
+    if (!isWorkModule_()) return;
+
+    const c = ctx_();
+    const nowMs = Date.now();
+
+    // cards activas
+    el_("activasBox")
+      ?.querySelectorAll(".jobCard[data-key] .js-tiempo")
+      ?.forEach((el) => {
+        const card = el.closest(".jobCard");
+        if (!card) return;
+        const k = card.dataset.key || "";
+        const it = c.itemsByKey.get(k);
+        if (!it) return;
+        el.textContent = `⏱ ${msToHMS_(computeLiveMs_(it, nowMs))}`;
+      });
+
+    // RAMALERO no usa estadoBox (no VIN)
+    if (currentModule === "RAMALERO") return;
+
+    const vin = getVin();
+    const rol = getRolTrabajoCurrent_();
+    if (vin && rol) {
+      const it = findItemByVinRol_(vin, rol);
+      if (it) {
+        setEstadoText(`Estado: ${it.estado} | Tiempo: ${msToHMS_(computeLiveMs_(it, nowMs))}`);
+      }
+    }
+  }
+
+  // ==========================================================
+  // 8) PROFILE / MODULOS / LOGIN UI
+  // ==========================================================
   function showLogin(msg = "") {
     $("viewLogin").style.display = "block";
     $("viewApp").style.display = "none";
@@ -374,7 +552,6 @@ function ramalCacheGet_(conversionId) {
     clearModuleUI_("TECNICO");
     clearModuleUI_("CALIDAD");
     clearModuleUI_("RAMALERO");
-
   }
 
   function showApp() {
@@ -414,7 +591,9 @@ function ramalCacheGet_(conversionId) {
   function effectiveModulos(profile) {
     const rol = String(profile?.rol || "").toUpperCase();
     if (Array.isArray(profile?.modulos) && profile.modulos.length) {
-      const up = profile.modulos.map((x) => String(x || "").trim().toUpperCase()).filter(Boolean);
+      const up = profile.modulos
+        .map((x) => String(x || "").trim().toUpperCase())
+        .filter(Boolean);
       if (up.includes("ALL")) return [...MODULES];
       return [...new Set(up)];
     }
@@ -432,14 +611,12 @@ function ramalCacheGet_(conversionId) {
     if (rolUser !== "TECNICO") return null;
 
     const esp = String(profile?.especialidad || "").toUpperCase();
-
     if (esp === "MOTOR") return "MOTOR";
     if (esp === "TANQUE" || esp === "TANQUERO") return "TANQUE";
     return null;
   }
 
   function enforceRolLock_() {
-    // Solo aplica al módulo TECNICO (CALIDAD no tiene selector rol)
     if (currentModule !== "TECNICO") return;
 
     const sel = $("rol");
@@ -459,482 +636,111 @@ function ramalCacheGet_(conversionId) {
   }
 
   function openModule(m) {
-  currentModule = m;
+    currentModule = m;
 
-  $("viewHub").style.display = "none";
-  hideAllModules();
+    $("viewHub").style.display = "none";
+    hideAllModules();
 
-  const el = document.getElementById(`view${m}`);
-  if (el) el.style.display = "block";
+    const el = document.getElementById(`view${m}`);
+    if (el) el.style.display = "block";
 
-  // ✅ Bind delegación ACTIVAS (solo una vez)
-  if (m === "TECNICO") attachActivasDelegationOnce_("TECNICO");
-  if (m === "CALIDAD") attachActivasDelegationOnce_("CALIDAD");
-  if (m === "RAMALERO") attachActivasDelegationOnce_("RAMALERO");
+    // Delegaciones
+    if (m === "TECNICO") attachActivasDelegationOnce_("TECNICO");
+    if (m === "CALIDAD") attachActivasDelegationOnce_("CALIDAD");
+    if (m === "RAMALERO") attachActivasDelegationOnce_("RAMALERO");
 
-  // ✅ Bind delegación FINALIZADOS (solo TECNICO/CALIDAD)
-  if (m === "TECNICO") attachFinalizadosDelegationOnce_("TECNICO");
-  if (m === "CALIDAD") attachFinalizadosDelegationOnce_("CALIDAD");
+    if (m === "TECNICO") attachFinalizadosDelegationOnce_("TECNICO");
+    if (m === "CALIDAD") attachFinalizadosDelegationOnce_("CALIDAD");
 
-  // loops
-  if (m === "TECNICO") startLoopsFor_("TECNICO");
-  else if (m === "CALIDAD") startLoopsFor_("CALIDAD");
-  else if (m === "RAMALERO") startLoopsFor_("RAMALERO");
+    // loops
+    if (m === "TECNICO") startLoopsFor_("TECNICO");
+    else if (m === "CALIDAD") startLoopsFor_("CALIDAD");
+    else if (m === "RAMALERO") startLoopsFor_("RAMALERO");
 
-  enforceRolLock_();
-}
-
-  // =========================
-  // HELPERS
-  // =========================
-
-  function fmtShort_(iso){
-    if (!iso) return "-";
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return "-";
-    return new Intl.DateTimeFormat("es-PE", {
-      day:"2-digit", month:"2-digit", year:"2-digit",
-      hour:"2-digit", minute:"2-digit"
-    }).format(d);
+    enforceRolLock_();
   }
 
-
-  function escapeHtml(s) {
-    return String(s ?? "")
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;")
-      .replaceAll("'", "&#039;");
-  }
-
-  function cssEsc_(s) {
-    if (window.CSS && typeof CSS.escape === "function") return CSS.escape(String(s));
-    return String(s).replace(/["\\]/g, "\\$&");
-  }
-
-  function msToHMS_(ms) {
-    ms = Math.max(0, Number(ms) || 0);
-    const total = Math.floor(ms / 1000);
-    const hh = String(Math.floor(total / 3600)).padStart(2, "0");
-    const mm = String(Math.floor((total % 3600) / 60)).padStart(2, "0");
-    const ss = String(total % 60).padStart(2, "0");
-    return `${hh}:${mm}:${ss}`;
-  }
-
-  function fmtFechaCreacion_(iso) {
-  if (!iso) return "-";
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return "-";
-  // es-PE, hora Lima automática por navegador
-  return new Intl.DateTimeFormat("es-PE", {
-    day: "2-digit", month: "2-digit", year: "numeric",
-    hour: "2-digit", minute: "2-digit"
-  }).format(d);
-}
-
-
-  // Key estable: CONVERSION_ID|ROL
-  function keyOfItem_(it) {
-    const cid = String(it?.conversionId || "").trim();
-    const rol = String(it?.rolTrabajo || "").toUpperCase();
-    return `${cid}|${rol}`;
-  }
-
-  function findItemByVinRol_(vin, rol) {
-    const c = ctx_();
-    const v = String(vin || "").toUpperCase();
-    const r = String(rol || "").toUpperCase();
-    for (const it of c.itemsByKey.values()) {
-      if (String(it.vin || "").toUpperCase() === v && String(it.rolTrabajo || "").toUpperCase() === r) {
-        return it;
-      }
-    }
-    return null;
-  }
-
-  function isFinalizado_(it) {
-    return String(it?.estado || "").toUpperCase() === "FINALIZADO";
-  }
-
-  function allowedActionsByEstado(estado) {
-    const e = String(estado || "").toUpperCase();
-    if (e === "SIN_INICIAR") return ["INICIO", "NOTA"];
-    if (e === "TRABAJANDO") return ["PAUSA", "FIN", "NOTA"];
-    if (e === "PAUSADO") return ["REANUDAR", "FIN", "NOTA"];
-    if (e === "FINALIZADO") return ["NOTA"];
-    return ["INICIO", "NOTA"];
-  }
-
-  function buildBotonesByEstado_(estado) {
-    const e = String(estado || "").toUpperCase();
-
-    if (e === "SIN_INICIAR") {
-      return `
-        <div class="jobActionsGrid">
-          <button class="btnInicio" data-act="INICIO">INICIO</button>
-        </div>
-      `;
+  // ==========================================================
+  // 9) NORMALIZACIÓN / MERGE DE ITEMS (SYNC)
+  // ==========================================================
+  function mergePrevAndCache_(it, prev) {
+    // VIN
+    if ((!it.vin || it.vin === "") && prev?.vin) it.vin = prev.vin;
+    if (!it.vin && it.conversionId && it.rolTrabajo) {
+      const cached = vinCacheGet_(it.conversionId, it.rolTrabajo);
+      if (cached) it.vin = cached;
     }
 
-
-    if (e === "TRABAJANDO") {
-      return `
-        <div class="jobActionsGrid">
-          <button class="btnPausa" data-act="PAUSA">PAUSA</button>
-          <button class="btnFin" data-act="FIN">FIN</button>
-        </div>
-      `;
-    }
-
-    if (e === "PAUSADO") {
-      return `
-        <div class="jobActionsGrid">
-          <button class="btnReanudar" data-act="REANUDAR">REANUDAR</button>
-          <button class="btnFin" data-act="FIN">FIN</button>
-        </div>
-      `;
-    }
-
-    return `
-      <div class="jobActionsGrid">
-        <button class="btnInicio" data-act="NOTA">GUARDAR NOTA</button>
-      </div>
-    `;
-  }
-
-  // =========================
-  // CRONÓMETRO LOCAL
-  // =========================
-  function computeLiveMs_(item, nowMs = Date.now()) {
-    const base = Number(item.tiempo_ms || 0);
-    const rs = item.running_since ? Date.parse(item.running_since) : NaN;
-    if (!isNaN(rs) && String(item.estado).toUpperCase() === "TRABAJANDO") {
-      return base + Math.max(0, nowMs - rs);
-    }
-    return base;
-  }
-
-  function tickClocksUI_() {
-    if (!isWorkModule_()) return;
-
-    const c = ctx_();
-    const nowMs = Date.now();
-
-    // ⏱ actualizar cronómetro en cards activas
-    el_("activasBox")?.querySelectorAll(".jobCard[data-key] .js-tiempo")?.forEach((el) => {
-      const card = el.closest(".jobCard");
-      if (!card) return;
-      const k = card.dataset.key || "";
-      const it = c.itemsByKey.get(k);
-      if (!it) return;
-      el.textContent = `⏱ ${msToHMS_(computeLiveMs_(it, nowMs))}`;
-    });
-
-    // ⛔ RAMALERO no usa estadoBox (no VIN)
-    if (currentModule === "RAMALERO") return;
-
-    const vin = getVin();
-    const rol = getRolTrabajoCurrent_();
-    if (vin && rol) {
-      const it = findItemByVinRol_(vin, rol);
-      if (it) {
-        setEstadoText(`Estado: ${it.estado} | Tiempo: ${msToHMS_(computeLiveMs_(it, nowMs))}`);
-      }
-    }
-  }
-
-
-  // =========================
-  // RENDER
-  // =========================
-
-  // =========================
-// SUPERVISOR: TRACK (pantalla 3 botones)
-// =========================
-let supTrack = "CONVERSION"; // "CONVERSION" | "CALIDAD" | "RAMAL"
-
-function setSupTrack_(t){
-  supTrack = (t === "CALIDAD" || t === "RAMAL") ? t : "CONVERSION";
-
-  // UI: marca activo
-  document.querySelectorAll("[data-suptrack]").forEach(b => {
-    const on = b.dataset.suptrack === supTrack;
-    b.classList.toggle("active", on);
-  });
-
-  // (opcional) texto visible
-  const pill = document.getElementById("supTrackPill");
-  if (pill) pill.textContent =
-    supTrack === "CONVERSION" ? "CONVERSIÓN (MOTOR + TANQUE)" :
-    supTrack === "CALIDAD" ? "CALIDAD" : "RAMAL";
-
-  // refresca reporte
-  if (currentModule === "SUPERVISOR") fetchSupervisorReport_().catch(() => {});
-}
-
-
-  let supTimer = null;
-
-  async function fetchSupervisorReport_(){
-    const name = String(document.getElementById("supName")?.value || "").trim();
-    const vin  = String(document.getElementById("supVin")?.value  || "").trim().toUpperCase();
-
-    const from  = String(document.getElementById("supFrom")?.value  || "").trim();   // YYYY-MM-DD
-    const to    = String(document.getElementById("supTo")?.value    || "").trim();   // YYYY-MM-DD
-    const month = String(document.getElementById("supMonth")?.value || "").trim();   // YYYY-MM
-
-    // ✅ compatibilidad: si tu backend solo tiene "q", armamos q = name + vin
-    const q = [name, vin].filter(Boolean).join(" ").trim();
-
-    const url =
-      `/api/supervisor/report` +
-      `?name=${encodeURIComponent(name)}` +
-      `&vin=${encodeURIComponent(vin)}` +
-      `&q=${encodeURIComponent(q)}` +          // 👈 compat
-      `&from=${encodeURIComponent(from)}` +
-      `&to=${encodeURIComponent(to)}` +
-      `&month=${encodeURIComponent(month)}` +
-      `&track=${encodeURIComponent(supTrack)}`;
-
-    const j = await getJSON_user(url, "Cargando reporte...");
-    if (!j || !j.ok) {
-      const s = document.getElementById("supSummary");
-      if (s) s.textContent = j?.error || "Error cargando reporte.";
-      return;
-    }
-    renderSupervisor_(j);
-  }
-
-
-function renderSupervisor_(j){
-  const sum = document.getElementById("supSummary");
-  const box = document.getElementById("supTable");
-
-  const items = Array.isArray(j.items) ? j.items : [];
-  if (!box) return;
-
-  if (!items.length){
-    if (sum) sum.textContent = "Resultados: 0";
-    box.innerHTML = `<div class="small">No hay resultados con esos filtros.</div>`;
-    return;
-  }
-
-  // ✅ 1) CALIDAD / RAMAL: 1 registro = 1 trabajo (contador normal)
-  if (supTrack === "CALIDAD" || supTrack === "RAMAL") {
-    if (sum) sum.textContent = `Resultados: ${items.length}`;
-    box.innerHTML = items.map(it => renderSupItemCard_(it)).join("");
-    return;
-  }
-
-  // ✅ 2) CONVERSION: contar VIN únicos (MOTOR+TANQUE se agrupan)
-  const groups = groupByVinMotorTanque_(items);
-
-  const vinCount = groups.length;     // ✅ VIN únicos
-  const regCount = items.length;      // registros crudos (motor+tanque)
-
-  if (sum) sum.textContent = `Resultados: ${vinCount}`;
-
-  // (tu lógica del avgCard se queda igual)
-  const q = String(document.getElementById("supName")?.value || "").trim().toLowerCase();
-
-  let avgCard = "";
-  if (q) {
-    let sumMotor = 0, nMotor = 0;
-    let sumTanque = 0, nTanque = 0;
-
-    for (const g of groups) {
-      const m = g.motor;
-      const t = g.tanque;
-
-      if (m) {
-        const who = String(m.userName || m.userEmail || m.userId || "").toLowerCase();
-        const est = String(m.estado || "").toUpperCase();
-        if (who.includes(q) && est === "FINALIZADO") {
-          const ms = hmsToMs_(m.tiempo_hms ?? m.tiempo_ms ?? m.tiempo);
-          if (ms > 0) { sumMotor += ms; nMotor++; }
-        }
-      }
-
-      if (t) {
-        const who = String(t.userName || t.userEmail || t.userId || "").toLowerCase();
-        const est = String(t.estado || "").toUpperCase();
-        if (who.includes(q) && est === "FINALIZADO") {
-          const ms = hmsToMs_(t.tiempo_hms ?? t.tiempo_ms ?? t.tiempo);
-          if (ms > 0) { sumTanque += ms; nTanque++; }
-        }
+    // RAMAL
+    if (it.rolTrabajo === "RAMALERO") {
+      if ((!it.tipoRamal || it.tipoRamal === "") && prev?.tipoRamal) it.tipoRamal = prev.tipoRamal;
+      if (!it.tipoRamal && it.conversionId) {
+        const cachedTipo = ramalCacheGet_(it.conversionId);
+        if (cachedTipo) it.tipoRamal = cachedTipo;
       }
     }
 
-    const sumTotal = sumMotor + sumTanque;
-    const nTotal = nMotor + nTanque;
-
-    const avgTotal = nTotal ? (sumTotal / nTotal) : 0;
-
-    if (nTotal > 0) {
-      avgCard = buildSupervisorAvgCardHTML_({
-        q,
-        countTotal: nTotal,
-        avgTotalMs: avgTotal,
-        countMotor: nMotor,
-        avgMotorMs: nMotor ? (sumMotor / nMotor) : 0,
-        countTanque: nTanque,
-        avgTanqueMs: nTanque ? (sumTanque / nTanque) : 0,
-      });
-    }
-  }
-
-  box.innerHTML = avgCard + groups.map(g => renderSupConversionCard_(g)).join("");
-}
-
-
-// ---------------------------
-// Card actual (tu versión base)
-// ---------------------------
-function renderSupItemCard_(it){
-  const who = (it.userName || it.userEmail || it.userId || "-");
-  const rolLabel = String(it.rol || it.rolTrabajo || "").toUpperCase() || "-";
-
-  const isRamal = (rolLabel === "RAMALERO" || rolLabel === "RAMAL");
-  const vinOrTipo = isRamal ? (`RAMAL: ${it.tipoRamal || "-"}`) : (it.vin || "-");
-
-  return `
-    <div class="card" style="margin-top:10px;">
-      <div style="font-weight:900;">
-        ${escapeHtml(who)} <span class="small">(${escapeHtml(rolLabel)})</span>
-      </div>
-
-      <div class="row space-between" style="margin-top:8px;">
-        <div class="small"><b>Trabajo:</b> ${escapeHtml(vinOrTipo)}</div>
-        <div class="pill small"><b>${escapeHtml(it.estado || "")}</b></div>
-      </div>
-
-      <div class="small" style="margin-top:6px;">
-        <b>Inicio:</b> ${escapeHtml(fmtShort_(it.fecha_inicio || it.inicio_at || it.created_at || it.fecha_creacion))}
-
-        &nbsp;|&nbsp;
-        <b>Fecha de fin:</b> ${escapeHtml(fmtShort_(it.updated_at))}
-      </div>
-
-      <div class="row space-between" style="margin-top:8px;">
-        <div class="small"><b>ID:</b> ${escapeHtml(it.workId || it.conversionId || "-")}</div>
-        <div class="pill" style="font-size:16px; font-weight:900;">⏱ ${escapeHtml(hmsOnly_(it.tiempo_hms ?? it.tiempo_ms ?? it.tiempo))}
-</div>
-      </div>
-    </div>
-  `;
-}
-
-
-// ---------------------------
-// ✅ Agrupar por VIN: MOTOR + TANQUE
-// ---------------------------
-function groupByVinMotorTanque_(items){
-  const map = new Map();
-
-  for (const it of items) {
-    const rol = String(it.rolTrabajo || it.rol || "").toUpperCase();
-    const vin = String(it.vin || "").toUpperCase().trim();
-    if (!vin) continue;
-
-    if (!map.has(vin)) {
-      map.set(vin, { vin, motor: null, tanque: null, updated_at: null });
+    // campos que el backend a veces no manda
+    if (prev) {
+      if (!it.updated_at) it.updated_at = prev.updated_at || null;
+      if (!it.last_nota_ts) it.last_nota_ts = prev.last_nota_ts || null;
+      if (!it.created_at) it.created_at = prev.created_at || null;
     }
 
-    const g = map.get(vin);
-    if (rol === "MOTOR") g.motor = it;
-    if (rol === "TANQUE") g.tanque = it;
-
-    // para orden/“última actividad” del grupo
-    const t = it.updated_at ? Date.parse(it.updated_at) : 0;
-    const prev = g.updated_at ? Date.parse(g.updated_at) : 0;
-    if (t > prev) g.updated_at = it.updated_at;
+    return it;
   }
 
-  // convierte a array y ordena por última actualización (desc)
-  const arr = [...map.values()];
-  arr.sort((a,b) => (Date.parse(b.updated_at||0) - Date.parse(a.updated_at||0)));
-  return arr;
-}
+  function normalizeItem_(raw) {
+    const it = {
+      conversionId: String(raw?.conversionId ?? raw?.CONVERSION_ID ?? "").trim(),
+      vin: String(raw?.vin ?? raw?.VIN ?? "").trim().toUpperCase(),
 
+      tipoRamal: String(
+        raw?.tipoRamal ??
+          raw?.tipo_ramal ??
+          raw?.tipo ??
+          raw?.TIPO_RAMAL ??
+          ""
+      ).trim(),
 
-// ---------------------------
-// ✅ 1 Cartilla por VIN con 2 técnicos
-// ---------------------------
-function renderSupConversionCard_(g){
-  const vin = g.vin;
+      // fecha de creación / inicio (prioridad)
+      created_at:
+        raw?.fecha_asignacion ??
+        raw?.FECHA_ASIGNACION ??
+        raw?.fecha_inicio ??
+        raw?.inicio_at ??
+        raw?.FECHA_INICIO ??
+        raw?.created_at ??
+        raw?.fecha_creacion ??
+        raw?.FECHA_CREACION ??
+        null,
 
-  const m = g.motor;
-  const t = g.tanque;
+      rolTrabajo: String(raw?.rolTrabajo ?? raw?.rol ?? raw?.ROL_TRABAJO ?? "")
+        .trim()
+        .toUpperCase(),
+      estado: String(raw?.estado ?? raw?.ESTADO_ACTUAL ?? "")
+        .trim()
+        .toUpperCase(),
 
-  const mWho = m ? (m.userName || m.userEmail || m.userId || "-") : "-";
-  const tWho = t ? (t.userName || t.userEmail || t.userId || "-") : "-";
+      tiempo_ms: Number(raw?.tiempo_ms ?? raw?.TIEMPO_TRAB_MS ?? 0) || 0,
+      running_since: raw?.running_since ?? raw?.RUNNING_SINCE ?? null,
 
-  const mEstado = m ? (m.estado || "-") : "-";
-  const tEstado = t ? (t.estado || "-") : "-";
+      last_nota: String(raw?.last_nota ?? raw?.LAST_NOTA ?? ""),
+      last_nota_ts: raw?.last_nota_ts ?? raw?.LAST_NOTA_TS ?? null,
 
-  const mTime = m ? hmsOnly_(m.tiempo_hms ?? m.tiempo_ms ?? m.tiempo) : "00:00:00";
-  const tTime = t ? hmsOnly_(t.tiempo_hms ?? t.tiempo_ms ?? t.tiempo) : "00:00:00";
+      updated_at: raw?.updated_at ?? raw?.UPDATED_AT ?? null,
+    };
 
+    // caches
+    if (it.conversionId && it.rolTrabajo && it.vin) vinCacheSet_(it.conversionId, it.rolTrabajo, it.vin);
+    if (it.conversionId && it.rolTrabajo === "RAMALERO" && it.tipoRamal) ramalCacheSet_(it.conversionId, it.tipoRamal);
 
-  return `
-    <div class="card supConvCard" data-vin="${escapeHtml(vin)}" style="margin-top:10px;">
-      <div style="font-weight:1000; font-size:18px;">
-        VIN: ${escapeHtml(vin)}
-        <span class="small" style="opacity:.85;">(MOTOR + TANQUE)</span>
-      </div>
-
-      <div style="margin-top:10px;" class="small">
-        <div class="row space-between">
-          <div><b>MOTOR:</b> ${escapeHtml(mWho)}</div>
-          <div class="pill small"><b>${escapeHtml(mEstado)}</b></div>
-        </div>
-        <div class="row space-between" style="margin-top:6px;">
-          <div class="small">
-            <b>Inicio:</b> ${escapeHtml(fmtShort_(m?.fecha_inicio || m?.inicio_at || m?.created_at || m?.fecha_creacion))}
-
-            &nbsp;|&nbsp;
-            <b>Fecha de fin:</b> ${escapeHtml(fmtShort_(m?.updated_at))}
-          </div>
-          <div class="pill" style="font-weight:900;">⏱ ${escapeHtml(mTime)}</div>
-        </div>
-      </div>
-
-      <div style="margin-top:12px;" class="small">
-        <div class="row space-between">
-          <div><b>TANQUE:</b> ${escapeHtml(tWho)}</div>
-          <div class="pill small"><b>${escapeHtml(tEstado)}</b></div>
-        </div>
-        <div class="row space-between" style="margin-top:6px;">
-          <div class="small">
-            <b>Inicio:</b> ${escapeHtml(fmtShort_(t?.fecha_inicio || t?.inicio_at || t?.created_at || t?.fecha_creacion))}
-
-            &nbsp;|&nbsp;
-            <b>Fecha de fin:</b> ${escapeHtml(fmtShort_(t?.updated_at))}
-          </div>
-          <div class="pill" style="font-weight:900;">⏱ ${escapeHtml(tTime)}</div>
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-
-
-// ---------------------------
-// ✅ Click: abre/cierra y pide detalle al backend
-// ---------------------------
-
-
-
-  function supervisorDebounceFetch_(){
-    clearTimeout(supTimer);
-    supTimer = setTimeout(() => {
-      if (currentModule === "SUPERVISOR") fetchSupervisorReport_().catch(() => {});
-    }, 250);
+    return it;
   }
 
-  
+  // ==========================================================
+  // 10) RENDER: ACTIVAS / FINALIZADOS + PATCH
+  // ==========================================================
   function snapshotNotasActivas_() {
     const map = new Map();
     el_("activasBox")?.querySelectorAll(".jobCard[data-key]")?.forEach((card) => {
@@ -983,7 +789,7 @@ function renderSupConversionCard_(g){
       const title =
         currentModule === "RAMALERO"
           ? `RAMAL: ${tipo || "-"}`
-          : (vin || "<span class='small'>(sin VIN)</span>");
+          : vin || "<span class='small'>(sin VIN)</span>";
 
       out += `
         <div class="jobCard card state-${estado}" data-key="${escapeHtml(k)}">
@@ -997,13 +803,8 @@ function renderSupConversionCard_(g){
             </div>
             <div class="jobRight">
               <div class="jobTimePill js-tiempo">⏱ ${live}</div>
-
-              ${ currentModule === "RAMALERO" ? "" : "" }
-
-
               <div class="jobChevron"></div>
             </div>
-
           </div>
 
           <div class="jobExpand">
@@ -1012,13 +813,12 @@ function renderSupConversionCard_(g){
             </div>
 
             ${
-              (currentModule === "TECNICO" || currentModule === "CALIDAD")
+              currentModule === "TECNICO" || currentModule === "CALIDAD"
                 ? `<button class="btnRF" type="button" data-go="RF">
                     📸 Registrar fotos / fallas
                   </button>`
                 : ""
             }
-
 
             <div class="jobNoteBlock">
               <textarea class="notaCard" rows="2" placeholder="Escribe una nota..."></textarea>
@@ -1033,7 +833,6 @@ function renderSupConversionCard_(g){
 
     box.innerHTML = out;
   }
-
 
   function renderFinalizados_() {
     const c = ctx_();
@@ -1077,14 +876,12 @@ function renderSupConversionCard_(g){
           <div class="small">Inicio: ${cre}</div>
 
           ${
-            (currentModule === "TECNICO" || currentModule === "CALIDAD")
+            currentModule === "TECNICO" || currentModule === "CALIDAD"
               ? `<button class="btnRF" type="button" data-go="RF" data-vin="${vin}">
                   📸 Registrar fotos / fallas
                 </button>`
               : ""
           }
-
-
         </div>
       `;
     }
@@ -1092,10 +889,6 @@ function renderSupConversionCard_(g){
     box.innerHTML = out;
   }
 
-
-  // Filtrado por módulo:
-  // - TECNICO: MOTOR/TANQUE
-  // - CALIDAD: CALIDAD
   function shouldShowItemInCurrentModule_(it) {
     const rol = String(it?.rolTrabajo || "").toUpperCase();
 
@@ -1129,93 +922,48 @@ function renderSupConversionCard_(g){
     c.finalKeys = fins;
   }
 
-  // =========================
-  // SYNC
-  // =========================
+  function patchVisibleCards_() {
+    const c = ctx_();
+    const box = el_("activasBox");
+    if (!box) return;
 
-  function mergePrevAndCache_(it, prev) {
-    // VIN: si backend manda vacío, usa prev o cache
-    if ((!it.vin || it.vin === "") && prev?.vin) it.vin = prev.vin;
-    if (!it.vin && it.conversionId && it.rolTrabajo) {
-      const cached = vinCacheGet_(it.conversionId, it.rolTrabajo);
-      if (cached) it.vin = cached;
-    }
+    const nowMs = Date.now();
 
-    // RAMAL: tipoRamal vacío => prev o cache
-    if (it.rolTrabajo === "RAMALERO") {
-      if ((!it.tipoRamal || it.tipoRamal === "") && prev?.tipoRamal) it.tipoRamal = prev.tipoRamal;
-      if (!it.tipoRamal && it.conversionId) {
-        const cachedTipo = ramalCacheGet_(it.conversionId);
-        if (cachedTipo) it.tipoRamal = cachedTipo;
+    for (const k of c.activeKeys) {
+      const it = c.itemsByKey.get(k);
+      if (!it) continue;
+
+      const card = box.querySelector(`.jobCard[data-key="${cssEsc_(k)}"]`);
+      if (!card) continue;
+
+      const wasOpen = card.classList.contains("open");
+      const estado = String(it.estado || "").toUpperCase();
+
+      card.className = `jobCard card state-${estado}` + (wasOpen ? " open" : "");
+
+      const estadoEl = card.querySelector(".js-estado");
+      if (estadoEl) estadoEl.textContent = estado;
+
+      const timeEl = card.querySelector(".js-tiempo");
+      if (timeEl) timeEl.textContent = `⏱ ${msToHMS_(computeLiveMs_(it, nowMs))}`;
+
+      if (wasOpen) {
+        const slot = card.querySelector(".jobActionsSlot");
+        if (slot) slot.innerHTML = buildBotonesByEstado_(estado);
       }
     }
-
-    // updated_at / last_nota_ts: conserva si el backend no manda
-    if (prev) {
-      if (!it.updated_at) it.updated_at = prev.updated_at || null;
-      if (!it.last_nota_ts) it.last_nota_ts = prev.last_nota_ts || null;
-      if (!it.created_at) it.created_at = prev.created_at || null;
-    }
-
-    return it;
   }
 
-
-  function normalizeItem_(raw) {
-    const it = {
-      conversionId: String(raw?.conversionId ?? raw?.CONVERSION_ID ?? "").trim(),
-      vin: String(raw?.vin ?? raw?.VIN ?? "").trim().toUpperCase(),
-
-      tipoRamal: String(
-        raw?.tipoRamal ??
-        raw?.tipo_ramal ??
-        raw?.tipo ??
-        raw?.TIPO_RAMAL ??
-        ""
-      ).trim(),
-
-      // ✅ fecha de creación / inicio (prioridad)
-      created_at:
-        raw?.fecha_asignacion ?? raw?.FECHA_ASIGNACION ??   // ✅ PRIMERO
-        raw?.fecha_inicio ?? raw?.inicio_at ?? raw?.FECHA_INICIO ??
-        raw?.created_at ??
-        raw?.fecha_creacion ?? raw?.FECHA_CREACION ??
-        null,
-
-
-      rolTrabajo: String(raw?.rolTrabajo ?? raw?.rol ?? raw?.ROL_TRABAJO ?? "").trim().toUpperCase(),
-      estado: String(raw?.estado ?? raw?.ESTADO_ACTUAL ?? "").trim().toUpperCase(),
-
-      tiempo_ms: Number(raw?.tiempo_ms ?? raw?.TIEMPO_TRAB_MS ?? 0) || 0,
-      running_since: raw?.running_since ?? raw?.RUNNING_SINCE ?? null,
-
-      last_nota: String(raw?.last_nota ?? raw?.LAST_NOTA ?? ""),
-      last_nota_ts: raw?.last_nota_ts ?? raw?.LAST_NOTA_TS ?? null,
-
-      updated_at: raw?.updated_at ?? raw?.UPDATED_AT ?? null,
-    };
-
-    // cache VIN por conversionId|rol
-    if (it.conversionId && it.rolTrabajo && it.vin) {
-      vinCacheSet_(it.conversionId, it.rolTrabajo, it.vin);
-    }
-
-    // cache RAMAL por conversionId
-    if (it.conversionId && it.rolTrabajo === "RAMALERO" && it.tipoRamal) {
-      ramalCacheSet_(it.conversionId, it.tipoRamal);
-    }
-
-    return it;
-  }
-
-
-
+  // ==========================================================
+  // 11) SYNC (apiSync / apply / full replace / syncNow)
+  // ==========================================================
   async function apiSync_(email, since) {
     try {
       const body = { email, since };
       const j = await postJSON("/api/sync", body);
       if (j && j.ok) return { mode: "sync", data: j };
     } catch {}
+
     const j2 = await getJSON(`/api/mis-activas?email=${encodeURIComponent(email)}`);
     return { mode: "legacy", data: j2 };
   }
@@ -1230,12 +978,9 @@ function renderSupConversionCard_(g){
       const prev = c.itemsByKey.get(k);
 
       mergePrevAndCache_(it, prev);
-
       c.itemsByKey.set(k, it);
     }
   }
-
-
 
   function storeFullReplace_(allItems) {
     const c = ctx_();
@@ -1245,22 +990,17 @@ function renderSupConversionCard_(g){
     for (const raw of arr) {
       const it = normalizeItem_(raw);
       const k = keyOfItem_(it);
-
-      // en full replace no hay prev, solo cache
       mergePrevAndCache_(it, null);
-
       c.itemsByKey.set(k, it);
     }
   }
 
-
   function detectIfNeedsFullRerender_(prevActiveKeys, prevFinalKeys) {
     const c = ctx_();
-    const a1 = prevActiveKeys.join(",");
-    const a2 = c.activeKeys.join(",");
-    const f1 = prevFinalKeys.join(",");
-    const f2 = c.finalKeys.join(",");
-    return (a1 !== a2) || (f1 !== f2);
+    return (
+      prevActiveKeys.join(",") !== c.activeKeys.join(",") ||
+      prevFinalKeys.join(",") !== c.finalKeys.join(",")
+    );
   }
 
   async function syncNow({ forceFull = false, showOut = false } = {}) {
@@ -1268,16 +1008,18 @@ function renderSupConversionCard_(g){
     if (!isWorkModule_()) return;
 
     let email;
-    try { email = requireEmailOrStop(); } catch { return; }
+    try {
+      email = requireEmailOrStop();
+    } catch {
+      return;
+    }
 
     const c = ctx_();
-
     const prevA = c.activeKeys.slice();
     const prevF = c.finalKeys.slice();
     const snapNotas = snapshotNotasActivas_();
 
     const since = forceFull ? null : c.lastSyncSince;
-
     const res = await apiSync_(email, since);
     const j = res.data;
 
@@ -1310,121 +1052,83 @@ function renderSupConversionCard_(g){
     c.lastSyncAtMs = Date.now();
     enforceRolLock_();
 
-    // ✅ CALIDAD: si el sync trajo OTs SIN_INICIAR, iniciar 1 por ciclo (para no spamear)
+    // Auto-start CALIDAD
     if (currentModule === "CALIDAD") {
-      const c = ctx_();
-
-      // Busca la primera OT sin iniciar
       const first = c.activeKeys
-        .map(k => c.itemsByKey.get(k))
-        .find(it => it && String(it.rolTrabajo).toUpperCase() === "CALIDAD" && String(it.estado).toUpperCase() === "SIN_INICIAR");
-
-      if (first?.vin) {
-        // No bloquees el render; dispara y que el próximo ciclo lo termine de estabilizar
-        autoStartCalidadIfNeeded_(first.vin).catch(() => {});
-      }
+        .map((k) => c.itemsByKey.get(k))
+        .find(
+          (it) =>
+            it &&
+            String(it.rolTrabajo).toUpperCase() === "CALIDAD" &&
+            String(it.estado).toUpperCase() === "SIN_INICIAR"
+        );
+      if (first?.vin) autoStartCalidadIfNeeded_(first.vin).catch(() => {});
     }
 
-    // ✅ TECNICO: si el sync trajo OTs SIN_INICIAR, iniciar automático
-    // - si rolLock existe: inicia ese rol
-    // - si rolLock null: inicia 1 rol por ciclo (de la cola)
+    // Auto-start TECNICO
     if (currentModule === "TECNICO") {
-      const c = ctx_();
-
-      // buscamos VIN "candidato" (prioriza el VIN que esté en input si existe)
       const vinInput = getVin();
       let vinCandidato = vinInput;
 
       if (!vinCandidato) {
-        // si no hay vin en input, toma el primero que tenga SIN_INICIAR (MOTOR/TANQUE)
         const first = c.activeKeys
-          .map(k => c.itemsByKey.get(k))
-          .find(it => it &&
-            (String(it.rolTrabajo).toUpperCase() === "MOTOR" || String(it.rolTrabajo).toUpperCase() === "TANQUE") &&
-            String(it.estado).toUpperCase() === "SIN_INICIAR" &&
-            String(it.vin || "").trim()
+          .map((k) => c.itemsByKey.get(k))
+          .find(
+            (it) =>
+              it &&
+              (String(it.rolTrabajo).toUpperCase() === "MOTOR" ||
+                String(it.rolTrabajo).toUpperCase() === "TANQUE") &&
+              String(it.estado).toUpperCase() === "SIN_INICIAR" &&
+              String(it.vin || "").trim()
           );
-
         vinCandidato = String(first?.vin || "").trim().toUpperCase();
       }
 
-      if (vinCandidato) {
-        autoStartTecnicoIfNeeded_(vinCandidato).catch(() => {});
-      }
-    }
-
-
-  }
-
-function patchVisibleCards_() {
-  const c = ctx_();
-  const box = el_("activasBox");
-  if (!box) return;
-
-  const nowMs = Date.now();
-
-  for (const k of c.activeKeys) {
-    const it = c.itemsByKey.get(k);
-    if (!it) continue;
-
-    const card = box.querySelector(`.jobCard[data-key="${cssEsc_(k)}"]`);
-    if (!card) continue;
-
-    const wasOpen = card.classList.contains("open");
-    const estado = String(it.estado || "").toUpperCase();
-
-    // estado visual
-    card.className = `jobCard card state-${estado}` + (wasOpen ? " open" : "");
-
-    // texto estado
-    const estadoEl = card.querySelector(".js-estado");
-    if (estadoEl) estadoEl.textContent = estado;
-
-    // tiempo
-    const timeEl = card.querySelector(".js-tiempo");
-    if (timeEl) timeEl.textContent = `⏱ ${msToHMS_(computeLiveMs_(it, nowMs))}`;
-
-    // si está abierto, refresca botones para el nuevo estado
-    if (wasOpen) {
-      const slot = card.querySelector(".jobActionsSlot");
-      if (slot) slot.innerHTML = buildBotonesByEstado_(estado);
+      if (vinCandidato) autoStartTecnicoIfNeeded_(vinCandidato).catch(() => {});
     }
   }
-}
 
-
-  // =========================
-  // ESTADO (1 VIN/ROL)
-  // =========================
+  // ==========================================================
+  // 12) ESTADO 1 VIN/ROL (refresh)
+  // ==========================================================
   async function refreshEstadoForVinRole({ showOut = false } = {}) {
     if (uiLocked) return;
     if (!isWorkModule_()) return;
 
     let email;
-    try { email = requireEmailOrStop(); } catch { return; }
+    try {
+      email = requireEmailOrStop();
+    } catch {
+      return;
+    }
 
     const vin = getVin();
     const rolTrabajo = getRolTrabajoCurrent_();
-    if (!vin) { setEstadoText(""); return; }
+    if (!vin) {
+      setEstadoText("");
+      return;
+    }
 
     const it = findItemByVinRol_(vin, rolTrabajo);
     if (it) {
       setEstadoText(`Estado: ${it.estado} | Tiempo: ${msToHMS_(computeLiveMs_(it))}`);
 
-      // ✅ AUTO-INICIO
-      if (currentModule === "CALIDAD") {
-        await autoStartCalidadIfNeeded_(vin);
-      } else if (currentModule === "TECNICO") {
-        await autoStartTecnicoIfNeeded_(vin);
-      }
+      if (currentModule === "CALIDAD") await autoStartCalidadIfNeeded_(vin);
+      else if (currentModule === "TECNICO") await autoStartTecnicoIfNeeded_(vin);
 
       return;
     }
 
-
-    const j = await getJSON(`/api/estado?email=${encodeURIComponent(email)}&vin=${encodeURIComponent(vin)}&rolTrabajo=${encodeURIComponent(rolTrabajo)}`);
+    const j = await getJSON(
+      `/api/estado?email=${encodeURIComponent(email)}&vin=${encodeURIComponent(
+        vin
+      )}&rolTrabajo=${encodeURIComponent(rolTrabajo)}`
+    );
     if (showOut) setOut(j);
-    if (!j.ok) { setEstadoText(j.error || "Error"); return; }
+    if (!j.ok) {
+      setEstadoText(j.error || "Error");
+      return;
+    }
 
     const c = ctx_();
     const it2 = normalizeItem_(j);
@@ -1437,73 +1141,58 @@ function patchVisibleCards_() {
 
     setEstadoText(`Estado: ${it2.estado} | Tiempo: ${msToHMS_(computeLiveMs_(it2))}`);
 
-    // ✅ AUTO-INICIO si CALIDAD quedó en SIN_INICIAR (OT recién creada o recién detectada)
-    if (currentModule === "CALIDAD") {
-      await autoStartCalidadIfNeeded_(vin);
-    } else if (currentModule === "TECNICO") {
-      await autoStartTecnicoIfNeeded_(vin);
-    }
-
-
+    if (currentModule === "CALIDAD") await autoStartCalidadIfNeeded_(vin);
+    else if (currentModule === "TECNICO") await autoStartTecnicoIfNeeded_(vin);
   }
 
-  // =========================
-  // EVENTOS
-  // =========================
-  // =========================
-  // EVENTOS (SOPORTA TECNICO / CALIDAD / RAMALERO)
-  // =========================
+  // ==========================================================
+  // 13) EVENTOS (enviarEvento) + RAMALERO sin VIN
+  // ==========================================================
   async function enviarEvento(accionOverride, opts = {}) {
-    // ✅ ahora permite RAMALERO también
     if (!(currentModule === "TECNICO" || currentModule === "CALIDAD" || currentModule === "RAMALERO")) {
       return setOut({ ok: false, error: "Solo disponible en módulos TECNICO/CALIDAD/RAMALERO." });
     }
 
     let email;
-    try { email = requireEmailOrStop(); } catch { return; }
+    try {
+      email = requireEmailOrStop();
+    } catch {
+      return;
+    }
 
-    // rol efectivo por módulo
-    let rolTrabajo = getRolTrabajoCurrent_(); // TECNICO=>MOTOR/TANQUE, CALIDAD=>CALIDAD
+    let rolTrabajo = getRolTrabajoCurrent_();
     if (currentModule === "RAMALERO") rolTrabajo = "RAMALERO";
 
     const accion = String(accionOverride || $("accion")?.value || "").toUpperCase();
 
-    // nota (global)
     let nota = "";
     if (accion === "NOTA") {
       nota = String($("nota")?.value || "").trim();
-      // si viene desde card: nota puede venir en opts.nota
       if (!nota && opts?.nota) nota = String(opts.nota || "").trim();
       if (!nota) return setOut({ ok: false, error: "Escribe una nota antes de guardar." });
     }
 
-    // =========================
-    // RAMALERO: NO requiere VIN
-    // - Si NO hay conversionId:
-    //    - solo INICIO
-    //    - requiere tipoRamal
-    // - Si hay conversionId:
-    //    - PAUSA/REANUDAR/FIN/NOTA usan conversionId
-    // =========================
+    // -------------------------
+    // RAMALERO (sin VIN)
+    // -------------------------
     if (rolTrabajo === "RAMALERO") {
-      // conversionId (RAMAL_ID) puede venir:
-      // - desde card (it.conversionId)
-      // - o desde opts.conversionId (si lo llamas manualmente)
-      // - o desde un input id="ramalId" (si lo agregas)
       let conversionId =
         String(opts?.conversionId || "").trim() ||
         String(document.getElementById("ramalId")?.value || "").trim();
 
-      // si no hay conversionId, solo se permite INICIO y hay que mandar tipoRamal
-      let tipoRamal = String(opts?.tipoRamal || "").trim() ||
-                      String(document.getElementById("tipoRamal")?.value || "").trim();
+      let tipoRamal =
+        String(opts?.tipoRamal || "").trim() ||
+        String(document.getElementById("tipoRamal")?.value || "").trim();
 
       if (!conversionId) {
         if (accion !== "INICIO") {
           return setOut({ ok: false, error: "RAMALERO: sin ID solo puedes INICIO (para crear RAMAL_ID)." });
         }
         if (!tipoRamal) {
-          return setOut({ ok: false, error: "RAMALERO: selecciona tipoRamal (JETOUR, VOLKSWAGEN, KYC V3, KYC V5, KYC V7, KYC X5)." });
+          return setOut({
+            ok: false,
+            error: "RAMALERO: selecciona tipoRamal (JETOUR, VOLKSWAGEN, KYC V3, KYC V5, KYC V7, KYC X5).",
+          });
         }
       }
 
@@ -1512,45 +1201,30 @@ function patchVisibleCards_() {
         rolTrabajo: "RAMALERO",
         accion,
         nota,
-        // OJO: backend usa conversionId para identificar el trabajo
         conversionId: conversionId || undefined,
-        // solo necesario cuando INICIO sin conversionId (crea RAMAL_ID)
-        tipoRamal: (!conversionId && accion === "INICIO") ? tipoRamal : undefined,
+        tipoRamal: !conversionId && accion === "INICIO" ? tipoRamal : undefined,
       };
 
       const j = await postJSON_user(
         "/api/evento",
         payload,
-        accion === "NOTA" ? "Guardando nota..." :
-        accion === "INICIO" ? "Iniciando..." : "Registrando..."
+        accion === "NOTA" ? "Guardando nota..." : accion === "INICIO" ? "Iniciando..." : "Registrando..."
       );
 
       setOut(j);
       if (!j || !j.ok) return;
 
-
-      // =========================
-      // ✅ ACTUALIZA STORE + UI INMEDIATO (RAMALERO)
-      // =========================
+      // actualizar store inmediato
       try {
         const c = ctx_();
-
         const it2 = normalizeItem_(j);
 
-        // Si backend no devolvió tipoRamal, lo preservamos
         if (!it2.tipoRamal) it2.tipoRamal = tipoRamal || String(opts?.tipoRamal || "");
-
-        if (it2.conversionId && it2.tipoRamal) {
-          ramalCacheSet_(it2.conversionId, it2.tipoRamal);
-        }
-
+        if (it2.conversionId && it2.tipoRamal) ramalCacheSet_(it2.conversionId, it2.tipoRamal);
 
         const k2 = keyOfItem_(it2);
-
         const prev = c.itemsByKey.get(k2);
-        if (prev) {
-          if (!it2.tipoRamal) it2.tipoRamal = prev.tipoRamal || "";
-        }
+        if (prev && !it2.tipoRamal) it2.tipoRamal = prev.tipoRamal || "";
 
         c.itemsByKey.set(k2, it2);
         rebuildListsFromStore_();
@@ -1563,37 +1237,30 @@ function patchVisibleCards_() {
         restoreNotasActivas_(snapNotas);
       } catch {}
 
-
-      // Si el backend creó el RAMAL_ID, nos lo devuelve como conversionId
-      // (tu backend lo devuelve como conversionId en la respuesta)
       const createdId = String(j.conversionId || "").trim();
       if (createdId) {
-        // si tienes input ramalId, lo guardamos ahí
         const ramalIdEl = document.getElementById("ramalId");
         if (ramalIdEl) ramalIdEl.value = createdId;
       }
 
-      // Si quieres que aparezca en cards, tu sync ya lo va a traer en mis_activas
-      // Forzamos refresco suave
       setTimeout(() => {
         if (!uiLocked) {
-          // si aún no tienes store RAMALERO, esto al menos no rompe
-          try { syncNow({ forceFull: true, showOut: false }); } catch {}
+          try {
+            syncNow({ forceFull: true, showOut: false });
+          } catch {}
         }
       }, 350);
 
-      // limpiar nota global si aplica
       if (accion === "NOTA" && $("nota")) $("nota").value = "";
       return;
     }
 
-    // =========================
-    // TECNICO / CALIDAD: requiere VIN
-    // =========================
+    // -------------------------
+    // TECNICO / CALIDAD (requiere VIN)
+    // -------------------------
     const vin = getVin();
     if (!vin) return setOut({ ok: false, error: "Pon el VIN" });
 
-    // validación local (solo si ya existe en store)
     const itLocal = findItemByVinRol_(vin, rolTrabajo);
     if (itLocal) {
       const allowed = allowedActionsByEstado(itLocal.estado);
@@ -1612,7 +1279,6 @@ function patchVisibleCards_() {
     if (!j || !j.ok) return;
 
     const c = ctx_();
-
     const it2 = normalizeItem_(j);
     const k2 = keyOfItem_(it2);
 
@@ -1640,10 +1306,19 @@ function patchVisibleCards_() {
     }, 400);
   }
 
+  // ==========================================================
+  // 14) LOOPS POR MÓDULO + LIMPIEZA UI POR MÓDULO
+  // ==========================================================
+  function withModule_(mod, fn) {
+    const prev = currentModule;
+    currentModule = mod;
+    try {
+      return fn();
+    } finally {
+      currentModule = prev;
+    }
+  }
 
-  // =========================
-  // LOOPS por módulo
-  // =========================
   function startLoopsFor_(mod) {
     stopLoopsFor_(mod);
 
@@ -1660,7 +1335,6 @@ function patchVisibleCards_() {
       }
     });
   }
-
 
   function stopLoopsFor_(mod) {
     const t = timersByModule[mod] || timersByModule.TECNICO;
@@ -1697,10 +1371,9 @@ function patchVisibleCards_() {
     });
   }
 
-
-  // =========================
-  // LOGIN FLOW
-  // =========================
+  // ==========================================================
+  // 15) DEBUG VISIBILITY + LOGIN FLOW
+  // ==========================================================
   function applyDebugVisibility_() {
     const wrap = document.getElementById("debugWrap");
     if (!wrap) return;
@@ -1743,22 +1416,336 @@ function patchVisibleCards_() {
     }
   }
 
-  // =========================
-  // QR SCANNER
-  // =========================
-  let qr = null;
+  // ==========================================================
+  // 16) SUPERVISOR (track + render)
+  // ==========================================================
+  let supTrack = "CONVERSION"; // "CONVERSION" | "CALIDAD" | "RAMAL"
+  let supTimer = null;
 
-  // ✅ NUEVO: modo de escaneo
+  function setSupTrack_(t) {
+    supTrack = t === "CALIDAD" || t === "RAMAL" ? t : "CONVERSION";
+
+    document.querySelectorAll("[data-suptrack]").forEach((b) => {
+      const on = b.dataset.suptrack === supTrack;
+      b.classList.toggle("active", on);
+    });
+
+    const pill = document.getElementById("supTrackPill");
+    if (pill)
+      pill.textContent =
+        supTrack === "CONVERSION"
+          ? "CONVERSIÓN (MOTOR + TANQUE)"
+          : supTrack === "CALIDAD"
+          ? "CALIDAD"
+          : "RAMAL";
+
+    if (currentModule === "SUPERVISOR") fetchSupervisorReport_().catch(() => {});
+  }
+
+  function supervisorDebounceFetch_() {
+    clearTimeout(supTimer);
+    supTimer = setTimeout(() => {
+      if (currentModule === "SUPERVISOR") fetchSupervisorReport_().catch(() => {});
+    }, 250);
+  }
+
+  async function fetchSupervisorReport_() {
+    const name = String(document.getElementById("supName")?.value || "").trim();
+    const vin = String(document.getElementById("supVin")?.value || "").trim().toUpperCase();
+
+    const from = String(document.getElementById("supFrom")?.value || "").trim();
+    const to = String(document.getElementById("supTo")?.value || "").trim();
+    const month = String(document.getElementById("supMonth")?.value || "").trim();
+
+    const q = [name, vin].filter(Boolean).join(" ").trim();
+
+    const url =
+      `/api/supervisor/report` +
+      `?name=${encodeURIComponent(name)}` +
+      `&vin=${encodeURIComponent(vin)}` +
+      `&q=${encodeURIComponent(q)}` +
+      `&from=${encodeURIComponent(from)}` +
+      `&to=${encodeURIComponent(to)}` +
+      `&month=${encodeURIComponent(month)}` +
+      `&track=${encodeURIComponent(supTrack)}`;
+
+    const j = await getJSON_user(url, "Cargando reporte...");
+    if (!j || !j.ok) {
+      const s = document.getElementById("supSummary");
+      if (s) s.textContent = j?.error || "Error cargando reporte.";
+      return;
+    }
+    renderSupervisor_(j);
+  }
+
+  function hmsToMs_(v) {
+    if (v == null) return 0;
+    if (typeof v === "number" && isFinite(v)) return Math.max(0, v);
+
+    const s = String(v);
+    const m = s.match(/(\d{1,2}):(\d{2}):(\d{2})/);
+    if (!m) return 0;
+
+    const hh = Number(m[1] || 0);
+    const mm = Number(m[2] || 0);
+    const ss = Number(m[3] || 0);
+    return ((hh * 3600) + mm * 60 + ss) * 1000;
+  }
+
+  function msToHMSh_(ms) {
+    ms = Math.max(0, Number(ms) || 0);
+    const total = Math.floor(ms / 1000);
+    const hh = Math.floor(total / 3600);
+    const mm = String(Math.floor((total % 3600) / 60)).padStart(2, "0");
+    const ss = String(total % 60).padStart(2, "0");
+    return `${hh}h ${mm}m ${ss}s`;
+  }
+
+  function hmsOnly_(v) {
+    if (v == null) return "00:00:00";
+    if (typeof v === "number" && isFinite(v)) return msToHMS_(v);
+
+    const s = String(v);
+    const m = s.match(/(\d{1,2}):(\d{2}):(\d{2})/);
+    if (m) {
+      const hh = String(m[1]).padStart(2, "0");
+      return `${hh}:${m[2]}:${m[3]}`;
+    }
+    return "00:00:00";
+  }
+
+  function buildSupervisorAvgCardHTML_({ q, countTotal, avgTotalMs, countMotor, countTanque }) {
+    const safeQ = escapeHtml(q || "-");
+
+    return `
+      <div class="card" style="margin-top:10px; border:1px solid rgba(255,255,255,.16);">
+        <div style="font-weight:1000; font-size:22px; line-height:1.1;">
+          ${safeQ}
+        </div>
+
+        <div style="margin-top:10px; font-weight:1000; font-size:34px; letter-spacing:.5px;">
+          ⏱ ${msToHMSh_(avgTotalMs)}
+        </div>
+
+        <div class="small" style="margin-top:10px; opacity:.9;">
+          <div><b>FINALIZADOS contados:</b> ${countTotal}</div>
+          <div style="margin-top:6px; opacity:.85;">
+            MOTOR: ${countMotor} &nbsp;|&nbsp; TANQUE: ${countTanque}
+          </div>
+        </div>
+
+        <div class="small" style="margin-top:10px; opacity:.7;">
+          (Solo se consideran trabajos en estado <b>FINALIZADO</b>)
+        </div>
+      </div>
+    `;
+  }
+
+  function renderSupItemCard_(it) {
+    const who = it.userName || it.userEmail || it.userId || "-";
+    const rolLabel = String(it.rol || it.rolTrabajo || "").toUpperCase() || "-";
+
+    const isRamal = rolLabel === "RAMALERO" || rolLabel === "RAMAL";
+    const vinOrTipo = isRamal ? `RAMAL: ${it.tipoRamal || "-"}` : it.vin || "-";
+
+    return `
+      <div class="card" style="margin-top:10px;">
+        <div style="font-weight:900;">
+          ${escapeHtml(who)} <span class="small">(${escapeHtml(rolLabel)})</span>
+        </div>
+
+        <div class="row space-between" style="margin-top:8px;">
+          <div class="small"><b>Trabajo:</b> ${escapeHtml(vinOrTipo)}</div>
+          <div class="pill small"><b>${escapeHtml(it.estado || "")}</b></div>
+        </div>
+
+        <div class="small" style="margin-top:6px;">
+          <b>Inicio:</b> ${escapeHtml(fmtShort_(it.fecha_inicio || it.inicio_at || it.created_at || it.fecha_creacion))}
+          &nbsp;|&nbsp;
+          <b>Fecha de fin:</b> ${escapeHtml(fmtShort_(it.updated_at))}
+        </div>
+
+        <div class="row space-between" style="margin-top:8px;">
+          <div class="small"><b>ID:</b> ${escapeHtml(it.workId || it.conversionId || "-")}</div>
+          <div class="pill" style="font-size:16px; font-weight:900;">⏱ ${escapeHtml(
+            hmsOnly_(it.tiempo_hms ?? it.tiempo_ms ?? it.tiempo)
+          )}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  function groupByVinMotorTanque_(items) {
+    const map = new Map();
+
+    for (const it of items) {
+      const rol = String(it.rolTrabajo || it.rol || "").toUpperCase();
+      const vin = String(it.vin || "").toUpperCase().trim();
+      if (!vin) continue;
+
+      if (!map.has(vin)) map.set(vin, { vin, motor: null, tanque: null, updated_at: null });
+
+      const g = map.get(vin);
+      if (rol === "MOTOR") g.motor = it;
+      if (rol === "TANQUE") g.tanque = it;
+
+      const t = it.updated_at ? Date.parse(it.updated_at) : 0;
+      const prev = g.updated_at ? Date.parse(g.updated_at) : 0;
+      if (t > prev) g.updated_at = it.updated_at;
+    }
+
+    const arr = [...map.values()];
+    arr.sort((a, b) => Date.parse(b.updated_at || 0) - Date.parse(a.updated_at || 0));
+    return arr;
+  }
+
+  function renderSupConversionCard_(g) {
+    const vin = g.vin;
+    const m = g.motor;
+    const t = g.tanque;
+
+    const mWho = m ? m.userName || m.userEmail || m.userId || "-" : "-";
+    const tWho = t ? t.userName || t.userEmail || t.userId || "-" : "-";
+
+    const mEstado = m ? m.estado || "-" : "-";
+    const tEstado = t ? t.estado || "-" : "-";
+
+    const mTime = m ? hmsOnly_(m.tiempo_hms ?? m.tiempo_ms ?? m.tiempo) : "00:00:00";
+    const tTime = t ? hmsOnly_(t.tiempo_hms ?? t.tiempo_ms ?? t.tiempo) : "00:00:00";
+
+    return `
+      <div class="card supConvCard" data-vin="${escapeHtml(vin)}" style="margin-top:10px;">
+        <div style="font-weight:1000; font-size:18px;">
+          VIN: ${escapeHtml(vin)}
+          <span class="small" style="opacity:.85;">(MOTOR + TANQUE)</span>
+        </div>
+
+        <div style="margin-top:10px;" class="small">
+          <div class="row space-between">
+            <div><b>MOTOR:</b> ${escapeHtml(mWho)}</div>
+            <div class="pill small"><b>${escapeHtml(mEstado)}</b></div>
+          </div>
+          <div class="row space-between" style="margin-top:6px;">
+            <div class="small">
+              <b>Inicio:</b> ${escapeHtml(fmtShort_(m?.fecha_inicio || m?.inicio_at || m?.created_at || m?.fecha_creacion))}
+              &nbsp;|&nbsp;
+              <b>Fecha de fin:</b> ${escapeHtml(fmtShort_(m?.updated_at))}
+            </div>
+            <div class="pill" style="font-weight:900;">⏱ ${escapeHtml(mTime)}</div>
+          </div>
+        </div>
+
+        <div style="margin-top:12px;" class="small">
+          <div class="row space-between">
+            <div><b>TANQUE:</b> ${escapeHtml(tWho)}</div>
+            <div class="pill small"><b>${escapeHtml(tEstado)}</b></div>
+          </div>
+          <div class="row space-between" style="margin-top:6px;">
+            <div class="small">
+              <b>Inicio:</b> ${escapeHtml(fmtShort_(t?.fecha_inicio || t?.inicio_at || t?.created_at || t?.fecha_creacion))}
+              &nbsp;|&nbsp;
+              <b>Fecha de fin:</b> ${escapeHtml(fmtShort_(t?.updated_at))}
+            </div>
+            <div class="pill" style="font-weight:900;">⏱ ${escapeHtml(tTime)}</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderSupervisor_(j) {
+    const sum = document.getElementById("supSummary");
+    const box = document.getElementById("supTable");
+
+    const items = Array.isArray(j.items) ? j.items : [];
+    if (!box) return;
+
+    if (!items.length) {
+      if (sum) sum.textContent = "Resultados: 0";
+      box.innerHTML = `<div class="small">No hay resultados con esos filtros.</div>`;
+      return;
+    }
+
+    // CALIDAD/RAMAL: 1 registro = 1 trabajo
+    if (supTrack === "CALIDAD" || supTrack === "RAMAL") {
+      if (sum) sum.textContent = `Resultados: ${items.length}`;
+      box.innerHTML = items.map((it) => renderSupItemCard_(it)).join("");
+      return;
+    }
+
+    // CONVERSION: VIN únicos
+    const groups = groupByVinMotorTanque_(items);
+    const vinCount = groups.length;
+    if (sum) sum.textContent = `Resultados: ${vinCount}`;
+
+    const q = String(document.getElementById("supName")?.value || "").trim().toLowerCase();
+    let avgCard = "";
+
+    if (q) {
+      let sumMotor = 0,
+        nMotor = 0;
+      let sumTanque = 0,
+        nTanque = 0;
+
+      for (const g of groups) {
+        const m = g.motor;
+        const t = g.tanque;
+
+        if (m) {
+          const who = String(m.userName || m.userEmail || m.userId || "").toLowerCase();
+          const est = String(m.estado || "").toUpperCase();
+          if (who.includes(q) && est === "FINALIZADO") {
+            const ms = hmsToMs_(m.tiempo_hms ?? m.tiempo_ms ?? m.tiempo);
+            if (ms > 0) {
+              sumMotor += ms;
+              nMotor++;
+            }
+          }
+        }
+
+        if (t) {
+          const who = String(t.userName || t.userEmail || t.userId || "").toLowerCase();
+          const est = String(t.estado || "").toUpperCase();
+          if (who.includes(q) && est === "FINALIZADO") {
+            const ms = hmsToMs_(t.tiempo_hms ?? t.tiempo_ms ?? t.tiempo);
+            if (ms > 0) {
+              sumTanque += ms;
+              nTanque++;
+            }
+          }
+        }
+      }
+
+      const sumTotal = sumMotor + sumTanque;
+      const nTotal = nMotor + nTanque;
+      const avgTotal = nTotal ? sumTotal / nTotal : 0;
+
+      if (nTotal > 0) {
+        avgCard = buildSupervisorAvgCardHTML_({
+          q,
+          countTotal: nTotal,
+          avgTotalMs: avgTotal,
+          countMotor: nMotor,
+          countTanque: nTanque,
+        });
+      }
+    }
+
+    box.innerHTML = avgCard + groups.map((g) => renderSupConversionCard_(g)).join("");
+  }
+
+  // ==========================================================
+  // 17) QR SCANNER (QR/BAR)
+  // ==========================================================
+  let qr = null;
   let scanMode = "QR"; // "QR" | "BAR"
 
   function setScanMode_(mode) {
-    scanMode = (mode === "BAR") ? "BAR" : "QR";
+    scanMode = mode === "BAR" ? "BAR" : "QR";
 
-    // UI: resaltar botón activo
     const bQR = document.getElementById("btnScanQR");
     const bBar = document.getElementById("btnScanBar");
     if (bQR && bBar) {
-      // Puedes ajustar estilos si quieres; por ahora solo “intercambia” clases
       bQR.classList.toggle("btnInicio", scanMode === "QR");
       bQR.classList.toggle("btnPausa", scanMode !== "QR");
 
@@ -1776,7 +1763,6 @@ function patchVisibleCards_() {
   }
 
   async function restartQR_() {
-    // si el modal está abierto, reinicia el scanner
     const modal = $("qrModal");
     const isOpen = modal?.classList?.contains("show");
     if (!isOpen) return;
@@ -1785,18 +1771,13 @@ function patchVisibleCards_() {
     await startQR();
   }
 
-
-
   function openQRModal() {
     const modal = $("qrModal");
     const msg = $("qrMsg");
 
     modal.classList.add("show");
-
-    // ✅ default al abrir
     setScanMode_(scanMode);
 
-    // ✅ bind botones (una vez)
     const bQR = document.getElementById("btnScanQR");
     const bBar = document.getElementById("btnScanBar");
 
@@ -1818,7 +1799,6 @@ function patchVisibleCards_() {
       });
     }
 
-    // mensaje inicial
     if (msg) {
       msg.textContent =
         scanMode === "QR"
@@ -1828,7 +1808,6 @@ function patchVisibleCards_() {
 
     startQR();
   }
-
 
   async function closeQRModal() {
     const modal = $("qrModal");
@@ -1846,125 +1825,60 @@ function patchVisibleCards_() {
 
       if (!qr) qr = new Html5Qrcode("qrReader");
 
-      const isBar = (scanMode === "BAR");
-
-      // ✅ config distinto según modo
+      const isBar = scanMode === "BAR";
       const config = {
         fps: isBar ? 8 : 10,
-
-        // QR cuadrado, barras rectangular (más fácil para CODE_128)
-        qrbox: isBar
-          ? { width: 160, height: 320 }
-          : { width: 250, height: 250 },
-
-        // ✅ CLAVE: limitar formatos para ayudar a Android viejito
+        qrbox: isBar ? { width: 160, height: 320 } : { width: 250, height: 250 },
         formatsToSupport: isBar
           ? [Html5QrcodeSupportedFormats.CODE_128]
           : [Html5QrcodeSupportedFormats.QR_CODE],
-
-        // ✅ en varios Android ayuda (si está disponible)
         experimentalFeatures: { useBarCodeDetectorIfSupported: true },
       };
 
+      const onDecoded = async (decodedText) => {
+        const code = String(decodedText || "").trim().toUpperCase();
+        if (!code) return;
 
-      // 1) iPhone/Safari: fuerza trasera con EXACT primero
+        const vinEl = el_("vin");
+        if (vinEl) vinEl.value = code;
+
+        if (msg) msg.textContent = `VIN detectado: ${code}`;
+        await closeQRModal();
+
+        await withLock(async () => {
+          await refreshEstadoForVinRole({ showOut: false });
+          const rolTrabajo = getRolTrabajoCurrent_();
+          await autoStartFromScan_(code, rolTrabajo);
+          await syncNow({ forceFull: true, showOut: false });
+          await refreshEstadoForVinRole({ showOut: false });
+        }, "Iniciando automáticamente...");
+      };
+
+      // 1) iPhone/Safari: exact environment
       try {
-        await qr.start(
-          { facingMode: { exact: "environment" } },
-          config,
-          async (decodedText) => {
-            const code = String(decodedText || "").trim().toUpperCase();
-            if (!code) return;
-
-            const vinEl = el_("vin");
-            if (vinEl) vinEl.value = code;
-
-            if (msg) msg.textContent = `VIN detectado: ${code}`;
-            await closeQRModal();
-
-            await withLock(async () => {
-              await refreshEstadoForVinRole({ showOut: false });
-              const rolTrabajo = getRolTrabajoCurrent_();
-              await autoStartFromScan_(code, rolTrabajo);
-              await syncNow({ forceFull: true, showOut: false });
-              await refreshEstadoForVinRole({ showOut: false });
-            }, "Iniciando automáticamente...");
-          },
-          () => {}
-        );
-        return; // ✅ si funcionó, salimos
-      } catch (eExact) {
-        // sigue al fallback
-      }
-
-      // 2) Fallback: environment "normal" (Android/otros suele ir perfecto)
-      try {
-        await qr.start(
-          { facingMode: "environment" },
-          config,
-          async (decodedText) => {
-            const code = String(decodedText || "").trim().toUpperCase();
-            if (!code) return;
-
-            const vinEl = el_("vin");
-            if (vinEl) vinEl.value = code;
-
-            if (msg) msg.textContent = `VIN detectado: ${code}`;
-            await closeQRModal();
-
-            await withLock(async () => {
-              await refreshEstadoForVinRole({ showOut: false });
-              const rolTrabajo = getRolTrabajoCurrent_();
-              await autoStartFromScan_(code, rolTrabajo);
-              await syncNow({ forceFull: true, showOut: false });
-              await refreshEstadoForVinRole({ showOut: false });
-            }, "Iniciando automáticamente...");
-          },
-          () => {}
-        );
+        await qr.start({ facingMode: { exact: "environment" } }, config, onDecoded, () => {});
         return;
-      } catch (eEnv) {
-        // sigue al fallback por cameraId
-      }
+      } catch {}
 
-      // 3) Último fallback: elegir cameraId (tu lógica original, pero más robusta)
+      // 2) fallback: environment
+      try {
+        await qr.start({ facingMode: "environment" }, config, onDecoded, () => {});
+        return;
+      } catch {}
+
+      // 3) fallback: cameraId
       const devices = await Html5Qrcode.getCameras();
       let cameraId = null;
-
       if (devices && devices.length) {
-        const env = devices.find(d => /back|rear|environment/i.test(d.label || ""));
-        cameraId = (env ? env.id : devices[0].id);
+        const env = devices.find((d) => /back|rear|environment/i.test(d.label || ""));
+        cameraId = env ? env.id : devices[0].id;
       }
 
-      await qr.start(
-        cameraId ?? devices?.[0]?.id ?? { facingMode: "environment" },
-        config,
-        async (decodedText) => {
-          const code = String(decodedText || "").trim().toUpperCase();
-          if (!code) return;
-
-          const vinEl = el_("vin");
-          if (vinEl) vinEl.value = code;
-
-          if (msg) msg.textContent = `VIN detectado: ${code}`;
-          await closeQRModal();
-
-          await withLock(async () => {
-            await refreshEstadoForVinRole({ showOut: false });
-            const rolTrabajo = getRolTrabajoCurrent_();
-            await autoStartFromScan_(code, rolTrabajo);
-            await syncNow({ forceFull: true, showOut: false });
-            await refreshEstadoForVinRole({ showOut: false });
-          }, "Iniciando automáticamente...");
-        },
-        () => {}
-      );
-
-    } catch (e) {
+      await qr.start(cameraId ?? devices?.[0]?.id ?? { facingMode: "environment" }, config, onDecoded, () => {});
+    } catch {
       if (msg) msg.textContent = "No se pudo abrir la cámara. Revisa permisos (HTTPS o localhost).";
     }
   }
-
 
   async function stopQR() {
     try {
@@ -1972,630 +1886,169 @@ function patchVisibleCards_() {
     } catch {}
   }
 
+  // ==========================================================
+  // 18) AUTO-INICIO: TECNICO + CALIDAD + SCAN
+  // ==========================================================
+  // --- TECNICO
+  let tecnicoAutoInFlight_ = false;
+  const tecnicoAutoDone_ = new Set();
+  let tecnicoAutoQueue_ = [];
 
-
-  // =========================
-// AUTO-INICIO TECNICO (cuando OT está SIN_INICIAR)
-// - si rolLock existe => solo ese rol
-// - si rolLock null => MOTOR y TANQUE (uno por ciclo)
-// =========================
-let tecnicoAutoInFlight_ = false;
-
-// evita repetir INICIO en la sesión por VIN|ROL
-const tecnicoAutoDone_ = new Set();
-
-// cola simple para iniciar "uno por ciclo" cuando rolLock == null
-let tecnicoAutoQueue_ = [];
-
-// helpers
-
-function withModule_(mod, fn) {
-  const prev = currentModule;
-  currentModule = mod;
-  try {
-    return fn();
-  } finally {
-    currentModule = prev;
-  }
-}
-
-
-
-function hmsToMs_(v){
-  if (v == null) return 0;
-
-  if (typeof v === "number" && isFinite(v)) return Math.max(0, v);
-
-  const s = String(v);
-  const m = s.match(/(\d{1,2}):(\d{2}):(\d{2})/);
-  if (!m) return 0;
-
-  const hh = Number(m[1] || 0);
-  const mm = Number(m[2] || 0);
-  const ss = Number(m[3] || 0);
-  return ((hh * 3600) + (mm * 60) + ss) * 1000;
-}
-
-function msToHMSh_(ms){
-  ms = Math.max(0, Number(ms) || 0);
-  const total = Math.floor(ms / 1000);
-  const hh = Math.floor(total / 3600);
-  const mm = String(Math.floor((total % 3600) / 60)).padStart(2, "0");
-  const ss = String(total % 60).padStart(2, "0");
-  return `${hh}h ${mm}m ${ss}s`;
-}
-
-function buildSupervisorAvgCardHTML_({ q, countTotal, avgTotalMs, countMotor, avgMotorMs, countTanque, avgTanqueMs }) {
-  const safeQ = escapeHtml(q || "-");
-
-  return `
-    <div class="card" style="margin-top:10px; border:1px solid rgba(255,255,255,.16);">
-      
-      <!-- NOMBRE GRANDE -->
-      <div style="font-weight:1000; font-size:22px; line-height:1.1;">
-        ${safeQ}
-      </div>
-
-      <!-- CRONÓMETRO GRANDE -->
-      <div style="margin-top:10px; font-weight:1000; font-size:34px; letter-spacing:.5px;">
-        ⏱ ${msToHMSh_(avgTotalMs)}
-      </div>
-
-      <!-- DETALLE PEQUEÑO -->
-      <div class="small" style="margin-top:10px; opacity:.9;">
-        <div><b>FINALIZADOS contados:</b> ${countTotal}</div>
-        <div style="margin-top:6px; opacity:.85;">
-          MOTOR: ${countMotor} &nbsp;|&nbsp; TANQUE: ${countTanque}
-        </div>
-      </div>
-
-      <div class="small" style="margin-top:10px; opacity:.7;">
-        (Solo se consideran trabajos en estado <b>FINALIZADO</b>)
-      </div>
-
-    </div>
-  `;
-}
-
-
-function hmsOnly_(v){
-  // Queremos SIEMPRE devolver "HH:MM:SS"
-  if (v == null) return "00:00:00";
-
-  // Si viene como milisegundos (número), lo convertimos
-  if (typeof v === "number" && isFinite(v)) return msToHMS_(v);
-
-  // Si viene como string, extraemos el patrón HH:MM:SS donde esté
-  const s = String(v);
-
-  // Caso típico: "00:07:10" o "2:07:10"
-  const m = s.match(/(\d{1,2}):(\d{2}):(\d{2})/);
-  if (m) {
-    const hh = String(m[1]).padStart(2, "0");
-    return `${hh}:${m[2]}:${m[3]}`;
+  function rolesTecnicoTargets_() {
+    if (rolLock === "MOTOR") return ["MOTOR"];
+    if (rolLock === "TANQUE") return ["TANQUE"];
+    return ["MOTOR", "TANQUE"];
   }
 
-  // Si no calza, no mostramos basura tipo GMT
-  return "00:00:00";
-}
-
-
-function rolesTecnicoTargets_() {
-  // si está bloqueado, solo uno
-  if (rolLock === "MOTOR") return ["MOTOR"];
-  if (rolLock === "TANQUE") return ["TANQUE"];
-
-  // sin lock => ambos
-  return ["MOTOR", "TANQUE"];
-}
-
-function makeAutoKey_(vin, rolTrabajo) {
-  const v = String(vin || "").trim().toUpperCase();
-  const r = String(rolTrabajo || "").trim().toUpperCase();
-  return `${v}|${r}`;
-}
-
-// Fuerza el INICIO para un rol específico SIN tocar tu backend
-// (porque enviarEvento usa getRolTrabajoCurrent_ / selector)
-async function enviarEventoRol_(accion, rolTrabajo, opts = {}) {
-  const prevLock = rolLock;
-
-  // si hay lock y no coincide con rol pedido, no hacemos nada
-  if (prevLock && prevLock !== rolTrabajo) return;
-
-  try {
-    // Forzar rol solo durante el envío
-    rolLock = rolTrabajo;
-
-    // si existe selector, lo alineamos (evita payload raro)
-    if ($("rol")) $("rol").value = rolTrabajo;
-
-    await enviarEvento(accion, opts);
-  } finally {
-    // volver al estado real
-    rolLock = prevLock;
-    enforceRolLock_();
+  function makeAutoKey_(vin, rolTrabajo) {
+    const v = String(vin || "").trim().toUpperCase();
+    const r = String(rolTrabajo || "").trim().toUpperCase();
+    return `${v}|${r}`;
   }
-}
 
-// agrega a cola si aplica
-function tecnicoQueueMaybeAdd_(vin, rolTrabajo) {
-  const k = makeAutoKey_(vin, rolTrabajo);
-  if (tecnicoAutoDone_.has(k)) return;
-  if (tecnicoAutoQueue_.includes(k)) return;
-  tecnicoAutoQueue_.push(k);
-}
+  async function enviarEventoRol_(accion, rolTrabajo, opts = {}) {
+    const prevLock = rolLock;
 
-// procesa 1 elemento de cola (para no spamear)
-async function tecnicoQueueDrainOne_() {
-  if (tecnicoAutoInFlight_) return;
-  if (!tecnicoAutoQueue_.length) return;
+    if (prevLock && prevLock !== rolTrabajo) return;
 
-  const k = tecnicoAutoQueue_.shift();
-  const [vin, rolTrabajo] = String(k).split("|");
-  if (!vin || !rolTrabajo) return;
-  if (tecnicoAutoDone_.has(k)) return;
-
-  tecnicoAutoInFlight_ = true;
-  try {
-    // Solo iniciar si sigue SIN_INICIAR en store
-    const it = findItemByVinRol_(vin, rolTrabajo);
-    const estado = String(it?.estado || "").toUpperCase();
-    if (estado === "SIN_INICIAR") {
-      await enviarEventoRol_("INICIO", rolTrabajo, {});
-      tecnicoAutoDone_.add(k);
+    try {
+      rolLock = rolTrabajo;
+      if ($("rol")) $("rol").value = rolTrabajo;
+      await enviarEvento(accion, opts);
+    } finally {
+      rolLock = prevLock;
+      enforceRolLock_();
     }
-  } finally {
-    tecnicoAutoInFlight_ = false;
   }
-}
 
-// Auto-start principal
-async function autoStartTecnicoIfNeeded_(vin) {
-  // Solo en TECNICO
-  if (currentModule !== "TECNICO") return;
-
-  const v = String(vin || "").trim().toUpperCase();
-  if (!v) return;
-
-  // si ya estamos haciendo auto-start, no reentrar
-  if (tecnicoAutoInFlight_) return;
-
-  // Ver roles objetivo
-  const roles = rolesTecnicoTargets_();
-
-  // Si rolLock está fijo => iniciar de frente si SIN_INICIAR
-  if (rolLock) {
-    const rol = roles[0];
-    const k = makeAutoKey_(v, rol);
+  function tecnicoQueueMaybeAdd_(vin, rolTrabajo) {
+    const k = makeAutoKey_(vin, rolTrabajo);
     if (tecnicoAutoDone_.has(k)) return;
+    if (tecnicoAutoQueue_.includes(k)) return;
+    tecnicoAutoQueue_.push(k);
+  }
+
+  async function tecnicoQueueDrainOne_() {
+    if (tecnicoAutoInFlight_) return;
+    if (!tecnicoAutoQueue_.length) return;
+
+    const k = tecnicoAutoQueue_.shift();
+    const [vin, rolTrabajo] = String(k).split("|");
+    if (!vin || !rolTrabajo) return;
+    if (tecnicoAutoDone_.has(k)) return;
+
+    tecnicoAutoInFlight_ = true;
+    try {
+      const it = findItemByVinRol_(vin, rolTrabajo);
+      const estado = String(it?.estado || "").toUpperCase();
+      if (estado === "SIN_INICIAR") {
+        await enviarEventoRol_("INICIO", rolTrabajo, {});
+        tecnicoAutoDone_.add(k);
+      }
+    } finally {
+      tecnicoAutoInFlight_ = false;
+    }
+  }
+
+  async function autoStartTecnicoIfNeeded_(vin) {
+    if (currentModule !== "TECNICO") return;
+
+    const v = String(vin || "").trim().toUpperCase();
+    if (!v) return;
+    if (tecnicoAutoInFlight_) return;
+
+    const roles = rolesTecnicoTargets_();
+
+    if (rolLock) {
+      const rol = roles[0];
+      const k = makeAutoKey_(v, rol);
+      if (tecnicoAutoDone_.has(k)) return;
+
+      const it = findItemByVinRol_(v, rol);
+      const estado = String(it?.estado || "").toUpperCase();
+      if (estado !== "SIN_INICIAR") return;
+
+      tecnicoAutoInFlight_ = true;
+      try {
+        await enviarEventoRol_("INICIO", rol, {});
+        tecnicoAutoDone_.add(k);
+      } finally {
+        tecnicoAutoInFlight_ = false;
+      }
+      return;
+    }
+
+    for (const rol of roles) {
+      const it = findItemByVinRol_(v, rol);
+      const estado = String(it?.estado || "").toUpperCase();
+      if (estado === "SIN_INICIAR") tecnicoQueueMaybeAdd_(v, rol);
+    }
+
+    await tecnicoQueueDrainOne_();
+  }
+
+  // --- CALIDAD
+  let calidadAutoInFlight_ = false;
+  const calidadAutoDone_ = new Set();
+
+  function keyForAuto_(vin, rolTrabajo) {
+    const v = String(vin || "").trim().toUpperCase();
+    const r = String(rolTrabajo || "").trim().toUpperCase();
+    return `${v}|${r}`;
+  }
+
+  async function autoStartCalidadIfNeeded_(vin) {
+    if (currentModule !== "CALIDAD") return;
+
+    const v = String(vin || "").trim().toUpperCase();
+    if (!v) return;
+
+    const rol = "CALIDAD";
+    if (calidadAutoInFlight_) return;
 
     const it = findItemByVinRol_(v, rol);
     const estado = String(it?.estado || "").toUpperCase();
     if (estado !== "SIN_INICIAR") return;
 
-    tecnicoAutoInFlight_ = true;
+    const kDone = keyForAuto_(v, rol);
+    if (calidadAutoDone_.has(kDone)) return;
+
+    calidadAutoInFlight_ = true;
     try {
-      await enviarEventoRol_("INICIO", rol, {});
-      tecnicoAutoDone_.add(k);
+      await autoStartFromScan_(v, rol);
+      calidadAutoDone_.add(kDone);
     } finally {
-      tecnicoAutoInFlight_ = false;
-    }
-    return;
-  }
-
-  // Sin lock => encolar los que estén SIN_INICIAR
-  for (const rol of roles) {
-    const it = findItemByVinRol_(v, rol);
-    const estado = String(it?.estado || "").toUpperCase();
-    if (estado === "SIN_INICIAR") {
-      tecnicoQueueMaybeAdd_(v, rol);
+      calidadAutoInFlight_ = false;
     }
   }
 
-  // procesa solo 1 por llamada
-  await tecnicoQueueDrainOne_();
-}
-
-
-  // =========================
-// AUTO-INICIO CALIDAD (cuando OT está SIN_INICIAR)
-// =========================
-let calidadAutoInFlight_ = false;
-const calidadAutoDone_ = new Set(); // session-only: evita repetir INICIO al mismo key
-
-function keyForAuto_(vin, rolTrabajo) {
-  const v = String(vin || "").trim().toUpperCase();
-  const r = String(rolTrabajo || "").trim().toUpperCase();
-  return `${v}|${r}`;
-}
-
-async function autoStartCalidadIfNeeded_(vin) {
-  // Solo en CALIDAD
-  if (currentModule !== "CALIDAD") return;
-
-  const v = String(vin || "").trim().toUpperCase();
-  if (!v) return;
-
-  const rol = "CALIDAD";
-
-  // Evita spam si ya estamos iniciando algo
-  if (calidadAutoInFlight_) return;
-
-  // Busca en store
-  const it = findItemByVinRol_(v, rol);
-  const estado = String(it?.estado || "").toUpperCase();
-
-  if (estado !== "SIN_INICIAR") return;
-
-  // Evita iniciar 2 veces la misma OT en la sesión
-  const kDone = keyForAuto_(v, rol);
-  if (calidadAutoDone_.has(kDone)) return;
-
-  calidadAutoInFlight_ = true;
-  try {
-    // Usa tu anti-doble-QR también (tú ya tienes lastAutoStart_)
-    await autoStartFromScan_(v, rol); // esto hace enviarEvento("INICIO") si SIN_INICIAR
-    calidadAutoDone_.add(kDone);
-  } finally {
-    calidadAutoInFlight_ = false;
-  }
-}
-
-
-  // =========================
-  // AUTO-INICIO al escanear QR (solo si está SIN_INICIAR)
-  // =========================
+  // --- Auto inicio al escanear / pick
   let lastAutoStart_ = { k: "", t: 0 };
 
-async function autoStartFromScan_(vin, rolTrabajo) {
-  const v = String(vin || "").trim().toUpperCase();
-  const rol = String(rolTrabajo || "").trim().toUpperCase();
-  if (!v) return;
+  async function autoStartFromScan_(vin, rolTrabajo) {
+    const v = String(vin || "").trim().toUpperCase();
+    const rol = String(rolTrabajo || "").trim().toUpperCase();
+    if (!v) return;
 
-  const k = `${v}|${rol}`;
-  const now = Date.now();
-  if (lastAutoStart_.k === k && (now - lastAutoStart_.t) < 1200) return;
-  lastAutoStart_ = { k, t: now };
+    const k = `${v}|${rol}`;
+    const now = Date.now();
+    if (lastAutoStart_.k === k && now - lastAutoStart_.t < 1200) return;
+    lastAutoStart_ = { k, t: now };
 
-  // ❌ QUITA esto (el caller ya hace refresh)
-  // await refreshEstadoForVinRole({ showOut: false });
+    const it = findItemByVinRol_(v, rol);
+    const estado = String(it?.estado || "").toUpperCase();
 
-  const it = findItemByVinRol_(v, rol);
-  const estado = String(it?.estado || "").toUpperCase();
-
-  if (estado === "SIN_INICIAR") {
-    await enviarEvento("INICIO");
+    if (estado === "SIN_INICIAR") {
+      await enviarEvento("INICIO");
+    }
   }
-}
 
-
-
-  // =========================
-  // LISTENERS (globales)
-  // =========================
-
-  document.querySelectorAll("[data-suptrack]").forEach(btn => {
-  btn.addEventListener("click", () => {
-    if (currentModule !== "SUPERVISOR") return;
-    setSupTrack_(btn.dataset.suptrack);
-  });
-});
-
-
-    document.getElementById("btnSupApply")?.addEventListener("click", () => {
-    if (currentModule !== "SUPERVISOR") return;
-    fetchSupervisorReport_().catch(() => {});
-  });
-
-  document.getElementById("btnSupClear")?.addEventListener("click", () => {
-    if (currentModule !== "SUPERVISOR") return;
-
-    const name = document.getElementById("supName");
-    const vin  = document.getElementById("supVin");
-    const f = document.getElementById("supFrom");
-    const t = document.getElementById("supTo");
-    const m = document.getElementById("supMonth");
-
-    if (name) name.value = "";
-    if (vin)  vin.value  = "";
-    if (f) f.value = "";
-    if (t) t.value = "";
-    if (m) m.value = "";
-
-    fetchSupervisorReport_().catch(() => {});
-  });
-
-
-
-  $("btnTheme")?.addEventListener("click", toggleTheme_);
-
-  $("btnRegistroFallas")?.addEventListener("click", () => {
-  window.open("https://glp-registro-fallas.pages.dev/", "_blank", "noopener");
-});
-
-
-
-  $("btnMe").addEventListener("click", async () => {
-    const email = getEmail();
-    await doLogin(email);
-  });
-
-  $("btnLogout").addEventListener("click", () => {
-    clearEmail();
-    $("email").value = "";
-    currentProfile = null;
-    currentModule = null;
-
-    stopLoopsFor_("TECNICO");
-    stopLoopsFor_("CALIDAD");
-    stopLoopsFor_("RAMALERO");
-
-    clearModuleUI_("TECNICO");
-    clearModuleUI_("CALIDAD");
-    clearModuleUI_("RAMALERO");
-
-
-    hideAllModules();
-    $("viewHub").style.display = "none";
-    document.getElementById("debugWrap")?.classList.add("debug-hidden");
-
-    showLogin("Sesión cerrada.");
-  });
-
-  // Botón buscar/crear (TECNICO)
-  $("btnEstado")?.addEventListener("click", async () => {
-    if (currentModule !== "TECNICO") return;
-    await withLock(async () => {
-      await refreshEstadoForVinRole({ showOut: true });
-      await syncNow({ forceFull: true, showOut: false });
-    }, "Buscando / creando OT...");
-  });
-
-  // Botón buscar/crear (CALIDAD)
-  $("btnEstadoQ")?.addEventListener("click", async () => {
-    if (currentModule !== "CALIDAD") return;
-    await withLock(async () => {
-      await refreshEstadoForVinRole({ showOut: true });
-      await syncNow({ forceFull: true, showOut: false });
-      // al final del handler de btnEstadoQ:
-      await autoStartCalidadIfNeeded_(getVin());
-
-    }, "Buscando / creando OT...");
-  });
-
-  // Refrescar
-  $("btnActivas")?.addEventListener("click", async () => {
-    if (currentModule !== "TECNICO") return;
-    await withLock(async () => {
-      await syncNow({ forceFull: true, showOut: true });
-    }, "Refrescando...");
-  });
-  $("btnActivasQ")?.addEventListener("click", async () => {
-    if (currentModule !== "CALIDAD") return;
-    await withLock(async () => {
-      await syncNow({ forceFull: true, showOut: true });
-    }, "Refrescando...");
-  });
-
-  // Ver finalizados
-  $("btnFinalizados")?.addEventListener("click", async () => {
-    if (currentModule !== "TECNICO") return;
-    await withLock(async () => {
-      const c = ctx_();
-      c.showFinalizados = !c.showFinalizados;
-      el_("btnFinalizados").textContent = c.showFinalizados ? "Ocultar finalizados" : "Ver finalizados";
-      renderFinalizados_();
-    }, "Cargando finalizados...");
-  });
-  $("btnFinalizadosQ")?.addEventListener("click", async () => {
-    if (currentModule !== "CALIDAD") return;
-    await withLock(async () => {
-      const c = ctx_();
-      c.showFinalizados = !c.showFinalizados;
-      el_("btnFinalizados").textContent = c.showFinalizados ? "Ocultar finalizados" : "Ver finalizados";
-      renderFinalizados_();
-    }, "Cargando finalizados...");
-  });
-
-  // Refrescar (RAMALERO)
-  $("btnActivasR")?.addEventListener("click", async () => {
-    if (currentModule !== "RAMALERO") return;
-    await withLock(async () => {
-      await syncNow({ forceFull: true, showOut: true });
-    }, "Refrescando...");
-  });
-
-  // Ver finalizados (RAMALERO)
-  $("btnFinalizadosR")?.addEventListener("click", async () => {
-    if (currentModule !== "RAMALERO") return;
-    await withLock(async () => {
-      const c = ctx_();
-      c.showFinalizados = !c.showFinalizados;
-
-      // OJO: usa el_ para que apunte al botón del módulo actual (R)
-      el_("btnFinalizados").textContent = c.showFinalizados ? "Ocultar finalizados" : "Ver finalizados";
-
-      renderFinalizados_();
-    }, "Cargando finalizados...");
-  });
-
-
-  // VIN input (TECNICO)
-  $("vin")?.addEventListener("input", () => {
-    if (currentModule !== "TECNICO") return;
-
-    // ✅ SOLO autocomplete (NO crear/buscar OT)
-    vinAcOnInput_();
-
-    // (opcional) limpiar estadoBox mientras escribe para que no “quede pegado”
-    setEstadoText("");
-  });
-
-  $("vin")?.addEventListener("keydown", (e) => {
-    if (currentModule !== "TECNICO") return;
-    vinAcOnKeyDown_(e);
-  });
-
-  // VIN input (CALIDAD)
-  $("vinQ")?.addEventListener("input", () => {
-    if (currentModule !== "CALIDAD") return;
-
-    // ✅ SOLO autocomplete (NO crear/buscar OT)
-    vinAcOnInput_();
-
-    setEstadoText("");
-  });
-
-  $("vinQ")?.addEventListener("keydown", (e) => {
-    if (currentModule !== "CALIDAD") return;
-    vinAcOnKeyDown_(e);
-  });
-
-  // rol change (solo TECNICO)
-  $("rol")?.addEventListener("change", () => {
-    if (currentModule !== "TECNICO") return;
-    refreshEstadoForVinRole({ showOut: false }).catch(() => {});
-  });
-
-  // QR modal (ambos botones)
-  $("btnQR")?.addEventListener("click", () => {
-    if (!isWorkModule_()) return;
-    openQRModal();
-  });
-  $("btnQRQ")?.addEventListener("click", () => {
-    if (!isWorkModule_()) return;
-    openQRModal();
-  });
-
-  $("btnCloseQR")?.addEventListener("click", closeQRModal);
-  $("qrModal")?.addEventListener("click", async (e) => {
-    if (e.target === $("qrModal")) await closeQRModal();
-  });
-
-
-function attachFinalizadosDelegationOnce_(mod) {
-  withModule_(mod, () => {
-    const box = el_("finalizadosBox");
-    if (!box) return;
-
-    const markKey = `boundFin_${mod}`;
-    if (box.dataset[markKey] === "1") return;
-    box.dataset[markKey] = "1";
-
-    box.addEventListener("click", (e) => {
-      const go = e.target.closest('button[data-go="RF"]');
-      if (!go) return;
-
-      // Solo TECNICO/CALIDAD
-      if (!(currentModule === "TECNICO" || currentModule === "CALIDAD")) return;
-
-      // ✅ tomar VIN del data-vin del botón
-      const vin = String(go.dataset.vin || "").trim().toUpperCase();
-      if (!vin) return;
-
-      openRegistroFallas_(vin);
-    });
-  });
-}
-
-
-
-  // =========================
-  // Delegación en activas (por módulo)
-  // =========================
-function attachActivasDelegationOnce_(mod) {
-  withModule_(mod, () => {
-    const box = el_("activasBox");
-    if (!box) return;
-
-    const markKey = `bound_${mod}`;
-    if (box.dataset[markKey] === "1") return;
-    box.dataset[markKey] = "1";
-
-    // Mostrar botón guardar nota
-    box.addEventListener("input", (e) => {
-      const ta = e.target.closest("textarea.notaCard");
-      if (!ta) return;
-      const btn = ta.closest(".jobCard")?.querySelector(".btnNota");
-      if (btn) btn.style.display = ta.value.trim() ? "block" : "none";
-    });
-
-    box.addEventListener("click", async (e) => {
-      const btn = e.target.closest("button[data-act]");
-      const card = e.target.closest(".jobCard");
-      if (!card) return;
-
-      const c = ctx_();
-      const k = card.dataset.key || "";
-      const it = c.itemsByKey.get(k);
-      if (!it) return;
-
-      // ✅ Botón Registro / Fallas dentro de la cartilla
-      const go = e.target.closest("button[data-go]");
-      if (go && go.dataset.go === "RF") {
-        e.stopPropagation(); // para que no abra/cierre la cartilla
-        if (currentModule === "RAMALERO") return; // no VIN
-        const vin = String(go.dataset.vin || it.vin || "").trim().toUpperCase();
-        if (!vin) return;
-        openRegistroFallas_(vin);
-        return;
-      }
-
-
-      if (btn) {
-        e.stopPropagation();
-        const accion = String(btn.dataset.act || "").toUpperCase();
-
-        // RAMALERO (no VIN)
-        if (currentModule === "RAMALERO") {
-          const nota =
-            accion === "NOTA"
-              ? String(card.querySelector("textarea.notaCard")?.value || "").trim()
-              : "";
-
-          await enviarEvento(accion, {
-            conversionId: it.conversionId,
-            tipoRamal: it.tipoRamal,
-            nota,
-            clearKey: k,
-          });
-          return;
-        }
-
-        // TECNICO / CALIDAD
-        const vinEl = el_("vin");
-        if (vinEl) vinEl.value = it.vin || "";
-
-        if (currentModule === "TECNICO" && !rolLock) {
-          if ($("rol")) $("rol").value = it.rolTrabajo || "MOTOR";
-          enforceRolLock_();
-        }
-
-        if (accion === "NOTA" && $("nota")) {
-          $("nota").value = String(card.querySelector("textarea.notaCard")?.value || "");
-        }
-
-        await enviarEvento(accion, { clearKey: k });
-        return;
-      }
-
-      // abrir / cerrar card (solo 1 abierta)
-      const wasOpen = card.classList.contains("open");
-      box.querySelectorAll(".jobCard.open").forEach(x => x.classList.remove("open"));
-      if (!wasOpen) card.classList.add("open");
-    });
-  });
-}
-
-
-
-  // =========================
-  // VIN AUTOCOMPLETE (usa Apps Script directo)
-  // =========================
+  // ==========================================================
+  // 19) VIN AUTOCOMPLETE (backend /api/vin-suggest)
+  // ==========================================================
   const VIN_AC = {
-    APS_URL: (window.__APS_URL || ""),
-    APS_KEY: (window.__APS_KEY || ""),
+    APS_URL: window.__APS_URL || "",
+    APS_KEY: window.__APS_KEY || "",
     MIN_CHARS: 2,
     LIMIT: 12,
     DEBOUNCE_MS: 200,
@@ -2605,7 +2058,6 @@ function attachActivasDelegationOnce_(mod) {
   if (!VIN_AC.APS_URL || !VIN_AC.APS_KEY) {
     console.warn("Falta APS_URL/APS_KEY. VIN autocomplete deshabilitado.");
   }
-
 
   let vinAcTimer = null;
   let vinAcItems = [];
@@ -2634,15 +2086,17 @@ function attachActivasDelegationOnce_(mod) {
 
     if (!vinAcItems.length) return vinAcHide_();
 
-    box.innerHTML = vinAcItems.map((vin, i) => {
-      const active = i === vinAcIndex ? "active" : "";
-      return `
-        <div class="vsItem ${active}" data-idx="${i}" role="option" aria-selected="${i === vinAcIndex}">
-          <div class="vsVin">${escapeHtml(vin)}</div>
-          <div class="vsHint">Enter</div>
-        </div>
-      `;
-    }).join("");
+    box.innerHTML = vinAcItems
+      .map((vin, i) => {
+        const active = i === vinAcIndex ? "active" : "";
+        return `
+          <div class="vsItem ${active}" data-idx="${i}" role="option" aria-selected="${i === vinAcIndex}">
+            <div class="vsVin">${escapeHtml(vin)}</div>
+            <div class="vsHint">Enter</div>
+          </div>
+        `;
+      })
+      .join("");
 
     box.classList.remove("hidden");
     vinAcOpen = true;
@@ -2657,18 +2111,18 @@ function attachActivasDelegationOnce_(mod) {
     if (el) el.scrollIntoView({ block: "nearest" });
   }
 
-async function vinAcFetch_(q) {
-  try { vinAcAbort?.abort?.(); } catch {}
-  vinAcAbort = new AbortController();
+  async function vinAcFetch_(q) {
+    try {
+      vinAcAbort?.abort?.();
+    } catch {}
+    vinAcAbort = new AbortController();
 
-  const url = `/api/vin-suggest?q=${encodeURIComponent(q)}&limit=${encodeURIComponent(VIN_AC.LIMIT)}`;
-
-  const r = await fetch(url, { signal: vinAcAbort.signal });
-  const j = await r.json();
-  if (!j || !j.ok) return [];
-  return Array.isArray(j.items) ? j.items : [];
-}
-
+    const url = `/api/vin-suggest?q=${encodeURIComponent(q)}&limit=${encodeURIComponent(VIN_AC.LIMIT)}`;
+    const r = await fetch(url, { signal: vinAcAbort.signal });
+    const j = await r.json();
+    if (!j || !j.ok) return [];
+    return Array.isArray(j.items) ? j.items : [];
+  }
 
   function vinAcOnInput_() {
     const input = el_("vin");
@@ -2685,7 +2139,7 @@ async function vinAcFetch_(q) {
         const items = await vinAcFetch_(q);
         if (vinAcLastQ !== q) return;
 
-        vinAcItems = (items || []).map(v => String(v || "").toUpperCase()).filter(Boolean);
+        vinAcItems = (items || []).map((v) => String(v || "").toUpperCase()).filter(Boolean);
         vinAcIndex = vinAcItems.length ? 0 : -1;
         vinAcRender_();
       } catch {
@@ -2702,16 +2156,15 @@ async function vinAcFetch_(q) {
     vinAcHide_();
 
     refreshEstadoForVinRole({ showOut: false })
-    .then(async () => {
-      // auto inicio también al seleccionar sugerencia
-      await withLock(async () => {
-        const rolTrabajo = getRolTrabajoCurrent_();
-        await autoStartFromScan_(input.value, rolTrabajo);
-        await syncNow({ forceFull: false, showOut: false });
-        await refreshEstadoForVinRole({ showOut: false });
-      }, "Iniciando automáticamente...");
-    })
-    .catch(() => {});
+      .then(async () => {
+        await withLock(async () => {
+          const rolTrabajo = getRolTrabajoCurrent_();
+          await autoStartFromScan_(input.value, rolTrabajo);
+          await syncNow({ forceFull: false, showOut: false });
+          await refreshEstadoForVinRole({ showOut: false });
+        }, "Iniciando automáticamente...");
+      })
+      .catch(() => {});
 
     if (VIN_AC.AUTO_SUBMIT_ON_PICK) el_("btnEstado")?.click?.();
   }
@@ -2740,7 +2193,7 @@ async function vinAcFetch_(q) {
   }
 
   // bind once (para ambos boxes)
-  (function bindVinSuggestOnce(){
+  (function bindVinSuggestOnce() {
     const boxT = $("vinSuggest");
     const boxQ = $("vinSuggestQ");
 
@@ -2762,18 +2215,307 @@ async function vinAcFetch_(q) {
     document.addEventListener("click", (e) => {
       if (!vinAcOpen) return;
 
-      const wraps = document.querySelectorAll(".vinWrap"); // ✅ todos
-      const insideSomeWrap = [...wraps].some(w => w.contains(e.target));
+      const wraps = document.querySelectorAll(".vinWrap");
+      const insideSomeWrap = [...wraps].some((w) => w.contains(e.target));
       if (insideSomeWrap) return;
 
       vinAcHide_();
     });
-
   })();
 
-  // =========================
-  // AUTO LOGIN on load
-  // =========================
+  // ==========================================================
+  // 20) DELEGACIÓN CLICK (ACTIVAS / FINALIZADOS)
+  // ==========================================================
+  function attachFinalizadosDelegationOnce_(mod) {
+    withModule_(mod, () => {
+      const box = el_("finalizadosBox");
+      if (!box) return;
+
+      const markKey = `boundFin_${mod}`;
+      if (box.dataset[markKey] === "1") return;
+      box.dataset[markKey] = "1";
+
+      box.addEventListener("click", (e) => {
+        const go = e.target.closest('button[data-go="RF"]');
+        if (!go) return;
+
+        if (!(currentModule === "TECNICO" || currentModule === "CALIDAD")) return;
+
+        const vin = String(go.dataset.vin || "").trim().toUpperCase();
+        if (!vin) return;
+
+        openRegistroFallas_(vin);
+      });
+    });
+  }
+
+  function attachActivasDelegationOnce_(mod) {
+    withModule_(mod, () => {
+      const box = el_("activasBox");
+      if (!box) return;
+
+      const markKey = `bound_${mod}`;
+      if (box.dataset[markKey] === "1") return;
+      box.dataset[markKey] = "1";
+
+      // mostrar botón guardar nota
+      box.addEventListener("input", (e) => {
+        const ta = e.target.closest("textarea.notaCard");
+        if (!ta) return;
+        const btn = ta.closest(".jobCard")?.querySelector(".btnNota");
+        if (btn) btn.style.display = ta.value.trim() ? "block" : "none";
+      });
+
+      box.addEventListener("click", async (e) => {
+        const btn = e.target.closest("button[data-act]");
+        const card = e.target.closest(".jobCard");
+        if (!card) return;
+
+        const c = ctx_();
+        const k = card.dataset.key || "";
+        const it = c.itemsByKey.get(k);
+        if (!it) return;
+
+        // Registro/Fallas
+        const go = e.target.closest("button[data-go]");
+        if (go && go.dataset.go === "RF") {
+          e.stopPropagation();
+          if (currentModule === "RAMALERO") return;
+          const vin = String(go.dataset.vin || it.vin || "").trim().toUpperCase();
+          if (!vin) return;
+          openRegistroFallas_(vin);
+          return;
+        }
+
+        if (btn) {
+          e.stopPropagation();
+          const accion = String(btn.dataset.act || "").toUpperCase();
+
+          if (currentModule === "RAMALERO") {
+            const nota =
+              accion === "NOTA" ? String(card.querySelector("textarea.notaCard")?.value || "").trim() : "";
+
+            await enviarEvento(accion, {
+              conversionId: it.conversionId,
+              tipoRamal: it.tipoRamal,
+              nota,
+              clearKey: k,
+            });
+            return;
+          }
+
+          // TECNICO/CALIDAD: set VIN input
+          const vinEl = el_("vin");
+          if (vinEl) vinEl.value = it.vin || "";
+
+          if (currentModule === "TECNICO" && !rolLock) {
+            if ($("rol")) $("rol").value = it.rolTrabajo || "MOTOR";
+            enforceRolLock_();
+          }
+
+          if (accion === "NOTA" && $("nota")) {
+            $("nota").value = String(card.querySelector("textarea.notaCard")?.value || "");
+          }
+
+          await enviarEvento(accion, { clearKey: k });
+          return;
+        }
+
+        // abrir/cerrar card (solo 1 abierta)
+        const wasOpen = card.classList.contains("open");
+        box.querySelectorAll(".jobCard.open").forEach((x) => x.classList.remove("open"));
+        if (!wasOpen) card.classList.add("open");
+      });
+    });
+  }
+
+  // ==========================================================
+  // 21) LISTENERS (GLOBAL)
+  // ==========================================================
+  document.querySelectorAll("[data-suptrack]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (currentModule !== "SUPERVISOR") return;
+      setSupTrack_(btn.dataset.suptrack);
+    });
+  });
+
+  document.getElementById("btnSupApply")?.addEventListener("click", () => {
+    if (currentModule !== "SUPERVISOR") return;
+    fetchSupervisorReport_().catch(() => {});
+  });
+
+  document.getElementById("btnSupClear")?.addEventListener("click", () => {
+    if (currentModule !== "SUPERVISOR") return;
+
+    const name = document.getElementById("supName");
+    const vin = document.getElementById("supVin");
+    const f = document.getElementById("supFrom");
+    const t = document.getElementById("supTo");
+    const m = document.getElementById("supMonth");
+
+    if (name) name.value = "";
+    if (vin) vin.value = "";
+    if (f) f.value = "";
+    if (t) t.value = "";
+    if (m) m.value = "";
+
+    fetchSupervisorReport_().catch(() => {});
+  });
+
+  $("btnTheme")?.addEventListener("click", toggleTheme_);
+
+  $("btnRegistroFallas")?.addEventListener("click", () => {
+    window.open(REG_FALLAS_BASE, "_blank", "noopener");
+  });
+
+  $("btnMe")?.addEventListener("click", async () => {
+    const email = getEmail();
+    await doLogin(email);
+  });
+
+  $("btnLogout")?.addEventListener("click", () => {
+    clearEmail();
+    $("email").value = "";
+    currentProfile = null;
+    currentModule = null;
+
+    stopLoopsFor_("TECNICO");
+    stopLoopsFor_("CALIDAD");
+    stopLoopsFor_("RAMALERO");
+
+    clearModuleUI_("TECNICO");
+    clearModuleUI_("CALIDAD");
+    clearModuleUI_("RAMALERO");
+
+    hideAllModules();
+    $("viewHub").style.display = "none";
+    document.getElementById("debugWrap")?.classList.add("debug-hidden");
+
+    showLogin("Sesión cerrada.");
+  });
+
+  // Estado / Crear OT (TECNICO)
+  $("btnEstado")?.addEventListener("click", async () => {
+    if (currentModule !== "TECNICO") return;
+    await withLock(async () => {
+      await refreshEstadoForVinRole({ showOut: true });
+      await syncNow({ forceFull: true, showOut: false });
+    }, "Buscando / creando OT...");
+  });
+
+  // Estado / Crear OT (CALIDAD)
+  $("btnEstadoQ")?.addEventListener("click", async () => {
+    if (currentModule !== "CALIDAD") return;
+    await withLock(async () => {
+      await refreshEstadoForVinRole({ showOut: true });
+      await syncNow({ forceFull: true, showOut: false });
+      await autoStartCalidadIfNeeded_(getVin());
+    }, "Buscando / creando OT...");
+  });
+
+  // Refrescar
+  $("btnActivas")?.addEventListener("click", async () => {
+    if (currentModule !== "TECNICO") return;
+    await withLock(async () => {
+      await syncNow({ forceFull: true, showOut: true });
+    }, "Refrescando...");
+  });
+
+  $("btnActivasQ")?.addEventListener("click", async () => {
+    if (currentModule !== "CALIDAD") return;
+    await withLock(async () => {
+      await syncNow({ forceFull: true, showOut: true });
+    }, "Refrescando...");
+  });
+
+  // Finalizados
+  $("btnFinalizados")?.addEventListener("click", async () => {
+    if (currentModule !== "TECNICO") return;
+    await withLock(async () => {
+      const c = ctx_();
+      c.showFinalizados = !c.showFinalizados;
+      el_("btnFinalizados").textContent = c.showFinalizados ? "Ocultar finalizados" : "Ver finalizados";
+      renderFinalizados_();
+    }, "Cargando finalizados...");
+  });
+
+  $("btnFinalizadosQ")?.addEventListener("click", async () => {
+    if (currentModule !== "CALIDAD") return;
+    await withLock(async () => {
+      const c = ctx_();
+      c.showFinalizados = !c.showFinalizados;
+      el_("btnFinalizados").textContent = c.showFinalizados ? "Ocultar finalizados" : "Ver finalizados";
+      renderFinalizados_();
+    }, "Cargando finalizados...");
+  });
+
+  // RAMALERO refrescar / finalizados
+  $("btnActivasR")?.addEventListener("click", async () => {
+    if (currentModule !== "RAMALERO") return;
+    await withLock(async () => {
+      await syncNow({ forceFull: true, showOut: true });
+    }, "Refrescando...");
+  });
+
+  $("btnFinalizadosR")?.addEventListener("click", async () => {
+    if (currentModule !== "RAMALERO") return;
+    await withLock(async () => {
+      const c = ctx_();
+      c.showFinalizados = !c.showFinalizados;
+      el_("btnFinalizados").textContent = c.showFinalizados ? "Ocultar finalizados" : "Ver finalizados";
+      renderFinalizados_();
+    }, "Cargando finalizados...");
+  });
+
+  // VIN input (TECNICO)
+  $("vin")?.addEventListener("input", () => {
+    if (currentModule !== "TECNICO") return;
+    vinAcOnInput_();
+    setEstadoText("");
+  });
+
+  $("vin")?.addEventListener("keydown", (e) => {
+    if (currentModule !== "TECNICO") return;
+    vinAcOnKeyDown_(e);
+  });
+
+  // VIN input (CALIDAD)
+  $("vinQ")?.addEventListener("input", () => {
+    if (currentModule !== "CALIDAD") return;
+    vinAcOnInput_();
+    setEstadoText("");
+  });
+
+  $("vinQ")?.addEventListener("keydown", (e) => {
+    if (currentModule !== "CALIDAD") return;
+    vinAcOnKeyDown_(e);
+  });
+
+  $("rol")?.addEventListener("change", () => {
+    if (currentModule !== "TECNICO") return;
+    refreshEstadoForVinRole({ showOut: false }).catch(() => {});
+  });
+
+  // QR
+  $("btnQR")?.addEventListener("click", () => {
+    if (!isWorkModule_()) return;
+    openQRModal();
+  });
+
+  $("btnQRQ")?.addEventListener("click", () => {
+    if (!isWorkModule_()) return;
+    openQRModal();
+  });
+
+  $("btnCloseQR")?.addEventListener("click", closeQRModal);
+
+  $("qrModal")?.addEventListener("click", async (e) => {
+    if (e.target === $("qrModal")) await closeQRModal();
+  });
+
+  // ==========================================================
+  // 22) AUTO LOGIN ON LOAD
+  // ==========================================================
   window.addEventListener("load", async () => {
     const saved = loadEmail();
     if (!saved) return showLogin("");
@@ -2781,3 +2523,4 @@ async function vinAcFetch_(q) {
     initTheme_();
     await doLogin(saved);
   });
+})();
