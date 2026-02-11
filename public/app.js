@@ -1146,6 +1146,21 @@
   }
 
   // ==========================================================
+  // 12B) ESTADO (DEBOUNCE EVENT-DRIVEN)
+  // ==========================================================
+  let estadoDebounceTimer_ = null;
+
+  function scheduleEstadoRefresh_(ms = 500) {
+    if (!(currentModule === "TECNICO" || currentModule === "CALIDAD")) return;
+
+    clearTimeout(estadoDebounceTimer_);
+    estadoDebounceTimer_ = setTimeout(() => {
+      refreshEstadoForVinRole({ showOut: false }).catch(() => {});
+    }, ms);
+  }
+
+
+  // ==========================================================
   // 13) EVENTOS (enviarEvento) + RAMALERO sin VIN
   // ==========================================================
   async function enviarEvento(accionOverride, opts = {}) {
@@ -1323,18 +1338,27 @@
     stopLoopsFor_(mod);
 
     withModule_(mod, () => {
+      // 1) sync inicial (full)
       syncNow({ forceFull: true, showOut: false }).catch(() => {});
 
       const t = tctx_();
-      t.syncTimer = setInterval(() => syncNow({ forceFull: false, showOut: false }), 6000);
-      t.clockTimer = setInterval(() => tickClocksUI_(), 250);
 
+      // 2) sync periódico (bájalo si quieres: 10s-15s)
+      t.syncTimer = setInterval(() => syncNow({ forceFull: false, showOut: false }), 10000);
+
+      // 3) reloj UI (antes 250ms)
+      t.clockTimer = setInterval(() => tickClocksUI_(), 1000);
+
+      // 4) estado VIN (antes 2s): ahora 8s (y lo demás será event-driven)
       if (mod === "TECNICO" || mod === "CALIDAD") {
-        refreshEstadoForVinRole({ showOut: false }).catch(() => {});
-        t.estadoTimer = setInterval(() => refreshEstadoForVinRole({ showOut: false }), 2000);
+        t.estadoTimer = setInterval(() => refreshEstadoForVinRole({ showOut: false }), 8000);
+
+        // primer refresh suave (no bloquea la UI)
+        setTimeout(() => refreshEstadoForVinRole({ showOut: false }).catch(() => {}), 700);
       }
     });
   }
+
 
   function stopLoopsFor_(mod) {
     const t = timersByModule[mod] || timersByModule.TECNICO;
@@ -2472,7 +2496,9 @@
     if (currentModule !== "TECNICO") return;
     vinAcOnInput_();
     setEstadoText("");
+    scheduleEstadoRefresh_(650);
   });
+
 
   $("vin")?.addEventListener("keydown", (e) => {
     if (currentModule !== "TECNICO") return;
@@ -2484,7 +2510,9 @@
     if (currentModule !== "CALIDAD") return;
     vinAcOnInput_();
     setEstadoText("");
+    scheduleEstadoRefresh_(650);
   });
+
 
   $("vinQ")?.addEventListener("keydown", (e) => {
     if (currentModule !== "CALIDAD") return;
@@ -2493,8 +2521,9 @@
 
   $("rol")?.addEventListener("change", () => {
     if (currentModule !== "TECNICO") return;
-    refreshEstadoForVinRole({ showOut: false }).catch(() => {});
+    scheduleEstadoRefresh_(0);
   });
+
 
   // QR
   $("btnQR")?.addEventListener("click", () => {
