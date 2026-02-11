@@ -459,18 +459,25 @@ function ramalCacheGet_(conversionId) {
   }
 
   function openModule(m) {
-    // antes de cambiar, parar loops del módulo actual (si era de trabajo)
-    if (m === "TECNICO") attachFinalizadosDelegationOnce_("TECNICO");
-    if (m === "CALIDAD") attachFinalizadosDelegationOnce_("CALIDAD");
 
-
+    
     currentModule = m;
-
+    
     $("viewHub").style.display = "none";
     hideAllModules();
 
     const el = document.getElementById(`view${m}`);
     if (el) el.style.display = "block";
+
+    // antes de cambiar, parar loops del módulo actual (si era de trabajo)
+    if (m === "TECNICO") attachActivasDelegationOnce_("TECNICO");
+    if (m === "CALIDAD") attachActivasDelegationOnce_("CALIDAD");
+    if (m === "RAMALERO") attachActivasDelegationOnce_("RAMALERO");
+
+
+
+
+
 
     // Bind delegación del box de este módulo (solo una vez)
     if (m === "TECNICO") attachActivasDelegationOnce_("TECNICO");
@@ -1076,11 +1083,6 @@ function renderSupConversionCard_(g){
           </div>
           <div class="small">Inicio: ${cre}</div>
 
-          <button class="btnRF" type="button" data-go="RF" data-vin="${vin}">
-            📸 Registrar fotos / fallas
-          </button>
-
-
           ${
             (currentModule === "TECNICO" || currentModule === "CALIDAD")
               ? `<button class="btnRF" type="button" data-go="RF" data-vin="${vin}">
@@ -1088,6 +1090,7 @@ function renderSupConversionCard_(g){
                 </button>`
               : ""
           }
+
 
         </div>
       `;
@@ -2478,7 +2481,7 @@ async function autoStartFromScan_(vin, rolTrabajo) {
   });
 
 
-  function attachFinalizadosDelegationOnce_(mod) {
+function attachFinalizadosDelegationOnce_(mod) {
   withModule_(mod, () => {
     const box = el_("finalizadosBox");
     if (!box) return;
@@ -2488,27 +2491,21 @@ async function autoStartFromScan_(vin, rolTrabajo) {
     box.dataset[markKey] = "1";
 
     box.addEventListener("click", (e) => {
-      const go = e.target.closest("button[data-go]");
+      const go = e.target.closest('button[data-go="RF"]');
       if (!go) return;
-      if (go.dataset.go !== "RF") return;
 
       // Solo TECNICO/CALIDAD
       if (!(currentModule === "TECNICO" || currentModule === "CALIDAD")) return;
 
-      // buscamos el VIN desde la card
-      const card = e.target.closest(".card");
-      if (!card) return;
-
-      // Opción simple: toma VIN del texto del card (no ideal)
-      // Mejor: guardar VIN como data-vin en la card finalizada si quieres.
-      // Por ahora, usamos el input actual si existe; si no, no abre.
-      const vin = getVin();
+      // ✅ tomar VIN del data-vin del botón
+      const vin = String(go.dataset.vin || "").trim().toUpperCase();
       if (!vin) return;
 
       openRegistroFallas_(vin);
     });
   });
 }
+
 
 
   // =========================
