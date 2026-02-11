@@ -1707,13 +1707,87 @@ function patchVisibleCards_() {
   // =========================
   let qr = null;
 
+  // ✅ NUEVO: modo de escaneo
+  let scanMode = "QR"; // "QR" | "BAR"
+
+  function setScanMode_(mode) {
+    scanMode = (mode === "BAR") ? "BAR" : "QR";
+
+    // UI: resaltar botón activo
+    const bQR = document.getElementById("btnScanQR");
+    const bBar = document.getElementById("btnScanBar");
+    if (bQR && bBar) {
+      // Puedes ajustar estilos si quieres; por ahora solo “intercambia” clases
+      bQR.classList.toggle("btnInicio", scanMode === "QR");
+      bQR.classList.toggle("btnPausa", scanMode !== "QR");
+
+      bBar.classList.toggle("btnInicio", scanMode === "BAR");
+      bBar.classList.toggle("btnPausa", scanMode !== "BAR");
+    }
+
+    const msg = $("qrMsg");
+    if (msg) {
+      msg.textContent =
+        scanMode === "QR"
+          ? "Modo: QR. Apunta al QR del VIN."
+          : "Modo: CÓDIGO DE BARRAS (CODE_128). Apunta al código y mantén estable.";
+    }
+  }
+
+  async function restartQR_() {
+    // si el modal está abierto, reinicia el scanner
+    const modal = $("qrModal");
+    const isOpen = modal?.classList?.contains("show");
+    if (!isOpen) return;
+
+    await stopQR();
+    await startQR();
+  }
+
+
+
   function openQRModal() {
     const modal = $("qrModal");
     const msg = $("qrMsg");
-    if (msg) msg.textContent = "Apunta la cámara al QR del VIN.";
+
     modal.classList.add("show");
+
+    // ✅ default al abrir
+    setScanMode_(scanMode);
+
+    // ✅ bind botones (una vez)
+    const bQR = document.getElementById("btnScanQR");
+    const bBar = document.getElementById("btnScanBar");
+
+    if (bQR && bQR.dataset.bound !== "1") {
+      bQR.dataset.bound = "1";
+      bQR.addEventListener("click", async () => {
+        if (scanMode === "QR") return;
+        setScanMode_("QR");
+        await restartQR_();
+      });
+    }
+
+    if (bBar && bBar.dataset.bound !== "1") {
+      bBar.dataset.bound = "1";
+      bBar.addEventListener("click", async () => {
+        if (scanMode === "BAR") return;
+        setScanMode_("BAR");
+        await restartQR_();
+      });
+    }
+
+    // mensaje inicial
+    if (msg) {
+      msg.textContent =
+        scanMode === "QR"
+          ? "Modo: QR. Apunta la cámara al QR del VIN."
+          : "Modo: CÓDIGO DE BARRAS (CODE_128). Apunta al código.";
+    }
+
     startQR();
   }
+
 
   async function closeQRModal() {
     const modal = $("qrModal");
@@ -1731,7 +1805,26 @@ function patchVisibleCards_() {
 
       if (!qr) qr = new Html5Qrcode("qrReader");
 
-      const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+      const isBar = (scanMode === "BAR");
+
+      // ✅ config distinto según modo
+      const config = {
+        fps: isBar ? 8 : 10,
+
+        // QR cuadrado, barras rectangular (más fácil para CODE_128)
+        qrbox: isBar
+          ? { width: 320, height: 140 }
+          : { width: 250, height: 250 },
+
+        // ✅ CLAVE: limitar formatos para ayudar a Android viejito
+        formatsToSupport: isBar
+          ? [Html5QrcodeSupportedFormats.CODE_128]
+          : [Html5QrcodeSupportedFormats.QR_CODE],
+
+        // ✅ en varios Android ayuda (si está disponible)
+        experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+      };
+
 
       // 1) iPhone/Safari: fuerza trasera con EXACT primero
       try {
