@@ -5,6 +5,24 @@
 
   const EMAIL_KEY = "glp_email";
 
+
+  // =========================
+// LINK: Registro / Fallas (otra app)
+// =========================
+const REG_FALLAS_BASE = "https://glp-registro-fallas.pages.dev/";
+
+function buildRegistroFallasUrl_(vin) {
+  const v = String(vin || "").trim().toUpperCase();
+  if (!v) return REG_FALLAS_BASE;
+  return `${REG_FALLAS_BASE}?vin=${encodeURIComponent(v)}`;
+}
+
+function openRegistroFallas_(vin) {
+  const url = buildRegistroFallasUrl_(vin);
+  window.open(url, "_blank", "noopener");
+}
+
+
   // =========================
   // ROL LOCK (según especialidad)
   // =========================
@@ -980,8 +998,18 @@ function renderSupConversionCard_(g){
             </div>
             <div class="jobRight">
               <div class="jobTimePill js-tiempo">⏱ ${live}</div>
+
+              ${
+                currentModule === "RAMALERO"
+                  ? ""
+                  : `<button class="btnRF" type="button" data-go="RF" title="Abrir Registro / Fallas">
+                      📸
+                    </button>`
+              }
+
               <div class="jobChevron"></div>
             </div>
+
           </div>
 
           <div class="jobExpand">
@@ -2461,6 +2489,18 @@ function attachActivasDelegationOnce_(mod) {
       const k = card.dataset.key || "";
       const it = c.itemsByKey.get(k);
       if (!it) return;
+
+      // ✅ Botón Registro / Fallas dentro de la cartilla
+      const go = e.target.closest("button[data-go]");
+      if (go && go.dataset.go === "RF") {
+        e.stopPropagation(); // para que no abra/cierre la cartilla
+        if (currentModule === "RAMALERO") return; // no VIN
+        const vin = String(it.vin || "").trim().toUpperCase();
+        if (!vin) return;
+        openRegistroFallas_(vin);
+        return;
+      }
+
 
       if (btn) {
         e.stopPropagation();
