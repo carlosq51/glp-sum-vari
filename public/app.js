@@ -1813,7 +1813,7 @@ function patchVisibleCards_() {
 
         // QR cuadrado, barras rectangular (más fácil para CODE_128)
         qrbox: isBar
-          ? { width: 320, height: 140 }
+          ? { width: 160, height: 320 }
           : { width: 250, height: 250 },
 
         // ✅ CLAVE: limitar formatos para ayudar a Android viejito
