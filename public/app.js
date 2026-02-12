@@ -156,7 +156,7 @@
     if (bLo) bLo.disabled = uiLocked;
 
     // botones del módulo actual
-    const ids = ["btnEstado", "btnActivas", "btnFinalizados", "btnQR"];
+    const ids = ["btnEstado", "btnActivas", "btnFinalizados", "btnQR", "btnSupQR"];
     for (const id of ids) {
       const b = el_(id);
       if (b) b.disabled = uiLocked;
@@ -1764,6 +1764,12 @@
   let qr = null;
   let scanMode = "QR"; // "QR" | "BAR"
 
+  let qrTarget = "WORK_VIN"; // "WORK_VIN" | "SUP_VIN"
+  function setQrTarget_(t){
+    qrTarget = (t === "SUP_VIN") ? "SUP_VIN" : "WORK_VIN";
+  }
+
+
   function setScanMode_(mode) {
     scanMode = mode === "BAR" ? "BAR" : "QR";
 
@@ -1795,7 +1801,9 @@
     await startQR();
   }
 
-  function openQRModal() {
+  function openQRModal(target = "WORK_VIN") {
+    setQrTarget_(target);
+
     const modal = $("qrModal");
     const msg = $("qrMsg");
 
@@ -1833,6 +1841,7 @@
     startQR();
   }
 
+
   async function closeQRModal() {
     const modal = $("qrModal");
     modal.classList.remove("show");
@@ -1863,6 +1872,22 @@
         const code = String(decodedText || "").trim().toUpperCase();
         if (!code) return;
 
+        // ===== TARGET: SUPERVISOR =====
+        if (qrTarget === "SUP_VIN") {
+          const supVinEl = document.getElementById("supVin");
+          if (supVinEl) supVinEl.value = code;
+
+          if (msg) msg.textContent = `VIN detectado: ${code}`;
+          await closeQRModal();
+
+          // dispara búsqueda del reporte (sin auto-start / sin sync)
+          if (currentModule === "SUPERVISOR") {
+            fetchSupervisorReport_().catch(() => {});
+          }
+          return;
+        }
+
+        // ===== TARGET: WORK (TECNICO/CALIDAD) =====
         const vinEl = el_("vin");
         if (vinEl) vinEl.value = code;
 
@@ -1877,6 +1902,7 @@
           await refreshEstadoForVinRole({ showOut: false });
         }, "Iniciando automáticamente...");
       };
+
 
       // 1) iPhone/Safari: exact environment
       try {
@@ -2356,6 +2382,12 @@
   // ==========================================================
   // 21) LISTENERS (GLOBAL)
   // ==========================================================
+  document.getElementById("btnSupQR")?.addEventListener("click", () => {
+    if (currentModule !== "SUPERVISOR") return;
+    openQRModal("SUP_VIN");
+  });
+
+
   document.querySelectorAll("[data-suptrack]").forEach((btn) => {
     btn.addEventListener("click", () => {
       if (currentModule !== "SUPERVISOR") return;

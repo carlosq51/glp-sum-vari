@@ -225,7 +225,14 @@
 
       <div class="fullStack" style="margin-top:10px;">
         <input id="supName" type="text" placeholder="Buscar por nombre o email..." />
-        <input id="supVin"  type="text" placeholder="Buscar por VIN..." />
+        <div class="supVinRow">
+          <div class="supVinWrap">
+            <input id="supVin" type="text" placeholder="Buscar por VIN..." />
+          </div>
+
+          <button id="btnSupQR" type="button" title="Escanear VIN con cámara">📷</button>
+        </div>
+
 
         <div class="twoWide">
           <input id="supFrom" type="date" />

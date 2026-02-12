@@ -558,6 +558,43 @@ pre{
 
 #rol{ width:100% !important; }
 
+
+/* =========================
+   SUPERVISOR: VIN + CAM
+   ========================= */
+.supVinRow{
+  display:grid;
+  grid-template-columns:1fr 52px;
+  gap:12px;
+  width:100%;
+  align-items:stretch;
+}
+
+.supVinWrap{ min-width:0; width:100%; }
+
+#supVin{
+  width:100%;
+  height:52px;
+  padding:0 12px;
+  border-radius:14px;
+  line-height:52px;
+  box-sizing:border-box;
+  margin:0;
+  display:block;
+}
+
+#btnSupQR{
+  width:52px;
+  height:52px;
+  padding:0;
+  border-radius:14px;
+  display:grid;
+  place-items:center;
+  font-size:18px;
+  box-sizing:border-box;
+  margin:0;
+}
+
 /* VIN + CAM + BUSCAR/CREAR en 1 fila (full width) */
 .vinRow3{
   display:grid;
