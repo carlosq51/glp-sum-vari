@@ -718,6 +718,43 @@ button[data-suptrack].active{
 }
 
 /* =========================
+   RAMALERO: fila principal (tipo VIN row)
+   ========================= */
+.ramalRow3{
+  display:grid;
+  grid-template-columns: 1.6fr 1fr 1fr; /* select | ramalId | nuevo */
+  gap:12px;
+  width:100%;
+  align-items:stretch;
+}
+
+.ramalRow3 #tipoRamal,
+.ramalRow3 #ramalId{
+  width:100%;
+  height:52px;
+  padding:0 12px;
+  border-radius:14px;
+  line-height:52px;
+  box-sizing:border-box;
+  margin:0;
+  display:block;
+}
+
+.ramalRow3 #tipoRamal{
+  line-height:normal; /* select */
+}
+
+.ramalRow3 #btnRamalNuevo{
+  width:100%;
+  height:52px;
+  border-radius:14px;
+  font-weight:900;
+  box-sizing:border-box;
+  margin:0;
+}
+
+
+/* =========================
    MOBILE
    ========================= */
 @media (max-width:480px){

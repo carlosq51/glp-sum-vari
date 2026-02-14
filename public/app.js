@@ -702,7 +702,7 @@ function avgByMedianMad_(arrMs, k = 3.5) {
 
   function openModule(m) {
     currentModule = m;
-
+    
     // cerrar autocomplete de Supervisor al cambiar de módulo
     if (m !== "SUPERVISOR") {
       try { supNameAcHide_(); } catch {}
@@ -768,19 +768,32 @@ function avgByMedianMad_(arrMs, k = 3.5) {
   }
 
   function normalizeItem_(raw) {
-    const it = {
-      conversionId: String(raw?.conversionId ?? raw?.CONVERSION_ID ?? "").trim(),
-      vin: String(raw?.vin ?? raw?.VIN ?? "").trim().toUpperCase(),
+    // --- helpers ---
+    const pickFirst_ = (...xs) => {
+      for (const x of xs) {
+        if (x !== undefined && x !== null && String(x).trim() !== "") return x;
+      }
+      return "";
+    };
 
-      tipoRamal: String(
-        raw?.tipoRamal ??
-          raw?.tipo_ramal ??
-          raw?.tipo ??
-          raw?.TIPO_RAMAL ??
-          ""
+    const it = {
+      // ✅ soporta conversion_id / CONVERSION_ID
+      conversionId: String(
+        pickFirst_(raw?.conversionId, raw?.conversion_id, raw?.CONVERSION_ID, raw?.ID, raw?.id)
       ).trim(),
 
-      // fecha de creación / inicio (prioridad)
+      vin: String(pickFirst_(raw?.vin, raw?.VIN)).trim().toUpperCase(),
+
+      tipoRamal: String(
+        pickFirst_(
+          raw?.tipoRamal,
+          raw?.tipo_ramal,
+          raw?.tipo,
+          raw?.TIPO_RAMAL,
+          raw?.TIPO
+        )
+      ).trim(),
+
       created_at:
         raw?.fecha_asignacion ??
         raw?.FECHA_ASIGNACION ??
@@ -792,21 +805,54 @@ function avgByMedianMad_(arrMs, k = 3.5) {
         raw?.FECHA_CREACION ??
         null,
 
-      rolTrabajo: String(raw?.rolTrabajo ?? raw?.rol ?? raw?.ROL_TRABAJO ?? "")
-        .trim()
-        .toUpperCase(),
-      estado: String(raw?.estado ?? raw?.ESTADO_ACTUAL ?? "")
+      // ✅ soporta rol_trabajo / ROL / rolTrabajo
+      rolTrabajo: String(
+        pickFirst_(
+          raw?.rolTrabajo,
+          raw?.rol_trabajo,
+          raw?.rol,
+          raw?.ROL_TRABAJO,
+          raw?.ROL
+        )
+      )
         .trim()
         .toUpperCase(),
 
-      tiempo_ms: Number(raw?.tiempo_ms ?? raw?.TIEMPO_TRAB_MS ?? 0) || 0,
+      // ✅ soporta estado_actual / ESTADO_ACTUAL / estado
+      estado: String(
+        pickFirst_(
+          raw?.estado,
+          raw?.estado_actual,
+          raw?.estadoActual,
+          raw?.ESTADO_ACTUAL,
+          raw?.ESTADO
+        )
+      )
+        .trim()
+        .toUpperCase(),
+
+      // ✅ soporta TIEMPO_TRAB_MS / tiempo_ms / tiempoMs
+      tiempo_ms: Number(
+        pickFirst_(raw?.tiempo_ms, raw?.tiempoMs, raw?.TIEMPO_TRAB_MS, raw?.TIEMPO_MS, 0)
+      ) || 0,
+
       running_since: raw?.running_since ?? raw?.RUNNING_SINCE ?? null,
 
-      last_nota: String(raw?.last_nota ?? raw?.LAST_NOTA ?? ""),
+      last_nota: String(pickFirst_(raw?.last_nota, raw?.LAST_NOTA, "")),
       last_nota_ts: raw?.last_nota_ts ?? raw?.LAST_NOTA_TS ?? null,
 
       updated_at: raw?.updated_at ?? raw?.UPDATED_AT ?? null,
     };
+
+    // ✅ FALLBACKS CLAVE (si backend no manda rol)
+    if (!it.rolTrabajo) {
+      if (it.tipoRamal) it.rolTrabajo = "RAMALERO";
+      else if (currentModule === "CALIDAD") it.rolTrabajo = "CALIDAD";
+      else if (currentModule === "RAMALERO") it.rolTrabajo = "RAMALERO";
+      else it.rolTrabajo = String(getRolTecnico_() || "MOTOR").toUpperCase();
+    }
+
+    if (!it.estado) it.estado = "SIN_INICIAR";
 
     // caches
     if (it.conversionId && it.rolTrabajo && it.vin) vinCacheSet_(it.conversionId, it.rolTrabajo, it.vin);
@@ -814,6 +860,7 @@ function avgByMedianMad_(arrMs, k = 3.5) {
 
     return it;
   }
+
 
   // ==========================================================
   // 10) RENDER: ACTIVAS / FINALIZADOS + PATCH
@@ -925,10 +972,17 @@ function avgByMedianMad_(arrMs, k = 3.5) {
 
     wrap.style.display = "block";
 
+    // ✅ RAMALERO: tarjeta promedio arriba
+    let avgTop = "";
+    if (currentModule === "RAMALERO") {
+      avgTop = computeRamaleroAvgCardHTML_();
+    }
+
     if (!c.finalKeys.length) {
-      box.innerHTML = `<div class="small">No tienes finalizados.</div>`;
+      box.innerHTML = avgTop + `<div class="small">No tienes finalizados.</div>`;
       return;
     }
+
 
     const nowMs = Date.now();
     let out = "";
@@ -963,7 +1017,7 @@ function avgByMedianMad_(arrMs, k = 3.5) {
       `;
     }
 
-    box.innerHTML = out;
+    box.innerHTML = avgTop + out;
   }
 
   function shouldShowItemInCurrentModule_(it) {
@@ -1447,8 +1501,16 @@ function avgByMedianMad_(arrMs, k = 3.5) {
 
   function clearModuleUI_(mod) {
     withModule_(mod, () => {
-      const vinEl = el_("vin");
-      if (vinEl) vinEl.value = "";
+      if (mod === "RAMALERO") {
+        const ramalIdEl = document.getElementById("ramalId");
+        if (ramalIdEl) ramalIdEl.value = "";
+        const tipoEl = document.getElementById("tipoRamal");
+        if (tipoEl) tipoEl.value = "";
+      } else {
+        const vinEl = el_("vin");
+        if (vinEl) vinEl.value = "";
+      }
+
 
       if ($("nota")) $("nota").value = "";
 
@@ -1614,6 +1676,62 @@ function avgByMedianMad_(arrMs, k = 3.5) {
     }
     return "00:00:00";
   }
+
+  function buildRamaleroAvgCardHTML_({ title, countTotal, avgTotalMs, used, total, low, high }) {
+    const safeTitle = escapeHtml(title || "PROMEDIO RAMALERO");
+    return `
+      <div class="card" style="margin-top:10px; border:1px solid rgba(255,255,255,.16);">
+        <div style="font-weight:1000; font-size:16px; opacity:.9;">
+          ${safeTitle}
+        </div>
+
+        <div style="margin-top:10px; font-weight:1000; font-size:34px; letter-spacing:.5px;">
+          ⏱ ${msToHMSh_(avgTotalMs)}
+        </div>
+
+        <div class="small" style="margin-top:10px; opacity:.9;">
+          <div><b>FINALIZADOS contados:</b> ${countTotal}</div>
+          <div style="margin-top:6px; opacity:.75;">
+            (robusto) usados: ${used}/${total} | outliers: ↓${low} ↑${high}
+          </div>
+        </div>
+
+        <div class="small" style="margin-top:10px; opacity:.7;">
+          (Solo se consideran trabajos en estado <b>FINALIZADO</b>)
+        </div>
+      </div>
+    `;
+  }
+
+  function computeRamaleroAvgCardHTML_() {
+    // promedio del RAMALERO logueado (solo sus finalizados)
+    const c = ctx_();
+    const tiempos = [];
+
+    for (const it of c.itemsByKey.values()) {
+      const rol = String(it?.rolTrabajo || "").toUpperCase();
+      const est = String(it?.estado || "").toUpperCase();
+      if (rol !== "RAMALERO") continue;
+      if (est !== "FINALIZADO") continue;
+
+      const ms = hmsToMs_(it.tiempo_hms ?? it.tiempo_ms ?? it.tiempo);
+      if (ms > 0) tiempos.push(ms);
+    }
+
+    const R = avgByMedianMad_(tiempos, 3.5);
+    if (R.used <= 0) return "";
+
+    return buildRamaleroAvgCardHTML_({
+      title: "PROMEDIO RAMALERO (TU USUARIO)",
+      countTotal: R.used,
+      avgTotalMs: R.avgMs,
+      used: R.used,
+      total: R.total,
+      low: R.low,
+      high: R.high,
+    });
+  }
+
 
   function buildSupervisorAvgCardHTML_({ q, countTotal, avgTotalMs, countMotor, countTanque }) {
     const safeQ = escapeHtml(q || "-");
@@ -2753,6 +2871,13 @@ function avgByMedianMad_(arrMs, k = 3.5) {
   // ==========================================================
   // 21) LISTENERS (GLOBAL)
   // ==========================================================
+
+  // RAMALERO: crear nuevo ramal (sin onclick inline)
+  document.getElementById("btnRamalNuevo")?.addEventListener("click", async () => {
+    if (currentModule !== "RAMALERO") return;
+    await enviarEvento("INICIO");
+  });
+
   document.getElementById("btnSupQR")?.addEventListener("click", () => {
     if (currentModule !== "SUPERVISOR") return;
     openQRModal("SUP_VIN");

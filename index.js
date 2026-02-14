@@ -276,6 +276,40 @@ app.get("/api/name-suggest", async (req, res) => {
   }
 });
 
+// =========================
+// SYNC (frontend espera POST /api/sync)
+// =========================
+app.post("/api/sync", async (req, res) => {
+  try {
+    const email = String(req.body?.email || "").trim().toLowerCase();
+    const userId = String(req.body?.userId || "").trim();
+    const since = req.body?.since ?? null;
+
+    if (!email && !userId) {
+      return res.status(400).json({ ok: false, error: "Envía email o userId" });
+    }
+
+    // intenta action "sync" si existe en tu .gs
+    try {
+      const j = await callAppsScript("sync", { email, userId, since });
+      return res.json(j);
+    } catch (e1) {
+      // fallback: usa mis_activas y envuelve como sync
+      const j2 = await callAppsScript("mis_activas", { email, userId });
+      const items = Array.isArray(j2.items) ? j2.items : [];
+      return res.json({
+        ok: true,
+        full: true,
+        items,
+        server_time: new Date().toISOString(),
+        rev: null,
+        mode: "wrapped_mis_activas",
+      });
+    }
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
 
 
 
