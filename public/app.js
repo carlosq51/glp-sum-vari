@@ -638,11 +638,23 @@
   function openModule(m) {
     currentModule = m;
 
+    // cerrar autocomplete de Supervisor al cambiar de módulo
+    if (m !== "SUPERVISOR") {
+      try { supNameAcHide_(); } catch {}
+    }
+
     $("viewHub").style.display = "none";
     hideAllModules();
 
     const el = document.getElementById(`view${m}`);
     if (el) el.style.display = "block";
+
+        // ✅ PARTE A: warm-up name-suggest (solo 1 vez por sesión)
+    if (m === "SUPERVISOR" && !window.__nameSuggestWarmed) {
+      window.__nameSuggestWarmed = true;
+      fetch("/api/name-suggest?q=.&limit=200").catch(() => {});
+    }
+
 
     // Delegaciones
     if (m === "TECNICO") attachActivasDelegationOnce_("TECNICO");
@@ -2273,6 +2285,232 @@
     });
   })();
 
+
+  // ==========================================================
+  // 19B) SUPERVISOR NAME AUTOCOMPLETE (/api/name-suggest)
+  // ==========================================================
+
+  let supNameAll_ = [];        // lista completa cacheada
+  let supNameAllLoaded_ = false;
+  let supNameAllLoading_ = false;
+
+
+  const SUP_NAME_AC = {
+    MIN_CHARS: 2,
+    LIMIT: 12,
+    DEBOUNCE_MS: 30,
+  };
+
+  let supNameAcTimer = null;
+  let supNameAcItems = [];
+  let supNameAcOpen = false;
+  let supNameAcIndex = -1;
+  let supNameAcLastQ = "";
+  let supNameAcAbort = null;
+
+  function supNameAcBox_() {
+    return document.getElementById("supNameSuggest");
+  }
+
+  function supNameAcHide_() {
+    const box = supNameAcBox_();
+    if (!box) return;
+    supNameAcOpen = false;
+    supNameAcIndex = -1;
+    supNameAcItems = [];
+    box.classList.add("hidden");
+    box.innerHTML = "";
+  }
+
+  function supNameAcRender_() {
+    const box = supNameAcBox_();
+    if (!box) return;
+
+    if (!supNameAcItems.length) return supNameAcHide_();
+
+    box.innerHTML = supNameAcItems
+      .map((u, i) => {
+        const active = i === supNameAcIndex ? "active" : "";
+        const label = u?.label || "";
+        const name = u?.name || "";
+        const email = u?.email || "";
+        return `
+          <div class="nsItem ${active}" data-idx="${i}" role="option" aria-selected="${i === supNameAcIndex}">
+            <div class="nsName">${escapeHtml(name || label)}</div>
+            <div class="nsEmail">${escapeHtml(email || "")}</div>
+          </div>
+        `;
+      })
+      .join("");
+
+    box.classList.remove("hidden");
+    supNameAcOpen = true;
+  }
+
+  function supNameAcSetIndex_(i) {
+    supNameAcIndex = Math.max(0, Math.min(i, supNameAcItems.length - 1));
+    supNameAcRender_();
+
+    const box = supNameAcBox_();
+    const el = box?.querySelector(`.nsItem[data-idx="${supNameAcIndex}"]`);
+    if (el) el.scrollIntoView({ block: "nearest" });
+  }
+
+  async function supNameAcFetch_(q) {
+    const qq = String(q || "").trim().toLowerCase();
+    if (!qq) return [];
+
+    // 1) si ya cargamos la lista completa -> filtra local (instantáneo)
+    if (supNameAllLoaded_) {
+      return supNameAll_
+        .filter((u) => {
+          const name = String(u?.name || "").toLowerCase();
+          const email = String(u?.email || "").toLowerCase();
+          const label = String(u?.label || "").toLowerCase();
+          return (name + " " + email + " " + label).includes(qq);
+        })
+        .slice(0, SUP_NAME_AC.LIMIT);
+    }
+
+    // 2) si aún no cargamos, la pedimos 1 sola vez usando tu endpoint actual
+    //    (truco: mandamos q="." para que devuelva TODO si tu backend lo permite)
+    //    Si tu backend NO soporta "todo", igual cacheamos lo que devuelva.
+    if (!supNameAllLoading_) {
+      supNameAllLoading_ = true;
+      try {
+        const url = `/api/name-suggest?q=${encodeURIComponent(".")}&limit=200`;
+        const r = await fetch(url);
+        const j = await r.json();
+        const items = (j && j.ok && Array.isArray(j.items)) ? j.items : [];
+
+        supNameAll_ = items.map((x) => ({
+          userId: String(x?.userId || ""),
+          name: String(x?.name || ""),
+          email: String(x?.email || ""),
+          label: String(x?.label || ""),
+        }));
+
+        supNameAllLoaded_ = true;
+      } catch {
+        // si falla, no bloqueamos (seguirá usando fetch normal abajo)
+      } finally {
+        supNameAllLoading_ = false;
+      }
+    }
+
+    // 3) fallback: mientras carga (o si no funcionó), usa fetch normal con debounce corto
+    try {
+      supNameAcAbort?.abort?.();
+    } catch {}
+    supNameAcAbort = new AbortController();
+
+    const url =
+      `/api/name-suggest?q=${encodeURIComponent(qq)}&limit=${encodeURIComponent(SUP_NAME_AC.LIMIT)}`;
+
+    const r = await fetch(url, { signal: supNameAcAbort.signal });
+    const j = await r.json();
+    if (!j || !j.ok) return [];
+    return Array.isArray(j.items) ? j.items : [];
+  }
+
+
+  function supNameAcOnInput_() {
+    if (currentModule !== "SUPERVISOR") return;
+
+    const input = document.getElementById("supName");
+    if (!input) return;
+
+    const q = String(input.value || "").trim().toLowerCase();
+    supNameAcLastQ = q;
+
+    if (!q || q.length < SUP_NAME_AC.MIN_CHARS) return supNameAcHide_();
+
+    clearTimeout(supNameAcTimer);
+    supNameAcTimer = setTimeout(async () => {
+      try {
+        const items = await supNameAcFetch_(q);
+        if (supNameAcLastQ !== q) return;
+
+        supNameAcItems = (items || []).map((x) => ({
+          userId: String(x?.userId || ""),
+          name: String(x?.name || ""),
+          email: String(x?.email || ""),
+          label: String(x?.label || ""),
+        }));
+        supNameAcIndex = supNameAcItems.length ? 0 : -1;
+        supNameAcRender_();
+      } catch {
+        supNameAcHide_();
+      }
+    }, SUP_NAME_AC.DEBOUNCE_MS);
+  }
+
+  function supNameAcPick_(u) {
+    const input = document.getElementById("supName");
+    if (!input) return;
+
+    const name  = String(u?.name || u?.label || "").trim();
+    // const email = String(u?.email || "").trim(); // ya no lo pegamos
+
+    // ✅ SOLO nombre en el input
+    input.value = name;
+
+    supNameAcHide_();
+
+    // ✅ que busque al escoger
+    supervisorDebounceFetch_();
+  }
+
+
+  function supNameAcOnKeyDown_(e) {
+    if (!supNameAcOpen) return;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      return supNameAcSetIndex_(supNameAcIndex + 1);
+    }
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      return supNameAcSetIndex_(supNameAcIndex - 1);
+    }
+    if (e.key === "Enter") {
+      if (supNameAcIndex >= 0 && supNameAcItems[supNameAcIndex]) {
+        e.preventDefault();
+        return supNameAcPick_(supNameAcItems[supNameAcIndex]);
+      }
+    }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      return supNameAcHide_();
+    }
+  }
+
+  // bind once (click pick + click outside)
+  (function bindSupNameSuggestOnce() {
+    const box = document.getElementById("supNameSuggest");
+    if (!box) return;
+    if (box.dataset.bound === "1") return;
+    box.dataset.bound = "1";
+
+    box.addEventListener("mousedown", (e) => {
+      const it = e.target.closest(".nsItem[data-idx]");
+      if (!it) return;
+      e.preventDefault();
+      const idx = Number(it.dataset.idx);
+      const u = supNameAcItems[idx];
+      if (u) supNameAcPick_(u);
+    });
+
+    document.addEventListener("click", (e) => {
+      if (!supNameAcOpen) return;
+
+      const wrap = document.querySelector(".supNameWrap") || document.getElementById("supName")?.parentElement;
+      if (wrap && wrap.contains(e.target)) return;
+
+      supNameAcHide_();
+    });
+  })();
+
   // ==========================================================
   // 20) DELEGACIÓN CLICK (ACTIVAS / FINALIZADOS)
   // ==========================================================
@@ -2385,6 +2623,17 @@
   document.getElementById("btnSupQR")?.addEventListener("click", () => {
     if (currentModule !== "SUPERVISOR") return;
     openQRModal("SUP_VIN");
+  });
+
+
+  document.getElementById("supName")?.addEventListener("input", () => {
+    if (currentModule !== "SUPERVISOR") return;
+    supNameAcOnInput_();
+  });
+
+  document.getElementById("supName")?.addEventListener("keydown", (e) => {
+    if (currentModule !== "SUPERVISOR") return;
+    supNameAcOnKeyDown_(e);
   });
 
 

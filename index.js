@@ -219,6 +219,64 @@ app.get("/api/vin-suggest", async (req, res) => {
 });
 
 
+// =========================
+// NAME SUGGEST (FAST: cache + local filter)
+// =========================
+let NAME_CACHE = { ts: 0, items: [] };
+const NAME_CACHE_TTL_MS = 10 * 60 * 1000; // 10 min
+
+function norm_(s) {
+  return String(s || "").trim().toLowerCase();
+}
+
+function hay_(u) {
+  return norm_([u.name, u.email, u.label].filter(Boolean).join(" "));
+}
+
+async function ensureNameCache_() {
+  const now = Date.now();
+  if (NAME_CACHE.items.length && (now - NAME_CACHE.ts) < NAME_CACHE_TTL_MS) return;
+
+  // ✅ pide TODO una vez (q="." o all:true)
+  const j = await callAppsScript("name_suggest", { q: ".", limit: 200, all: true });
+
+  const items = Array.isArray(j.items) ? j.items : [];
+  NAME_CACHE.items = items.map(x => ({
+    userId: String(x.userId || x.id || ""),
+    name: String(x.name || x.nombre || ""),
+    email: String(x.email || ""),
+    label: String(x.label || ""),
+  }));
+  NAME_CACHE.ts = now;
+}
+
+app.get("/api/name-suggest", async (req, res) => {
+  try {
+    const q = norm_(req.query.q);
+    const limit = Math.max(1, Math.min(200, Number(req.query.limit || 12)));
+
+    await ensureNameCache_();
+
+    // ✅ si q vacío o "." => devuelve lista base
+    if (!q || q === ".") {
+      return res.json({ ok: true, items: NAME_CACHE.items.slice(0, limit) });
+    }
+
+    // ✅ filtro local instantáneo
+    const out = [];
+    for (const u of NAME_CACHE.items) {
+      if (hay_(u).includes(q)) {
+        out.push(u);
+        if (out.length >= limit) break;
+      }
+    }
+    return res.json({ ok: true, items: out });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
+
 
 
 

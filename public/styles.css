@@ -475,6 +475,62 @@ pre{
 }
 
 /* =========================
+   SUPERVISOR: NAME AUTOCOMPLETE
+   ========================= */
+.supNameWrap{
+  position:relative;
+  width:100%;
+}
+
+.nameSuggest{
+  position:absolute;
+  left:0;
+  right:0;
+  top:calc(100% + 8px);
+  z-index:999;
+  background:linear-gradient(180deg, rgba(9,30,96,.98) 0%, rgba(8,26,86,.98) 100%);
+  border:1px solid rgba(255,255,255,.16);
+  border-radius:16px;
+  box-shadow:0 18px 40px rgba(0,0,0,.55);
+  overflow:hidden;
+  max-height:260px;
+}
+
+.nameSuggest.hidden{ display:none; }
+
+.nameSuggest .nsItem{
+  padding:12px 12px;
+  cursor:pointer;
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  border-bottom:1px solid rgba(255,255,255,.08);
+  user-select:none;
+}
+
+.nameSuggest .nsItem:last-child{ border-bottom:none; }
+
+.nameSuggest .nsName{
+  font-weight:900;
+  font-size:14px;
+  letter-spacing:.2px;
+}
+
+.nameSuggest .nsEmail{
+  font-size:12px;
+  color:rgba(234,240,255,.70);
+}
+
+.nameSuggest .nsItem:hover{ filter:brightness(1.08); }
+
+.nameSuggest .nsItem.active{
+  outline:2px solid rgba(77,163,255,.85);
+  outline-offset:-2px;
+  background:rgba(255,255,255,.06);
+}
+
+
+/* =========================
    VIN AUTOCOMPLETE
    ========================= */
 .vinSuggest{
@@ -653,6 +709,12 @@ pre{
 button[data-suptrack].active{
   outline:2px solid rgba(77,163,255,.95);
   transform:translateY(-1px);
+}
+
+/* Supervisor: barra de nombre igual que fechas */
+#viewSUPERVISOR .supNameWrap,
+#viewSUPERVISOR #supName{
+  width:100%;
 }
 
 /* =========================

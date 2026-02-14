@@ -224,7 +224,11 @@
       </div>
 
       <div class="fullStack" style="margin-top:10px;">
-        <input id="supName" type="text" placeholder="Buscar por nombre o email..." />
+        <div class="supNameWrap">
+          <input id="supName" type="text" placeholder="Buscar por nombre o email..." autocomplete="off" />
+          <div id="supNameSuggest" class="nameSuggest hidden" role="listbox"></div>
+        </div>
+
         <div class="supVinRow">
           <div class="supVinWrap">
             <input id="supVin" type="text" placeholder="Buscar por VIN..." />
