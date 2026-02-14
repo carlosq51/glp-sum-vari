@@ -375,6 +375,71 @@
   // ==========================================================
   // 6) HELPERS: FORMATO, ESCAPE, TIEMPOS, KEYS
   // ==========================================================
+
+  // ==========================================================
+// PROMEDIO REALISTA (MEDIANA + MAD)
+// ==========================================================
+
+function median_(arr) {
+  const v = [...arr].sort((a,b)=>a-b);
+  const n = v.length;
+  if (!n) return 0;
+  const m = Math.floor(n / 2);
+  return n % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
+}
+
+function mad_(arr, med) {
+  const devs = arr.map(x => Math.abs(x - med));
+  return median_(devs);
+}
+
+/**
+ * Promedio robusto usando Mediana + MAD
+ * @param {number[]} arrMs - tiempos en ms
+ * @param {number} k - factor MAD (3.0 – 4.0 recomendado)
+ */
+function avgByMedianMad_(arrMs, k = 3.5) {
+  const vals = arrMs.filter(x => Number.isFinite(x) && x > 0);
+  if (vals.length < 3) {
+    return {
+      avgMs: vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : 0,
+      used: vals.length,
+      total: vals.length,
+      low: 0,
+      high: 0
+    };
+  }
+
+  const med = median_(vals);
+  const mad = mad_(vals, med) || 1; // evita división por 0
+
+  const min = med - k * mad;
+  const max = med + k * mad;
+
+  const ok = [];
+  let low = 0, high = 0;
+
+  for (const x of vals) {
+    if (x < min) low++;
+    else if (x > max) high++;
+    else ok.push(x);
+  }
+
+  const avgMs = ok.length
+    ? ok.reduce((a,b)=>a+b,0) / ok.length
+    : med; // fallback ultra seguro
+
+  return {
+    avgMs,
+    medianMs: med,
+    madMs: mad,
+    used: ok.length,
+    total: vals.length,
+    low,
+    high,
+  };
+}
+
   function fmtShort_(iso) {
     if (!iso) return "-";
     const d = new Date(iso);
@@ -1718,10 +1783,10 @@
     let avgCard = "";
 
     if (q) {
-      let sumMotor = 0,
-        nMotor = 0;
-      let sumTanque = 0,
-        nTanque = 0;
+      // En vez de sumatorias simples, juntamos tiempos y sacamos promedio robusto
+      const tiemposMotor = [];
+      const tiemposTanque = [];
+      const tiemposTotal = []; // motor + tanque (para el promedio final)
 
       for (const g of groups) {
         const m = g.motor;
@@ -1733,8 +1798,8 @@
           if (who.includes(q) && est === "FINALIZADO") {
             const ms = hmsToMs_(m.tiempo_hms ?? m.tiempo_ms ?? m.tiempo);
             if (ms > 0) {
-              sumMotor += ms;
-              nMotor++;
+              tiemposMotor.push(ms);
+              tiemposTotal.push(ms);
             }
           }
         }
@@ -1745,16 +1810,22 @@
           if (who.includes(q) && est === "FINALIZADO") {
             const ms = hmsToMs_(t.tiempo_hms ?? t.tiempo_ms ?? t.tiempo);
             if (ms > 0) {
-              sumTanque += ms;
-              nTanque++;
+              tiemposTanque.push(ms);
+              tiemposTotal.push(ms);
             }
           }
         }
       }
 
-      const sumTotal = sumMotor + sumTanque;
-      const nTotal = nMotor + nTanque;
-      const avgTotal = nTotal ? sumTotal / nTotal : 0;
+      // Promedios robustos (Mediana + MAD)
+      const Rtot = avgByMedianMad_(tiemposTotal, 3.5);
+      const Rm   = avgByMedianMad_(tiemposMotor, 3.5);
+      const Rt   = avgByMedianMad_(tiemposTanque, 3.5);
+
+      const nMotor = Rm.used;
+      const nTanque = Rt.used;
+      const nTotal = Rtot.used;
+      const avgTotal = Rtot.avgMs;
 
       if (nTotal > 0) {
         avgCard = buildSupervisorAvgCardHTML_({
