@@ -1,4 +1,4 @@
-import express from "express";
+﻿import express from "express";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -310,6 +310,21 @@ app.post("/api/sync", async (req, res) => {
     return res.status(500).json({ ok: false, error: String(e.message || e) });
   }
 });
+
+
+// =========================
+// CONFORMIDAD EQUIPO (guardar)
+// =========================
+app.post("/api/equipo-conformidad", async (req, res) => {
+  try {
+    // espera: email, conversionId, vin, rolTrabajo, equipoCodigo, checks
+    const j = await callAppsScript("equipo_conformidad", req.body);
+    res.json(j);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
 
 
 

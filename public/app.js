@@ -564,27 +564,42 @@ function avgByMedianMad_(arrMs, k = 3.5) {
   // =========================
   function buildAsignadoHTML_(it) {
     const rol = String(it?.rolTrabajo || "").toUpperCase();
-
-    // Solo TECNICO: MOTOR/TANQUE
     if (rol !== "MOTOR" && rol !== "TANQUE") return "";
 
-    const tanque = String(it?.tanque_asignado || "").trim();
-    const reductor = String(it?.reductor_asignado || "").trim();
+    const tanqueAsign = String(it?.tanque_asignado || "").trim();
+    const reductAsign = String(it?.reductor_asignado || "").trim();
 
-    const label = rol === "TANQUE" ? "TANQUE ASIGNADO:" : "REDUCTOR ASIGNADO:";
-    const val = rol === "TANQUE" ? tanque : reductor;
+    // ✅ nuevos campos (vendrán del backend/sync)
+    const tanqueReg = String(it?.tanque_registrado || "").trim();
+    const reductReg = String(it?.reductor_registrado || "").trim();
 
-    const safeLabel = escapeHtml(label);
-    const safeVal = escapeHtml(val || "NO ASIGNADO");
-    const naClass = val ? "" : " na";
+    const isTanque = rol === "TANQUE";
+
+    const labelAsign = isTanque ? "TANQUE ASIGNADO:" : "REDUCTOR ASIGNADO:";
+    const valAsign   = isTanque ? tanqueAsign : reductAsign;
+
+    const labelReg = isTanque ? "TANQUE REGISTRADO:" : "REDUCTOR REGISTRADO:";
+    const valReg   = isTanque ? tanqueReg : reductReg;
+
+    const safeAsignVal = escapeHtml(valAsign || "NO ASIGNADO");
+    const safeRegVal   = escapeHtml(valReg || "—");
+
+    const naAsign = valAsign ? "" : " na";
+    const naReg   = valReg ? "" : " na";
 
     return `
       <div class="asignadoRow js-asignado" data-rol="${escapeHtml(rol)}">
-        <span class="asignadoLabel">${safeLabel}</span>
-        <span class="asignadoValue${naClass}">${safeVal}</span>
+        <span class="asignadoLabel">${escapeHtml(labelAsign)}</span>
+        <span class="asignadoValue${naAsign}">${safeAsignVal}</span>
+      </div>
+
+      <div class="asignadoRow js-registrado" data-rol="${escapeHtml(rol)}" style="margin-top:6px;">
+        <span class="asignadoLabel">${escapeHtml(labelReg)}</span>
+        <span class="asignadoValue${naReg}">${safeRegVal}</span>
       </div>
     `;
   }
+
 
 
   // ==========================================================
@@ -880,6 +895,16 @@ function avgByMedianMad_(arrMs, k = 3.5) {
         pickFirst_(raw?.reductor_asignado, raw?.reductorAsignado, raw?.REDUCTOR_ASIGNADO, "")
       ).trim(),
 
+      // ✅ REGISTRADOS (vienen del backend/sync)
+      tanque_registrado: String(
+        pickFirst_(raw?.tanque_registrado, raw?.tanqueRegistrado, raw?.TANQUE_REGISTRADO, "")
+      ).trim(),
+
+      reductor_registrado: String(
+        pickFirst_(raw?.reductor_registrado, raw?.reductorRegistrado, raw?.REDUCTOR_REGISTRADO, "")
+      ).trim(),
+
+
     };
 
     // ✅ FALLBACKS CLAVE (si backend no manda rol)
@@ -972,6 +997,14 @@ function avgByMedianMad_(arrMs, k = 3.5) {
           <div class="jobExpand">
 
             ${buildAsignadoHTML_(it)}
+
+            ${(String(it?.rolTrabajo||"").toUpperCase()==="MOTOR" || String(it?.rolTrabajo||"").toUpperCase()==="TANQUE")
+              ? `<button class="btnRF" type="button" data-go="CONF" style="margin-bottom:10px;">
+                  ✅ Registro de conformidad de equipo
+                </button>`
+              : ""
+            }
+
 
             <div class="jobActionsSlot">
               ${buildBotonesByEstado_(estado)}
@@ -2869,6 +2902,30 @@ function avgByMedianMad_(arrMs, k = 3.5) {
           return;
         }
 
+        // ✅ Conformidad de equipo
+        if (go && go.dataset.go === "CONF") {
+          e.stopPropagation();
+
+          // NO tocamos el input VIN global
+          const vinCard = String(it.vin || "").trim().toUpperCase();
+          const rolCard = String(it.rolTrabajo || "").trim().toUpperCase();
+
+          if (!vinCard || (rolCard !== "MOTOR" && rolCard !== "TANQUE")) return;
+
+          openConfModal_({
+            conversionId: it.conversionId, // ✅ AÑADIR
+            vin: vinCard,
+            rolTrabajo: rolCard,
+            tanque_asignado: it.tanque_asignado || "",
+            reductor_asignado: it.reductor_asignado || "",
+            tanque_registrado: it.tanque_registrado || "",
+            reductor_registrado: it.reductor_registrado || "",
+          });
+
+          return;
+        }
+
+
         if (btn) {
           e.stopPropagation();
           const accion = String(btn.dataset.act || "").toUpperCase();
@@ -2914,6 +2971,30 @@ function avgByMedianMad_(arrMs, k = 3.5) {
   // ==========================================================
   // 21) LISTENERS (GLOBAL)
   // ==========================================================
+
+  document.getElementById("btnCloseConf")?.addEventListener("click", () => closeConfModal_());
+  document.getElementById("confModal")?.addEventListener("click", async (e) => {
+    if (e.target === document.getElementById("confModal")) await closeConfModal_();
+  });
+
+  document.getElementById("btnConfQR")?.addEventListener("click", () => startConfQR_());
+  document.getElementById("btnConfStopQR")?.addEventListener("click", async () => {
+    await stopConfQR_();
+    const wrap = document.getElementById("confQrWrap");
+    if (wrap) wrap.style.display = "none";
+  });
+
+  document.getElementById("btnConfClear")?.addEventListener("click", () => {
+    const input = document.getElementById("confCode");
+    if (input) input.value = "";
+    confQrMsg_("");
+    confSetMsg_("");
+  });
+
+  document.getElementById("btnConfSave")?.addEventListener("click", () => {
+    saveConf_().catch(() => {});
+  });
+
 
   // RAMALERO: crear nuevo ramal (sin onclick inline)
   document.getElementById("btnRamalNuevo")?.addEventListener("click", async () => {
@@ -3123,6 +3204,193 @@ function avgByMedianMad_(arrMs, k = 3.5) {
   $("qrModal")?.addEventListener("click", async (e) => {
     if (e.target === $("qrModal")) await closeQRModal();
   });
+
+  // ==========================================================
+  // 23) CONFORMIDAD DE EQUIPO (MODAL + QR + GUARDAR)
+  // ==========================================================
+  let confQR = null;
+  let confCtx_ = null; // { vin, rolTrabajo, ... }
+
+  function confSetMsg_(t) {
+    const el = document.getElementById("confMsg");
+    if (el) el.textContent = String(t || "");
+  }
+
+  function openConfModal_(ctx) {
+    confCtx_ = { ...ctx };
+
+    const modal = document.getElementById("confModal");
+    if (!modal) return;
+
+    const vinInfo = document.getElementById("confVinInfo");
+    if (vinInfo) vinInfo.textContent = `VIN: ${confCtx_.vin} | Rol: ${confCtx_.rolTrabajo}`;
+
+    // asignado + registrado info
+    const box = document.getElementById("confAssignedBox");
+    if (box) {
+      const isTanque = confCtx_.rolTrabajo === "TANQUE";
+      const asign = isTanque ? confCtx_.tanque_asignado : confCtx_.reductor_asignado;
+      const reg   = isTanque ? confCtx_.tanque_registrado : confCtx_.reductor_registrado;
+
+      const labAsign = isTanque ? "Tanque asignado" : "Reductor asignado";
+      const labReg   = isTanque ? "Tanque registrado" : "Reductor registrado";
+
+      box.innerHTML = `
+        <div><b>${escapeHtml(labAsign)}:</b> ${escapeHtml(String(asign||"NO ASIGNADO"))}</div>
+        <div style="margin-top:4px;"><b>${escapeHtml(labReg)}:</b> ${escapeHtml(String(reg||"—"))}</div>
+      `;
+    }
+
+    // prefill input con lo ya registrado
+    const input = document.getElementById("confCode");
+    if (input) {
+      const isTanque = confCtx_.rolTrabajo === "TANQUE";
+      const reg = isTanque ? confCtx_.tanque_registrado : confCtx_.reductor_registrado;
+      input.value = String(reg || "");
+    }
+
+    // checklist (no pisa si ya estaban marcados; si quieres reset, descomenta)
+    // ["confCk1","confCk2","confCk3","confCk4"].forEach(id => { const c=$(id); if(c) c.checked=false; });
+
+    confSetMsg_("");
+    modal.classList.add("show");
+
+    // oculta QR wrap al abrir
+    const qrWrap = document.getElementById("confQrWrap");
+    if (qrWrap) qrWrap.style.display = "none";
+  }
+
+  async function closeConfModal_() {
+    const modal = document.getElementById("confModal");
+    modal?.classList?.remove("show");
+    await stopConfQR_();
+    confCtx_ = null;
+    confSetMsg_("");
+  }
+
+  function confQrMsg_(t) {
+    const el = document.getElementById("confQrMsg");
+    if (el) el.textContent = String(t || "");
+  }
+
+  async function startConfQR_() {
+    try {
+      if (!window.Html5Qrcode) {
+        confQrMsg_("No se pudo cargar la librería QR.");
+        return;
+      }
+      const wrap = document.getElementById("confQrWrap");
+      if (wrap) wrap.style.display = "block";
+
+      if (!confQR) confQR = new Html5Qrcode("qrReader_conf");
+
+      const config = {
+        fps: 10,
+        qrbox: { width: 250, height: 250 },
+        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+      };
+
+      const onDecoded = async (decodedText) => {
+        const code = String(decodedText || "").trim().toUpperCase();
+        if (!code) return;
+
+        const input = document.getElementById("confCode");
+        if (input) input.value = code;
+
+        confQrMsg_(`Código detectado: ${code}`);
+        await stopConfQR_();
+        const wrap = document.getElementById("confQrWrap");
+        if (wrap) wrap.style.display = "none";
+      };
+
+      // iPhone/Safari: exact environment
+      try {
+        await confQR.start({ facingMode: { exact: "environment" } }, config, onDecoded, () => {});
+        confQrMsg_("Apunta al QR del equipo.");
+        return;
+      } catch {}
+
+      // fallback: environment
+      await confQR.start({ facingMode: "environment" }, config, onDecoded, () => {});
+      confQrMsg_("Apunta al QR del equipo.");
+    } catch {
+      confQrMsg_("No se pudo abrir la cámara. Revisa permisos (HTTPS o localhost).");
+    }
+  }
+
+  async function stopConfQR_() {
+    try {
+      if (confQR && confQR.isScanning) await confQR.stop();
+    } catch {}
+  }
+
+  function readConfChecks_() {
+    const getC = (id) => !!document.getElementById(id)?.checked;
+    return {
+      ck1: getC("confCk1"),
+      ck2: getC("confCk2"),
+      ck3: getC("confCk3"),
+      ck4: getC("confCk4"),
+    };
+  }
+
+  async function saveConf_() {
+    if (!confCtx_?.vin || !confCtx_?.rolTrabajo) return;
+
+    let email;
+    try {
+      email = requireEmailOrStop();
+    } catch {
+      return;
+    }
+
+    const code = String(document.getElementById("confCode")?.value || "").trim().toUpperCase();
+    if (!code) {
+      confSetMsg_("Ingresa o escanea el código del equipo.");
+      return;
+    }
+
+    const checks = readConfChecks_();
+
+    const payload = {
+      email,
+      conversionId: String(confCtx_?.conversionId || "").trim(), // ✅ AÑADIR
+      vin: confCtx_.vin,
+      rolTrabajo: confCtx_.rolTrabajo,
+      equipoCodigo: code,
+      checks,
+    };
+
+
+    const j = await postJSON_user("/api/equipo-conformidad", payload, "Guardando conformidad...");
+    if (!j || !j.ok) {
+      confSetMsg_(j?.error || "Error guardando.");
+      return;
+    }
+
+    // ✅ actualiza UI local (store) para que se vea "REGISTRADO" sin esperar sync
+    try {
+      const c = ctx_();
+      const it = findItemByVinRol_(confCtx_.vin, confCtx_.rolTrabajo);
+      if (it) {
+        if (confCtx_.rolTrabajo === "TANQUE") it.tanque_registrado = code;
+        if (confCtx_.rolTrabajo === "MOTOR") it.reductor_registrado = code;
+
+        const k = keyOfItem_(it);
+        c.itemsByKey.set(k, it);
+        renderActivas_();
+      }
+    } catch {}
+
+    confSetMsg_("✅ Conformidad guardada.");
+    setTimeout(() => closeConfModal_().catch(() => {}), 450);
+
+    // refresco suave
+    setTimeout(() => {
+      if (!uiLocked) syncNow({ forceFull: false, showOut: false }).catch(() => {});
+    }, 650);
+  }
+
 
   // ==========================================================
   // 22) AUTO LOGIN ON LOAD
