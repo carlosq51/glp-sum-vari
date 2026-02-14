@@ -1642,6 +1642,36 @@ function avgByMedianMad_(arrMs, k = 3.5) {
     `;
   }
 
+  function buildSupervisorAvgSimpleCardHTML_({ title, q, countTotal, avgTotalMs }) {
+  const safeTitle = escapeHtml(title || "-");
+  const safeQ = escapeHtml(q || "-");
+
+  return `
+    <div class="card" style="margin-top:10px; border:1px solid rgba(255,255,255,.16);">
+      <div style="font-weight:1000; font-size:16px; opacity:.9;">
+        ${safeTitle}
+      </div>
+
+      <div style="margin-top:6px; font-weight:1000; font-size:22px; line-height:1.1;">
+        ${safeQ}
+      </div>
+
+      <div style="margin-top:10px; font-weight:1000; font-size:34px; letter-spacing:.5px;">
+        ⏱ ${msToHMSh_(avgTotalMs)}
+      </div>
+
+      <div class="small" style="margin-top:10px; opacity:.9;">
+        <div><b>FINALIZADOS contados:</b> ${countTotal}</div>
+      </div>
+
+      <div class="small" style="margin-top:10px; opacity:.7;">
+        (Solo se consideran trabajos en estado <b>FINALIZADO</b>)
+      </div>
+    </div>
+  `;
+}
+
+
   function renderSupItemCard_(it) {
     const who = it.userName || it.userEmail || it.userId || "-";
     const rolLabel = String(it.rol || it.rolTrabajo || "").toUpperCase() || "-";
@@ -1770,7 +1800,39 @@ function avgByMedianMad_(arrMs, k = 3.5) {
     // CALIDAD/RAMAL: 1 registro = 1 trabajo
     if (supTrack === "CALIDAD" || supTrack === "RAMAL") {
       if (sum) sum.textContent = `Resultados: ${items.length}`;
-      box.innerHTML = items.map((it) => renderSupItemCard_(it)).join("");
+
+      // ✅ Promedio robusto por encargado (si hay filtro por nombre)
+      const q = String(document.getElementById("supName")?.value || "").trim().toLowerCase();
+      let avgCard = "";
+
+      if (q) {
+        const tiempos = [];
+
+        for (const it of items) {
+          const who = String(it.userName || it.userEmail || it.userId || "").toLowerCase();
+          const est = String(it.estado || "").toUpperCase();
+
+          // Solo finalizados del encargado filtrado
+          if (!who.includes(q) || est !== "FINALIZADO") continue;
+
+          const ms = hmsToMs_(it.tiempo_hms ?? it.tiempo_ms ?? it.tiempo);
+          if (ms > 0) tiempos.push(ms);
+        }
+
+        // Promedio robusto (Mediana + MAD)
+        const R = avgByMedianMad_(tiempos, 3.5);
+
+        if (R.used > 0) {
+          avgCard = buildSupervisorAvgSimpleCardHTML_({
+            title: supTrack === "CALIDAD" ? "PROMEDIO CALIDAD (ENCARGADO)" : "PROMEDIO RAMAL (ENCARGADO)",
+            q,
+            countTotal: R.used,
+            avgTotalMs: R.avgMs,
+          });
+        }
+      }
+
+      box.innerHTML = avgCard + items.map((it) => renderSupItemCard_(it)).join("");
       return;
     }
 
