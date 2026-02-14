@@ -803,3 +803,24 @@ button[data-suptrack].active{
   #vin{ font-size:14px; }
 }
 
+.ckRow{
+  display:flex;
+  gap:12px;
+  align-items:flex-start;
+  padding:10px 6px;         /* ✅ más área táctil */
+  border-radius:12px;
+}
+
+.ckRow input[type="checkbox"]{
+  width:28px;               /* ✅ tamaño visual */
+  height:28px;
+  margin-top:2px;
+  accent-color:#00c26f;     /* opcional */
+}
+
+.ckRow span{
+  line-height:1.25;
+  font-size:16px;           /* opcional */
+}
+
+

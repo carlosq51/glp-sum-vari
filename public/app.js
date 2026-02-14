@@ -3250,14 +3250,18 @@ function avgByMedianMad_(arrMs, k = 3.5) {
     }
 
     // checklist (no pisa si ya estaban marcados; si quieres reset, descomenta)
-    // ["confCk1","confCk2","confCk3","confCk4"].forEach(id => { const c=$(id); if(c) c.checked=false; });
+    document.querySelectorAll('[id^="confCk"]').forEach((c) => (c.checked = false));
 
     confSetMsg_("");
     modal.classList.add("show");
-
+    
     // oculta QR wrap al abrir
     const qrWrap = document.getElementById("confQrWrap");
     if (qrWrap) qrWrap.style.display = "none";
+
+    wireConfValidation_();
+    validateConf_(); // <- importante para que calcule estado al abrir
+
   }
 
   async function closeConfModal_() {
@@ -3325,14 +3329,65 @@ function avgByMedianMad_(arrMs, k = 3.5) {
   }
 
   function readConfChecks_() {
-    const getC = (id) => !!document.getElementById(id)?.checked;
+    // Lee TODOS los checks que existan con id confCk*
+    const nodes = Array.from(document.querySelectorAll('[id^="confCk"]'));
+    const obj = {};
+    for (const el of nodes) obj[el.id] = !!el.checked;
+
+    // Para compatibilidad con tu payload actual (ck1/ck2/ck3/ck4...)
+    // los mapeamos por orden de aparición.
+    const arr = nodes.map((el) => !!el.checked);
     return {
-      ck1: getC("confCk1"),
-      ck2: getC("confCk2"),
-      ck3: getC("confCk3"),
-      ck4: getC("confCk4"),
+      ck1: !!arr[0],
+      ck2: !!arr[1],
+      ck3: !!arr[2],
+      ck4: !!arr[3],
+      _all: nodes,      // referencia interna
+      _map: obj         // por si quieres guardar por id
     };
   }
+
+  function validateConf_() {
+    const code = String(document.getElementById("confCode")?.value || "").trim().toUpperCase();
+
+    const checks = readConfChecks_();
+    const nodes = checks._all || [];
+    const okChecks = nodes.length ? nodes.every((n) => !!n.checked) : true; // si no hay checks, no bloquea
+
+    const ok = !!code && okChecks;
+
+    const btn = document.getElementById("btnConfSave");
+    if (btn) btn.disabled = !ok;
+
+    const msg = document.getElementById("confMsg");
+    if (msg) {
+      if (ok) msg.textContent = "";
+      else {
+        const faltan = [];
+        if (!code) faltan.push("código");
+        if (!okChecks) faltan.push("marcar todo el checklist");
+        msg.textContent = `Completa: ${faltan.join(" y ")}.`;
+      }
+    }
+
+    return ok;
+  }
+
+  function wireConfValidation_() {
+    // Evita duplicar listeners cada vez que abres el modal
+    if (wireConfValidation_._bound) return;
+    wireConfValidation_._bound = true;
+
+    document.addEventListener("input", (e) => {
+      if (e.target?.id === "confCode") validateConf_();
+    });
+
+    document.addEventListener("change", (e) => {
+      if (String(e.target?.id || "").startsWith("confCk")) validateConf_();
+    });
+  }
+
+  
 
   async function saveConf_() {
     if (!confCtx_?.vin || !confCtx_?.rolTrabajo) return;
@@ -3344,12 +3399,13 @@ function avgByMedianMad_(arrMs, k = 3.5) {
       return;
     }
 
-    const code = String(document.getElementById("confCode")?.value || "").trim().toUpperCase();
-    if (!code) {
-      confSetMsg_("Ingresa o escanea el código del equipo.");
+    // ✅ NO guardar si falta código o checklist
+    if (!validateConf_()) {
+      // validateConf_ ya pone el mensaje y deshabilita botón
       return;
     }
 
+    const code = String(document.getElementById("confCode")?.value || "").trim().toUpperCase();
     const checks = readConfChecks_();
 
     const payload = {
