@@ -558,6 +558,34 @@ function avgByMedianMad_(arrMs, k = 3.5) {
       </div>
     `;
   }
+  
+  // =========================
+  // ASIGNADO (TANQUE/REDUCTOR)
+  // =========================
+  function buildAsignadoHTML_(it) {
+    const rol = String(it?.rolTrabajo || "").toUpperCase();
+
+    // Solo TECNICO: MOTOR/TANQUE
+    if (rol !== "MOTOR" && rol !== "TANQUE") return "";
+
+    const tanque = String(it?.tanque_asignado || "").trim();
+    const reductor = String(it?.reductor_asignado || "").trim();
+
+    const label = rol === "TANQUE" ? "TANQUE ASIGNADO:" : "REDUCTOR ASIGNADO:";
+    const val = rol === "TANQUE" ? tanque : reductor;
+
+    const safeLabel = escapeHtml(label);
+    const safeVal = escapeHtml(val || "NO ASIGNADO");
+    const naClass = val ? "" : " na";
+
+    return `
+      <div class="asignadoRow js-asignado" data-rol="${escapeHtml(rol)}">
+        <span class="asignadoLabel">${safeLabel}</span>
+        <span class="asignadoValue${naClass}">${safeVal}</span>
+      </div>
+    `;
+  }
+
 
   // ==========================================================
   // 7) CRONÓMETRO (LIVE)
@@ -842,6 +870,16 @@ function avgByMedianMad_(arrMs, k = 3.5) {
       last_nota_ts: raw?.last_nota_ts ?? raw?.LAST_NOTA_TS ?? null,
 
       updated_at: raw?.updated_at ?? raw?.UPDATED_AT ?? null,
+
+      // ✅ ASIGNADOS desde backend (Apps Script)
+      tanque_asignado: String(
+        pickFirst_(raw?.tanque_asignado, raw?.tanqueAsignado, raw?.TANQUE_ASIGNADO, "")
+      ).trim(),
+
+      reductor_asignado: String(
+        pickFirst_(raw?.reductor_asignado, raw?.reductorAsignado, raw?.REDUCTOR_ASIGNADO, "")
+      ).trim(),
+
     };
 
     // ✅ FALLBACKS CLAVE (si backend no manda rol)
@@ -932,9 +970,14 @@ function avgByMedianMad_(arrMs, k = 3.5) {
           </div>
 
           <div class="jobExpand">
+
+            ${buildAsignadoHTML_(it)}
+
             <div class="jobActionsSlot">
               ${buildBotonesByEstado_(estado)}
             </div>
+
+
 
             ${
               currentModule === "TECNICO" || currentModule === "CALIDAD"
