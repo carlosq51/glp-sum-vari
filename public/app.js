@@ -3026,8 +3026,13 @@ function avgByMedianMad_(arrMs, k = 3.5) {
   // RAMALERO: crear nuevo ramal (sin onclick inline)
   document.getElementById("btnRamalNuevo")?.addEventListener("click", async () => {
     if (currentModule !== "RAMALERO") return;
+
+    const ramalIdEl = document.getElementById("ramalId");
+    if (ramalIdEl) ramalIdEl.value = ""; // ✅ fuerza creación nueva
+
     await enviarEvento("INICIO");
   });
+
 
   document.getElementById("btnSupQR")?.addEventListener("click", () => {
     if (currentModule !== "SUPERVISOR") return;
