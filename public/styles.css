@@ -3,6 +3,14 @@
    ========================= */
 :root{
   /* FONDOS (más sólidos – mejor sol) */
+  --bgAccent:#121a2b;              /* ✅ antes estaba hardcodeado en body */
+  --placeholder:rgba(234,240,255,.55);
+
+  --codeBg:rgba(255,255,255,.06);
+  --codeLine:rgba(255,255,255,.10);
+
+  --modalLine:rgba(255,255,255,.10);
+
   --bg0:#05070d;
   --bg1:#0a1020;
 
@@ -52,33 +60,43 @@
    THEME: DAY (alto contraste)
    ========================= */
 :root[data-theme="day"]{
-  --bg0:#f6f8ff;
-  --bg1:#ffffff;
+  /* ✅ Paleta DAY mejorada para sol */
+  --bg0:#eef2ff;                   /* menos glare que blanco puro */
+  --bg1:#f8fafc;
+  --bgAccent:#dbeafe;              /* ✅ luz suave arriba (no mancha oscura) */
 
   --text:#0b1220;
-  --muted:rgba(11,18,32,.72);
+  --muted:rgba(11,18,32,.82);      /* ✅ un poco más fuerte para sol */
 
   --card:#ffffff;
-  --card2:#f1f4ff;
-  --cardLine:rgba(0,0,0,.18);
+  --card2:#f1f5ff;
+  --cardLine:rgba(11,18,32,.20);   /* ✅ bordes más visibles */
 
-  --pillBg:rgba(0,0,0,.06);
-  --pillLine:rgba(0,0,0,.14);
+  --pillBg:rgba(11,18,32,.06);
+  --pillLine:rgba(11,18,32,.16);
 
   --inputBg:#ffffff;
-  --inputLine:rgba(0,0,0,.22);
-  --inputFocus:#2563eb;
+  --inputLine:rgba(11,18,32,.30);  /* ✅ inputs más legibles */
+  --inputFocus:#1d4ed8;
 
-  --btnBg:#0f2c72;
-  --btnBg2:#0b245e;
-  --btnLine:rgba(0,0,0,.18);
+  --btnBg:#0b2a6d;
+  --btnBg2:#08245e;
+  --btnLine:rgba(11,18,32,.22);
 
-  --shadow:0 10px 20px rgba(0,0,0,.12);
+  --shadow:0 10px 18px rgba(11,18,32,.10);
 
-  --ok:#16a34a;     --okBg:rgba(22,163,74,.16);
-  --warn:#ca8a04;   --warnBg:rgba(202,138,4,.16);
-  --danger:#dc2626; --dangerBg:rgba(220,38,38,.16);
-  --note:#2563eb;   --noteBg:rgba(37,99,235,.16);
+  /* ✅ Acciones un poco más “profundas” para contraste en sol */
+  --ok:#15803d;     --okBg:rgba(21,128,61,.14);
+  --warn:#a16207;   --warnBg:rgba(161,98,7,.14);
+  --danger:#b91c1c; --dangerBg:rgba(185,28,28,.14);
+  --note:#1d4ed8;   --noteBg:rgba(29,78,216,.14);
+
+  --placeholder:rgba(11,18,32,.45);
+
+  --codeBg:rgba(11,18,32,.04);
+  --codeLine:rgba(11,18,32,.12);
+
+  --modalLine:rgba(11,18,32,.10);
 }
 
 *{ box-sizing:border-box; }
@@ -95,7 +113,7 @@ body{
   background:
     radial-gradient(
       1200px 700px at 18% -10%,
-      #121a2b 0%,
+      var(--bgAccent) 0%,
       var(--bg1) 55%,
       var(--bg0) 100%
     ),
@@ -189,6 +207,9 @@ button:disabled{ opacity:.55; cursor:not-allowed; transform:none; }
 /* =========================
    PILL / CODE
    ========================= */
+/* =========================
+   PILL / CODE
+   ========================= */
 .pill{
   border:1px solid var(--pillLine);
   padding:6px 10px;
@@ -196,13 +217,21 @@ button:disabled{ opacity:.55; cursor:not-allowed; transform:none; }
   background:var(--pillBg);
 }
 
+/* ✅ aquí mismo */
+input::placeholder,
+textarea::placeholder{
+  color:var(--placeholder);
+}
+
 pre{
-  background:rgba(255,255,255,.06);
+  background:var(--codeBg);
   padding:12px;
   border-radius:14px;
   overflow:auto;
-  border:1px solid rgba(255,255,255,.10);
+  border:1px solid var(--codeLine);
 }
+
+
 
 /* =========================
    VIN + QR (legacy wrapper)
