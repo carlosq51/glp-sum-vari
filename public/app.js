@@ -600,6 +600,28 @@ function avgByMedianMad_(arrMs, k = 3.5) {
     `;
   }
 
+  function buildIncidenciasBtnHTML_(it) {
+    // Solo CALIDAD registra incidencias
+    if (currentModule !== "CALIDAD") return "";
+    const vin = String(it?.vin || "").trim().toUpperCase();
+    const cid = String(it?.conversionId || "").trim();
+    if (!vin && !cid) return "";
+
+    const l = Number(it?.inc_leve || 0);
+    const m = Number(it?.inc_moderada || 0);
+    const c = Number(it?.inc_critica || 0);
+
+    const badge =
+      (l || m || c)
+        ? `<span class="pill small" style="margin-left:8px;">L:${l} M:${m} C:${c}</span>`
+        : `<span class="pill small" style="margin-left:8px; opacity:.8;">L:0 M:0 C:0</span>`;
+
+    return `
+      <button class="btnRF" type="button" data-go="INC" style="margin-bottom:10px;">
+        ⚠️ Registrar incidencia ${badge}
+      </button>
+    `;
+  }
 
 
   // ==========================================================
@@ -904,6 +926,11 @@ function avgByMedianMad_(arrMs, k = 3.5) {
         pickFirst_(raw?.reductor_registrado, raw?.reductorRegistrado, raw?.REDUCTOR_REGISTRADO, "")
       ).trim(),
 
+            // ✅ INCIDENCIAS (si backend las manda)
+      inc_leve: Number(pickFirst_(raw?.inc_leve, raw?.INC_LEVE, 0)) || 0,
+      inc_moderada: Number(pickFirst_(raw?.inc_moderada, raw?.INC_MODERADA, 0)) || 0,
+      inc_critica: Number(pickFirst_(raw?.inc_critica, raw?.INC_CRITICA, 0)) || 0,
+
 
     };
 
@@ -1005,6 +1032,7 @@ function avgByMedianMad_(arrMs, k = 3.5) {
               : ""
             }
 
+            ${buildIncidenciasBtnHTML_(it)}
 
             <div class="jobActionsSlot">
               ${buildBotonesByEstado_(estado)}
@@ -2952,6 +2980,20 @@ function avgByMedianMad_(arrMs, k = 3.5) {
           return;
         }
 
+                // ✅ Incidencias (solo CALIDAD)
+        if (go && go.dataset.go === "INC") {
+          e.stopPropagation();
+
+          const vinCard = String(it.vin || "").trim().toUpperCase();
+          const conversionId = String(it.conversionId || "").trim();
+
+          openIncModal_({
+            conversionId,
+            vin: vinCard,
+          });
+          return;
+        }
+
 
         if (btn) {
           e.stopPropagation();
@@ -3485,6 +3527,169 @@ function avgByMedianMad_(arrMs, k = 3.5) {
       if (!uiLocked) syncNow({ forceFull: false, showOut: false }).catch(() => {});
     }, 650);
   }
+
+    // ==========================================================
+  // 24) INCIDENCIAS (MODAL + LISTA TÉCNICOS + GUARDAR)
+  // ==========================================================
+  let incCtx_ = null; // { conversionId, vin }
+  let incTecCache_ = { ts: 0, items: [] }; // cache simple
+  const INC_TEC_CACHE_TTL = 6 * 60 * 60 * 1000; // 6h
+
+  function incSetMsg_(t) {
+    const el = document.getElementById("incMsg");
+    if (el) el.textContent = String(t || "");
+  }
+
+  function incMonthKey_() {
+    // YYYY-MM local
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    return `${y}-${m}`;
+  }
+
+  async function loadTecnicosList_() {
+    const now = Date.now();
+    if (incTecCache_.items?.length && now - incTecCache_.ts < INC_TEC_CACHE_TTL) {
+      return incTecCache_.items;
+    }
+    const j = await getJSON("/api/tecnicos-list");
+    if (!j || !j.ok) throw new Error(j?.error || "No se pudo cargar técnicos.");
+    const items = Array.isArray(j.items) ? j.items : [];
+    incTecCache_ = { ts: now, items };
+    return items;
+  }
+
+  function validateInc_() {
+    const tech = String(document.getElementById("incTech")?.value || "").trim();
+    const tipo = String(document.getElementById("incTipo")?.value || "").trim().toUpperCase();
+
+    const ok = !!tech && ["LEVE", "MODERADA", "CRITICA"].includes(tipo);
+
+    const btn = document.getElementById("btnIncSave");
+    if (btn) btn.disabled = !ok;
+
+    if (!ok) {
+      const faltan = [];
+      if (!tech) faltan.push("técnico");
+      if (!["LEVE", "MODERADA", "CRITICA"].includes(tipo)) faltan.push("tipo de incidencia");
+      incSetMsg_(`Completa: ${faltan.join(" y ")}.`);
+    } else {
+      incSetMsg_("");
+    }
+    return ok;
+  }
+
+  async function openIncModal_(ctx) {
+    if (currentModule !== "CALIDAD") return;
+
+    incCtx_ = { ...ctx };
+
+    const modal = document.getElementById("incModal");
+    if (!modal) return;
+
+    const info = document.getElementById("incInfo");
+    if (info) {
+      info.textContent = `VIN: ${String(incCtx_.vin || "-")} | ID: ${String(incCtx_.conversionId || "-")} | Mes: ${incMonthKey_()}`;
+    }
+
+    // reset inputs
+    const selTech = document.getElementById("incTech");
+    const selTipo = document.getElementById("incTipo");
+    const note = document.getElementById("incNota");
+
+    if (selTech) selTech.innerHTML = `<option value="">Cargando técnicos...</option>`;
+    if (selTipo) selTipo.value = "";
+    if (note) note.value = "";
+
+    incSetMsg_("Cargando técnicos...");
+    modal.classList.add("show");
+
+    try {
+      const items = await loadTecnicosList_();
+      if (selTech) {
+        selTech.innerHTML =
+          `<option value="">Selecciona técnico</option>` +
+          items
+            .map((u) => {
+              const name = String(u?.name || u?.label || "").trim();
+              const email = String(u?.email || "").trim();
+              const val = email ? `${name} <${email}>` : name;
+              const lab = email ? `${name} (${email})` : name;
+              return `<option value="${escapeHtml(val)}">${escapeHtml(lab)}</option>`;
+            })
+            .join("");
+      }
+      incSetMsg_("");
+    } catch (e) {
+      if (selTech) selTech.innerHTML = `<option value="">(No se pudo cargar)</option>`;
+      incSetMsg_(String(e?.message || e));
+    }
+
+    validateInc_();
+  }
+
+  async function closeIncModal_() {
+    const modal = document.getElementById("incModal");
+    modal?.classList?.remove("show");
+    incCtx_ = null;
+    incSetMsg_("");
+  }
+
+  async function saveInc_() {
+    if (currentModule !== "CALIDAD") return;
+    if (!incCtx_?.vin && !incCtx_?.conversionId) return;
+
+    let email;
+    try {
+      email = requireEmailOrStop();
+    } catch {
+      return;
+    }
+
+    if (!validateInc_()) return;
+
+    const tecnico = String(document.getElementById("incTech")?.value || "").trim();
+    const tipo = String(document.getElementById("incTipo")?.value || "").trim().toUpperCase();
+    const nota = String(document.getElementById("incNota")?.value || "").trim();
+
+    const payload = {
+      email, // quien registra (CALIDAD)
+      conversionId: String(incCtx_.conversionId || "").trim(),
+      vin: String(incCtx_.vin || "").trim().toUpperCase(),
+      tecnico,
+      tipo,
+      nota,
+    };
+
+    const j = await postJSON_user("/api/incidencia", payload, "Guardando incidencia...");
+    if (!j || !j.ok) {
+      incSetMsg_(j?.error || "Error guardando.");
+      return;
+    }
+
+    incSetMsg_("✅ Incidencia registrada.");
+    setTimeout(() => closeIncModal_().catch(() => {}), 450);
+
+    // refresco suave para traer conteos si tu sync ya los manda
+    setTimeout(() => {
+      if (!uiLocked) syncNow({ forceFull: false, showOut: false }).catch(() => {});
+    }, 650);
+  }
+
+  // listeners (una vez)
+  document.getElementById("btnCloseInc")?.addEventListener("click", () => closeIncModal_());
+  document.getElementById("incModal")?.addEventListener("click", async (e) => {
+    if (e.target === document.getElementById("incModal")) await closeIncModal_();
+  });
+  document.getElementById("btnIncSave")?.addEventListener("click", () => saveInc_().catch(() => {}));
+  document.getElementById("incTech")?.addEventListener("change", validateInc_);
+  document.getElementById("incTipo")?.addEventListener("change", validateInc_);
+  document.getElementById("incNota")?.addEventListener("input", () => {
+    // no bloquea el guardado, solo mantiene msg limpio
+    validateInc_();
+  });
+
 
 
   // ==========================================================

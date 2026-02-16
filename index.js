@@ -325,8 +325,23 @@ app.post("/api/equipo-conformidad", async (req, res) => {
   }
 });
 
+app.get("/api/tecnicos-list", async (req, res) => {
+  try {
+    const j = await callAppsScript("tecnicos_list", {});
+    res.json(j);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
 
-
+app.post("/api/incidencia", async (req, res) => {
+  try {
+    const j = await callAppsScript("incidencia_add", req.body);
+    res.json(j);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
 
 
 app.listen(PORT, () => console.log(`Servidor corriendo en http://localhost:${PORT}`));
