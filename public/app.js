@@ -1154,6 +1154,33 @@ function avgByMedianMad_(arrMs, k = 3.5) {
       const timeEl = card.querySelector(".js-tiempo");
       if (timeEl) timeEl.textContent = `⏱ ${msToHMS_(computeLiveMs_(it, nowMs))}`;
 
+      // ✅ patch asignado/registrado (si existe en el DOM)
+      try {
+        const rol = String(it.rolTrabajo || "").toUpperCase();
+        if (rol === "MOTOR" || rol === "TANQUE") {
+          const isTanque = rol === "TANQUE";
+
+          const asignVal = isTanque ? String(it.tanque_asignado || "").trim()
+                                    : String(it.reductor_asignado || "").trim();
+
+          const regVal   = isTanque ? String(it.tanque_registrado || "").trim()
+                                    : String(it.reductor_registrado || "").trim();
+
+          const asgRow = card.querySelector(".js-asignado .asignadoValue");
+          const regRow = card.querySelector(".js-registrado .asignadoValue");
+
+          if (asgRow) {
+            asgRow.textContent = asignVal || "NO ASIGNADO";
+            asgRow.classList.toggle("na", !asignVal);
+          }
+          if (regRow) {
+            regRow.textContent = regVal || "—";
+            regRow.classList.toggle("na", !regVal);
+          }
+        }
+      } catch {}
+
+
       if (wasOpen) {
         const slot = card.querySelector(".jobActionsSlot");
         if (slot) slot.innerHTML = buildBotonesByEstado_(estado);
