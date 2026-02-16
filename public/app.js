@@ -3250,7 +3250,7 @@ function avgByMedianMad_(arrMs, k = 3.5) {
     }
 
     // checklist (no pisa si ya estaban marcados; si quieres reset, descomenta)
-    document.querySelectorAll('[id^="confCk"]').forEach((c) => (c.checked = false));
+    document.querySelectorAll("#confModal .confCk").forEach((c) => (c.checked = false));
 
     confSetMsg_("");
     modal.classList.add("show");
@@ -3329,30 +3329,36 @@ function avgByMedianMad_(arrMs, k = 3.5) {
   }
 
   function readConfChecks_() {
-    // Lee TODOS los checks que existan con id confCk*
-    const nodes = Array.from(document.querySelectorAll('[id^="confCk"]'));
-    const obj = {};
-    for (const el of nodes) obj[el.id] = !!el.checked;
+    // ✅ Solo checks dentro del modal de conformidad
+    const modal = document.getElementById("confModal");
+    const nodes = Array.from(modal?.querySelectorAll(".confCk") || []);
 
-    // Para compatibilidad con tu payload actual (ck1/ck2/ck3/ck4...)
-    // los mapeamos por orden de aparición.
+    const obj = {};
+    for (const el of nodes) obj[String(el.id || "")] = !!el.checked;
+
     const arr = nodes.map((el) => !!el.checked);
+
     return {
       ck1: !!arr[0],
       ck2: !!arr[1],
       ck3: !!arr[2],
-      ck4: !!arr[3],
-      _all: nodes,      // referencia interna
-      _map: obj         // por si quieres guardar por id
+      ck4: !!arr[3],      // por si luego agregas un 4to
+      _all: nodes,
+      _map: obj,
     };
   }
 
   function validateConf_() {
-    const code = String(document.getElementById("confCode")?.value || "").trim().toUpperCase();
+    const code = String(document.getElementById("confCode")?.value || "")
+      .trim()
+      .toUpperCase();
 
     const checks = readConfChecks_();
     const nodes = checks._all || [];
-    const okChecks = nodes.length ? nodes.every((n) => !!n.checked) : true; // si no hay checks, no bloquea
+
+    // ✅ AHORA SÍ: si hay checklist, se exige completo
+    // (si por algún motivo no hay checks renderizados, bloquea por seguridad)
+    const okChecks = nodes.length ? nodes.every((n) => !!n.checked) : false;
 
     const ok = !!code && okChecks;
 
@@ -3374,16 +3380,17 @@ function avgByMedianMad_(arrMs, k = 3.5) {
   }
 
   function wireConfValidation_() {
-    // Evita duplicar listeners cada vez que abres el modal
     if (wireConfValidation_._bound) return;
     wireConfValidation_._bound = true;
 
+    // input del código
     document.addEventListener("input", (e) => {
       if (e.target?.id === "confCode") validateConf_();
     });
 
+    // ✅ cambios en checkboxes por CLASE (no por id prefix)
     document.addEventListener("change", (e) => {
-      if (String(e.target?.id || "").startsWith("confCk")) validateConf_();
+      if (e.target?.classList?.contains("confCk")) validateConf_();
     });
   }
 
