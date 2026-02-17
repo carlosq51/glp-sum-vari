@@ -3560,6 +3560,72 @@ function avgByMedianMad_(arrMs, k = 3.5) {
     return items;
   }
 
+    // ----------------------------------------------------------
+  // ✅ INC: Técnico por barra (input) sincronizada con <select>
+  //     NO cambia tu backend: el valor real sigue en #incTech
+  // ----------------------------------------------------------
+  let incTechIndex_ = new Map(); // norm(nombre) -> value del select
+
+  function incNorm_(s) {
+    return String(s || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, " ");
+  }
+
+  function incRebuildTechIndexAndDatalist_() {
+    const sel = document.getElementById("incTech");
+    const dl = document.getElementById("incTechDatalist");
+    if (!sel || !dl) return;
+
+    incTechIndex_.clear();
+
+    const opts = Array.from(sel.options || []);
+    dl.innerHTML = opts
+      .filter((o) => String(o.value || "").trim()) // salta placeholder value=""
+      .map((o) => {
+        const label = String(o.textContent || "").trim();
+        const val = String(o.value || "").trim();
+        const key = incNorm_(label);
+        if (key && val) incTechIndex_.set(key, val);
+        return label ? `<option value="${escapeHtml(label)}"></option>` : "";
+      })
+      .join("");
+  }
+
+  function incSyncTechFromInput_() {
+    const input = document.getElementById("incTechInput");
+    const sel = document.getElementById("incTech");
+    if (!input || !sel) return;
+
+    const q = incNorm_(input.value);
+    if (!q) sel.value = "";
+    else sel.value = incTechIndex_.get(q) || "";
+
+    // mantiene tu comportamiento actual
+    validateInc_();
+  }
+
+  // ✅ Observa cuando tu código actual llene el <select> (no tocamos esa parte)
+  (function bindIncTechObserverOnce_() {
+    const sel = document.getElementById("incTech");
+    if (!sel) return;
+    if (sel.dataset.boundObs === "1") return;
+    sel.dataset.boundObs = "1";
+
+    const obs = new MutationObserver(() => {
+      incRebuildTechIndexAndDatalist_();
+      // si ya había algo escrito, re-sincroniza
+      incSyncTechFromInput_();
+    });
+
+    obs.observe(sel, { childList: true, subtree: true });
+
+    // primer build por si ya existían options
+    incRebuildTechIndexAndDatalist_();
+  })();
+
+
   function validateInc_() {
     const tech = String(document.getElementById("incTech")?.value || "").trim();
     const tipo = String(document.getElementById("incTipo")?.value || "").trim().toUpperCase();
@@ -3679,6 +3745,10 @@ function avgByMedianMad_(arrMs, k = 3.5) {
 
   // listeners (una vez)
   document.getElementById("btnCloseInc")?.addEventListener("click", () => closeIncModal_());
+  document.getElementById("incTechInput")?.addEventListener("input", () => {
+    incSyncTechFromInput_();
+  });
+
   document.getElementById("incModal")?.addEventListener("click", async (e) => {
     if (e.target === document.getElementById("incModal")) await closeIncModal_();
   });

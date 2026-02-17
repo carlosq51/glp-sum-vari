@@ -384,7 +384,22 @@
           <div style="font-weight:900; margin-bottom:8px;">Selecciona técnico y severidad</div>
 
           <label class="small" style="display:block; margin-top:8px;">Técnico</label>
-          <select id="incTech" style="width:100%; height:44px;"></select>
+
+          <!-- ✅ Barra para escribir -->
+          <input
+            id="incTechInput"
+            type="text"
+            placeholder="Escribe el nombre del técnico..."
+            autocomplete="off"
+            list="incTechDatalist"
+            style="width:100%; height:44px;"
+          />
+
+          <datalist id="incTechDatalist"></datalist>
+
+          <!-- ✅ Se mantiene el select (oculto) para NO cambiar tu lógica actual -->
+          <select id="incTech" style="display:none;"></select>
+
 
           <label class="small" style="display:block; margin-top:10px;">Tipo de incidencia</label>
           <select id="incTipo" style="width:100%; height:44px;">
