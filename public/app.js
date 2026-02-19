@@ -3531,6 +3531,203 @@ function avgByMedianMad_(arrMs, k = 3.5) {
     // ==========================================================
   // 24) INCIDENCIAS (MODAL + LISTA TÉCNICOS + GUARDAR)
   // ==========================================================
+
+  // ----------------------------------------------------------
+// ✅ INC: Autocomplete tipo SUPERVISOR (input + dropdown custom)
+//     El <select #incTech> queda como valor real (oculto).
+// ----------------------------------------------------------
+
+let incTechAll_ = []; // [{value, name, email, label}]
+const INC_TECH_AC = {
+  MIN_CHARS: 2,
+  LIMIT: 12,
+  DEBOUNCE_MS: 30,
+};
+
+let incTechAcTimer = null;
+let incTechAcItems = [];
+let incTechAcOpen = false;
+let incTechAcIndex = -1;
+let incTechAcLastQ = "";
+
+function incTechAcBox_() {
+  return document.getElementById("incTechSuggest");
+}
+
+function incTechAcHide_() {
+  const box = incTechAcBox_();
+  if (!box) return;
+  incTechAcOpen = false;
+  incTechAcIndex = -1;
+  incTechAcItems = [];
+  box.classList.add("hidden");
+  box.innerHTML = "";
+}
+
+function incTechBuildAllFromSelect_() {
+  const sel = document.getElementById("incTech");
+  if (!sel) {
+    incTechAll_ = [];
+    return;
+  }
+
+  incTechAll_ = Array.from(sel.options || [])
+    .filter((o) => String(o.value || "").trim()) // ignora placeholder
+    .map((o) => {
+      const value = String(o.value || "").trim();          // "Nombre <correo>" o "Nombre"
+      const label = String(o.textContent || "").trim();    // "Nombre (correo)" o "Nombre"
+
+      // email desde "(...)" en label
+      let email = "";
+      const m = label.match(/\(([^)]+)\)\s*$/);
+      if (m) email = String(m[1] || "").trim();
+
+      // name = label sin "(email)"
+      const name = label.replace(/\s*\([^)]+\)\s*$/, "").trim();
+
+      return { value, name, email, label };
+    });
+}
+
+function incTechFilter_(q) {
+  const qq = String(q || "").trim().toLowerCase();
+  if (!qq) return [];
+
+  return incTechAll_
+    .filter((u) => {
+      const hay = `${u.name} ${u.email} ${u.label}`.toLowerCase();
+      return hay.includes(qq);
+    })
+    .slice(0, INC_TECH_AC.LIMIT);
+}
+
+function incTechAcRender_() {
+  const box = incTechAcBox_();
+  if (!box) return;
+
+  if (!incTechAcItems.length) return incTechAcHide_();
+
+  box.innerHTML = incTechAcItems
+    .map((u, i) => {
+      const active = i === incTechAcIndex ? "active" : "";
+      return `
+        <div class="nsItem ${active}" data-idx="${i}" role="option" aria-selected="${i === incTechAcIndex}">
+          <div class="nsName">${escapeHtml(u.name || u.label || "-")}</div>
+          <div class="nsEmail">${escapeHtml(u.email || "")}</div>
+        </div>
+      `;
+    })
+    .join("");
+
+  box.classList.remove("hidden");
+  incTechAcOpen = true;
+}
+
+function incTechAcSetIndex_(i) {
+  incTechAcIndex = Math.max(0, Math.min(i, incTechAcItems.length - 1));
+  incTechAcRender_();
+
+  const box = incTechAcBox_();
+  const el = box?.querySelector(`.nsItem[data-idx="${incTechAcIndex}"]`);
+  if (el) el.scrollIntoView({ block: "nearest" });
+}
+
+function incTechAcPick_(u) {
+  const input = document.getElementById("incTechInput");
+  const sel = document.getElementById("incTech");
+  if (!input || !sel) return;
+
+  // Lo que ve el usuario
+  input.value = String(u?.name || u?.label || "").trim();
+
+  // Lo que se envía al backend (tu payload usa #incTech.value)
+  sel.value = String(u?.value || "").trim();
+
+  incTechAcHide_();
+  validateInc_();
+}
+
+function incTechAcOnInput_() {
+  const input = document.getElementById("incTechInput");
+  const sel = document.getElementById("incTech");
+  if (!input || !sel) return;
+
+  const q = String(input.value || "").trim();
+  incTechAcLastQ = q;
+
+  // si borran el input, borra selección real
+  if (!q) {
+    sel.value = "";
+    incTechAcHide_();
+    return validateInc_();
+  }
+
+  if (q.length < INC_TECH_AC.MIN_CHARS) {
+    incTechAcHide_();
+    return validateInc_();
+  }
+
+  clearTimeout(incTechAcTimer);
+  incTechAcTimer = setTimeout(() => {
+    // si el texto cambió, no hagas nada
+    if (incTechAcLastQ !== q) return;
+
+    incTechAcItems = incTechFilter_(q);
+    incTechAcIndex = incTechAcItems.length ? 0 : -1;
+    incTechAcRender_();
+  }, INC_TECH_AC.DEBOUNCE_MS);
+
+  // nota: no validamos aquí hasta que pickee o cambie select, para no “exigir” antes de tiempo
+}
+
+function incTechAcOnKeyDown_(e) {
+  if (!incTechAcOpen) return;
+
+  if (e.key === "ArrowDown") {
+    e.preventDefault();
+    return incTechAcSetIndex_(incTechAcIndex + 1);
+  }
+  if (e.key === "ArrowUp") {
+    e.preventDefault();
+    return incTechAcSetIndex_(incTechAcIndex - 1);
+  }
+  if (e.key === "Enter") {
+    if (incTechAcIndex >= 0 && incTechAcItems[incTechAcIndex]) {
+      e.preventDefault();
+      return incTechAcPick_(incTechAcItems[incTechAcIndex]);
+    }
+  }
+  if (e.key === "Escape") {
+    e.preventDefault();
+    return incTechAcHide_();
+  }
+}
+
+// bind once (click pick + click outside)
+(function bindIncTechSuggestOnce() {
+  const box = document.getElementById("incTechSuggest");
+  if (!box) return;
+  if (box.dataset.bound === "1") return;
+  box.dataset.bound = "1";
+
+  box.addEventListener("mousedown", (e) => {
+    const it = e.target.closest(".nsItem[data-idx]");
+    if (!it) return;
+    e.preventDefault();
+    const idx = Number(it.dataset.idx);
+    const u = incTechAcItems[idx];
+    if (u) incTechAcPick_(u);
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!incTechAcOpen) return;
+    const wrap = document.querySelector("#incModal .supNameWrap") || document.getElementById("incTechInput")?.parentElement;
+    if (wrap && wrap.contains(e.target)) return;
+    incTechAcHide_();
+  });
+})();
+
+
   let incCtx_ = null; // { conversionId, vin }
   let incTecCache_ = { ts: 0, items: [] }; // cache simple
   const INC_TEC_CACHE_TTL = 6 * 60 * 60 * 1000; // 6h
@@ -3564,7 +3761,6 @@ function avgByMedianMad_(arrMs, k = 3.5) {
   // ✅ INC: Técnico por barra (input) sincronizada con <select>
   //     NO cambia tu backend: el valor real sigue en #incTech
   // ----------------------------------------------------------
-  let incTechIndex_ = new Map(); // norm(nombre) -> value del select
 
   function incNorm_(s) {
     return String(s || "")
@@ -3573,57 +3769,27 @@ function avgByMedianMad_(arrMs, k = 3.5) {
       .replace(/\s+/g, " ");
   }
 
-  function incRebuildTechIndexAndDatalist_() {
-    const sel = document.getElementById("incTech");
-    const dl = document.getElementById("incTechDatalist");
-    if (!sel || !dl) return;
-
-    incTechIndex_.clear();
-
-    const opts = Array.from(sel.options || []);
-    dl.innerHTML = opts
-      .filter((o) => String(o.value || "").trim()) // salta placeholder value=""
-      .map((o) => {
-        const label = String(o.textContent || "").trim();
-        const val = String(o.value || "").trim();
-        const key = incNorm_(label);
-        if (key && val) incTechIndex_.set(key, val);
-        return label ? `<option value="${escapeHtml(label)}"></option>` : "";
-      })
-      .join("");
-  }
-
-  function incSyncTechFromInput_() {
-    const input = document.getElementById("incTechInput");
-    const sel = document.getElementById("incTech");
-    if (!input || !sel) return;
-
-    const q = incNorm_(input.value);
-    if (!q) sel.value = "";
-    else sel.value = incTechIndex_.get(q) || "";
-
-    // mantiene tu comportamiento actual
-    validateInc_();
-  }
 
   // ✅ Observa cuando tu código actual llene el <select> (no tocamos esa parte)
-  (function bindIncTechObserverOnce_() {
-    const sel = document.getElementById("incTech");
-    if (!sel) return;
-    if (sel.dataset.boundObs === "1") return;
-    sel.dataset.boundObs = "1";
+// ✅ Cuando el <select #incTech> cambie (se llena en openIncModal_), reconstruimos índice
+(function bindIncTechObserverOnce_() {
+  const sel = document.getElementById("incTech");
+  if (!sel) return;
+  if (sel.dataset.boundObs === "1") return;
+  sel.dataset.boundObs = "1";
 
-    const obs = new MutationObserver(() => {
-      incRebuildTechIndexAndDatalist_();
-      // si ya había algo escrito, re-sincroniza
-      incSyncTechFromInput_();
-    });
+  const rebuild = () => {
+    try { incTechBuildAllFromSelect_(); } catch {}
+    // si el usuario ya escribió algo, refresca sugerencias
+    try { incTechAcOnInput_(); } catch {}
+  };
 
-    obs.observe(sel, { childList: true, subtree: true });
+  const obs = new MutationObserver(rebuild);
+  obs.observe(sel, { childList: true, subtree: true });
 
-    // primer build por si ya existían options
-    incRebuildTechIndexAndDatalist_();
-  })();
+  // primer build por si ya existían options
+  rebuild();
+})();
 
 
   function validateInc_() {
@@ -3686,6 +3852,14 @@ function avgByMedianMad_(arrMs, k = 3.5) {
             })
             .join("");
       }
+
+        // ✅ NUEVO
+      incTechBuildAllFromSelect_();
+      const input = document.getElementById("incTechInput");
+      if (input) input.value = "";
+      if (selTech) selTech.value = "";
+      incTechAcHide_();
+      
       incSetMsg_("");
     } catch (e) {
       if (selTech) selTech.innerHTML = `<option value="">(No se pudo cargar)</option>`;
@@ -3745,9 +3919,10 @@ function avgByMedianMad_(arrMs, k = 3.5) {
 
   // listeners (una vez)
   document.getElementById("btnCloseInc")?.addEventListener("click", () => closeIncModal_());
-  document.getElementById("incTechInput")?.addEventListener("input", () => {
-    incSyncTechFromInput_();
-  });
+  document.getElementById("incTechInput")?.addEventListener("input", incTechAcOnInput_);
+document.getElementById("incTechInput")?.addEventListener("keydown", incTechAcOnKeyDown_);
+
+
 
   document.getElementById("incModal")?.addEventListener("click", async (e) => {
     if (e.target === document.getElementById("incModal")) await closeIncModal_();

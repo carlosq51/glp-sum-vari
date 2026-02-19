@@ -853,3 +853,28 @@ button[data-suptrack].active{
 }
 
 
+/* =========================
+   INCIDENCIAS: barra técnico full width
+   ========================= */
+#incModal .supNameWrap{
+  width: 100%;
+  max-width: none;
+  display: block;
+  position: relative; /* clave para el dropdown */
+}
+
+#incModal #incTechInput{
+  width: 100%;
+  max-width: none;
+  display: block;
+  box-sizing: border-box;
+  height: 44px; /* para que se vea igual al select */
+}
+
+/* dropdown de sugerencias: mismo ancho del input */
+#incModal #incTechSuggest{
+  left: 0;
+  right: 0;
+  width: 100%;
+  box-sizing: border-box;
+}

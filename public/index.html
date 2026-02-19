@@ -386,18 +386,13 @@
           <label class="small" style="display:block; margin-top:8px;">Técnico</label>
 
           <!-- ✅ Barra para escribir -->
-          <input
-            id="incTechInput"
-            type="text"
-            placeholder="Escribe el nombre del técnico..."
-            autocomplete="off"
-            list="incTechDatalist"
-            style="width:100%; height:44px;"
-          />
+          <!-- Técnico (autocomplete estilo Supervisor) -->
+          <div class="supNameWrap" style="margin-top:10px;">
+            <input id="incTechInput" type="text" placeholder="Buscar técnico..." autocomplete="off" />
+            <div id="incTechSuggest" class="nameSuggest hidden" role="listbox"></div>
+          </div>
 
-          <datalist id="incTechDatalist"></datalist>
-
-          <!-- ✅ Se mantiene el select (oculto) para NO cambiar tu lógica actual -->
+          <!-- Select real (valor que se envía al backend) -->
           <select id="incTech" style="display:none;"></select>
 
 
