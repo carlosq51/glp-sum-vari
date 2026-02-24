@@ -723,6 +723,24 @@ export function init() {
   $("qrModal")?.addEventListener("click", async (e) => {
     if (e.target === $("qrModal")) await closeQRModal();
   });
+  // ---- Scan mode buttons (QR / BAR) ----
+$("btnScanQR")?.addEventListener("click", async () => {
+  setScanMode_("QR");
+  // reinicia cámara con el nuevo modo
+  await withLock(async () => {
+    await stopQR();
+    await startQR();
+  }, "Cambiando a QR...");
+});
+
+$("btnScanBar")?.addEventListener("click", async () => {
+  setScanMode_("BAR");
+  // reinicia cámara con el nuevo modo
+  await withLock(async () => {
+    await stopQR();
+    await startQR();
+  }, "Cambiando a CÓDIGO DE BARRAS...");
+});
 
   // delegation once
   attachWorkDelegationOnce_("TECNICO");
