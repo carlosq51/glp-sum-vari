@@ -323,7 +323,7 @@ export function patchVisibleCards_() {
         const asgRow = card.querySelector(".js-asignado .asignadoValue");
         const regRow = card.querySelector(".js-registrado .asignadoValue");
 
-        if (asgRow) { asgRow.textContent = asignVal || "NO ASIGNADO"; asgRow.classList.toggle("na", !asignVal); }
+        if (asgRow) { asgRow.textContent = asignVal || "LIBRE"; asgRow.classList.toggle("na", !asignVal); }
         if (regRow) { regRow.textContent = regVal || "—";          regRow.classList.toggle("na", !regVal); }
       }
     } catch {}
