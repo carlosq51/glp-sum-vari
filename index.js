@@ -6,7 +6,8 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(express.json());
+app.use(express.json({ limit: "30mb" }));
+app.use(express.urlencoded({ extended: true, limit: "30mb" }));
 app.use(express.static("public"));
 
 // ping local
@@ -20,23 +21,62 @@ async function callAppsScript(action, payload = {}) {
   if (!APS_URL) throw new Error("Falta APS_URL en .env");
   if (!APS_KEY) throw new Error("Falta APS_KEY en .env");
 
+  const reqBody = { action, key: APS_KEY, ...payload };
+
   const r = await fetch(APS_URL, {
     method: "POST",
     headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify({ action, key: APS_KEY, ...payload }),
+    body: JSON.stringify(reqBody),
   });
 
   const text = await r.text();
+
   let j;
   try {
     j = JSON.parse(text);
   } catch {
-    throw new Error("Respuesta no-JSON desde Apps Script: " + text.slice(0, 200));
+    throw new Error("Respuesta no-JSON desde Apps Script: " + text.slice(0, 500));
   }
 
-  if (!j.ok) throw new Error(j.error || "Error Apps Script");
+  if (!j.ok) {
+    throw new Error(`[APS:${action}] ${j.error || "Error Apps Script"}`);
+  }
+
   return j;
 }
+
+// =========================
+// UPLOADER PROXY (frontend -> Node -> Apps Script)
+// =========================
+const UPLOADER_ACTIONS = new Set([
+  "getStatus",
+  "uploadOne",
+  "uploadFalla",
+  "uploadCalidad",
+  "uploadConformidad",
+]);
+
+app.post("/api/uploader/proxy", async (req, res) => {
+  try {
+    const body = req.body || {};
+    const action = String(body.action || "").trim();
+
+    console.log("[UPLOADER_PROXY] action:", action);
+    console.log("[UPLOADER_PROXY] keys:", Object.keys(body || {}));
+
+    if (!UPLOADER_ACTIONS.has(action)) {
+      return res.status(400).json({ ok: false, error: "Acción uploader no permitida" });
+    }
+
+    const { action: _omit, ...payload } = body;
+    const j = await callAppsScript(action, payload);
+
+    return res.json(j);
+  } catch (e) {
+    console.error("[UPLOADER_PROXY] ERROR:", e);
+    return res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
 
 // endpoint Node → Apps Script (me)
 app.get("/api/me", async (req, res) => {

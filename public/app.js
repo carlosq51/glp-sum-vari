@@ -12,11 +12,13 @@ import {
 } from "./js/core/core.js";
 
 import { openView } from "./js/core/router-lite.js";
+import { initUploaderView, showUploaderView, hideUploaderView } from "./js/views/uploader/uploader.js";
 
 import * as VConversion from "./js/views/conversion/conversion.js";
 import * as VRamalero from "./js/views/ramalero/ramalero.js";
 import * as VSupervisor from "./js/views/supervisor/supervisor.js";
 import * as VAdmin from "./js/views/admin/admin.js";
+
 
 // ---------- LOGIN FLOW ----------
 async function doLogin(email) {
@@ -50,13 +52,14 @@ async function doLogin(email) {
 
 // ---------- OPEN MODULE ----------
 function openModule(m) {
-  // exit view actual
-  openView(m); // router-lite: maneja exit/enter
+  // ✅ oculta uploader por si estaba abierto
+  hideUploaderView();
 
-  // set módulo global
+  // exit view actual
+  openView(m);
+
   CORE.state.currentModule = m;
 
-  // UI show/hide
   hideAllModulesUI();
   const el = document.getElementById(`view${m}`);
   if (el) el.style.display = "block";
@@ -78,12 +81,25 @@ VConversion.init();
 VRamalero.init();
 VSupervisor.init();
 VAdmin.init();
+initUploaderView();
 
 // ---------- GLOBAL LISTENERS ----------
 $("btnTheme")?.addEventListener("click", CORE.toggleTheme_);
 
 $("btnRegistroFallas")?.addEventListener("click", () => {
-  window.open(CORE.REG_FALLAS_BASE, "_blank", "noopener");
+  // Oculta vistas actuales
+  hideAllModulesUI();
+  $("viewHub") && ($("viewHub").style.display = "none");
+
+  // Por si estabas en otro módulo, intenta jalar VIN actual
+  const vinActual =
+    $("vin")?.value?.trim() ||
+    $("vinQ")?.value?.trim() ||
+    $("supVin")?.value?.trim() ||
+    "";
+
+  // Muestra la vista Uploader integrada
+  showUploaderView({ vin: vinActual, screen: "menu" });
 });
 
 $("btnMe")?.addEventListener("click", async () => {
@@ -105,6 +121,7 @@ $("btnLogout")?.addEventListener("click", () => {
   hideAllModulesUI();
   $("viewHub").style.display = "none";
   document.getElementById("debugWrap")?.classList.add("debug-hidden");
+  document.getElementById("viewUploader")?.style && (document.getElementById("viewUploader").style.display = "none");
 
   showLoginUI("Sesión cerrada.");
 });
