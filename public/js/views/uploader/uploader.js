@@ -5,6 +5,7 @@
 // =========================
 
 import { initUploaderUI } from "./uploader-ui.js";
+import { CORE, hideAllModulesUI } from "../../core/core.js";
 
 let _inited = false;
 let _ctrl = null;
@@ -24,10 +25,24 @@ export function initUploaderView(options = {}) {
   _ctrl = initUploaderUI(root, {
     apsUrl: options.apsUrl, // opcional (si quieres inyectar URL oculta)
     onBackControl: () => {
-      // ✅ SIN redirección a página anterior
       hideUploaderView();
 
-      // muestra el hub (o puedes cambiar esto para volver al módulo actual)
+      // Oculta todo primero
+      hideAllModulesUI();
+
+      // Recupera módulo actual (se mantiene en app.js)
+      const m = String(CORE?.state?.currentModule || "").trim().toUpperCase();
+
+      // Si hay módulo actual, vuelve a esa vista
+      if (m) {
+        const view = document.getElementById(`view${m}`);
+        if (view) {
+          view.style.display = "block";
+          return;
+        }
+      }
+
+      // Fallback: si no hay módulo, muestra hub
       const hub = document.getElementById("viewHub");
       if (hub) hub.style.display = "block";
     },
