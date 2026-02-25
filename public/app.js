@@ -4,6 +4,8 @@
 // =========================
 /* global Html5Qrcode, Html5QrcodeSupportedFormats */
 
+import { appShell } from "./js/templates/views/shell.js";
+
 import {
   $, CORE, initTheme_, loadEmail, saveEmail, clearEmail,
   showLoginUI, showAppUI, setUserPillUI, applyDebugVisibilityUI,
@@ -19,6 +21,8 @@ import * as VRamalero from "./js/views/ramalero/ramalero.js";
 import * as VSupervisor from "./js/views/supervisor/supervisor.js";
 import * as VAdmin from "./js/views/admin/admin.js";
 
+const root = document.getElementById("appRoot");
+if (root) root.innerHTML = appShell();
 
 // ---------- LOGIN FLOW ----------
 async function doLogin(email) {
