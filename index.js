@@ -376,9 +376,58 @@ app.get("/api/tecnicos-list", async (req, res) => {
 
 app.post("/api/incidencia", async (req, res) => {
   try {
-    console.log("[INCIDENCIA] body =", req.body);
-    const j = await callAppsScript("incidencia_add", req.body);
-    res.json(j);
+    console.log("[INCIDENCIA] body =", Object.keys(req.body || {}));
+
+    const body = { ...(req.body || {}) };
+    let fotoResult = null;
+
+    // ✅ Si viene foto, la subimos primero a Drive
+    if (body.foto && body.foto.b64) {
+      const up = await callAppsScript("uploadIncidencia", {
+        vin: body.vin,
+        conversionId: body.conversionId,
+        tipo: body.tipo,
+        nota: body.nota,
+        tecnico: body.tecnicoNombre || body.tecnicoEmail || body.tecnicoUserId || "",
+        file: {
+          b64: body.foto.b64,
+          mimeType: body.foto.mimeType || "image/jpeg",
+          name: body.foto.name || "incidencia.jpg",
+        },
+      });
+
+      fotoResult = up;
+
+      // ✅ adjuntamos metadata para guardar en sheet
+      body.fotoFileId = String(up.photoId || "");
+      body.fotoUrl = String(up.photoUrl || "");
+      body.fotoThumbUrl = String(up.photoThumbUrl || "");
+      body.fotoImgUrl = String(up.photoImgUrl || "");
+      body.fotoFolderId = String(up.subFolderId || up.folderId || "");
+      body.fotoBatchId = String(up.batchId || "");
+
+      // ✅ quitamos base64 antes de guardar en sheet
+      delete body.foto;
+    }
+
+    // ✅ guardar incidencia en hoja
+    const j = await callAppsScript("incidencia_add", body);
+
+    // devolvemos también info de foto si hubo
+    return res.json({
+      ...j,
+      foto: fotoResult
+        ? {
+            photoId: fotoResult.photoId,
+            photoUrl: fotoResult.photoUrl,
+            photoThumbUrl: fotoResult.photoThumbUrl,
+            photoImgUrl: fotoResult.photoImgUrl,
+            folderId: fotoResult.subFolderId || fotoResult.folderId,
+            batchId: fotoResult.batchId,
+          }
+        : null,
+    });
+
   } catch (e) {
     console.error("[INCIDENCIA] ERROR:", e);
     res.status(500).json({ ok: false, error: String(e.message || e) });

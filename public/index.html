@@ -868,6 +868,38 @@
           <label class="small" style="display:block; margin-top:10px;">Nota (opcional)</label>
           <textarea id="incNota" rows="2" placeholder="Describe brevemente la incidencia..."
             style="width:100%;"></textarea>
+
+          <!-- FOTO DE INCIDENCIA (1 foto) -->
+          <label class="small" style="display:block; margin-top:10px;">Foto de incidencia (opcional)</label>
+
+          <div class="incFotoWrap" style="margin-top:8px;">
+            <input
+              id="incFotoInput"
+              type="file"
+              accept="image/*"
+              capture="environment"
+              style="width:100%;"
+            />
+
+            <div id="incFotoPreviewWrap" class="hidden" style="margin-top:10px;">
+              <div class="thumb" style="max-width:220px;">
+                <img
+                  id="incFotoPreview"
+                  alt="Preview incidencia"
+                  style="width:100%; height:auto; display:block; border-radius:8px;"
+                />
+              </div>
+
+              <button
+                type="button"
+                id="btnIncFotoClear"
+                class="btn3"
+                style="margin-top:8px;"
+              >
+                🧹 Quitar foto
+              </button>
+            </div>
+          </div>
         </div>
 
         <button id="btnIncSave" class="btnInicio"

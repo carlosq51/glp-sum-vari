@@ -22,7 +22,8 @@ const INC = {
   open: false,
   itemKey: "",
   item: null,
-
+  // foto incidencia (1 foto)
+  photo: null, // { b64, mimeType, name, previewUrl }
   // técnico seleccionado real
   techSelected: null, // { userId, name, email, label }
 
@@ -40,6 +41,118 @@ const INC_TECH_CACHE_TTL = 10 * 60 * 1000; // 10 min
 // -----------------------------------------
 // Helpers UI
 // -----------------------------------------
+
+function incFotoInput() {
+  return incEl("incFotoInput");
+}
+
+function incFotoPreview() {
+  return incEl("incFotoPreview");
+}
+
+function incFotoPreviewWrap() {
+  return incEl("incFotoPreviewWrap");
+}
+
+function clearIncFoto_() {
+  INC.photo = null;
+
+  const fi = incFotoInput();
+  if (fi) fi.value = "";
+
+  const img = incFotoPreview();
+  if (img) img.src = "";
+
+  incFotoPreviewWrap()?.classList.add("hidden");
+}
+
+function fileToDataUrl_(file) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(String(fr.result || ""));
+    fr.onerror = reject;
+    fr.readAsDataURL(file);
+  });
+}
+
+function loadImage_(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+// ✅ comprime y redimensiona para que no reviente el body (base64 crece bastante)
+async function imageFileToUploadPayload_(file) {
+  const dataUrl = await fileToDataUrl_(file);
+  const img = await loadImage_(dataUrl);
+
+  const maxW = 1600;
+  const maxH = 1600;
+
+  let { width, height } = img;
+  const ratio = Math.min(maxW / width, maxH / height, 1);
+  const w = Math.round(width * ratio);
+  const h = Math.round(height * ratio);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(img, 0, 0, w, h);
+
+  // Siempre jpg para estandarizar
+  const outDataUrl = canvas.toDataURL("image/jpeg", 0.82);
+  const m = outDataUrl.match(/^data:(.*?);base64,(.*)$/);
+  if (!m) throw new Error("No se pudo procesar la imagen.");
+
+  return {
+    mimeType: "image/jpeg",
+    b64: m[2],
+    previewUrl: outDataUrl,
+    name: (file.name || "incidencia.jpg").replace(/\.[^.]+$/, "") + ".jpg",
+  };
+}
+
+async function onIncFotoChange_(e) {
+  try {
+    const file = e.target?.files?.[0];
+    if (!file) {
+      clearIncFoto_();
+      return;
+    }
+
+    if (!String(file.type || "").startsWith("image/")) {
+      incSetMsg("Solo se permiten imágenes.");
+      clearIncFoto_();
+      return;
+    }
+
+    incSetMsg("Procesando foto...");
+    const payload = await imageFileToUploadPayload_(file);
+
+    INC.photo = {
+      b64: payload.b64,
+      mimeType: payload.mimeType,
+      name: payload.name,
+      previewUrl: payload.previewUrl,
+    };
+
+    const img = incFotoPreview();
+    if (img) img.src = payload.previewUrl;
+
+    incFotoPreviewWrap()?.classList.remove("hidden");
+    incSetMsg("");
+  } catch (err) {
+    console.error("[INC foto] ERROR:", err);
+    incSetMsg("❌ No se pudo procesar la foto.");
+    clearIncFoto_();
+  }
+}
+
 function incEl(id) {
   return document.getElementById(id);
 }
@@ -83,6 +196,7 @@ function incNota() {
 }
 
 function resetIncForm_() {
+  clearIncFoto_();
   INC.itemKey = "";
   INC.item = null;
   INC.techSelected = null;
@@ -391,6 +505,15 @@ async function saveIncidencia_() {
 
     tipo,
     nota,
+
+        // ✅ foto opcional (1 por incidencia)
+    foto: INC.photo
+      ? {
+          b64: INC.photo.b64,
+          mimeType: INC.photo.mimeType,
+          name: INC.photo.name,
+        }
+      : null,
   };
 
   let j;
@@ -478,6 +601,13 @@ export function initIncidenciasUI_() {
   // técnico autocomplete
   incInputTech()?.addEventListener("input", onIncTechInput_);
   incInputTech()?.addEventListener("keydown", onIncTechKeyDown_);
+
+    // foto
+  incFotoInput()?.addEventListener("change", onIncFotoChange_);
+  incEl("btnIncFotoClear")?.addEventListener("click", () => {
+    clearIncFoto_();
+    incSetMsg("");
+  });
 
   incSuggestBox()?.addEventListener("mousedown", (e) => {
     const row = e.target.closest(".nsItem[data-idx]");
