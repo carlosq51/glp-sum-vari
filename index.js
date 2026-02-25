@@ -376,9 +376,11 @@ app.get("/api/tecnicos-list", async (req, res) => {
 
 app.post("/api/incidencia", async (req, res) => {
   try {
+    console.log("[INCIDENCIA] body =", req.body);
     const j = await callAppsScript("incidencia_add", req.body);
     res.json(j);
   } catch (e) {
+    console.error("[INCIDENCIA] ERROR:", e);
     res.status(500).json({ ok: false, error: String(e.message || e) });
   }
 });

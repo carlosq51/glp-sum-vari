@@ -9,6 +9,10 @@
 // =========================
 /* global Html5Qrcode, Html5QrcodeSupportedFormats */
 
+import { initIncidenciasUI_, openIncidenciaModalForKey_ } from "./incidencias.js";
+
+import { showUploaderView } from "../uploader/uploader.js";
+
 import {
   CORE, $, el_, ctx_, isWorkModule_, getEmail, getVin,
   getRolTrabajoCurrent_, getRolTecnico_, requireEmailOrStop,
@@ -548,9 +552,30 @@ function attachWorkDelegationOnce_(mod) {
       const go = e.target.closest("button[data-go]");
       if (go && go.dataset.go === "RF") {
         e.stopPropagation();
+
         const vin = String(go.dataset.vin || it.vin || "").trim().toUpperCase();
         if (!vin) return;
-        openRegistroFallas_(vin);
+
+        // ✅ opcional: reflejar VIN en inputs del módulo actual
+        if (CORE.state.currentModule === "TECNICO" && $("vin")) $("vin").value = vin;
+        if (CORE.state.currentModule === "CALIDAD" && $("vinQ")) $("vinQ").value = vin;
+
+        // ✅ abrir uploader integrado (igual que botón global)
+        const root = document.getElementById("viewUploader");
+        if (root) {
+          // oculta vistas actuales
+          document.querySelectorAll('[id^="view"]').forEach((v) => {
+            if (v.id !== "viewUploader") v.style.display = "none";
+          });
+        }
+
+        showUploaderView({ vin, screen: "menu" });
+        return;
+      }
+
+      if (go && go.dataset.go === "INC") {
+        e.stopPropagation();
+        await openIncidenciaModalForKey_(k);
         return;
       }
 
@@ -603,7 +628,14 @@ function attachFinalizadosDelegationOnce_(mod) {
       if (!go) return;
       const vin = String(go.dataset.vin || "").trim().toUpperCase();
       if (!vin) return;
-      openRegistroFallas_(vin);
+      // ✅ abrir uploader integrado también desde finalizados
+      const root = document.getElementById("viewUploader");
+      if (root) {
+        document.querySelectorAll('[id^="view"]').forEach((v) => {
+          if (v.id !== "viewUploader") v.style.display = "none";
+        });
+      }
+      showUploaderView({ vin, screen: "menu" });
     });
   } finally {
     CORE.state.currentModule = prev;
@@ -741,6 +773,7 @@ $("btnScanBar")?.addEventListener("click", async () => {
     await startQR();
   }, "Cambiando a CÓDIGO DE BARRAS...");
 });
+  initIncidenciasUI_();
 
   // delegation once
   attachWorkDelegationOnce_("TECNICO");
