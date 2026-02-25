@@ -13,6 +13,8 @@ import { initIncidenciasUI_, openIncidenciaModalForKey_ } from "./incidencias.js
 
 import { showUploaderView } from "../uploader/uploader.js";
 
+import { initConformidadUI_, openConformidadModalForKey_ } from "./conformidad.js";
+
 import {
   CORE, $, el_, ctx_, isWorkModule_, getEmail, getVin,
   getRolTrabajoCurrent_, getRolTecnico_, requireEmailOrStop,
@@ -579,6 +581,18 @@ function attachWorkDelegationOnce_(mod) {
         return;
       }
 
+      if (go && String(go.dataset.go || "").toUpperCase() === "CONF") {
+        e.stopPropagation();
+
+        // opcional: reflejar VIN en input del módulo
+        const vin = String(it.vin || "").trim().toUpperCase();
+        if (CORE.state.currentModule === "TECNICO" && $("vin")) $("vin").value = vin;
+        if (CORE.state.currentModule === "CALIDAD" && $("vinQ")) $("vinQ").value = vin;
+
+        await openConformidadModalForKey_(k);
+        return;
+      }
+
       // acciones
       const btn = e.target.closest("button[data-act]");
       if (btn) {
@@ -774,6 +788,7 @@ $("btnScanBar")?.addEventListener("click", async () => {
   }, "Cambiando a CÓDIGO DE BARRAS...");
 });
   initIncidenciasUI_();
+  initConformidadUI_();
 
   // delegation once
   attachWorkDelegationOnce_("TECNICO");
