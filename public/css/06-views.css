@@ -1,0 +1,211 @@
+/* =========================
+   VIEWS / PAGE-SPECIFIC
+   ========================= */
+
+/* VIN + QR (legacy wrapper) */
+.vinWrap{
+  position:relative;
+  width:100%;
+  flex:1;
+  min-width:260px;
+}
+
+#vin{
+  width:100%;
+  padding-right:52px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+  letter-spacing:.6px;
+  font-weight:800;
+}
+
+#btnQR{
+  position:absolute;
+  right:8px;
+  top:50%;
+  transform:translateY(-50%);
+  width:40px;
+  height:40px;
+  padding:0;
+  border-radius:12px;
+  display:grid;
+  place-items:center;
+  font-size:18px;
+}
+
+/* debug */
+.debug-hidden{ display:none; }
+
+#rol{ width:100% !important; }
+
+/* supervisor vin row */
+.supVinRow{
+  display:grid;
+  grid-template-columns:1fr 52px;
+  gap:12px;
+  width:100%;
+  align-items:stretch;
+}
+
+.supVinWrap{ min-width:0; width:100%; }
+
+#supVin{
+  width:100%;
+  height:52px;
+  padding:0 12px;
+  border-radius:14px;
+  line-height:52px;
+  box-sizing:border-box;
+  margin:0;
+  display:block;
+}
+
+#btnSupQR{
+  width:52px;
+  height:52px;
+  padding:0;
+  border-radius:14px;
+  display:grid;
+  place-items:center;
+  font-size:18px;
+  box-sizing:border-box;
+  margin:0;
+}
+
+/* VIN + CAM + BUSCAR/CREAR */
+.vinRow3{
+  display:grid;
+  grid-template-columns:2fr 52px 1fr;
+  gap:12px;
+  width:100%;
+  align-items:stretch;
+}
+
+.vinRow3 #vin,
+.vinRow3 #vinQ{
+  width:100%;
+  height:52px;
+  padding:0 12px;
+  border-radius:14px;
+  line-height:52px;
+  box-sizing:border-box;
+  margin:0;
+  display:block;
+}
+
+.vinRow3 #btnQR,
+.vinRow3 #btnQRQ{
+  position:static !important;
+  top:auto !important;
+  right:auto !important;
+  transform:none !important;
+
+  width:52px;
+  height:52px;
+  padding:0;
+  border-radius:14px;
+  display:grid;
+  place-items:center;
+  font-size:18px;
+  box-sizing:border-box;
+  margin:0;
+}
+
+.vinRow3 #btnEstado,
+.vinRow3 #btnEstadoQ{
+  width:100%;
+  height:52px;
+  border-radius:14px;
+  font-weight:900;
+  box-sizing:border-box;
+  margin:0;
+}
+
+/* supervisor track active */
+button[data-suptrack].active{
+  outline:2px solid rgba(77,163,255,.95);
+  transform:translateY(-1px);
+}
+
+/* supervisor name full width */
+#viewSUPERVISOR .supNameWrap,
+#viewSUPERVISOR #supName{
+  width:100%;
+}
+
+/* RAMALERO row */
+.ramalRow3{
+  display:grid;
+  grid-template-columns: 1.6fr 1fr 1fr;
+  gap:12px;
+  width:100%;
+  align-items:stretch;
+}
+
+.ramalRow3 #tipoRamal,
+.ramalRow3 #ramalId{
+  width:100%;
+  height:52px;
+  padding:0 12px;
+  border-radius:14px;
+  line-height:52px;
+  box-sizing:border-box;
+  margin:0;
+  display:block;
+}
+
+.ramalRow3 #tipoRamal{ line-height:normal; }
+
+.ramalRow3 #btnRamalNuevo{
+  width:100%;
+  height:52px;
+  border-radius:14px;
+  font-weight:900;
+  box-sizing:border-box;
+  margin:0;
+}
+
+/* asignado row */
+.asignadoRow {
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 12px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+
+  font-weight: 900;
+  letter-spacing: .4px;
+
+  background: rgba(0,0,0,.18);
+  border: 1px solid rgba(255,255,255,.18);
+}
+
+:root[data-theme="day"] .asignadoRow {
+  background: rgba(0,0,0,.04);
+  border: 1px solid rgba(0,0,0,.12);
+}
+
+/* incidencias */
+#incModal .supNameWrap{
+  width: 100%;
+  max-width: none;
+  display: block;
+  position: relative;
+}
+
+#incModal #incTechInput{
+  width: 100%;
+  max-width: none;
+  display: block;
+  box-sizing: border-box;
+  height: 44px;
+}
+
+#incModal #incTechSuggest{
+  left: 0;
+  right: 0;
+  width: 100%;
+  box-sizing: border-box;
+}

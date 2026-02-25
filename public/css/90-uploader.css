@@ -1,0 +1,258 @@
+
+/* =========================
+   Uploader GLP (scoped)
+   ========================= */
+
+.uploader-shell {
+  font-family: system-ui, Arial, sans-serif;
+  padding: 16px;
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.uploader-shell * {
+  box-sizing: border-box;
+}
+
+.uploader-shell .row { margin: 10px 0; }
+
+.uploader-shell .box {
+  border: 1px solid #ddd;
+  padding: 12px;
+  border-radius: 10px;
+  margin: 10px 0;
+  background: #fff;
+}
+
+.uploader-shell label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.uploader-shell input[type="text"],
+.uploader-shell input[type="date"],
+.uploader-shell textarea {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #bbb;
+  border-radius: 10px;
+}
+
+.uploader-shell button {
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.uploader-shell .btn { background: #0b5fff; color: white; }
+.uploader-shell .btn2 { background: #111; color: white; }
+.uploader-shell .btn3 { background: #eee; color: #111; }
+
+.uploader-shell .grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.uploader-shell .small {
+  color: #555;
+  font-size: 12px;
+}
+
+.uploader-shell .status {
+  white-space: pre-wrap;
+  background: #f6f6f6;
+  padding: 12px;
+  border-radius: 10px;
+}
+
+.uploader-shell .qrReader { width: 100%; }
+
+.uploader-shell .slotCard {
+  border: 1px solid #e5e5e5;
+  border-radius: 12px;
+  padding: 12px;
+  background: #fff;
+}
+
+.uploader-shell .slotActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.uploader-shell .slotActions button {
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 14px;
+}
+
+.uploader-shell .mini {
+  margin-top: 10px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.uploader-shell .thumb {
+  width: 84px;
+  height: 84px;
+  border-radius: 12px;
+  border: 1px solid #ddd;
+  background: #fafafa;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.uploader-shell .thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.uploader-shell .miniInfo {
+  font-size: 12px;
+  color: #444;
+}
+
+.uploader-shell .hiddenInput { display: none; }
+
+/* PANTALLAS */
+.uploader-shell .screen { display: none; }
+.uploader-shell .screen.active { display: block; }
+
+.uploader-shell .topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 8px 0 14px;
+}
+
+.uploader-shell .topbar h2,
+.uploader-shell .topbar h3 { margin: 0; }
+
+.uploader-shell .menuGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr;
+}
+
+.uploader-shell .menuCard {
+  border: 1px solid #e5e5e5;
+  border-radius: 14px;
+  padding: 14px;
+  background: #fff;
+}
+
+.uploader-shell .menuTitle {
+  font-weight: 800;
+  font-size: 18px;
+  margin: 0 0 4px;
+}
+
+.uploader-shell .menuDesc {
+  margin: 0;
+  color: #555;
+  font-size: 13px;
+}
+
+.uploader-shell .menuCard .btn {
+  width: 100%;
+  margin-top: 10px;
+}
+
+.uploader-shell textarea {
+  min-height: 90px;
+  resize: vertical;
+}
+
+/* Botón volver */
+.uploader-shell .btnBackControl {
+  width: 100%;
+  max-width: 520px;
+  padding: 18px;
+  border-radius: 16px;
+  font-size: 18px;
+  font-weight: 900;
+  background: #0b5fff;
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 10px 26px rgba(11,95,255,.35);
+  transition: transform .08s ease, filter .12s ease;
+}
+
+.uploader-shell .btnBackControl:active {
+  transform: scale(.98);
+  filter: brightness(.95);
+}
+
+/* Botón principal */
+.uploader-shell .btnPrimaryBig {
+  width: 100%;
+  max-width: 520px;
+  display: block;
+  margin: 18px auto 6px;
+  padding: 18px 18px;
+  border-radius: 16px;
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: .4px;
+  background: #12b76a;
+  color: #fff;
+  box-shadow: 0 10px 24px rgba(18,183,106,.30);
+  transition: transform .08s ease, filter .12s ease;
+}
+
+.uploader-shell .btnPrimaryBig:active {
+  transform: scale(.99);
+  filter: brightness(.95);
+}
+
+.uploader-shell .btnPrimaryBig:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+/* Modal imagen fullscreen */
+.uploader-shell .imgModal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.92);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  z-index: 9999;
+}
+
+.uploader-shell .imgModal.open { display: flex; }
+
+.uploader-shell .imgModal img {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 14px;
+  box-shadow: 0 18px 50px rgba(0,0,0,.55);
+}
+
+.uploader-shell .imgModalClose {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  width: 46px;
+  height: 46px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.14);
+  color: #fff;
+  font-size: 20px;
+  font-weight: 900;
+  border: 1px solid rgba(255,255,255,.22);
+  cursor: pointer;
+}

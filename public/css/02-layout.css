@@ -1,0 +1,44 @@
+/* =========================
+   LAYOUT / GRIDS
+   ========================= */
+.row{
+  display:flex;
+  gap:12px;
+  flex-wrap:wrap;
+  margin-bottom:12px;
+  align-items:center;
+}
+
+.space-between{
+  justify-content:space-between;
+  align-items:center;
+}
+
+.fullStack{
+  display:grid;
+  grid-template-columns:1fr;
+  gap:12px;
+  width:100%;
+}
+
+.fullStack > *{ width:100%; }
+
+.twoWide{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+  width:100%;
+}
+
+.twoWide > button{
+  width:100%;
+  height:48px;
+  font-weight:900;
+}
+
+/* mobile */
+@media (max-width:480px){
+  body{ padding:12px 10px 70px; }
+  .card{ padding:14px; border-radius:20px; }
+  #vin{ font-size:14px; }
+}
