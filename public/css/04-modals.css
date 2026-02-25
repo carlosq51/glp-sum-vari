@@ -138,3 +138,54 @@
   background:rgba(0,0,0,.18);
   min-height:280px;
 }
+
+/* =========================
+   MODAL: scroll interno + no mover fondo
+   ========================= */
+.modal{
+  position:fixed;
+  inset:0;
+  background:rgba(7,10,18,.72);
+  backdrop-filter:blur(6px);
+  z-index:10000;
+
+  display:none;
+  align-items:center;
+  justify-content:center;
+
+  padding:16px;
+
+  /* ✅ clave: el backdrop puede scrollear si la caja es alta */
+  overflow:auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.modal.show{ display:flex; }
+
+.modalBox{
+  width:min(520px, 100%);
+  /* ✅ clave: limita alto para que exista scroll */
+  max-height: calc(100dvh - 32px);
+
+  display:flex;
+  flex-direction:column;
+
+  background:linear-gradient(180deg,var(--card) 0%,var(--card2) 100%);
+  border:1px solid var(--cardLine);
+  border-radius:22px;
+  box-shadow:var(--shadow);
+  overflow:hidden;
+}
+
+.modalBody{
+  padding:14px;
+  /* ✅ clave: el scroll va aquí */
+  overflow:auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ✅ bloquea scroll del fondo cuando modal está abierto */
+body.modal-open{
+  overflow:hidden;
+  height:100%;
+}

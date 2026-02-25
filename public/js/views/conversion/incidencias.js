@@ -431,6 +431,7 @@ export async function openIncidenciaModalForKey_(itemKey) {
   if (modal) {
     modal.classList.add("show");
     modal.setAttribute("aria-hidden", "false");
+    document.body.classList.add("modal-open"); // ✅ ADD
   }
   INC.open = true;
 
@@ -457,9 +458,15 @@ export async function openIncidenciaModalForKey_(itemKey) {
 export async function closeIncidenciaModal_() {
   const modal = incModal();
   if (modal) {
+    // ✅ evita warning aria-hidden + focus
+    const active = document.activeElement;
+    if (active && modal.contains(active)) active.blur();
+
     modal.classList.remove("show");
     modal.setAttribute("aria-hidden", "true");
   }
+
+  document.body.classList.remove("modal-open"); // ✅ ADD
   INC.open = false;
   resetIncForm_();
 }
