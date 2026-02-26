@@ -70,20 +70,44 @@ function renderSupervisor_(j) {
     const isRamal = rol === "RAMALERO" || rol === "RAMAL";
     const vinOrTipo = isRamal ? `RAMAL: ${it.tipoRamal || "-"}` : (it.vin || "-");
 
+    const vinCard = String(it.vin || "").trim().toUpperCase();
+    const conversionIdCard = String(it.conversionId || it.conversion_id || "").trim();
+
     return `
       <div class="card" style="margin-top:10px;">
         <div style="font-weight:900;">
           ${escapeHtml(who)} <span class="small">(${escapeHtml(rol)})</span>
         </div>
-        <div class="row space-between" style="margin-top:8px;">
+
+        <div class="row space-between" style="margin-top:8px; gap:10px;">
           <div class="small"><b>Trabajo:</b> ${escapeHtml(vinOrTipo)}</div>
           <div class="pill small"><b>${escapeHtml(it.estado || "")}</b></div>
         </div>
+
         <div class="small" style="margin-top:6px;">
           <b>Inicio:</b> ${escapeHtml(fmtShort_(it.fecha_inicio || it.inicio_at || it.created_at || it.fecha_creacion))}
           &nbsp;|&nbsp;
           <b>Fin:</b> ${escapeHtml(fmtShort_(it.updated_at))}
         </div>
+
+        ${
+          (!isRamal && (vinCard || conversionIdCard))
+            ? `
+              <div class="row" style="margin-top:10px; gap:10px;">
+                <button
+                  type="button"
+                  class="btn3"
+                  data-sup-inc="1"
+                  data-vin="${escapeHtml(vinCard)}"
+                  data-cid="${escapeHtml(conversionIdCard)}"
+                  data-who="${escapeHtml(who)}"
+                >
+                  📋 Incidencias
+                </button>
+              </div>
+            `
+            : ""
+        }
       </div>
     `;
   }).join("");
@@ -129,10 +153,137 @@ async function startSupQR() {
     if (msg) msg.textContent = "No se pudo abrir la cámara. Revisa permisos.";
   }
 }
+function openSupIncModal_() {
+  const m = document.getElementById("supIncModal");
+  m?.classList?.add("show");
+}
+
+function closeSupIncModal_() {
+  document.getElementById("supIncModal")?.classList?.remove("show");
+}
+
+function fmtIncFecha_(x) {
+  try { return escapeHtml(fmtShort_(x)); } catch { return escapeHtml(String(x || "")); }
+}
+
+async function fetchIncidencias_(vin, conversionId) {
+  const url =
+    `/api/incidencias/list` +
+    `?vin=${encodeURIComponent(vin || "")}` +
+    `&conversionId=${encodeURIComponent(conversionId || "")}` +
+    `&limit=${encodeURIComponent(200)}`;
+
+  const r = await getJSON_user(url, "Cargando incidencias...");
+  return r;
+}
+
+function renderIncidencias_(j, ctx) {
+  const info = document.getElementById("supIncInfo");
+  const list = document.getElementById("supIncList");
+  const msg  = document.getElementById("supIncMsg");
+
+  if (msg) msg.textContent = "";
+  if (list) list.innerHTML = "";
+
+  const who = ctx?.who || "-";
+  const vin = ctx?.vin || "-";
+  const cid = ctx?.conversionId || "";
+
+  if (info) info.textContent = `${who} — VIN: ${vin}${cid ? ` — CID: ${cid}` : ""}`;
+
+  if (!j?.ok) {
+    if (msg) msg.textContent = j?.error || "Error cargando incidencias.";
+    return;
+  }
+
+  const items = Array.isArray(j.items) ? j.items : [];
+  if (!items.length) {
+    if (list) list.innerHTML = `<div class="small">No hay incidencias registradas.</div>`;
+    return;
+  }
+
+  if (!list) return;
+
+  list.innerHTML = items.map((it) => {
+    const tipo = String(it.tipo || "").toUpperCase();
+    const tecnico = it.tecnico || "-";
+    const nota = it.nota || "";
+    const fecha = it.fecha || "";
+
+    const hasFoto = !!(it.fotoThumbUrl || it.fotoUrl || it.fotoImgUrl);
+
+    const fotoHtml = hasFoto ? `
+      <div style="margin-top:10px;">
+        <a href="${escapeHtml(it.fotoUrl || it.fotoImgUrl)}" target="_blank" rel="noopener">
+          <img
+            src="${escapeHtml(it.fotoThumbUrl || it.fotoImgUrl)}"
+            alt="Foto incidencia"
+            style="width:140px; height:auto; border-radius:10px; border:1px solid rgba(255,255,255,.18);"
+          />
+        </a>
+        <div class="small" style="opacity:.85; margin-top:6px;">
+          (clic para abrir)
+        </div>
+      </div>
+    ` : "";
+
+    return `
+      <div class="card" style="margin-top:10px; border:1px solid rgba(255,255,255,.14);">
+        <div class="row space-between" style="gap:10px;">
+          <div style="font-weight:900;">
+            ${escapeHtml(tipo || "INCIDENCIA")}
+          </div>
+          <div class="small" style="opacity:.9;">
+            ${fmtIncFecha_(fecha)}
+          </div>
+        </div>
+
+        <div class="small" style="margin-top:8px;">
+          <b>Técnico:</b> ${escapeHtml(tecnico)}
+        </div>
+
+        ${nota ? `
+          <div class="small" style="margin-top:8px; white-space:pre-wrap;">
+            <b>Nota:</b> ${escapeHtml(nota)}
+          </div>
+        ` : `<div class="small" style="margin-top:8px; opacity:.8;">Sin nota.</div>`}
+
+        ${fotoHtml}
+      </div>
+    `;
+  }).join("");
+}
 
 export function init() {
   document.querySelectorAll("[data-suptrack]").forEach((btn) => btn.addEventListener("click", () => setSupTrack_(btn.dataset.suptrack)));
   document.getElementById("btnSupApply")?.addEventListener("click", () => fetchSupervisorReport_().catch(() => {}));
+    // --------------------------
+  // CLICK: botón "Incidencias" dentro de cards
+  // --------------------------
+  document.getElementById("supTable")?.addEventListener("click", async (e) => {
+    const btn = e.target?.closest?.("button[data-sup-inc]");
+    if (!btn) return;
+
+    const vin = String(btn.dataset.vin || "").trim().toUpperCase();
+    const conversionId = String(btn.dataset.cid || "").trim();
+    const who = String(btn.dataset.who || "").trim();
+
+    openSupIncModal_();
+
+    const msg = document.getElementById("supIncMsg");
+    if (msg) msg.textContent = "Cargando...";
+
+    try {
+      const j = await fetchIncidencias_(vin, conversionId);
+      renderIncidencias_(j, { vin, conversionId, who });
+    } catch (err) {
+      renderIncidencias_({ ok:false, error:String(err?.message || err) }, { vin, conversionId, who });
+    }
+  });
+  document.getElementById("btnCloseSupInc")?.addEventListener("click", () => closeSupIncModal_());
+  document.getElementById("supIncModal")?.addEventListener("click", (e) => {
+    if (e.target === document.getElementById("supIncModal")) closeSupIncModal_();
+  });
   document.getElementById("btnSupClear")?.addEventListener("click", () => {
     ["supName","supVin","supFrom","supTo","supMonth"].forEach((id) => { const el = document.getElementById(id); if (el) el.value=""; });
     fetchSupervisorReport_().catch(() => {});

@@ -47,6 +47,24 @@ export function supervisorView() {
 
       <div id="supSummary" class="small" style="margin-top:10px;"></div>
       <div id="supTable" style="margin-top:10px;"></div>
+          <!-- =========================
+         MODAL: INCIDENCIAS (LISTA)
+         ========================= -->
+      <div id="supIncModal" class="modal" aria-hidden="true">
+        <div class="modalBox">
+          <div class="modalHead">
+            <div class="modalTitle">Incidencias registradas</div>
+            <button id="btnCloseSupInc" title="Cerrar">✕</button>
+          </div>
+
+          <div class="modalBody">
+            <div id="supIncInfo" class="small" style="opacity:.9; margin-bottom:10px;"></div>
+            <div id="supIncList"></div>
+            <div id="supIncMsg" class="small" style="margin-top:10px;"></div>
+          </div>
+        </div>
+      </div>
+      
     </div>
   `;
 }

@@ -434,5 +434,25 @@ app.post("/api/incidencia", async (req, res) => {
   }
 });
 
+// =========================
+// INCIDENCIAS LIST (Supervisor view)
+// =========================
+app.get("/api/incidencias/list", async (req, res) => {
+  try {
+    const vin = String(req.query.vin || "").trim().toUpperCase();
+    const conversionId = String(req.query.conversionId || "").trim();
+    const email = String(req.query.email || "").trim().toLowerCase(); // opcional
+    const limit = Number(req.query.limit || 200);
+
+    if (!vin && !conversionId) {
+      return res.status(400).json({ ok:false, error:"Falta vin o conversionId" });
+    }
+
+    const j = await callAppsScript("incidencias_list", { vin, conversionId, email, limit });
+    return res.json(j);
+  } catch (e) {
+    return res.status(500).json({ ok:false, error: String(e.message || e) });
+  }
+});
 
 app.listen(PORT, () => console.log(`Servidor corriendo en http://localhost:${PORT}`));
