@@ -95,12 +95,8 @@ function parseTimeMs_(x) {
 }
 
 function durationMsFromItem_(it) {
-  // inicio: fecha_inicio || inicio_at || created_at || fecha_creacion
-  // fin: updated_at (tu render ya lo usa como fin)
-  const t0 = parseTimeMs_(it.fecha_inicio || it.inicio_at || it.created_at || it.fecha_creacion);
-  const t1 = parseTimeMs_(it.updated_at);
-  const d = (t0 && t1) ? (t1 - t0) : 0;
-  return d > 0 ? d : 0;
+  const ms = Number(it?.tiempo_ms ?? 0);
+  return Number.isFinite(ms) && ms > 0 ? ms : 0;
 }
 
 function fmtDur_(ms) {
@@ -117,6 +113,27 @@ function isFinalizado_(estadoRaw) {
   // ajusta si tus estados son distintos:
   // "FINALIZADO", "FIN", "COMPLETADO", etc.
   return e === "FINALIZADO" || e === "FIN" || e === "COMPLETADO";
+}
+
+function vinFamily_(vinRaw) {
+  const v = String(vinRaw || "").toUpperCase();
+  if (!v) return "JETOUR";          // sin VIN => lo tratamos como "otros"
+  if (v.includes("TE")) return "KYC";
+  if (v.includes("TT")) return "VW";
+  return "JETOUR";
+}
+
+function matchMarca_(it, marcaSel) {
+  const sel = String(marcaSel || "ALL").toUpperCase();
+  if (!sel || sel === "ALL") return true;
+
+  // Solo aplica a conversion (no RAMAL)
+  const rol = String(it.rol || it.rolTrabajo || "").toUpperCase();
+  const isRamal = rol === "RAMALERO" || rol === "RAMAL";
+  if (isRamal) return true; // no tocamos ramal
+
+  const fam = vinFamily_(it.vin);
+  return (sel === fam);
 }
 
 function setSupTrack_(t) {
@@ -166,6 +183,12 @@ function renderSupervisor_(j) {
 
   const items = Array.isArray(j.items) ? j.items : [];
 
+  const marcaSel = String(document.getElementById("supMarca")?.value || "ALL").toUpperCase();
+
+  // OJO: filtramos por marca solo para conversion (VIN)
+  const filtered = items.filter((it) => matchMarca_(it, marcaSel));
+  const list = filtered;
+
     // -----------------------------------------
   // Promedio de tiempo (solo FINALIZADOS)
   // - usa los items que ya trajo el filtro (ej: 20)
@@ -173,10 +196,10 @@ function renderSupervisor_(j) {
   // -----------------------------------------
   const durMs = [];
 
-  for (const it of items) {
+  for (const it of list) {
     const rol = String(it.rol || it.rolTrabajo || "").toUpperCase();
     const isRamal = rol === "RAMALERO" || rol === "RAMAL";
-    if (isRamal) continue; // conversión: ignora ramal
+    if (isRamal) continue;
 
     if (!isFinalizado_(it.estado)) continue;
 
@@ -184,7 +207,7 @@ function renderSupervisor_(j) {
     if (d > 0) durMs.push(d);
   }
 
-  const stats = avgWeightedByMedianMad_(durMs, 3.5); // k: 3.0–4.0
+  const stats = avgWeightedByMedianMad_(durMs, 3.5);
 
     // -----------------------------------------
   // CARTILLA: Promedio de conversión (técnico)
@@ -195,13 +218,13 @@ function renderSupervisor_(j) {
   let motorCount = 0;
   let tanqueCount = 0;
 
-  for (const it of items) {
+  for (const it of list) {
     if (!isFinalizado_(it.estado)) continue;
 
     const rol = String(it.rol || it.rolTrabajo || "").toUpperCase();
     if (rol === "TANQUE" || rol === "TANQUERO") tanqueCount++;
     else if (rol === "MOTOR") motorCount++;
-    else if (rol === "TECNICO" || rol === "CONVERSION") motorCount++; // fallback seguro
+    else if (rol === "TECNICO" || rol === "CONVERSION") motorCount++;
   }
 
   if (avgCard) {
@@ -277,25 +300,18 @@ function renderSupervisor_(j) {
 
   if (!box) return;
 
-  if (!items.length) {
+  if (!list.length) {
     if (sum) sum.textContent = "Resultados: 0";
+    if (avgCard) avgCard.innerHTML = "";
     box.innerHTML = `<div class="small">No hay resultados con esos filtros.</div>`;
     return;
   }
 
   if (sum) {
-    const base = `Resultados: ${items.length}`;
-    if (stats.used > 0) {
-      sum.textContent =
-        `${base} — FINALIZADOS: ${stats.used}` +
-        ` — Promedio (robusto): ${fmtDur_(stats.avgMs)}` +
-        ` — Mediana: ${fmtDur_(stats.medianMs)}`;
-    } else {
-      sum.textContent = `${base} — FINALIZADOS: 0 (sin datos de tiempo)`;
-    }
+    sum.textContent = `Resultados: ${list.length}`;
   }
 
-  box.innerHTML = items.map((it) => {
+  box.innerHTML = list.map((it) => {
     const who = it.userName || it.userEmail || it.userId || "-";
     const rol = String(it.rol || it.rolTrabajo || "").toUpperCase() || "-";
     const isRamal = rol === "RAMALERO" || rol === "RAMAL";
@@ -303,6 +319,9 @@ function renderSupervisor_(j) {
 
     const vinCard = String(it.vin || "").trim().toUpperCase();
     const conversionIdCard = String(it.conversionId || it.conversion_id || "").trim();
+
+    const durMsItem = durationMsFromItem_(it);
+    const durTxtItem = durMsItem ? fmtDur_(durMsItem) : "-";
 
     return `
       <div class="card" style="margin-top:10px;">
@@ -313,6 +332,10 @@ function renderSupervisor_(j) {
         <div class="row space-between" style="margin-top:8px; gap:10px;">
           <div class="small"><b>Trabajo:</b> ${escapeHtml(vinOrTipo)}</div>
           <div class="pill small"><b>${escapeHtml(it.estado || "")}</b></div>
+        </div>
+
+        <div class="small" style="margin-top:6px;">
+          <b>Duración:</b> ${escapeHtml(durTxtItem)}
         </div>
 
         <div class="small" style="margin-top:6px;">
@@ -488,6 +511,12 @@ function renderIncidencias_(j, ctx) {
 export function init() {
   document.querySelectorAll("[data-suptrack]").forEach((btn) => btn.addEventListener("click", () => setSupTrack_(btn.dataset.suptrack)));
   document.getElementById("btnSupApply")?.addEventListener("click", () => fetchSupervisorReport_().catch(() => {}));
+
+  document.getElementById("supMarca")?.addEventListener("change", () => {
+    if (CORE.state.currentModule !== "SUPERVISOR") return;
+    fetchSupervisorReport_().catch(() => {});
+  });
+
     // --------------------------
   // CLICK: botón "Incidencias" dentro de cards
   // --------------------------

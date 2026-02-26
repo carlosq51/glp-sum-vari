@@ -19,8 +19,26 @@ export function supervisorView() {
       </div>
 
       <div class="fullStack" style="margin-top:10px;">
-        <div class="supNameWrap">
-          <input id="supName" type="text" placeholder="Buscar por nombre o email..." autocomplete="off" />
+        <div class="supNameWrap" style="display:flex; gap:10px; align-items:center;">
+          <input id="supName" type="text" placeholder="Buscar por nombre o email..." autocomplete="off" style="flex:1;" />
+
+          <select id="supMarca" title="Filtrar por marca" style="
+            width:140px;
+            height:44px;
+            border-radius:14px;
+            padding:0 10px;
+            background: rgba(0,0,0,.25);
+            border:1px solid rgba(255,255,255,.18);
+            color: #fff;
+            font-weight:800;
+            outline:none;
+          ">
+            <option value="ALL">TODOS</option>
+            <option value="KYC">KYC</option>
+            <option value="JETOUR">JETOUR</option>
+            <option value="VW">VOLKSWAGEN</option>
+          </select>
+
           <div id="supNameSuggest" class="nameSuggest hidden" role="listbox"></div>
         </div>
 
