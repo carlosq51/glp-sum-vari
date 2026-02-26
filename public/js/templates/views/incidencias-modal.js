@@ -41,14 +41,30 @@ export function incidenciasModal() {
             <label class="small" style="display:block; margin-top:10px;">Foto de incidencia (opcional)</label>
 
             <div class="incFotoWrap" style="margin-top:8px;">
+
+              <!-- inputs ocultos -->
               <input
-                id="incFotoInput"
+                id="incFotoCam"
                 type="file"
                 accept="image/*"
                 capture="environment"
-                style="width:100%;"
+                style="display:none;"
               />
 
+              <input
+                id="incFotoFile"
+                type="file"
+                accept="image/*"
+                style="display:none;"
+              />
+
+              <!-- botones visibles -->
+              <div class="row" style="gap:10px; flex-wrap:wrap; margin-top:8px;">
+                <button type="button" id="btnIncFotoCam" class="btn3">📷 Tomar foto</button>
+                <button type="button" id="btnIncFotoFile" class="btn3">🖼️ Cargar imagen</button>
+              </div>
+
+              <!-- preview + quitar -->
               <div id="incFotoPreviewWrap" class="hidden" style="margin-top:10px;">
                 <div class="thumb" style="max-width:220px;">
                   <img
@@ -67,6 +83,17 @@ export function incidenciasModal() {
                   🧹 Quitar foto
                 </button>
               </div>
+            </div>
+
+            <div class="incFotoWrap" style="margin-top:8px;">
+              <input
+                id="incFotoInput"
+                type="file"
+                accept="image/*"
+                capture="environment"
+                style="width:100%;"
+              />
+
             </div>
           </div>
 

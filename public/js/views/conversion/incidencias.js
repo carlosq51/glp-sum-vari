@@ -54,10 +54,21 @@ function incFotoPreviewWrap() {
   return incEl("incFotoPreviewWrap");
 }
 
+function incFotoCamInput() {
+  return incEl("incFotoCam");
+}
+
+function incFotoFileInput() {
+  return incEl("incFotoFile");
+}
+
 function clearIncFoto_() {
   INC.photo = null;
 
-  const fi = incFotoInput();
+  const cam = incFotoCamInput();
+  if (cam) cam.value = "";
+
+  const fi = incFotoFileInput();
   if (fi) fi.value = "";
 
   const img = incFotoPreview();
@@ -610,7 +621,28 @@ export function initIncidenciasUI_() {
   incInputTech()?.addEventListener("keydown", onIncTechKeyDown_);
 
     // foto
-  incFotoInput()?.addEventListener("change", onIncFotoChange_);
+  // --------------------------
+  // FOTO: 2 botones (cam / file) + 2 inputs hidden
+  // --------------------------
+  incEl("btnIncFotoCam")?.addEventListener("click", () => {
+    incSetMsg("");
+    incFotoCamInput()?.click();
+  });
+
+  incEl("btnIncFotoFile")?.addEventListener("click", () => {
+    incSetMsg("");
+    incFotoFileInput()?.click();
+  });
+
+  // cambios de archivos
+  incFotoCamInput()?.addEventListener("change", onIncFotoChange_);
+  incFotoFileInput()?.addEventListener("change", onIncFotoChange_);
+
+  // quitar foto
+  incEl("btnIncFotoClear")?.addEventListener("click", () => {
+    clearIncFoto_();
+    incSetMsg("");
+  });
   incEl("btnIncFotoClear")?.addEventListener("click", () => {
     clearIncFoto_();
     incSetMsg("");
