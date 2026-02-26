@@ -289,6 +289,70 @@ export function init() {
     fetchSupervisorReport_().catch(() => {});
   });
 
+  // --------------------------
+// FECHAS RÁPIDAS: AYER / HOY / ESTE MES
+// --------------------------
+function pad2_(n) { return String(n).padStart(2, "0"); }
+function toDateInput_(d) {
+  const y = d.getFullYear();
+  const m = pad2_(d.getMonth() + 1);
+  const day = pad2_(d.getDate());
+  return `${y}-${m}-${day}`;
+}
+function toMonthInput_(d) {
+  const y = d.getFullYear();
+  const m = pad2_(d.getMonth() + 1);
+  return `${y}-${m}`;
+}
+
+document.getElementById("btnSupHoy")?.addEventListener("click", () => {
+  const now = new Date();
+  const s = toDateInput_(now);
+
+  const fromEl = document.getElementById("supFrom");
+  const toEl   = document.getElementById("supTo");
+  if (fromEl) fromEl.value = s;
+  if (toEl)   toEl.value = s;
+
+  // opcional: limpiar mes para que no "confunda"
+  const mEl = document.getElementById("supMonth");
+  if (mEl) mEl.value = "";
+
+  fetchSupervisorReport_().catch(() => {});
+});
+
+document.getElementById("btnSupAyer")?.addEventListener("click", () => {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  const s = toDateInput_(d);
+
+  const fromEl = document.getElementById("supFrom");
+  const toEl   = document.getElementById("supTo");
+  if (fromEl) fromEl.value = s;
+  if (toEl)   toEl.value = s;
+
+  const mEl = document.getElementById("supMonth");
+  if (mEl) mEl.value = "";
+
+  fetchSupervisorReport_().catch(() => {});
+});
+
+document.getElementById("btnSupEsteMes")?.addEventListener("click", () => {
+  const now = new Date();
+  const m = toMonthInput_(now);
+
+  const mEl = document.getElementById("supMonth");
+  if (mEl) mEl.value = m;
+
+  // opcional: limpiar rango de fechas para que no "confunda"
+  const fromEl = document.getElementById("supFrom");
+  const toEl   = document.getElementById("supTo");
+  if (fromEl) fromEl.value = "";
+  if (toEl)   toEl.value = "";
+
+  fetchSupervisorReport_().catch(() => {});
+});
+
   document.getElementById("btnSupQR")?.addEventListener("click", () => {
     if (CORE.state.currentModule !== "SUPERVISOR") return;
     openSupQR().catch(() => {});

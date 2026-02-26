@@ -32,12 +32,25 @@ export function supervisorView() {
           <button id="btnSupQR" type="button" title="Escanear VIN con cámara">📷</button>
         </div>
 
-        <div class="twoWide">
+        <div
+          class="supDateRow"
+          style="
+            display:grid;
+            grid-template-columns: 1fr 1fr auto auto;
+            gap:10px;
+            align-items:center;
+          "
+        >
           <input id="supFrom" type="date" />
           <input id="supTo" type="date" />
+          <button id="btnSupAyer" type="button" class="btn3" title="Rango: Ayer">AYER</button>
+          <button id="btnSupHoy" type="button" class="btn3" title="Rango: Hoy">HOY</button>
         </div>
 
-        <input id="supMonth" type="month" placeholder="Mes (YYYY-MM)" />
+        <div class="row" style="gap:10px; align-items:center;">
+          <input id="supMonth" type="month" placeholder="Mes (YYYY-MM)" style="flex:1;" />
+          <button id="btnSupEsteMes" type="button" class="btn3" title="Filtrar por este mes">ESTE MES</button>
+        </div>
 
         <div class="twoWide">
           <button id="btnSupApply">Aplicar filtros</button>
