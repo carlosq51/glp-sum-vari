@@ -83,7 +83,7 @@ export function buildAsignadoHTML_(it) {
   `;
 }
 
-export function buildIncidenciasBtnHTML_(it) {
+export function buildIncidenciasBtnHTML_(it, key = "") {
   if (CORE.state.currentModule !== "CALIDAD") return "";
   const vin = String(it?.vin || "").trim().toUpperCase();
   const cid = String(it?.conversionId || "").trim();
@@ -99,7 +99,7 @@ export function buildIncidenciasBtnHTML_(it) {
       : `<span class="pill small" style="margin-left:8px; opacity:.8;">L:0 M:0 C:0</span>`;
 
   return `
-    <button class="btnRF" type="button" data-go="INC" style="margin-bottom:10px;">
+    <button class="btnRF" type="button" data-go="INC" data-key="${escapeHtml(key)}" style="margin-bottom:10px;">
       ⚠️ Registrar incidencia ${badge}
     </button>
   `;
@@ -210,7 +210,7 @@ export function renderActivas_() {
             : ""
           }
 
-          ${buildIncidenciasBtnHTML_(it)}
+          ${buildIncidenciasBtnHTML_(it, k)}
 
           <div class="jobActionsSlot">${buildBotonesByEstado_(estado)}</div>
 
@@ -267,13 +267,15 @@ export function renderFinalizados_(avgTopHTML = "") {
     const cre = escapeHtml(fmtFechaCreacion_(it.created_at));
 
     out += `
-      <div class="card" style="margin-top:10px;">
+      <div class="card" style="margin-top:10px;" data-key="${escapeHtml(k)}">
         <div><b>${vin}</b> <span class="small">(${rol})</span></div>
         <div class="row space-between" style="margin-top:6px;">
           <div class="small"><b>Estado:</b> ${estado}</div>
           <div class="pill" style="font-size:18px; font-weight:800;">⏱ ${live}</div>
         </div>
         <div class="small">Inicio: ${cre}</div>
+
+        ${buildIncidenciasBtnHTML_(it, k)}
 
         ${
           CORE.state.currentModule === "TECNICO" || CORE.state.currentModule === "CALIDAD"

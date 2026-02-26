@@ -542,84 +542,32 @@ function attachWorkDelegationOnce_(mod) {
     });
 
     box.addEventListener("click", async (e) => {
-      const card = e.target.closest(".jobCard");
-      if (!card) return;
+      const btn = e.target?.closest?.("button[data-go]");
+      if (!btn) return;
 
-      const c = ctx_();
-      const k = card.dataset.key || "";
-      const it = c.itemsByKey.get(k);
-      if (!it) return;
+      const go = String(btn.dataset.go || "").toUpperCase();
 
-      // RF
-      const go = e.target.closest("button[data-go]");
-      if (go && go.dataset.go === "RF") {
-        e.stopPropagation();
-
-        const vin = String(go.dataset.vin || it.vin || "").trim().toUpperCase();
+      if (go === "RF") {
+        const vin = String(btn.dataset.vin || "").trim().toUpperCase();
         if (!vin) return;
 
-        // ✅ opcional: reflejar VIN en inputs del módulo actual
-        if (CORE.state.currentModule === "TECNICO" && $("vin")) $("vin").value = vin;
-        if (CORE.state.currentModule === "CALIDAD" && $("vinQ")) $("vinQ").value = vin;
-
-        // ✅ abrir uploader integrado (igual que botón global)
         const root = document.getElementById("viewUploader");
         if (root) {
-          // oculta vistas actuales
           document.querySelectorAll('[id^="view"]').forEach((v) => {
             if (v.id !== "viewUploader") v.style.display = "none";
           });
         }
-
         showUploaderView({ vin, screen: "menu" });
         return;
       }
 
-      if (go && go.dataset.go === "INC") {
+      if (go === "INC") {
         e.stopPropagation();
-        await openIncidenciaModalForKey_(k);
+        const key = String(btn.dataset.key || "").trim();
+        if (!key) return;
+        await openIncidenciaModalForKey_(key);
         return;
       }
-
-      if (go && String(go.dataset.go || "").toUpperCase() === "CONF") {
-        e.stopPropagation();
-
-        // opcional: reflejar VIN en input del módulo
-        const vin = String(it.vin || "").trim().toUpperCase();
-        if (CORE.state.currentModule === "TECNICO" && $("vin")) $("vin").value = vin;
-        if (CORE.state.currentModule === "CALIDAD" && $("vinQ")) $("vinQ").value = vin;
-
-        await openConformidadModalForKey_(k);
-        return;
-      }
-
-      // acciones
-      const btn = e.target.closest("button[data-act]");
-      if (btn) {
-        e.stopPropagation();
-        const accion = String(btn.dataset.act || "").toUpperCase();
-
-        // set VIN input
-        const vinEl = el_("vin");
-        if (vinEl) vinEl.value = it.vin || "";
-
-        if (CORE.state.currentModule === "TECNICO" && !CORE.state.rolLock) {
-          if ($("rol")) $("rol").value = it.rolTrabajo || "MOTOR";
-          enforceRolLock_();
-        }
-
-        if (accion === "NOTA" && $("nota")) {
-          $("nota").value = String(card.querySelector("textarea.notaCard")?.value || "");
-        }
-
-        await enviarEvento(accion, { clearKey: k });
-        return;
-      }
-
-      // abrir/cerrar card
-      const wasOpen = card.classList.contains("open");
-      box.querySelectorAll(".jobCard.open").forEach((x) => x.classList.remove("open"));
-      if (!wasOpen) card.classList.add("open");
     });
   } finally {
     CORE.state.currentModule = prev;
@@ -637,19 +585,39 @@ function attachFinalizadosDelegationOnce_(mod) {
     if (box.dataset[markKey] === "1") return;
     box.dataset[markKey] = "1";
 
-    box.addEventListener("click", (e) => {
-      const go = e.target.closest('button[data-go="RF"]');
-      if (!go) return;
-      const vin = String(go.dataset.vin || "").trim().toUpperCase();
-      if (!vin) return;
-      // ✅ abrir uploader integrado también desde finalizados
-      const root = document.getElementById("viewUploader");
-      if (root) {
-        document.querySelectorAll('[id^="view"]').forEach((v) => {
-          if (v.id !== "viewUploader") v.style.display = "none";
-        });
+    box.addEventListener("click", async (e) => {
+      const btn = e.target?.closest?.("button[data-go]");
+      if (!btn) return;
+
+      const go = String(btn.dataset.go || "").toUpperCase();
+
+      // --------------------------
+      // INC (registrar incidencia)
+      // --------------------------
+      if (go === "INC") {
+        e.stopPropagation();
+        const key = String(btn.dataset.key || btn.closest("[data-key]")?.dataset?.key || "").trim();
+        if (!key) return;
+        await openIncidenciaModalForKey_(key);
+        return;
       }
-      showUploaderView({ vin, screen: "menu" });
+
+      // --------------------------
+      // RF (fotos/fallas)
+      // --------------------------
+      if (go === "RF") {
+        const vin = String(btn.dataset.vin || "").trim().toUpperCase();
+        if (!vin) return;
+
+        const root = document.getElementById("viewUploader");
+        if (root) {
+          document.querySelectorAll('[id^="view"]').forEach((v) => {
+            if (v.id !== "viewUploader") v.style.display = "none";
+          });
+        }
+        showUploaderView({ vin, screen: "menu" });
+        return;
+      }
     });
   } finally {
     CORE.state.currentModule = prev;
