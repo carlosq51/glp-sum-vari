@@ -542,30 +542,65 @@ function attachWorkDelegationOnce_(mod) {
     });
 
     box.addEventListener("click", async (e) => {
-      const btn = e.target?.closest?.("button[data-go]");
-      if (!btn) return;
+      const card = e.target.closest(".jobCard");
+      if (!card) return;
 
-      const go = String(btn.dataset.go || "").toUpperCase();
+      // ✅ 1) ACCIONES (PAUSA/FIN/REANUDAR/INICIO/NOTA)
+      const actBtn = e.target.closest('button[data-act]');
+      if (actBtn) {
+        e.stopPropagation();
+        const accion = String(actBtn.dataset.act || "").toUpperCase();
+
+        const c = ctx_();
+        const k = card.dataset.key || "";
+        const it = c.itemsByKey.get(k);
+        if (!it) return;
+
+        // si quieres reflejar VIN/ROL como antes:
+        const vinEl = el_("vin");
+        if (vinEl) vinEl.value = it.vin || "";
+        if (CORE.state.currentModule === "TECNICO" && !CORE.state.rolLock) {
+          if ($("rol")) $("rol").value = it.rolTrabajo || "MOTOR";
+          enforceRolLock_();
+        }
+        if (accion === "NOTA" && $("nota")) {
+          $("nota").value = String(card.querySelector("textarea.notaCard")?.value || "");
+        }
+
+        await enviarEvento(accion, { clearKey: k });
+        return;
+      }
+
+      // ✅ 2) BOTONES data-go (INC / RF / CONF)
+      const goBtn = e.target.closest('button[data-go]');
+      if (!goBtn) return;
+
+      const go = String(goBtn.dataset.go || "").toUpperCase();
+      const c = ctx_();
+      const k = card.dataset.key || "";
+      const it = c.itemsByKey.get(k);
+      if (!it) return;
 
       if (go === "RF") {
-        const vin = String(btn.dataset.vin || "").trim().toUpperCase();
+        const vin = String(goBtn.dataset.vin || it.vin || "").trim().toUpperCase();
         if (!vin) return;
-
-        const root = document.getElementById("viewUploader");
-        if (root) {
-          document.querySelectorAll('[id^="view"]').forEach((v) => {
-            if (v.id !== "viewUploader") v.style.display = "none";
-          });
-        }
+        if (CORE.state.currentModule === "TECNICO" && $("vin")) $("vin").value = vin;
+        if (CORE.state.currentModule === "CALIDAD" && $("vinQ")) $("vinQ").value = vin;
         showUploaderView({ vin, screen: "menu" });
         return;
       }
 
       if (go === "INC") {
         e.stopPropagation();
-        const key = String(btn.dataset.key || "").trim();
+        const key = String(goBtn.dataset.key || k || "").trim();
         if (!key) return;
         await openIncidenciaModalForKey_(key);
+        return;
+      }
+
+      if (go === "CONF") {
+        e.stopPropagation();
+        await openConformidadModalForKey_(k);
         return;
       }
     });
