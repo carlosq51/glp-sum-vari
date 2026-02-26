@@ -188,6 +188,78 @@ function renderSupervisor_(j) {
   // OJO: filtramos por marca solo para conversion (VIN)
   const filtered = items.filter((it) => matchMarca_(it, marcaSel));
   const list = filtered;
+  const rawTechName = String(document.getElementById("supName")?.value || "").trim();
+  const hasTechFilter = !!rawTechName; // ✅ si hay texto, NO agrupamos
+
+  function isConvRole_(r) {
+    const x = String(r || "").toUpperCase();
+    return x === "MOTOR" || x === "TANQUE" || x === "TANQUERO";
+  }
+
+  function groupByVinForUI_(rows) {
+    const map = new Map();
+
+    for (const it of rows) {
+      // Solo conversion; RAMAL queda igual
+      const rol = String(it.rol || it.rolTrabajo || "").toUpperCase();
+      if (!isConvRole_(rol)) {
+        // deja otros tal cual (por si acaso)
+        const k = `RAW|${Math.random()}`;
+        map.set(k, { _kind:"raw", it });
+        continue;
+      }
+
+      const vin = String(it.vin || "").trim().toUpperCase();
+      if (!vin) {
+        const k = `NOVIN|${(it.workId||"")}|${rol}|${Math.random()}`;
+        map.set(k, { _kind:"raw", it });
+        continue;
+      }
+
+      const g = map.get(vin) || {
+        _kind: "group",
+        vin,
+        estado: "SIN_DATO",
+        motor: null,
+        tanque: null,
+        // para ordenar: max(updated_at)
+        sortTs: 0,
+      };
+
+      // asignar motor/tanque
+      if (rol === "MOTOR") g.motor = it;
+      else g.tanque = it;
+
+      // estado “principal”: si alguno FINALIZADO => FINALIZADO; si alguno TRABAJANDO => TRABAJANDO; si alguno PAUSADO => PAUSADO; else lo que haya
+      const estM = String(g.motor?.estado || "").toUpperCase();
+      const estT = String(g.tanque?.estado || "").toUpperCase();
+      const ests = [estM, estT].filter(Boolean);
+
+      if (ests.includes("FINALIZADO") || ests.includes("FIN") || ests.includes("COMPLETADO")) g.estado = "FINALIZADO";
+      else if (ests.includes("TRABAJANDO")) g.estado = "TRABAJANDO";
+      else if (ests.includes("PAUSADO")) g.estado = "PAUSADO";
+      else g.estado = ests[0] || "SIN_DATO";
+
+      // sortTs
+      const t1 = Date.parse(String(it.updated_at || "")) || 0;
+      const t2 = Date.parse(String(it.fecha_asignacion || it.fecha_inicio || "")) || 0;
+      g.sortTs = Math.max(g.sortTs, t1, t2);
+
+      map.set(vin, g);
+    }
+
+    // mantener “raw” también
+    const out = Array.from(map.values());
+    out.sort((a, b) => (b.sortTs || 0) - (a.sortTs || 0));
+    return out;
+  }
+
+  // ✅ Lista que se renderiza
+  const uiList = (!hasTechFilter && supTrack === "CONVERSION")
+    ? groupByVinForUI_(list)
+    : list;
+
+
 
     // -----------------------------------------
   // Promedio de tiempo (solo FINALIZADOS)
@@ -311,14 +383,90 @@ function renderSupervisor_(j) {
     sum.textContent = `Resultados: ${list.length}`;
   }
 
-  box.innerHTML = list.map((it) => {
+  box.innerHTML = uiList.map((row) => {
+
+    // =========================
+    // A) MODO AGRUPADO: una cartilla por VIN (motor + tanque)
+    // =========================
+    if (row && row._kind === "group") {
+      const vin = row.vin || "-";
+      const motor = row.motor;
+      const tanque = row.tanque;
+
+      const motorWho = motor?.userName || motor?.userEmail || motor?.userId || "-";
+      const tanqueWho = tanque?.userName || tanque?.userEmail || tanque?.userId || "-";
+
+      const motorDur = motor ? (durationMsFromItem_(motor) ? fmtDur_(durationMsFromItem_(motor)) : "-") : "-";
+      const tanqueDur = tanque ? (durationMsFromItem_(tanque) ? fmtDur_(durationMsFromItem_(tanque)) : "-") : "-";
+
+      const motorIni = motor ? fmtShort_(motor.fecha_inicio || motor.fecha_asignacion || "") : "";
+      const motorFin = motor ? fmtShort_(motor.updated_at || "") : "";
+      const tanqueIni = tanque ? fmtShort_(tanque.fecha_inicio || tanque.fecha_asignacion || "") : "";
+      const tanqueFin = tanque ? fmtShort_(tanque.updated_at || "") : "";
+
+      // ids para incidencias (usa el que exista)
+      const cidAny = String(motor?.workId || tanque?.workId || "").trim();
+
+      return `
+        <div class="card" style="margin-top:10px;">
+          <div style="font-weight:900;">
+            VIN: ${escapeHtml(vin)} <span class="small">(MOTOR + TANQUE)</span>
+          </div>
+
+          <div class="row space-between" style="margin-top:8px; gap:10px;">
+            <div class="small"><b>Estado:</b> ${escapeHtml(row.estado || "-")}</div>
+            <div class="pill small"><b>${escapeHtml(row.estado || "")}</b></div>
+          </div>
+
+          <div class="card" style="margin-top:10px; border:1px solid rgba(255,255,255,.14);">
+            <div class="small" style="font-weight:900;">MOTOR: ${escapeHtml(motorWho)}</div>
+            <div class="small" style="margin-top:6px;"><b>Duración:</b> ${escapeHtml(motorDur)}</div>
+            <div class="small" style="margin-top:6px;">
+              <b>Inicio:</b> ${escapeHtml(motorIni)} &nbsp;|&nbsp; <b>Fin:</b> ${escapeHtml(motorFin)}
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:10px; border:1px solid rgba(255,255,255,.14);">
+            <div class="small" style="font-weight:900;">TANQUE: ${escapeHtml(tanqueWho)}</div>
+            <div class="small" style="margin-top:6px;"><b>Duración:</b> ${escapeHtml(tanqueDur)}</div>
+            <div class="small" style="margin-top:6px;">
+              <b>Inicio:</b> ${escapeHtml(tanqueIni)} &nbsp;|&nbsp; <b>Fin:</b> ${escapeHtml(tanqueFin)}
+            </div>
+          </div>
+
+          ${
+            vin && cidAny
+              ? `
+                <div class="row" style="margin-top:10px; gap:10px;">
+                  <button
+                    type="button"
+                    class="btn3"
+                    data-sup-inc="1"
+                    data-vin="${escapeHtml(vin)}"
+                    data-cid="${escapeHtml(cidAny)}"
+                    data-who="${escapeHtml("VIN " + vin)}"
+                  >
+                    📋 Incidencias
+                  </button>
+                </div>
+              `
+              : ""
+          }
+        </div>
+      `;
+    }
+
+    // =========================
+    // B) MODO NORMAL: tu card actual (MOTOR o TANQUE separados)
+    // =========================
+    const it = row;
     const who = it.userName || it.userEmail || it.userId || "-";
     const rol = String(it.rol || it.rolTrabajo || "").toUpperCase() || "-";
     const isRamal = rol === "RAMALERO" || rol === "RAMAL";
     const vinOrTipo = isRamal ? `RAMAL: ${it.tipoRamal || "-"}` : (it.vin || "-");
 
     const vinCard = String(it.vin || "").trim().toUpperCase();
-    const conversionIdCard = String(it.conversionId || it.conversion_id || "").trim();
+    const conversionIdCard = String(it.workId || it.conversionId || it.conversion_id || "").trim();
 
     const durMsItem = durationMsFromItem_(it);
     const durTxtItem = durMsItem ? fmtDur_(durMsItem) : "-";
@@ -339,7 +487,7 @@ function renderSupervisor_(j) {
         </div>
 
         <div class="small" style="margin-top:6px;">
-          <b>Inicio:</b> ${escapeHtml(fmtShort_(it.fecha_inicio || it.inicio_at || it.created_at || it.fecha_creacion))}
+          <b>Inicio:</b> ${escapeHtml(fmtShort_(it.fecha_inicio || it.fecha_asignacion || it.created_at || it.fecha_creacion))}
           &nbsp;|&nbsp;
           <b>Fin:</b> ${escapeHtml(fmtShort_(it.updated_at))}
         </div>
