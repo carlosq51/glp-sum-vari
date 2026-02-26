@@ -9,6 +9,116 @@ import { CORE, $, getJSON_user, escapeHtml, fmtShort_, setOut, withLock } from "
 let supTrack = "CONVERSION";
 let supTimer = null;
 
+// ==========================================================
+// PROMEDIO REALISTA (MEDIANA + MAD) SIN ELIMINAR OUTLIERS
+// - todos cuentan, outliers pesan menos
+// ==========================================================
+
+function median_(arr) {
+  const v = [...arr].sort((a, b) => a - b);
+  const n = v.length;
+  if (!n) return 0;
+  const m = Math.floor(n / 2);
+  return n % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
+}
+
+function mad_(arr, med) {
+  const devs = arr.map((x) => Math.abs(x - med));
+  return median_(devs);
+}
+
+// Peso suave: 1 cerca de la mediana, cae gradual en outliers (sin cortar)
+function weightByMad_(x, med, mad, k = 3.5) {
+  // z = distancia robusta
+  const z = Math.abs(x - med) / (mad || 1);
+
+  // dentro de k*MAD => peso 1
+  if (z <= k) return 1;
+
+  // fuera => baja suave (sin eliminar)
+  // caída tipo 1/(1+((z-k))^2)
+  const t = (z - k);
+  return 1 / (1 + t * t);
+}
+
+/**
+ * Promedio ponderado robusto usando Mediana+MAD (NO elimina outliers)
+ * @param {number[]} arrMs - tiempos en ms
+ * @param {number} k - umbral robusto (3.0–4.0 recomendado)
+ */
+function avgWeightedByMedianMad_(arrMs, k = 3.5) {
+  const vals = arrMs.filter((x) => Number.isFinite(x) && x > 0);
+
+  if (!vals.length) {
+    return { avgMs: 0, medianMs: 0, madMs: 0, used: 0, total: 0 };
+  }
+
+  // si hay pocos, promedio simple
+  if (vals.length < 3) {
+    const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+    return { avgMs: avg, medianMs: median_(vals), madMs: 0, used: vals.length, total: vals.length };
+  }
+
+  const med = median_(vals);
+  const mad = mad_(vals, med) || 1;
+
+  let sumW = 0;
+  let sumWX = 0;
+  let minW = 1, maxW = 0;
+
+  for (const x of vals) {
+    const w = weightByMad_(x, med, mad, k);
+    sumW += w;
+    sumWX += w * x;
+    if (w < minW) minW = w;
+    if (w > maxW) maxW = w;
+  }
+
+  const avgMs = sumW > 0 ? (sumWX / sumW) : med;
+
+  return {
+    avgMs,
+    medianMs: med,
+    madMs: mad,
+    used: vals.length,
+    total: vals.length,
+    sumW,
+    minW,
+    maxW
+  };
+}
+
+function parseTimeMs_(x) {
+  // acepta Date ISO o vacío
+  const t = Date.parse(String(x || ""));
+  return Number.isFinite(t) ? t : 0;
+}
+
+function durationMsFromItem_(it) {
+  // inicio: fecha_inicio || inicio_at || created_at || fecha_creacion
+  // fin: updated_at (tu render ya lo usa como fin)
+  const t0 = parseTimeMs_(it.fecha_inicio || it.inicio_at || it.created_at || it.fecha_creacion);
+  const t1 = parseTimeMs_(it.updated_at);
+  const d = (t0 && t1) ? (t1 - t0) : 0;
+  return d > 0 ? d : 0;
+}
+
+function fmtDur_(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const hh = Math.floor(s / 3600);
+  const mm = Math.floor((s % 3600) / 60);
+  const ss = s % 60;
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${hh}h ${pad(mm)}m ${pad(ss)}s`;
+}
+
+function isFinalizado_(estadoRaw) {
+  const e = String(estadoRaw || "").trim().toUpperCase();
+  // ajusta si tus estados son distintos:
+  // "FINALIZADO", "FIN", "COMPLETADO", etc.
+  return e === "FINALIZADO" || e === "FIN" || e === "COMPLETADO";
+}
+
 function setSupTrack_(t) {
   supTrack = (t === "CALIDAD" || t === "RAMAL") ? t : "CONVERSION";
   document.querySelectorAll("[data-suptrack]").forEach((b) => b.classList.toggle("active", b.dataset.suptrack === supTrack));
@@ -52,8 +162,119 @@ async function fetchSupervisorReport_() {
 function renderSupervisor_(j) {
   const sum = document.getElementById("supSummary");
   const box = document.getElementById("supTable");
+  const avgCard = document.getElementById("supAvgCard");
 
   const items = Array.isArray(j.items) ? j.items : [];
+
+    // -----------------------------------------
+  // Promedio de tiempo (solo FINALIZADOS)
+  // - usa los items que ya trajo el filtro (ej: 20)
+  // - NO elimina outliers: solo baja su peso
+  // -----------------------------------------
+  const durMs = [];
+
+  for (const it of items) {
+    const rol = String(it.rol || it.rolTrabajo || "").toUpperCase();
+    const isRamal = rol === "RAMALERO" || rol === "RAMAL";
+    if (isRamal) continue; // conversión: ignora ramal
+
+    if (!isFinalizado_(it.estado)) continue;
+
+    const d = durationMsFromItem_(it);
+    if (d > 0) durMs.push(d);
+  }
+
+  const stats = avgWeightedByMedianMad_(durMs, 3.5); // k: 3.0–4.0
+
+    // -----------------------------------------
+  // CARTILLA: Promedio de conversión (técnico)
+  // -----------------------------------------
+  const techName = String(document.getElementById("supName")?.value || "").trim() || "Técnico";
+
+  // contadores por rol (MOTOR / TANQUE) solo FINALIZADOS
+  let motorCount = 0;
+  let tanqueCount = 0;
+
+  for (const it of items) {
+    if (!isFinalizado_(it.estado)) continue;
+
+    const rol = String(it.rol || it.rolTrabajo || "").toUpperCase();
+    if (rol === "TANQUE" || rol === "TANQUERO") tanqueCount++;
+    else if (rol === "MOTOR") motorCount++;
+    else if (rol === "TECNICO" || rol === "CONVERSION") motorCount++; // fallback seguro
+  }
+
+  if (avgCard) {
+    if (stats.used > 0) {
+      const nameUp = String(techName || "TÉCNICO").toUpperCase();
+
+      avgCard.innerHTML = `
+        <div class="card" style="
+          border:1px solid rgba(255,255,255,.18);
+          border-radius:22px;
+          padding:18px 18px;
+          background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(0,0,0,.08));
+          box-shadow: 0 10px 24px rgba(0,0,0,.22);
+        ">
+          <!-- HEADER -->
+          <div class="row space-between" style="gap:12px; align-items:flex-start;">
+            <div>
+              <div class="small" style="opacity:.8; letter-spacing:.5px;">TIEMPO PROMEDIO DE CONVERSIÓN</div>
+              <div style="font-weight:1000; font-size:20px; letter-spacing:1px; margin-top:4px;">
+                ${escapeHtml(nameUp)}
+              </div>
+            </div>
+
+            <div class="pill small" style="opacity:.95;">
+              FINALIZADOS: <b>${stats.used}</b>
+            </div>
+          </div>
+
+          <!-- BIG TIME -->
+          <div class="row" style="gap:12px; align-items:center; margin-top:14px;">
+            <div style="
+              width:44px; height:44px;
+              display:flex; align-items:center; justify-content:center;
+              border-radius:14px;
+              background: rgba(255,255,255,.08);
+              border:1px solid rgba(255,255,255,.14);
+            ">⏱</div>
+
+            <div>
+              <div style="font-weight:1000; font-size:40px; letter-spacing:.8px; line-height:1;">
+                ${escapeHtml(fmtDur_(stats.avgMs))}
+              </div>
+              <div class="small" style="opacity:.78; margin-top:6px;">
+                Promedio robusto (outliers pesan menos)
+              </div>
+            </div>
+          </div>
+
+          <!-- STATS LINE -->
+          <div class="row" style="gap:10px; margin-top:14px; flex-wrap:wrap;">
+            <div class="pill small" style="opacity:.9;">
+              MOTOR: <b>${motorCount}</b>
+            </div>
+            <div class="pill small" style="opacity:.9;">
+              TANQUE: <b>${tanqueCount}</b>
+            </div>
+          </div>
+
+          <!-- FOOTNOTE -->
+          <div class="small" style="margin-top:12px; opacity:.75;">
+            (Solo se consideran trabajos en estado <b>FINALIZADO</b>)
+          </div>
+        </div>
+      `;
+    } else {
+      avgCard.innerHTML = `
+        <div class="card" style="border:1px solid rgba(255,255,255,.14); border-radius:18px; padding:14px;">
+          <div class="small">Sin FINALIZADOS con tiempo válido.</div>
+        </div>
+      `;
+    }
+  }
+
   if (!box) return;
 
   if (!items.length) {
@@ -62,7 +283,17 @@ function renderSupervisor_(j) {
     return;
   }
 
-  if (sum) sum.textContent = `Resultados: ${items.length}`;
+  if (sum) {
+    const base = `Resultados: ${items.length}`;
+    if (stats.used > 0) {
+      sum.textContent =
+        `${base} — FINALIZADOS: ${stats.used}` +
+        ` — Promedio (robusto): ${fmtDur_(stats.avgMs)}` +
+        ` — Mediana: ${fmtDur_(stats.medianMs)}`;
+    } else {
+      sum.textContent = `${base} — FINALIZADOS: 0 (sin datos de tiempo)`;
+    }
+  }
 
   box.innerHTML = items.map((it) => {
     const who = it.userName || it.userEmail || it.userId || "-";

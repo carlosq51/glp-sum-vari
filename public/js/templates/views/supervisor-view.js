@@ -58,6 +58,7 @@ export function supervisorView() {
         </div>
       </div>
 
+      <div id="supAvgCard" style="margin-top:10px;"></div>
       <div id="supSummary" class="small" style="margin-top:10px;"></div>
       <div id="supTable" style="margin-top:10px;"></div>
           <!-- =========================
