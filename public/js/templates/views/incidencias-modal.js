@@ -35,36 +35,34 @@ export function incidenciasModal() {
             </select>
 
             <label class="small" style="display:block; margin-top:10px;">Nota (opcional)</label>
-            <textarea id="incNota" rows="2" placeholder="Describe brevemente la incidencia..."
-              style="width:100%;"></textarea>
+            <textarea id="incNota" rows="2" placeholder="Describe brevemente la incidencia..." style="width:100%;"></textarea>
 
+            <!-- =========================
+                 FOTO INCIDENCIA
+                 ========================= -->
             <label class="small" style="display:block; margin-top:10px;">Foto de incidencia (opcional)</label>
 
             <div class="incFotoWrap" style="margin-top:8px;">
-
               <!-- inputs ocultos -->
-              <input
-                id="incFotoCam"
-                type="file"
-                accept="image/*"
-                capture="environment"
-                style="display:none;"
-              />
+              <input id="incFotoCam" type="file" accept="image/*" capture="environment" style="display:none;" />
+              <input id="incFotoFile" type="file" accept="image/*" style="display:none;" />
 
-              <input
-                id="incFotoFile"
-                type="file"
-                accept="image/*"
-                style="display:none;"
-              />
+              <!-- 3 botones en una fila -->
+              <div class="row" style="gap:10px; flex-wrap:nowrap; margin-top:8px; align-items:center;">
+                <button type="button" id="btnIncFotoCam" class="btn3" style="flex:1; white-space:nowrap;">
+                  📷 Tomar foto
+                </button>
 
-              <!-- botones visibles -->
-              <div class="row" style="gap:10px; flex-wrap:wrap; margin-top:8px;">
-                <button type="button" id="btnIncFotoCam" class="btn3">📷 Tomar foto</button>
-                <button type="button" id="btnIncFotoFile" class="btn3">🖼️ Cargar imagen</button>
+                <button type="button" id="btnIncFotoFile" class="btn3" style="flex:1; white-space:nowrap;">
+                  📁 Cargar imagen
+                </button>
+
+                <button type="button" id="btnIncFotoClear" class="btn3" style="flex:0 0 auto; white-space:nowrap;">
+                  🗑️ Borrar
+                </button>
               </div>
 
-              <!-- preview + quitar -->
+              <!-- preview (solo una vez) -->
               <div id="incFotoPreviewWrap" class="hidden" style="margin-top:10px;">
                 <div class="thumb" style="max-width:220px;">
                   <img
@@ -73,27 +71,7 @@ export function incidenciasModal() {
                     style="width:100%; height:auto; display:block; border-radius:8px;"
                   />
                 </div>
-
-                <button
-                  type="button"
-                  id="btnIncFotoClear"
-                  class="btn3"
-                  style="margin-top:8px;"
-                >
-                  🧹 Quitar foto
-                </button>
               </div>
-            </div>
-
-            <div class="incFotoWrap" style="margin-top:8px;">
-              <input
-                id="incFotoInput"
-                type="file"
-                accept="image/*"
-                capture="environment"
-                style="width:100%;"
-              />
-
             </div>
           </div>
 
