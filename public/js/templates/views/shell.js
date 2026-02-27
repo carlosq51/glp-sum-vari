@@ -12,6 +12,7 @@ import { loadingOverlay } from "./loading-overlay.js";
 import { qrModal } from "./qr-modal.js";
 import { conformidadModal } from "./conformidad-modal.js";
 import { incidenciasModal } from "./incidencias-modal.js";
+import { rfModal } from "/js/templates/modals/rf-modal-template.js";
 
 export function appShell() {
   return `
@@ -43,5 +44,6 @@ export function appShell() {
     ${qrModal()}
     ${conformidadModal()}
     ${incidenciasModal()}
+    ${rfModal()}
   `;
 }

@@ -11,6 +11,8 @@
 
 import { initIncidenciasUI_, openIncidenciaModalForKey_ } from "./incidencias.js";
 
+import { initRFModalUI_, openRFModalForVin_ } from "./rf-modal.js";
+
 import { showUploaderView } from "../uploader/uploader.js";
 
 import { initConformidadUI_, openConformidadModalForKey_ } from "./conformidad.js";
@@ -584,10 +586,18 @@ function attachWorkDelegationOnce_(mod) {
       if (go === "RF") {
         const vin = String(goBtn.dataset.vin || it.vin || "").trim().toUpperCase();
         if (!vin) return;
-        if (CORE.state.currentModule === "TECNICO" && $("vin")) $("vin").value = vin;
-        if (CORE.state.currentModule === "CALIDAD" && $("vinQ")) $("vinQ").value = vin;
-        showUploaderView({ vin, screen: "menu" });
-        return;
+
+        if (CORE.state.currentModule === "TECNICO") {
+          if ($("vin")) $("vin").value = vin;
+          showUploaderView({ vin, screen: "menu" }); // TECNICO igual que antes
+          return;
+        }
+
+        if (CORE.state.currentModule === "CALIDAD") {
+          if ($("vinQ")) $("vinQ").value = vin;
+          openRFModalForVin_(vin); // ✅ CALIDAD abre modal
+          return;
+        }
       }
 
       if (go === "INC") {
@@ -641,17 +651,20 @@ function attachFinalizadosDelegationOnce_(mod) {
       // RF (fotos/fallas)
       // --------------------------
       if (go === "RF") {
-        const vin = String(btn.dataset.vin || "").trim().toUpperCase();
+        const vin = String(goBtn.dataset.vin || it.vin || "").trim().toUpperCase();
         if (!vin) return;
 
-        const root = document.getElementById("viewUploader");
-        if (root) {
-          document.querySelectorAll('[id^="view"]').forEach((v) => {
-            if (v.id !== "viewUploader") v.style.display = "none";
-          });
+        if (CORE.state.currentModule === "TECNICO") {
+          if ($("vin")) $("vin").value = vin;
+          showUploaderView({ vin, screen: "menu" }); // TECNICO igual que antes
+          return;
         }
-        showUploaderView({ vin, screen: "menu" });
-        return;
+
+        if (CORE.state.currentModule === "CALIDAD") {
+          if ($("vinQ")) $("vinQ").value = vin;
+          openRFModalForVin_(vin); // ✅ CALIDAD abre modal
+          return;
+        }
       }
     });
   } finally {
@@ -792,6 +805,7 @@ $("btnScanBar")?.addEventListener("click", async () => {
 });
   initIncidenciasUI_();
   initConformidadUI_();
+  initRFModalUI_();
 
   // delegation once
   attachWorkDelegationOnce_("TECNICO");
