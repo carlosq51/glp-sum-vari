@@ -1,12 +1,18 @@
-/* =========================
-   Uploader GLP (scoped) - THEME APP
-   Reemplaza blancos/azules hardcode por vars globales
-   ========================= */
+/* =====================================================================
+   90-uploader.css — Uploader GLP (scoped)
+   ---------------------------------------------------------------------
+   El uploader es un “mini módulo” con UI propia. Para evitar conflictos
+   con la app principal, TODOS los estilos están scopeados bajo:
+     .uploader-shell ...
+
+   Regla:
+   - No tocar estilos globales (body, button, input global).
+   - Reusar tokens del tema (00-vars.css).
+   ===================================================================== */
 
 .uploader-shell{
   font-family: system-ui, Arial, sans-serif;
 
-  /* ✅ mobile-first */
   width:100%;
   max-width:none;
   margin:0;
@@ -17,7 +23,7 @@
 
 @media (min-width: 900px){
   .uploader-shell{
-    max-width:560px;   /* o 760 si en desktop quieres más ancho */
+    max-width:560px;
     margin:0 auto;
     padding:16px;
   }
@@ -89,7 +95,7 @@
   color: var(--text);
 }
 
-/* Botones base (respetan tu estilo global) */
+/* Botones */
 .uploader-shell button{
   cursor:pointer;
   padding:12px 14px;
@@ -102,31 +108,28 @@
   transition:.12s ease;
   user-select:none;
 }
+
 :root[data-theme="day"] .uploader-shell button{
-  color: #fff; /* en day tus botones son azules oscuros, texto blanco */
+  color:#fff;
 }
+
 .uploader-shell button:hover{ filter:brightness(1.06); }
 .uploader-shell button:active{ transform:scale(.99); }
 .uploader-shell button:disabled{ opacity:.55; cursor:not-allowed; transform:none; }
 
-/* Botones del uploader: btn / btn2 / btn3 */
-.uploader-shell .btn{
-  /* ya es button, solo refuerzo */
-}
+/* Variantes internas */
 .uploader-shell .btn2{
-  /* secundario oscuro/transparente */
   background: var(--pillBg);
   border: 1px solid var(--pillLine);
   color: var(--text);
 }
 .uploader-shell .btn3{
-  /* tipo “quitar” suave */
   background: var(--codeBg);
   border: 1px solid var(--codeLine);
   color: var(--text);
 }
 
-/* Acciones / grids */
+/* Grids / acciones */
 .uploader-shell .grid{
   display:grid;
   grid-template-columns: 1fr;
@@ -202,7 +205,7 @@
   color: var(--text);
 }
 
-/* Botón volver (usar estilo app, no verde/azul hardcode) */
+/* Botón volver */
 .uploader-shell .btnBackControl{
   width:100%;
   max-width:520px;
@@ -215,11 +218,9 @@
   border:1px solid var(--btnLine);
   box-shadow: var(--shadow);
 }
-.uploader-shell .btnBackControl:active{
-  transform: scale(.99);
-}
+.uploader-shell .btnBackControl:active{ transform: scale(.99); }
 
-/* Botón principal grande (ENVIAR) -> estilo OK */
+/* Botón principal grande (ENVIAR) */
 .uploader-shell .btnPrimaryBig{
   width:100%;
   max-width:520px;
@@ -258,7 +259,6 @@
   box-shadow: 0 18px 50px rgba(0,0,0,.55);
 }
 
-/* Close button en el modal de imagen */
 .uploader-shell .imgModalClose{
   position: fixed;
   top: 14px;
@@ -272,26 +272,28 @@
   font-weight: 950;
   border: 1px solid var(--pillLine);
 }
-/* =========================
-   Botones estilo APP dentro del uploader
-   ========================= */
 
+/* Acciones estilo app */
 .uploader-shell .upActions{
   display:flex;
   gap:12px;
   flex-wrap:wrap;
+  align-items:center;
   margin-top:10px;
 }
 
 .uploader-shell .btnUp{
+  flex:1 1 100%;
+  min-width:0;
+
+  height:48px;
+  padding:0 14px;
+  border-radius:14px;
+
   display:flex;
   align-items:center;
   justify-content:center;
   gap:10px;
-
-  height:48px;
-  padding:0 16px;
-  border-radius:14px;
 
   font-size:15px;
   font-weight:950;
@@ -301,9 +303,7 @@
   color:rgba(234,240,255,.92);
 }
 
-:root[data-theme="day"] .uploader-shell .btnUp{
-  color:#fff;
-}
+:root[data-theme="day"] .uploader-shell .btnUp{ color:#fff; }
 
 .uploader-shell .btnUp .ico{
   display:inline-flex;
@@ -312,49 +312,17 @@
   opacity:.95;
 }
 
-/* danger (borrar) */
 .uploader-shell .btnUp-danger{
   border-color: var(--danger);
   color: var(--danger);
   background: linear-gradient(180deg, var(--dangerBg) 0%, rgba(239,68,68,.08) 100%);
 }
 
-/* opcional: que sean “full” en móvil */
-@media (max-width:520px){
-  .uploader-shell .btnUp{ flex:1 1 100%; }
-}
-
-/* =========================
-   upActions mobile-first
-   ========================= */
-.uploader-shell .upActions{
-  display:flex;
-  gap:12px;
-  flex-wrap:wrap;          /* ✅ móvil: se acomodan */
-  align-items:center;
-}
-
-.uploader-shell .btnUp{
-  flex:1 1 100%;           /* ✅ móvil: full width */
-  min-width:0;
-  height:48px;
-  padding:0 14px;
-  border-radius:14px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  gap:10px;
-  font-size:15px;
-  font-weight:950;
-}
-
-/* ✅ ya en pantallas más anchas: 3 en fila */
 @media (min-width: 520px){
   .uploader-shell .upActions{ flex-wrap:nowrap; }
   .uploader-shell .btnUp{ flex:1 1 0; white-space:nowrap; }
 }
 
-/* si el texto es largo, que recorte con puntos */
 .uploader-shell .btnUp span:last-child{
   overflow:hidden;
   text-overflow:ellipsis;

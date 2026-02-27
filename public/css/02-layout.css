@@ -1,13 +1,20 @@
-/* =========================
-   LAYOUT / GRIDS
-   ========================= */
+/* =====================================================================
+   02-layout.css — Layout / Grids (mobile-first)
+   ---------------------------------------------------------------------
+   Contiene SOLO utilidades estructurales: filas, stacks, grids.
+   No define look & feel de componentes (eso va en 03-components.css).
+   ===================================================================== */
+
 .row{
   display:flex;
-  gap:12px;
+  gap:10px;
   flex-wrap:wrap;
   margin-bottom:12px;
   align-items:center;
+  width:100%;
 }
+
+.row > *{ min-width:0; } /* ✅ clave en flex */
 
 .space-between{
   justify-content:space-between;
@@ -21,7 +28,10 @@
   width:100%;
 }
 
-.fullStack > *{ width:100%; }
+.fullStack > *{
+  width:100%;
+  min-width:0;
+}
 
 .twoWide{
   display:grid;
@@ -30,21 +40,15 @@
   width:100%;
 }
 
+.twoWide > *{ min-width:0; }
+
 .twoWide > button{
   width:100%;
   height:48px;
   font-weight:900;
 }
 
-
-/* mobile */
-@media (max-width:480px){
-  .card{ padding:14px; border-radius:20px; }
-  #vin{ font-size:14px; }
-}
-
+/* Mobile breakpoints */
 @media (max-width: 420px){
-  .twoWide{
-    grid-template-columns: 1fr;
-  }
+  .twoWide{ grid-template-columns: 1fr; }
 }

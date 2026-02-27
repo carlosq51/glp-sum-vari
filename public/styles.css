@@ -1,4 +1,35 @@
-﻿/* public/styles.css (ENTRY) */
+﻿/* =====================================================================
+   public/styles.css — ENTRY (orden y overrides finales)
+   ---------------------------------------------------------------------
+   Este archivo es el PUNTO DE ENTRADA del CSS.
+
+   RESPONSABILIDADES
+   1) Importar los estilos en un orden fijo y predecible:
+      - 00-vars: tokens + temas (night/day) + safe-area tokens
+      - 01-base: reset + html/body + tipografía base
+      - 02-layout: grids/rows/stacks (estructura)
+      - 03-components: cards/inputs/buttons/pills/pre/checks (reutilizables)
+      - 04-modals: overlays + modals + scroll locking
+      - 05-autocomplete: dropdowns de sugerencias
+      - 06-views: reglas específicas por pantalla (IDs / flows)
+      - 90-uploader: módulo uploader aislado (scoped)
+
+   2) Definir “patches” o FIXES puntuales:
+      - Reglas pequeñas para resolver un problema específico sin reestructurar
+        HTML, idealmente tocando SOLO el área afectada.
+      - Estos fixes deben ser estables y poco invasivos, evitando cambiar el
+        display/layout de contenedores grandes (por ejemplo .card) para no
+        romper contenido no relacionado.
+
+   REGLAS IMPORTANTES
+   - NO declarar aquí estilos base globales (body, button global, etc.).
+     Eso pertenece a los archivos por capa.
+   - Los fixes deben apuntar a wrappers específicos (p.ej. .jobActionsGrid),
+     NO a contenedores amplios (.card, #activasBox) salvo que sea estrictamente
+     necesario.
+   - Mantén este archivo corto: solo imports + overrides finales.
+   ===================================================================== */
+
 @import url("./css/00-vars.css");
 @import url("./css/01-base.css");
 @import url("./css/02-layout.css");
@@ -8,85 +39,72 @@
 @import url("./css/06-views.css");
 @import url("./css/90-uploader.css");
 
-/* =========================
-   FIX: acciones 2 botones (REANUDAR/PAUSA/FIN/INICIO) 50/50 full width
-   (sin tocar HTML)
-   ========================= */
 
-/* El contenedor inmediato que tenga estos botones se vuelve "grid 2" */
+/* =====================================================================
+   FIX: Acciones 2 botones (INICIO/PAUSA/REANUDAR + FIN) a 50/50
+   ---------------------------------------------------------------------
+   Objetivo:
+   - Cuando existan 2 botones de acción consecutivos en el área de acciones,
+     mostrarlos en 2 columnas iguales (1fr 1fr) y full width.
+
+   Por qué este FIX es más seguro:
+   - Apunta SOLO a contenedores de acciones conocidos (.jobActionsGrid, .rowFinal)
+     en vez de convertir en grid a .card o cajas grandes.
+   - Si en una card hay título, textos, etc., no se rompe el layout.
+
+   Requisitos:
+   - Si tu HTML usa otro wrapper distinto, dímelo y lo ajusto al nombre real.
+   ===================================================================== */
+
+/* Asegura que estos botones puedan encogerse dentro de grid/flex */
 .btnReanudar,
 .btnPausa,
 .btnInicio,
 .btnFin{
-  min-width: 0;
+  min-width:0;
 }
 
-/* Si un elemento tiene 2 botones de acción, lo convertimos en grid */
-.btnReanudar + .btnFin,
-.btnPausa + .btnFin,
-.btnInicio + .btnFin{
-  /* selector ancla: cuando hay 2 botones seguidos, tomamos su padre */
-}
-
-.btnReanudar + .btnFin,
-.btnPausa + .btnFin,
-.btnInicio + .btnFin{
-  /* aplicamos a su parent con :has (Edge lo soporta) */
-}
-
-/* Edge/Chrome modernos: usa :has() */
+/* Desktop/tablet: 2 botones => 2 columnas iguales */
 @supports(selector(:has(*))){
-  /* padre que contiene el par */
-  :where(.card, .jobCard, #activasBox, #activasBoxQ, #finalizadosBox, #finalizadosBoxQ)
-    :has(> .btnReanudar + .btnFin),
-  :where(.card, .jobCard, #activasBox, #activasBoxQ, #finalizadosBox, #finalizadosBoxQ)
-    :has(> .btnPausa + .btnFin),
-  :where(.card, .jobCard, #activasBox, #activasBoxQ, #finalizadosBox, #finalizadosBoxQ)
-    :has(> .btnInicio + .btnFin){
-    display: grid !important;
-    grid-template-columns: 1fr 1fr !important;
-    gap: 12px !important;
-    width: 100% !important;
+  /* Si el wrapper de acciones tiene exactamente un par seguido */
+  :where(.jobActionsGrid, .rowFinal):has(> .btnReanudar + .btnFin),
+  :where(.jobActionsGrid, .rowFinal):has(> .btnPausa + .btnFin),
+  :where(.jobActionsGrid, .rowFinal):has(> .btnInicio + .btnFin){
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    gap:12px;
+    width:100%;
   }
 
-  /* y los botones llenan su celda */
-  :where(.card, .jobCard, #activasBox, #activasBoxQ, #finalizadosBox, #finalizadosBoxQ)
-    > .btnReanudar,
-  :where(.card, .jobCard, #activasBox, #activasBoxQ, #finalizadosBox, #finalizadosBoxQ)
-    > .btnPausa,
-  :where(.card, .jobCard, #activasBox, #activasBoxQ, #finalizadosBox, #finalizadosBoxQ)
-    > .btnInicio,
-  :where(.card, .jobCard, #activasBox, #activasBoxQ, #finalizadosBox, #finalizadosBoxQ)
-    > .btnFin{
-    width: 100% !important;
+  :where(.jobActionsGrid, .rowFinal)
+    > :is(.btnReanudar,.btnPausa,.btnInicio,.btnFin){
+    width:100%;
   }
 }
-/* =========================
-   MOBILE: botones INICIO/PAUSA/FIN full width
-   ========================= */
+
+/* Fallback (si :has no aplica): si tu wrapper ya es grid, forzamos 2 cols */
+.jobActionsGrid{
+  /* NO forzamos display aquí para no romper nada si es flex.
+     Solo definimos columnas si ya es grid en tu HTML/CSS. */
+  grid-template-columns: 1fr 1fr;
+  gap:12px;
+}
+
+
+/* =====================================================================
+   MOBILE: Botones de acciones a 1 columna (stack) full width
+   ===================================================================== */
 @media (max-width:480px){
-
-  /* El grid de acciones pasa a 1 columna (stack) */
-  .jobActionsGrid{
-    grid-template-columns: 1fr !important;
-  }
-
-  /* Cualquier botón dentro del grid ocupa todo */
-  .jobActionsGrid > button{
-    width: 100% !important;
-    height: 64px;          /* mantiene tu tamaño grande */
-    font-size: 16px;
-    font-weight: 900;
-  }
-
-  /* Si tienes otra fila de acciones tipo 2 botones (ej. REANUDAR/FIN) */
+  .jobActionsGrid,
   .rowFinal{
     grid-template-columns: 1fr !important;
   }
 
+  .jobActionsGrid > button,
   .rowFinal > button{
     width: 100% !important;
-    height: 56px;
+    height: 64px;
+    font-size: 16px;
     font-weight: 900;
   }
 }

@@ -1,5 +1,28 @@
+/* =====================================================================
+   00-vars.css — Design Tokens + Theme System (Night/Day)
+   ---------------------------------------------------------------------
+   Este archivo contiene ÚNICAMENTE variables CSS (custom properties)
+   que definen el sistema visual del proyecto.
+
+   QUÉ VA AQUÍ
+   - Colores base (fondos, texto, superficies)
+   - Colores/estilos de componentes a nivel token (inputs/botones/pills)
+   - Sombras y radios
+   - Estados semánticos (ok/warn/danger/note) + fondos suaves
+   - Tokens para code blocks y líneas de modal
+   - Tokens de safe-area (notch iOS) en forma de variables
+
+   QUÉ NO VA AQUÍ
+   - Reset, box-sizing, estilos de body, tipografías globales
+   - Layout (rows/grids), componentes (.card, button, input)
+   - Modals/overlays, views específicas o uploader
+
+   REGLA DE ORO
+   - Los componentes consumen variables; los temas solo redefinen variables.
+   ===================================================================== */
+
 /* =========================
-   VARS / THEME
+   THEME: Night (default)
    ========================= */
 :root{
   --bgAccent:#121a2b;
@@ -46,8 +69,17 @@
   --noteBg:rgba(96,165,250,.22);
 
   --r:18px;
+
+  /* Safe areas (iPhone notch) */
+  --safeTop: env(safe-area-inset-top, 0px);
+  --safeRight: env(safe-area-inset-right, 0px);
+  --safeBottom: env(safe-area-inset-bottom, 0px);
+  --safeLeft: env(safe-area-inset-left, 0px);
 }
 
+/* =========================
+   THEME: Day
+   ========================= */
 :root[data-theme="day"]{
   --bg0:#eef2ff;
   --bg1:#f8fafc;
@@ -84,38 +116,4 @@
   --codeLine:rgba(11,18,32,.12);
 
   --modalLine:rgba(11,18,32,.10);
-}
-
-/* =========================
-   MOBILE-FIRST BASE (PONLO AQUÍ)
-   ========================= */
-
-/* 1) Viewport safe areas (iPhone notch) */
-:root{
-  --safeTop: env(safe-area-inset-top, 0px);
-  --safeRight: env(safe-area-inset-right, 0px);
-  --safeBottom: env(safe-area-inset-bottom, 0px);
-  --safeLeft: env(safe-area-inset-left, 0px);
-}
-
-/* 2) Base box sizing (solo una vez) */
-*, *::before, *::after{ box-sizing:border-box; }
-
-html, body{ height:100%; width:100%; }
-
-/* 3) Body 100% mobile + sin scroll lateral */
-body{
-  margin:0;
-  width:100%;
-  max-width:none;
-  overflow-x:hidden;
-
-  /* padding mobile + notch */
-  padding: calc(12px + var(--safeTop))
-           calc(10px + var(--safeRight))
-           calc(80px + var(--safeBottom))
-           calc(10px + var(--safeLeft));
-
-  -webkit-text-size-adjust: 100%;
-  text-rendering: optimizeLegibility;
 }

@@ -1,14 +1,17 @@
-/* =========================
-   BASE / RESET (mobile-first)
-   ========================= */
+/* =====================================================================
+   01-base.css — Reset + Base (mobile-first)
+   ---------------------------------------------------------------------
+   Aquí vive TODO lo “global” y estructural del documento:
+   - Reset mínimo, box sizing, html/body
+   - Tipografía base
+   - Background global (usando variables)
+   - Accesibilidad mínima: focus y placeholders
 
-/* Safe areas (iPhone notch) */
-:root{
-  --safeTop: env(safe-area-inset-top, 0px);
-  --safeRight: env(safe-area-inset-right, 0px);
-  --safeBottom: env(safe-area-inset-bottom, 0px);
-  --safeLeft: env(safe-area-inset-left, 0px);
-}
+   Nota:
+   - Los tokens (colores/sombras/radios) vienen de 00-vars.css
+   - Layout (.row/.grid) va en 02-layout.css
+   - Componentes (.card/button/input) va en 03-components.css
+   ===================================================================== */
 
 /* Box sizing (solo una vez) */
 *, *::before, *::after{ box-sizing:border-box; }
@@ -25,10 +28,13 @@ body{
   overflow-x:hidden;
 
   /* ✅ padding móvil + notch */
-  padding: calc(12px + var(--safeTop))
+  padding: calc(10px + var(--safeTop))
            calc(10px + var(--safeRight))
-           calc(80px + var(--safeBottom))
+           calc(24px + var(--safeBottom))
            calc(10px + var(--safeLeft));
+
+  -webkit-text-size-adjust: 100%;
+  text-rendering: optimizeLegibility;
 
   color:var(--text);
 
@@ -42,7 +48,7 @@ body{
     linear-gradient(180deg, var(--bg1) 0%, var(--bg0) 100%);
 }
 
-/* ✅ opcional desktop (si quieres top en pantalla grande) */
+/* ✅ opcional desktop: centra “app card-like” */
 @media (min-width: 900px){
   body{
     max-width: 560px;
@@ -64,4 +70,10 @@ h2{
 input::placeholder,
 textarea::placeholder{
   color:var(--placeholder);
+}
+
+/* Focus visible (accesibilidad mínima) */
+:focus-visible{
+  outline:2px solid rgba(77,163,255,.65);
+  outline-offset:2px;
 }

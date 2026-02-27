@@ -1,11 +1,16 @@
-/* =========================
-   AUTOCOMPLETE (Supervisor + VIN)
-   ========================= */
+/* =====================================================================
+   05-autocomplete.css — Autocomplete (Supervisor + VIN)
+   ---------------------------------------------------------------------
+   Solo estilos de dropdowns de sugerencias.
+   Si mañana cambias el componente, no afectas layout ni cards.
+   ===================================================================== */
+
 .supNameWrap{
   position:relative;
   width:100%;
 }
 
+/* NAMES */
 .nameSuggest{
   position:absolute;
   left:0;
@@ -23,7 +28,7 @@
 .nameSuggest.hidden{ display:none; }
 
 .nameSuggest .nsItem{
-  padding:12px 12px;
+  padding:12px;
   cursor:pointer;
   display:flex;
   flex-direction:column;
@@ -71,7 +76,7 @@
 .vinSuggest.hidden{ display:none; }
 
 .vinSuggest .vsItem{
-  padding:12px 12px;
+  padding:12px;
   cursor:pointer;
   display:flex;
   align-items:center;

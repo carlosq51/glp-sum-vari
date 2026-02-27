@@ -1,3 +1,10 @@
+/* =====================================================================
+   04-modals.css — Overlays / Spinners / Modals
+   ---------------------------------------------------------------------
+   Contiene overlays de carga, spinner y modales con scroll interno.
+   Mantener aquí evita z-index dispersos y conflictos con componentes.
+   ===================================================================== */
+
 /* =========================
    OVERLAY / SPINNER
    ========================= */
@@ -26,7 +33,6 @@
 
 @keyframes spin{ to{ transform:rotate(360deg); } }
 
-/* overlay box */
 .overlay-box{
   width:min(320px, calc(100vw - 48px));
   max-width:360px;
@@ -56,7 +62,6 @@
   display:flex;
   align-items:center;
   justify-content:center;
-  gap:0;
 }
 
 .overlay-text .dots{
@@ -78,9 +83,8 @@
   50%{ opacity:1; transform:translateY(-1px); }
 }
 
-
 /* =========================
-   MODAL: scroll interno + no mover fondo
+   MODAL
    ========================= */
 .modal{
   position:fixed;
@@ -95,7 +99,7 @@
 
   padding:12px;
 
-  /* ✅ clave: el backdrop puede scrollear si la caja es alta */
+  /* ✅ backdrop scrollea si la caja es alta */
   overflow:auto;
   -webkit-overflow-scrolling: touch;
 }
@@ -104,7 +108,6 @@
 
 .modalBox{
   width:min(520px, 100%);
-  /* ✅ clave: limita alto para que exista scroll */
   max-height: calc(100dvh - 32px);
 
   display:flex;
@@ -119,12 +122,10 @@
 
 .modalBody{
   padding:14px;
-  /* ✅ clave: el scroll va aquí */
   overflow:auto;
   -webkit-overflow-scrolling: touch;
 }
 
-/* ✅ bloquea scroll del fondo cuando modal está abierto */
 body.modal-open{
   overflow:hidden;
   height:100%;
