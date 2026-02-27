@@ -1,15 +1,35 @@
 /* =========================
-   RESET / BASE
+   BASE / RESET (mobile-first)
    ========================= */
-*{ box-sizing:border-box; }
-html, body{ height:100%; }
+
+/* Safe areas (iPhone notch) */
+:root{
+  --safeTop: env(safe-area-inset-top, 0px);
+  --safeRight: env(safe-area-inset-right, 0px);
+  --safeBottom: env(safe-area-inset-bottom, 0px);
+  --safeLeft: env(safe-area-inset-left, 0px);
+}
+
+/* Box sizing (solo una vez) */
+*, *::before, *::after{ box-sizing:border-box; }
+
+html, body{ height:100%; width:100%; }
 
 body{
   font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
   margin:0;
-  padding:16px 14px 80px;
-  max-width:520px;
-  margin-inline:auto;
+
+  /* ✅ 100% móvil */
+  width:100%;
+  max-width:none;
+  overflow-x:hidden;
+
+  /* ✅ padding móvil + notch */
+  padding: calc(12px + var(--safeTop))
+           calc(10px + var(--safeRight))
+           calc(80px + var(--safeBottom))
+           calc(10px + var(--safeLeft));
+
   color:var(--text);
 
   background:
@@ -22,6 +42,15 @@ body{
     linear-gradient(180deg, var(--bg1) 0%, var(--bg0) 100%);
 }
 
+/* ✅ opcional desktop (si quieres top en pantalla grande) */
+@media (min-width: 900px){
+  body{
+    max-width: 560px;
+    margin: 0 auto;
+    padding: 16px 14px 80px;
+  }
+}
+
 h2{
   margin:6px 0 4px;
   font-size:18px;
@@ -32,7 +61,6 @@ h2{
 
 .small{ color:var(--muted); font-size:13px; }
 
-/* placeholders (usa var) */
 input::placeholder,
 textarea::placeholder{
   color:var(--placeholder);

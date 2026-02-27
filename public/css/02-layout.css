@@ -36,9 +36,15 @@
   font-weight:900;
 }
 
+
 /* mobile */
 @media (max-width:480px){
-  body{ padding:12px 10px 70px; }
   .card{ padding:14px; border-radius:20px; }
   #vin{ font-size:14px; }
+}
+
+@media (max-width: 420px){
+  .twoWide{
+    grid-template-columns: 1fr;
+  }
 }

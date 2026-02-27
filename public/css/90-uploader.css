@@ -5,12 +5,22 @@
 
 .uploader-shell{
   font-family: system-ui, Arial, sans-serif;
-  padding: 16px;
-  max-width: 760px;
-  margin: 0 auto;
 
-  /* hereda tema */
+  /* ✅ mobile-first */
+  width:100%;
+  max-width:none;
+  margin:0;
+  padding:12px 10px;
+
   color: var(--text);
+}
+
+@media (min-width: 900px){
+  .uploader-shell{
+    max-width:560px;   /* o 760 si en desktop quieres más ancho */
+    margin:0 auto;
+    padding:16px;
+  }
 }
 
 .uploader-shell *{ box-sizing:border-box; }
@@ -315,19 +325,19 @@
 }
 
 /* =========================
-   upActions: 3 botones en una fila
+/* =========================
+   upActions mobile-first
    ========================= */
-
 .uploader-shell .upActions{
   display:flex;
   gap:12px;
-  flex-wrap:nowrap;     /* ✅ fuerza una sola fila */
+  flex-wrap:wrap;          /* ✅ móvil: se acomodan */
   align-items:center;
 }
 
 .uploader-shell .btnUp{
-  flex:1 1 0;           /* ✅ los 3 se reparten el ancho */
-  min-width: 0;
+  flex:1 1 100%;           /* ✅ móvil: full width */
+  min-width:0;
   height:48px;
   padding:0 14px;
   border-radius:14px;
@@ -335,20 +345,18 @@
   align-items:center;
   justify-content:center;
   gap:10px;
-
   font-size:15px;
   font-weight:950;
-  white-space:nowrap;   /* ✅ no parte texto */
+}
+
+/* ✅ ya en pantallas más anchas: 3 en fila */
+@media (min-width: 520px){
+  .uploader-shell .upActions{ flex-wrap:nowrap; }
+  .uploader-shell .btnUp{ flex:1 1 0; white-space:nowrap; }
 }
 
 /* si el texto es largo, que recorte con puntos */
 .uploader-shell .btnUp span:last-child{
   overflow:hidden;
   text-overflow:ellipsis;
-}
-
-/* En pantallas MUY angostas, permite wrap (para no deformar) */
-@media (max-width:380px){
-  .uploader-shell .upActions{ flex-wrap:wrap; }
-  .uploader-shell .btnUp{ flex:1 1 100%; }
 }

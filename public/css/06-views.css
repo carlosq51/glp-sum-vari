@@ -209,3 +209,12 @@ button[data-suptrack].active{
   width: 100%;
   box-sizing: border-box;
 }
+
+@media (max-width: 420px){
+  .vinWrap{ min-width:0; } /* ✅ evita empujar */
+  .vinRow3{ grid-template-columns: 1fr; } /* ✅ apila */
+  .vinRow3 #btnQR, .vinRow3 #btnQRQ{ width:100%; height:48px; }
+
+  .ramalRow3{ grid-template-columns: 1fr; } /* ✅ apila */
+  .ramalRow3 #btnRamalNuevo{ height:48px; }
+}
