@@ -103,6 +103,7 @@ export function uploaderView() {
           <h3>Fotos (9) — se guardan en Drive</h3>
 
           <div class="box grid">
+
             <!-- 1) VIN -->
             <div class="slotCard" data-slot="vin">
               <label>1) Foto del VIN</label>
@@ -110,10 +111,16 @@ export function uploaderView() {
               <input class="hiddenInput" type="file" accept="image/*;capture=camera" capture="environment" id="up_vin_cam">
               <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" id="up_vin_file">
 
-              <div class="slotActions">
-                <button class="btn3" type="button" data-pick="cam" data-slot="vin">📷 Tomar foto</button>
-                <button class="btn3" type="button" data-pick="file" data-slot="vin">🖼️ Subir archivo</button>
-                <button class="btn3" type="button" data-clear="1" data-slot="vin">🧹 Quitar</button>
+              <div class="slotActions upActions">
+                <button class="btnUp" type="button" data-pick="cam" data-slot="vin">
+                  <span class="ico">📷</span><span>Tomar foto</span>
+                </button>
+                <button class="btnUp" type="button" data-pick="file" data-slot="vin">
+                  <span class="ico">📁</span><span>Cargar imagen</span>
+                </button>
+                <button class="btnUp btnUp-danger" type="button" data-clear="1" data-slot="vin">
+                  <span class="ico">🗑️</span><span>Borrar</span>
+                </button>
               </div>
 
               <div class="mini">
@@ -129,10 +136,16 @@ export function uploaderView() {
               <input class="hiddenInput" type="file" accept="image/*;capture=camera" capture="environment" id="up_comp_cam">
               <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" id="up_comp_file" multiple>
 
-              <div class="slotActions">
-                <button class="btn3" type="button" data-pick="cam" data-slot="comp">📷 Tomar foto (agrega)</button>
-                <button class="btn3" type="button" data-pick="file" data-slot="comp">🖼️ Subir archivo (agrega)</button>
-                <button class="btn3" type="button" data-clear="1" data-slot="comp">🧹 Quitar todas</button>
+              <div class="slotActions upActions">
+                <button class="btnUp" type="button" data-pick="cam" data-slot="comp">
+                  <span class="ico">📷</span><span>Tomar foto (agrega)</span>
+                </button>
+                <button class="btnUp" type="button" data-pick="file" data-slot="comp">
+                  <span class="ico">📁</span><span>Cargar imagen (agrega)</span>
+                </button>
+                <button class="btnUp btnUp-danger" type="button" data-clear="1" data-slot="comp">
+                  <span class="ico">🗑️</span><span>Borrar todo</span>
+                </button>
               </div>
 
               <div class="grid" style="grid-template-columns: repeat(4, 1fr); gap:10px; margin-top:10px;">
@@ -154,10 +167,16 @@ export function uploaderView() {
               <input class="hiddenInput" type="file" accept="image/*;capture=camera" capture="environment" id="up_corr_pre_cam">
               <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" id="up_corr_pre_file">
 
-              <div class="slotActions">
-                <button class="btn3" type="button" data-pick="cam" data-slot="corr_pre">📷 Tomar foto</button>
-                <button class="btn3" type="button" data-pick="file" data-slot="corr_pre">🖼️ Subir archivo</button>
-                <button class="btn3" type="button" data-clear="1" data-slot="corr_pre">🧹 Quitar</button>
+              <div class="slotActions upActions">
+                <button class="btnUp" type="button" data-pick="cam" data-slot="corr_pre">
+                  <span class="ico">📷</span><span>Tomar foto</span>
+                </button>
+                <button class="btnUp" type="button" data-pick="file" data-slot="corr_pre">
+                  <span class="ico">📁</span><span>Cargar imagen</span>
+                </button>
+                <button class="btnUp btnUp-danger" type="button" data-clear="1" data-slot="corr_pre">
+                  <span class="ico">🗑️</span><span>Borrar</span>
+                </button>
               </div>
 
               <div class="mini">
@@ -173,10 +192,16 @@ export function uploaderView() {
               <input class="hiddenInput" type="file" accept="image/*;capture=camera" capture="environment" id="up_corr_post_cam">
               <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" id="up_corr_post_file">
 
-              <div class="slotActions">
-                <button class="btn3" type="button" data-pick="cam" data-slot="corr_post">📷 Tomar foto</button>
-                <button class="btn3" type="button" data-pick="file" data-slot="corr_post">🖼️ Subir archivo</button>
-                <button class="btn3" type="button" data-clear="1" data-slot="corr_post">🧹 Quitar</button>
+              <div class="slotActions upActions">
+                <button class="btnUp" type="button" data-pick="cam" data-slot="corr_post">
+                  <span class="ico">📷</span><span>Tomar foto</span>
+                </button>
+                <button class="btnUp" type="button" data-pick="file" data-slot="corr_post">
+                  <span class="ico">📁</span><span>Cargar imagen</span>
+                </button>
+                <button class="btnUp btnUp-danger" type="button" data-clear="1" data-slot="corr_post">
+                  <span class="ico">🗑️</span><span>Borrar</span>
+                </button>
               </div>
 
               <div class="mini">
@@ -192,10 +217,16 @@ export function uploaderView() {
               <input class="hiddenInput" type="file" accept="image/*;capture=camera" capture="environment" id="up_voltaje_cam">
               <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" id="up_voltaje_file">
 
-              <div class="slotActions">
-                <button class="btn3" type="button" data-pick="cam" data-slot="voltaje">📷 Tomar foto</button>
-                <button class="btn3" type="button" data-pick="file" data-slot="voltaje">🖼️ Subir archivo</button>
-                <button class="btn3" type="button" data-clear="1" data-slot="voltaje">🧹 Quitar</button>
+              <div class="slotActions upActions">
+                <button class="btnUp" type="button" data-pick="cam" data-slot="voltaje">
+                  <span class="ico">📷</span><span>Tomar foto</span>
+                </button>
+                <button class="btnUp" type="button" data-pick="file" data-slot="voltaje">
+                  <span class="ico">📁</span><span>Cargar imagen</span>
+                </button>
+                <button class="btnUp btnUp-danger" type="button" data-clear="1" data-slot="voltaje">
+                  <span class="ico">🗑️</span><span>Borrar</span>
+                </button>
               </div>
 
               <div class="mini">
@@ -211,10 +242,16 @@ export function uploaderView() {
               <input class="hiddenInput" type="file" accept="image/*;capture=camera" capture="environment" id="up_scan_carro_cam">
               <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" id="up_scan_carro_file">
 
-              <div class="slotActions">
-                <button class="btn3" type="button" data-pick="cam" data-slot="scan_carro">📷 Tomar foto</button>
-                <button class="btn3" type="button" data-pick="file" data-slot="scan_carro">🖼️ Subir archivo</button>
-                <button class="btn3" type="button" data-clear="1" data-slot="scan_carro">🧹 Quitar</button>
+              <div class="slotActions upActions">
+                <button class="btnUp" type="button" data-pick="cam" data-slot="scan_carro">
+                  <span class="ico">📷</span><span>Tomar foto</span>
+                </button>
+                <button class="btnUp" type="button" data-pick="file" data-slot="scan_carro">
+                  <span class="ico">📁</span><span>Cargar imagen</span>
+                </button>
+                <button class="btnUp btnUp-danger" type="button" data-clear="1" data-slot="scan_carro">
+                  <span class="ico">🗑️</span><span>Borrar</span>
+                </button>
               </div>
 
               <div class="mini">
@@ -222,6 +259,7 @@ export function uploaderView() {
                 <div class="miniInfo" id="up_scan_carro_meta">Ningún archivo seleccionado.</div>
               </div>
             </div>
+
           </div>
 
           <div class="row">
@@ -279,10 +317,16 @@ export function uploaderView() {
               <input class="hiddenInput" type="file" accept="image/*;capture=camera" capture="environment" id="up_falla_cam">
               <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" id="up_falla_file" multiple>
 
-              <div class="slotActions">
-                <button class="btn3" type="button" id="up_btnFallaCam">📷 Tomar foto (agrega)</button>
-                <button class="btn3" type="button" id="up_btnFallaFile">🖼️ Subir archivo(s) (agrega)</button>
-                <button class="btn3" type="button" id="up_btnFallaClear">🧹 Quitar todas</button>
+              <div class="slotActions upActions">
+                <button class="btnUp" type="button" id="up_btnFallaCam">
+                  <span class="ico">📷</span><span>Tomar foto</span>
+                </button>
+                <button class="btnUp" type="button" id="up_btnFallaFile">
+                  <span class="ico">📁</span><span>Cargar imagen</span>
+                </button>
+                <button class="btnUp btnUp-danger" type="button" id="up_btnFallaClear">
+                  <span class="ico">🗑️</span><span>Borrar</span>
+                </button>
               </div>
 
               <div class="grid" id="up_fallaGrid" style="grid-template-columns: repeat(4, 1fr); gap:10px; margin-top:10px;"></div>
@@ -338,10 +382,16 @@ export function uploaderView() {
               <input class="hiddenInput" type="file" accept="image/*;capture=camera" capture="environment" id="up_qc_cam">
               <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" id="up_qc_file" multiple>
 
-              <div class="slotActions">
-                <button class="btn3" type="button" id="up_btnQcCam">📷 Tomar foto (agrega)</button>
-                <button class="btn3" type="button" id="up_btnQcFile">🖼️ Subir archivo (agrega)</button>
-                <button class="btn3" type="button" id="up_btnQcClear">🧹 Quitar todas</button>
+              <div class="slotActions upActions">
+                <button class="btnUp" type="button" id="up_btnQcCam">
+                  <span class="ico">📷</span><span>Tomar foto</span>
+                </button>
+                <button class="btnUp" type="button" id="up_btnQcFile">
+                  <span class="ico">📁</span><span>Cargar imagen</span>
+                </button>
+                <button class="btnUp btnUp-danger" type="button" id="up_btnQcClear">
+                  <span class="ico">🗑️</span><span>Borrar</span>
+                </button>
               </div>
 
               <div class="grid" style="grid-template-columns: repeat(4, 1fr); gap:10px; margin-top:10px;">
@@ -432,10 +482,16 @@ export function uploaderView() {
               <input class="hiddenInput" type="file" accept="image/*;capture=camera" capture="environment" id="up_conf_cam">
               <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" id="up_conf_file">
 
-              <div class="slotActions">
-                <button class="btn3" type="button" id="up_btnConfCam">📷 Tomar foto</button>
-                <button class="btn3" type="button" id="up_btnConfFile">🖼️ Subir archivo</button>
-                <button class="btn3" type="button" id="up_btnConfClear">🧹 Quitar</button>
+              <div class="slotActions upActions">
+                <button class="btnUp" type="button" id="up_btnConfCam">
+                  <span class="ico">📷</span><span>Tomar foto</span>
+                </button>
+                <button class="btnUp" type="button" id="up_btnConfFile">
+                  <span class="ico">📁</span><span>Cargar imagen</span>
+                </button>
+                <button class="btnUp btnUp-danger" type="button" id="up_btnConfClear">
+                  <span class="ico">🗑️</span><span>Borrar</span>
+                </button>
               </div>
 
               <div class="mini">

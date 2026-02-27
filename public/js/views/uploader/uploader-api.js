@@ -26,8 +26,12 @@ export function humanBytes(n) {
   return `${v.toFixed(i === 0 ? 0 : 1)} ${u[i]}`;
 }
 
+// views/uploader/uploader-api.js
+
 export async function callAPS(payload, apsUrl = APS_URL) {
-  const res = await fetch(apsUrl, {
+  const url = apsUrl || APS_URL;   // ✅ FIX: si apsUrl es null => usa default
+
+  const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),

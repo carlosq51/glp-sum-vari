@@ -1,258 +1,354 @@
-
 /* =========================
-   Uploader GLP (scoped)
+   Uploader GLP (scoped) - THEME APP
+   Reemplaza blancos/azules hardcode por vars globales
    ========================= */
 
-.uploader-shell {
+.uploader-shell{
   font-family: system-ui, Arial, sans-serif;
   padding: 16px;
   max-width: 760px;
   margin: 0 auto;
+
+  /* hereda tema */
+  color: var(--text);
 }
 
-.uploader-shell * {
-  box-sizing: border-box;
-}
+.uploader-shell *{ box-sizing:border-box; }
 
-.uploader-shell .row { margin: 10px 0; }
+.uploader-shell .row{ margin: 10px 0; }
 
-.uploader-shell .box {
-  border: 1px solid #ddd;
+/* Contenedores tipo box/menu/slot -> card style */
+.uploader-shell .box,
+.uploader-shell .slotCard,
+.uploader-shell .menuCard{
+  background: linear-gradient(180deg, var(--card) 0%, var(--card2) 100%);
+  border: 1px solid var(--cardLine);
+  border-radius: 18px;
   padding: 12px;
-  border-radius: 10px;
   margin: 10px 0;
-  background: #fff;
+  box-shadow: var(--shadow);
 }
 
-.uploader-shell label {
-  display: block;
-  font-weight: 600;
+/* Títulos y textos */
+.uploader-shell label{
+  display:block;
+  font-weight: 850;
   margin-bottom: 6px;
+  color: var(--text);
 }
 
+.uploader-shell .small,
+.uploader-shell .menuDesc,
+.uploader-shell .miniInfo{
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* Inputs */
 .uploader-shell input[type="text"],
 .uploader-shell input[type="date"],
-.uploader-shell textarea {
-  width: 100%;
-  padding: 10px;
-  border: 1px solid #bbb;
-  border-radius: 10px;
+.uploader-shell textarea{
+  width:100%;
+  padding:12px;
+  font-size:15px;
+  border-radius:12px;
+  border:2px solid var(--inputLine);
+  background: var(--inputBg);
+  color: var(--text);
+  outline:none;
 }
 
-.uploader-shell button {
-  padding: 10px 14px;
-  border: 0;
-  border-radius: 10px;
-  cursor: pointer;
+.uploader-shell input:focus,
+.uploader-shell textarea:focus{
+  border-color: var(--inputFocus);
+  box-shadow: 0 0 0 3px rgba(77,163,255,.18);
 }
 
-.uploader-shell .btn { background: #0b5fff; color: white; }
-.uploader-shell .btn2 { background: #111; color: white; }
-.uploader-shell .btn3 { background: #eee; color: #111; }
-
-.uploader-shell .grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 10px;
-}
-
-.uploader-shell .small {
-  color: #555;
-  font-size: 12px;
-}
-
-.uploader-shell .status {
-  white-space: pre-wrap;
-  background: #f6f6f6;
-  padding: 12px;
-  border-radius: 10px;
-}
-
-.uploader-shell .qrReader { width: 100%; }
-
-.uploader-shell .slotCard {
-  border: 1px solid #e5e5e5;
-  border-radius: 12px;
-  padding: 12px;
-  background: #fff;
-}
-
-.uploader-shell .slotActions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 8px;
-}
-
-.uploader-shell .slotActions button {
-  padding: 8px 10px;
-  border-radius: 10px;
-  font-size: 14px;
-}
-
-.uploader-shell .mini {
-  margin-top: 10px;
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-
-.uploader-shell .thumb {
-  width: 84px;
-  height: 84px;
-  border-radius: 12px;
-  border: 1px solid #ddd;
-  background: #fafafa;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-}
-
-.uploader-shell .thumb img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.uploader-shell .miniInfo {
-  font-size: 12px;
-  color: #444;
-}
-
-.uploader-shell .hiddenInput { display: none; }
-
-/* PANTALLAS */
-.uploader-shell .screen { display: none; }
-.uploader-shell .screen.active { display: block; }
-
-.uploader-shell .topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin: 8px 0 14px;
-}
-
-.uploader-shell .topbar h2,
-.uploader-shell .topbar h3 { margin: 0; }
-
-.uploader-shell .menuGrid {
-  display: grid;
-  gap: 12px;
-  grid-template-columns: 1fr;
-}
-
-.uploader-shell .menuCard {
-  border: 1px solid #e5e5e5;
-  border-radius: 14px;
-  padding: 14px;
-  background: #fff;
-}
-
-.uploader-shell .menuTitle {
-  font-weight: 800;
-  font-size: 18px;
-  margin: 0 0 4px;
-}
-
-.uploader-shell .menuDesc {
-  margin: 0;
-  color: #555;
-  font-size: 13px;
-}
-
-.uploader-shell .menuCard .btn {
-  width: 100%;
-  margin-top: 10px;
-}
-
-.uploader-shell textarea {
+.uploader-shell textarea{
   min-height: 90px;
   resize: vertical;
 }
 
-/* Botón volver */
-.uploader-shell .btnBackControl {
-  width: 100%;
-  max-width: 520px;
-  padding: 18px;
-  border-radius: 16px;
+/* Status panel -> pre style */
+.uploader-shell .status{
+  white-space: pre-wrap;
+  background: var(--codeBg);
+  border: 1px solid var(--codeLine);
+  padding: 12px;
+  border-radius: 14px;
+  color: var(--text);
+}
+
+/* Botones base (respetan tu estilo global) */
+.uploader-shell button{
+  cursor:pointer;
+  padding:12px 14px;
+  font-size:14px;
+  font-weight:850;
+  border-radius:12px;
+  border:1px solid var(--btnLine);
+  background: linear-gradient(180deg, var(--btnBg) 0%, var(--btnBg2) 100%);
+  color: rgba(234,240,255,.92);
+  transition:.12s ease;
+  user-select:none;
+}
+:root[data-theme="day"] .uploader-shell button{
+  color: #fff; /* en day tus botones son azules oscuros, texto blanco */
+}
+.uploader-shell button:hover{ filter:brightness(1.06); }
+.uploader-shell button:active{ transform:scale(.99); }
+.uploader-shell button:disabled{ opacity:.55; cursor:not-allowed; transform:none; }
+
+/* Botones del uploader: btn / btn2 / btn3 */
+.uploader-shell .btn{
+  /* ya es button, solo refuerzo */
+}
+.uploader-shell .btn2{
+  /* secundario oscuro/transparente */
+  background: var(--pillBg);
+  border: 1px solid var(--pillLine);
+  color: var(--text);
+}
+.uploader-shell .btn3{
+  /* tipo “quitar” suave */
+  background: var(--codeBg);
+  border: 1px solid var(--codeLine);
+  color: var(--text);
+}
+
+/* Acciones / grids */
+.uploader-shell .grid{
+  display:grid;
+  grid-template-columns: 1fr;
+  gap:10px;
+}
+
+.uploader-shell .slotActions{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  margin-top:8px;
+}
+
+.uploader-shell .slotActions button{
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-size: 14px;
+}
+
+/* Thumbs */
+.uploader-shell .thumb{
+  width:84px;
+  height:84px;
+  border-radius: 14px;
+  border: 1px solid var(--cardLine);
+  background: rgba(255,255,255,.06);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+}
+:root[data-theme="day"] .uploader-shell .thumb{
+  background: rgba(11,18,32,.04);
+}
+
+.uploader-shell .thumb img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  display:block;
+}
+
+.uploader-shell .hiddenInput{ display:none; }
+
+/* Pantallas */
+.uploader-shell .screen{ display:none; }
+.uploader-shell .screen.active{ display:block; }
+
+/* Topbar */
+.uploader-shell .topbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin: 8px 0 14px;
+}
+.uploader-shell .topbar h2,
+.uploader-shell .topbar h3{
+  margin:0;
+  color: var(--text);
+}
+
+/* Menu cards */
+.uploader-shell .menuGrid{
+  display:grid;
+  gap:12px;
+  grid-template-columns: 1fr;
+}
+.uploader-shell .menuTitle{
+  font-weight: 950;
   font-size: 18px;
-  font-weight: 900;
-  background: #0b5fff;
-  color: #fff;
-  border: none;
-  cursor: pointer;
-  box-shadow: 0 10px 26px rgba(11,95,255,.35);
-  transition: transform .08s ease, filter .12s ease;
+  margin: 0 0 4px;
+  color: var(--text);
 }
 
-.uploader-shell .btnBackControl:active {
-  transform: scale(.98);
-  filter: brightness(.95);
+/* Botón volver (usar estilo app, no verde/azul hardcode) */
+.uploader-shell .btnBackControl{
+  width:100%;
+  max-width:520px;
+  padding:18px;
+  border-radius:16px;
+  font-size:18px;
+  font-weight:950;
+  background: linear-gradient(180deg, var(--btnBg) 0%, var(--btnBg2) 100%);
+  color: rgba(234,240,255,.92);
+  border:1px solid var(--btnLine);
+  box-shadow: var(--shadow);
 }
-
-/* Botón principal */
-.uploader-shell .btnPrimaryBig {
-  width: 100%;
-  max-width: 520px;
-  display: block;
-  margin: 18px auto 6px;
-  padding: 18px 18px;
-  border-radius: 16px;
-  font-size: 18px;
-  font-weight: 900;
-  letter-spacing: .4px;
-  background: #12b76a;
-  color: #fff;
-  box-shadow: 0 10px 24px rgba(18,183,106,.30);
-  transition: transform .08s ease, filter .12s ease;
-}
-
-.uploader-shell .btnPrimaryBig:active {
+.uploader-shell .btnBackControl:active{
   transform: scale(.99);
-  filter: brightness(.95);
 }
 
-.uploader-shell .btnPrimaryBig:disabled {
-  opacity: .55;
-  cursor: not-allowed;
+/* Botón principal grande (ENVIAR) -> estilo OK */
+.uploader-shell .btnPrimaryBig{
+  width:100%;
+  max-width:520px;
+  display:block;
+  margin:18px auto 6px;
+  padding:18px 18px;
+  border-radius:16px;
+  font-size:18px;
+  font-weight:950;
+  letter-spacing:.4px;
+  border: 2px solid var(--ok);
+  color: var(--ok);
+  background: linear-gradient(180deg, var(--okBg) 0%, rgba(34,197,94,.08) 100%);
+  box-shadow: var(--shadow);
 }
+.uploader-shell .btnPrimaryBig:active{ transform:scale(.99); }
+.uploader-shell .btnPrimaryBig:disabled{ opacity:.55; cursor:not-allowed; }
 
-/* Modal imagen fullscreen */
-.uploader-shell .imgModal {
+/* Lightbox */
+.uploader-shell .imgModal{
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,.92);
-  display: none;
-  align-items: center;
-  justify-content: center;
-  padding: 18px;
+  background: rgba(0,0,0,.75);
+  display:none;
+  align-items:center;
+  justify-content:center;
+  padding:18px;
   z-index: 9999;
 }
+.uploader-shell .imgModal.open{ display:flex; }
 
-.uploader-shell .imgModal.open { display: flex; }
-
-.uploader-shell .imgModal img {
-  max-width: 100%;
-  max-height: 100%;
-  border-radius: 14px;
+.uploader-shell .imgModal img{
+  max-width:100%;
+  max-height:100%;
+  border-radius: 18px;
   box-shadow: 0 18px 50px rgba(0,0,0,.55);
 }
 
-.uploader-shell .imgModalClose {
+/* Close button en el modal de imagen */
+.uploader-shell .imgModalClose{
   position: fixed;
   top: 14px;
   right: 14px;
   width: 46px;
   height: 46px;
   border-radius: 999px;
-  background: rgba(255,255,255,.14);
-  color: #fff;
+  background: var(--pillBg);
+  color: var(--text);
   font-size: 20px;
-  font-weight: 900;
-  border: 1px solid rgba(255,255,255,.22);
-  cursor: pointer;
+  font-weight: 950;
+  border: 1px solid var(--pillLine);
+}
+/* =========================
+   Botones estilo APP dentro del uploader
+   ========================= */
+
+.uploader-shell .upActions{
+  display:flex;
+  gap:12px;
+  flex-wrap:wrap;
+  margin-top:10px;
+}
+
+.uploader-shell .btnUp{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+
+  height:48px;
+  padding:0 16px;
+  border-radius:14px;
+
+  font-size:15px;
+  font-weight:950;
+
+  border:1px solid var(--btnLine);
+  background:linear-gradient(180deg,var(--btnBg) 0%, var(--btnBg2) 100%);
+  color:rgba(234,240,255,.92);
+}
+
+:root[data-theme="day"] .uploader-shell .btnUp{
+  color:#fff;
+}
+
+.uploader-shell .btnUp .ico{
+  display:inline-flex;
+  width:22px;
+  justify-content:center;
+  opacity:.95;
+}
+
+/* danger (borrar) */
+.uploader-shell .btnUp-danger{
+  border-color: var(--danger);
+  color: var(--danger);
+  background: linear-gradient(180deg, var(--dangerBg) 0%, rgba(239,68,68,.08) 100%);
+}
+
+/* opcional: que sean “full” en móvil */
+@media (max-width:520px){
+  .uploader-shell .btnUp{ flex:1 1 100%; }
+}
+
+/* =========================
+   upActions: 3 botones en una fila
+   ========================= */
+
+.uploader-shell .upActions{
+  display:flex;
+  gap:12px;
+  flex-wrap:nowrap;     /* ✅ fuerza una sola fila */
+  align-items:center;
+}
+
+.uploader-shell .btnUp{
+  flex:1 1 0;           /* ✅ los 3 se reparten el ancho */
+  min-width: 0;
+  height:48px;
+  padding:0 14px;
+  border-radius:14px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+
+  font-size:15px;
+  font-weight:950;
+  white-space:nowrap;   /* ✅ no parte texto */
+}
+
+/* si el texto es largo, que recorte con puntos */
+.uploader-shell .btnUp span:last-child{
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+/* En pantallas MUY angostas, permite wrap (para no deformar) */
+@media (max-width:380px){
+  .uploader-shell .upActions{ flex-wrap:wrap; }
+  .uploader-shell .btnUp{ flex:1 1 100%; }
 }
