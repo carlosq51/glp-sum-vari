@@ -15,6 +15,8 @@ import { initRFModalUI_, openRFModalForVin_ } from "./rf-modal.js";
 
 import { showUploaderView } from "../uploader/uploader.js";
 
+import { initRFTecModalUI_, openRFTecModalForVin_ } from "./rf-tecnico-modal.js";
+
 import { initConformidadUI_, openConformidadModalForKey_ } from "./conformidad.js";
 
 import {
@@ -589,7 +591,7 @@ function attachWorkDelegationOnce_(mod) {
 
         if (CORE.state.currentModule === "TECNICO") {
           if ($("vin")) $("vin").value = vin;
-          showUploaderView({ vin, screen: "menu" }); // TECNICO igual que antes
+          openRFTecModalForVin_(vin);   // ✅ ahora abre modal con 2 opciones
           return;
         }
 
@@ -656,7 +658,7 @@ function attachFinalizadosDelegationOnce_(mod) {
 
         if (CORE.state.currentModule === "TECNICO") {
           if ($("vin")) $("vin").value = vin;
-          showUploaderView({ vin, screen: "menu" }); // TECNICO igual que antes
+          openRFTecModalForVin_(vin);   // ✅ ahora abre modal con 2 opciones
           return;
         }
 
@@ -806,6 +808,7 @@ $("btnScanBar")?.addEventListener("click", async () => {
   initIncidenciasUI_();
   initConformidadUI_();
   initRFModalUI_();
+  initRFTecModalUI_();
 
   // delegation once
   attachWorkDelegationOnce_("TECNICO");

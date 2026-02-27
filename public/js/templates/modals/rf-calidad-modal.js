@@ -1,4 +1,4 @@
-// public/js/templates/modals/rf-modal.js
+// public/js/templates/modals/rf-calidad-modal.js
 export function rfModal() {
   return `
     <!-- =========================
