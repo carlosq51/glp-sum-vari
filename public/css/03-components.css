@@ -150,17 +150,6 @@ button.btn3 {
   margin-top: 8px;
 }
 
-/* ─── Botones de acción grandes (INICIO / PAUSA / FIN / NOTA) ─── */
-.btnAction,
-.btnRF {
-  width: 100%;
-  height: 56px;
-  border-radius: var(--radius);
-  font-size: 16px;
-  font-weight: 900;
-  margin-top: 8px;
-}
-
 /* Contenedor de acciones dentro de cada job card */
 .jobActionsGrid {
   display: grid;
@@ -186,28 +175,41 @@ button.btn3 {
 .btnInicio,
 .btnReanudar {
   border-color: var(--ok);
-  color: var(--ok);
+  color: var(--actionTextOk);
   background: linear-gradient(160deg, var(--okBg) 0%, rgba(34,197,94,.05) 100%);
 }
 
 .btnPausa {
   border-color: var(--warn);
-  color: var(--warn);
+  color: var(--actionTextWarn);
   background: linear-gradient(160deg, var(--warnBg) 0%, rgba(250,204,21,.05) 100%);
 }
 
 .btnFin {
   border-color: var(--danger);
-  color: var(--danger);
+  color: var(--actionTextDanger);
   background: linear-gradient(160deg, var(--dangerBg) 0%, rgba(255,59,59,.05) 100%);
 }
 
-.btnNota {
-  border-color: var(--note);
-  color: rgba(240,244,255,.92);
-  background: linear-gradient(160deg, var(--noteBg) 0%, rgba(96,165,250,.05) 100%);
+.btnNota,
+.btnRF {
+  color: var(--actionTextNote);
 }
 
+:root[data-theme="day"] .btnInicio,
+:root[data-theme="day"] .btnReanudar {
+  color: var(--actionTextOk);
+}
+
+:root[data-theme="day"] .btnPausa {
+  color: var(--actionTextWarn);
+}
+
+:root[data-theme="day"] .btnFin {
+  color: var(--actionTextDanger);
+}
+
+:root[data-theme="day"] .btnNota,
 
 /* ─────────────────────────────────────────────────
    PILL / TAG
