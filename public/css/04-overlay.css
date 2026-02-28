@@ -1,8 +1,5 @@
 /* =====================================================================
    04-overlays.css — Loading overlay + Modals
-   ---------------------------------------------------------------------
-   Overlay de carga, spinner, animación de puntos y sistema de modales.
-   Separado para mantener z-index centralizados y sin conflictos.
    ===================================================================== */
 
 /* ─────────────────────────────────────────────────
@@ -34,7 +31,6 @@
   justify-items: center;
 }
 
-/* ─── Spinner ─── */
 .spinner {
   width: 44px;
   height: 44px;
@@ -46,7 +42,6 @@
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ─── Texto con puntos animados ─── */
 .overlay-text {
   font-weight: 800;
   font-size: 15px;
@@ -63,13 +58,12 @@
 .dot3 { animation-delay: .36s; }
 
 @keyframes dotPulse {
-  0%, 100% { opacity: .15; transform: translateY(0);    }
-  50%       { opacity: 1;   transform: translateY(-2px); }
+  0%, 100% { opacity: .15; transform: translateY(0); }
+  50%      { opacity: 1;   transform: translateY(-2px); }
 }
 
-
 /* ─────────────────────────────────────────────────
-   MODALS (bottom-sheet en móvil, centrado en desktop)
+   MODALS centrados
 ───────────────────────────────────────────────── */
 .modal {
   position: fixed;
@@ -79,56 +73,48 @@
   -webkit-backdrop-filter: blur(8px);
   z-index: 10000;
   display: none;
-  align-items: flex-end; /* ← sube desde abajo en móvil */
+  align-items: center;
   justify-content: center;
-  padding: 0;
-  overflow: hidden;
+  padding: 12px;
+  overflow: auto;
 }
 
-.modal.show { display: flex; }
+.modal.show {
+  display: flex;
+}
 
 .modalBox {
   position: relative;
-  width: 100%;
-  max-width: 560px;
-  max-height: 92dvh;
+  width: min(100%, 560px);
+  max-height: calc(100dvh - 24px);
   display: flex;
   flex-direction: column;
   background: linear-gradient(180deg, var(--surface) 0%, var(--surface2) 100%);
   border: 1px solid var(--surfaceLine);
-  border-radius: 24px 24px 0 0; /* esquinas solo arriba */
+  border-radius: var(--radius);
   box-shadow: var(--shadow);
   overflow: hidden;
 }
 
-/* Indicador drag (decorativo) */
 .modalBox::before {
-  content: '';
-  position: absolute;
-  top: 8px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 40px;
-  height: 4px;
-  border-radius: 2px;
-  background: var(--surfaceLine);
-  pointer-events: none;
-  z-index: 1;
+  display: none;
 }
 
-/* En desktop: centrado normal */
 @media (min-width: 600px) {
-  .modal    { align-items: center; padding: 16px; }
-  .modalBox { border-radius: var(--radius); max-height: calc(100dvh - 40px); }
-  .modalBox::before { display: none; }
+  .modal {
+    padding: 16px;
+  }
+
+  .modalBox {
+    max-height: calc(100dvh - 32px);
+  }
 }
 
-/* ─── Cabecera del modal ─── */
 .modalHead {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 20px 16px 12px;
+  padding: 16px 16px 12px;
   border-bottom: 1px solid var(--modalLine);
   flex-shrink: 0;
 }
@@ -138,20 +124,23 @@
   font-size: 16px;
 }
 
-/* Botón cerrar (×) */
 .modalHead button {
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   padding: 0;
   border-radius: 999px;
-  background: var(--pillBg);
-  border-color: var(--pillLine);
-  font-size: 14px;
-  color: var(--text);
+  background: linear-gradient(160deg, var(--btnBg) 0%, var(--btnBg2) 100%);
+  border: 1.5px solid var(--btnLine);
+  font-size: 18px;
+  font-weight: 900;
+  color: rgba(240,244,255,.92);
   flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadowSm);
 }
 
-/* ─── Cuerpo scrollable ─── */
 .modalBody {
   padding: 14px 16px 24px;
   overflow-y: auto;
@@ -159,5 +148,6 @@
   flex: 1;
 }
 
-/* Bloquear scroll del body cuando hay modal abierto */
-body.modal-open { overflow: hidden; }
+body.modal-open {
+  overflow: hidden;
+}

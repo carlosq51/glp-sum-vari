@@ -50,14 +50,14 @@ export function incidenciasModal() {
               <!-- 3 botones en una fila -->
               <div class="row" style="gap:10px; flex-wrap:nowrap; margin-top:8px; align-items:center;">
                 <button type="button" id="btnIncFotoCam" class="btn3" style="flex:1; white-space:nowrap;">
-                  📷 Tomar foto
+                  📷 Foto
                 </button>
 
                 <button type="button" id="btnIncFotoFile" class="btn3" style="flex:1; white-space:nowrap;">
-                  📁 Cargar imagen
+                  📁 Cargar
                 </button>
 
-                <button type="button" id="btnIncFotoClear" class="btn3" style="flex:0 0 auto; white-space:nowrap;">
+                <button type="button" id="btnIncFotoClear" class="btn3" style="flex:1; white-space:nowrap;">
                   🗑️ Borrar
                 </button>
               </div>

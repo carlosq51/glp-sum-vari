@@ -139,6 +139,10 @@ button.btn3 {
   color: var(--muted);
 }
 
+:root[data-theme="day"] #incModal .btn3 {
+  color: var(--text);
+}
+
 /* ─── Botones de acción grandes (INICIO / PAUSA / FIN / NOTA) ─── */
 .btnAction,
 .btnRF {

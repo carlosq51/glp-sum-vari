@@ -113,10 +113,10 @@ export function uploaderView() {
 
               <div class="slotActions upActions">
                 <button class="btnUp" type="button" data-pick="cam" data-slot="vin">
-                  <span class="ico">📷</span><span>Tomar foto</span>
+                  <span class="ico">📷</span><span>Foto</span>
                 </button>
                 <button class="btnUp" type="button" data-pick="file" data-slot="vin">
-                  <span class="ico">📁</span><span>Cargar imagen</span>
+                  <span class="ico">📁</span><span>Cargar</span>
                 </button>
                 <button class="btnUp btnUp-danger" type="button" data-clear="1" data-slot="vin">
                   <span class="ico">🗑️</span><span>Borrar</span>
@@ -138,10 +138,10 @@ export function uploaderView() {
 
               <div class="slotActions upActions">
                 <button class="btnUp" type="button" data-pick="cam" data-slot="comp">
-                  <span class="ico">📷</span><span>Tomar foto (agrega)</span>
+                  <span class="ico">📷</span><span>Foto (agrega)</span>
                 </button>
                 <button class="btnUp" type="button" data-pick="file" data-slot="comp">
-                  <span class="ico">📁</span><span>Cargar imagen (agrega)</span>
+                  <span class="ico">📁</span><span>Cargar (agrega)</span>
                 </button>
                 <button class="btnUp btnUp-danger" type="button" data-clear="1" data-slot="comp">
                   <span class="ico">🗑️</span><span>Borrar todo</span>
@@ -169,10 +169,10 @@ export function uploaderView() {
 
               <div class="slotActions upActions">
                 <button class="btnUp" type="button" data-pick="cam" data-slot="corr_pre">
-                  <span class="ico">📷</span><span>Tomar foto</span>
+                  <span class="ico">📷</span><span>Foto</span>
                 </button>
                 <button class="btnUp" type="button" data-pick="file" data-slot="corr_pre">
-                  <span class="ico">📁</span><span>Cargar imagen</span>
+                  <span class="ico">📁</span><span>Cargar</span>
                 </button>
                 <button class="btnUp btnUp-danger" type="button" data-clear="1" data-slot="corr_pre">
                   <span class="ico">🗑️</span><span>Borrar</span>
@@ -194,10 +194,10 @@ export function uploaderView() {
 
               <div class="slotActions upActions">
                 <button class="btnUp" type="button" data-pick="cam" data-slot="corr_post">
-                  <span class="ico">📷</span><span>Tomar foto</span>
+                  <span class="ico">📷</span><span>Foto</span>
                 </button>
                 <button class="btnUp" type="button" data-pick="file" data-slot="corr_post">
-                  <span class="ico">📁</span><span>Cargar imagen</span>
+                  <span class="ico">📁</span><span>Cargar</span>
                 </button>
                 <button class="btnUp btnUp-danger" type="button" data-clear="1" data-slot="corr_post">
                   <span class="ico">🗑️</span><span>Borrar</span>
@@ -219,10 +219,10 @@ export function uploaderView() {
 
               <div class="slotActions upActions">
                 <button class="btnUp" type="button" data-pick="cam" data-slot="voltaje">
-                  <span class="ico">📷</span><span>Tomar foto</span>
+                  <span class="ico">📷</span><span>Foto</span>
                 </button>
                 <button class="btnUp" type="button" data-pick="file" data-slot="voltaje">
-                  <span class="ico">📁</span><span>Cargar imagen</span>
+                  <span class="ico">📁</span><span>Cargar</span>
                 </button>
                 <button class="btnUp btnUp-danger" type="button" data-clear="1" data-slot="voltaje">
                   <span class="ico">🗑️</span><span>Borrar</span>
@@ -244,10 +244,10 @@ export function uploaderView() {
 
               <div class="slotActions upActions">
                 <button class="btnUp" type="button" data-pick="cam" data-slot="scan_carro">
-                  <span class="ico">📷</span><span>Tomar foto</span>
+                  <span class="ico">📷</span><span>Foto</span>
                 </button>
                 <button class="btnUp" type="button" data-pick="file" data-slot="scan_carro">
-                  <span class="ico">📁</span><span>Cargar imagen</span>
+                  <span class="ico">📁</span><span>Cargar</span>
                 </button>
                 <button class="btnUp btnUp-danger" type="button" data-clear="1" data-slot="scan_carro">
                   <span class="ico">🗑️</span><span>Borrar</span>
@@ -319,10 +319,10 @@ export function uploaderView() {
 
               <div class="slotActions upActions">
                 <button class="btnUp" type="button" id="up_btnFallaCam">
-                  <span class="ico">📷</span><span>Tomar foto</span>
+                  <span class="ico">📷</span><span>Foto</span>
                 </button>
                 <button class="btnUp" type="button" id="up_btnFallaFile">
-                  <span class="ico">📁</span><span>Cargar imagen</span>
+                  <span class="ico">📁</span><span>Cargar</span>
                 </button>
                 <button class="btnUp btnUp-danger" type="button" id="up_btnFallaClear">
                   <span class="ico">🗑️</span><span>Borrar</span>
@@ -384,10 +384,10 @@ export function uploaderView() {
 
               <div class="slotActions upActions">
                 <button class="btnUp" type="button" id="up_btnQcCam">
-                  <span class="ico">📷</span><span>Tomar foto</span>
+                  <span class="ico">📷</span><span>Foto</span>
                 </button>
                 <button class="btnUp" type="button" id="up_btnQcFile">
-                  <span class="ico">📁</span><span>Cargar imagen</span>
+                  <span class="ico">📁</span><span>Cargar</span>
                 </button>
                 <button class="btnUp btnUp-danger" type="button" id="up_btnQcClear">
                   <span class="ico">🗑️</span><span>Borrar</span>
@@ -484,10 +484,10 @@ export function uploaderView() {
 
               <div class="slotActions upActions">
                 <button class="btnUp" type="button" id="up_btnConfCam">
-                  <span class="ico">📷</span><span>Tomar foto</span>
+                  <span class="ico">📷</span><span>Foto</span>
                 </button>
                 <button class="btnUp" type="button" id="up_btnConfFile">
-                  <span class="ico">📁</span><span>Cargar imagen</span>
+                  <span class="ico">📁</span><span>Cargar</span>
                 </button>
                 <button class="btnUp btnUp-danger" type="button" id="up_btnConfClear">
                   <span class="ico">🗑️</span><span>Borrar</span>
