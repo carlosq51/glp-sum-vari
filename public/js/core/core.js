@@ -107,7 +107,7 @@ export function setUserPillUI() {
   const esp = String(p.especialidad || "").toUpperCase();
   const mods = Array.isArray(p.modulos) ? p.modulos.join(",") : "(default)";
   const extraTec = rol === "TECNICO" ? ` | ESP: ${esp || "-"}` : "";
-  $("userPill").textContent = `${p.email || ""} | ROL: ${rol}${extraTec} | MOD: ${mods}`;
+  $("userPill").textContent = `ROL: ${rol}${extraTec} | MOD: ${mods}`;
 }
 
 export function applyDebugVisibilityUI() {

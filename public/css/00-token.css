@@ -1,0 +1,103 @@
+/* =====================================================================
+   00-tokens.css — Design Tokens + Temas (Night / Day)
+   ---------------------------------------------------------------------
+   SOLO custom properties. Nada de selectores reales.
+   Los componentes consumen variables; los temas solo las redefinen.
+   ===================================================================== */
+
+/* ─── TEMA NIGHT (default) ─── */
+:root {
+  /* Fondos */
+  --bg0: #05070d;
+  --bg1: #0a1020;
+  --bgAccent: #121a2b;
+
+  /* Texto */
+  --text: #f0f4ff;
+  --muted: rgba(240,244,255,.65);
+  --placeholder: rgba(240,244,255,.40);
+
+  /* Cards / superficies */
+  --surface: #0c2e9a;
+  --surface2: #0a257a;
+  --surfaceLine: rgba(255,255,255,.18);
+
+  /* Inputs */
+  --inputBg: #0b1530;
+  --inputLine: rgba(255,255,255,.28);
+  --inputFocus: #7dd3fc;
+
+  /* Botones base */
+  --btnBg: #132d6b;
+  --btnBg2: #0f2456;
+  --btnLine: rgba(255,255,255,.22);
+
+  /* Pills / chips */
+  --pillBg: rgba(255,255,255,.10);
+  --pillLine: rgba(255,255,255,.20);
+
+  /* Code / pre */
+  --codeBg: rgba(255,255,255,.05);
+  --codeLine: rgba(255,255,255,.10);
+
+  /* Modal */
+  --modalLine: rgba(255,255,255,.10);
+
+  /* Estados semánticos */
+  --ok: #22c55e;     --okBg: rgba(34,197,94,.18);
+  --warn: #facc15;   --warnBg: rgba(250,204,21,.18);
+  --danger: #ff3b3b; --dangerBg: rgba(255,59,59,.18);
+  --note: #60a5fa;   --noteBg: rgba(96,165,250,.18);
+
+  /* Forma */
+  --radius: 16px;
+  --radiusSm: 12px;
+
+  /* Sombras */
+  --shadow: 0 12px 32px rgba(0,0,0,.55);
+  --shadowSm: 0 4px 12px rgba(0,0,0,.35);
+
+  /* Safe areas iOS */
+  --safeTop:    env(safe-area-inset-top,    0px);
+  --safeRight:  env(safe-area-inset-right,  0px);
+  --safeBottom: env(safe-area-inset-bottom, 0px);
+  --safeLeft:   env(safe-area-inset-left,   0px);
+}
+
+/* ─── TEMA DAY ─── */
+:root[data-theme="day"] {
+  --bg0: #e8edf8;
+  --bg1: #f4f7ff;
+  --bgAccent: #dce6ff;
+
+  --text: #0b1220;
+  --muted: rgba(11,18,32,.70);
+  --placeholder: rgba(11,18,32,.38);
+
+  --surface: #ffffff;
+  --surface2: #f0f4ff;
+  --surfaceLine: rgba(11,18,32,.14);
+
+  --inputBg: #ffffff;
+  --inputLine: rgba(11,18,32,.22);
+  --inputFocus: #1d4ed8;
+
+  --btnBg: #0b2a6d;
+  --btnBg2: #08245e;
+  --btnLine: rgba(11,18,32,.18);
+
+  --pillBg: rgba(11,18,32,.06);
+  --pillLine: rgba(11,18,32,.14);
+
+  --codeBg: rgba(11,18,32,.04);
+  --codeLine: rgba(11,18,32,.10);
+  --modalLine: rgba(11,18,32,.08);
+
+  --ok: #16a34a;     --okBg: rgba(22,163,74,.12);
+  --warn: #b45309;   --warnBg: rgba(180,83,9,.12);
+  --danger: #dc2626; --dangerBg: rgba(220,38,38,.12);
+  --note: #1d4ed8;   --noteBg: rgba(29,78,216,.12);
+
+  --shadow: 0 6px 18px rgba(11,18,32,.10);
+  --shadowSm: 0 2px 8px rgba(11,18,32,.08);
+}

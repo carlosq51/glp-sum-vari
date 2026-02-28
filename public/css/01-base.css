@@ -1,79 +1,67 @@
 /* =====================================================================
-   01-base.css — Reset + Base (mobile-first)
+   01-base.css — Reset + Base global (mobile-first)
    ---------------------------------------------------------------------
-   Aquí vive TODO lo “global” y estructural del documento:
-   - Reset mínimo, box sizing, html/body
-   - Tipografía base
-   - Background global (usando variables)
-   - Accesibilidad mínima: focus y placeholders
-
-   Nota:
-   - Los tokens (colores/sombras/radios) vienen de 00-vars.css
-   - Layout (.row/.grid) va en 02-layout.css
-   - Componentes (.card/button/input) va en 03-components.css
+   Reset mínimo, html/body, tipografía base, background, focus/placeholder.
    ===================================================================== */
 
-/* Box sizing (solo una vez) */
-*, *::before, *::after{ box-sizing:border-box; }
+*, *::before, *::after { box-sizing: border-box; }
 
-html, body{ height:100%; width:100%; }
-
-body{
-  font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
-  margin:0;
-
-  /* ✅ 100% móvil */
-  width:100%;
-  max-width:none;
-  overflow-x:hidden;
-
-  /* ✅ padding móvil + notch */
-  padding: calc(10px + var(--safeTop))
-           calc(10px + var(--safeRight))
-           calc(24px + var(--safeBottom))
-           calc(10px + var(--safeLeft));
-
-  -webkit-text-size-adjust: 100%;
-  text-rendering: optimizeLegibility;
-
-  color:var(--text);
-
-  background:
-    radial-gradient(
-      1200px 700px at 18% -10%,
-      var(--bgAccent) 0%,
-      var(--bg1) 55%,
-      var(--bg0) 100%
-    ),
-    linear-gradient(180deg, var(--bg1) 0%, var(--bg0) 100%);
+html, body {
+  height: 100%;
+  width: 100%;
 }
 
-/* ✅ opcional desktop: centra “app card-like” */
-@media (min-width: 900px){
-  body{
-    max-width: 560px;
+body {
+  margin: 0;
+  /* ui-rounded cae bien en iOS/macOS; fallback a system-ui en Android */
+  font-family: ui-rounded, "Hiragino Maru Gothic ProN", Quicksand, Comfortaa,
+               Nunito, "Varela Round", system-ui, -apple-system, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--text);
+  overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+
+  /* Padding base + notch iOS */
+  padding:
+    calc(12px + var(--safeTop))
+    calc(12px + var(--safeRight))
+    calc(28px + var(--safeBottom))
+    calc(12px + var(--safeLeft));
+
+  /* Fondo degradado con acento radial */
+  background:
+    radial-gradient(ellipse 110% 60% at 20% -5%, var(--bgAccent), transparent 70%),
+    linear-gradient(180deg, var(--bg1) 0%, var(--bg0) 100%);
+  min-height: 100dvh;
+}
+
+/* Centrar y limitar ancho en desktop */
+@media (min-width: 860px) {
+  body {
+    max-width: 580px;
     margin: 0 auto;
-    padding: 16px 14px 80px;
+    padding: 20px 16px 80px;
   }
 }
 
-h2{
-  margin:6px 0 4px;
-  font-size:18px;
-  font-weight:800;
-  letter-spacing:.2px;
-  opacity:.98;
+/* ─── Tipografía ─── */
+h2 { margin: 4px 0;   font-size: 20px; font-weight: 800; letter-spacing: -.2px; }
+h3 { margin: 0 0 10px; font-size: 18px; font-weight: 800; }
+h4 { margin: 0 0 8px;  font-size: 15px; font-weight: 700; opacity: .9; }
+
+.small {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.4;
 }
 
-.small{ color:var(--muted); font-size:13px; }
+/* ─── Placeholder y focus ─── */
+::placeholder { color: var(--placeholder); }
 
-input::placeholder,
-textarea::placeholder{
-  color:var(--placeholder);
-}
-
-/* Focus visible (accesibilidad mínima) */
-:focus-visible{
-  outline:2px solid rgba(77,163,255,.65);
-  outline-offset:2px;
+:focus-visible {
+  outline: 2px solid rgba(125,211,252,.65);
+  outline-offset: 2px;
 }

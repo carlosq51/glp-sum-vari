@@ -1,0 +1,254 @@
+/* =====================================================================
+   07-uploader.css — Módulo Uploader GLP (scoped bajo .uploader-shell)
+   ---------------------------------------------------------------------
+   Todo scopeado bajo .uploader-shell para no contaminar la app.
+   Incluye: layout de pantallas, slotCards, menuCards, btnUp, lightbox.
+   ===================================================================== */
+
+/* ─── Shell wrapper ─── */
+.uploader-shell {
+  width: 100%;
+  color: var(--text);
+}
+
+/* ─── Sistema de pantallas ─── */
+.uploader-shell .screen        { display: none; }
+.uploader-shell .screen.active { display: block; }
+
+
+/* ─────────────────────────────────────────────────
+   CARDS INTERNAS
+───────────────────────────────────────────────── */
+
+/* Slot de foto */
+.uploader-shell .slotCard {
+  background: linear-gradient(160deg, var(--surface) 0%, var(--surface2) 100%);
+  border: 1px solid var(--surfaceLine);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin-top: 10px;
+}
+
+/* Card de opción del menú */
+.uploader-shell .menuCard {
+  background: linear-gradient(160deg, var(--surface) 0%, var(--surface2) 100%);
+  border: 1px solid var(--surfaceLine);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin: 10px 0;
+  box-shadow: var(--shadowSm);
+}
+
+/* Box genérico (sección con fondo suave) */
+.uploader-shell .box {
+  background: rgba(255,255,255,.04);
+  border: 1px solid var(--surfaceLine);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin: 10px 0;
+}
+
+:root[data-theme="day"] .uploader-shell .box {
+  background: rgba(11,18,32,.03);
+}
+
+/* Grilla del menú inicial */
+.menuGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+/* Textos de menú */
+.menuTitle {
+  font-weight: 900;
+  font-size: 17px;
+  margin: 0 0 4px;
+}
+
+.menuDesc {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0 0 12px;
+}
+
+
+/* ─────────────────────────────────────────────────
+   LABELS E INPUTS
+───────────────────────────────────────────────── */
+.uploader-shell label {
+  display: block;
+  font-weight: 800;
+  font-size: 14px;
+  margin-bottom: 6px;
+  color: var(--text);
+}
+
+/* miniInfo: nombre de archivo, conteo, etc. */
+.miniInfo {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 6px;
+}
+
+/* Input file siempre oculto */
+.hiddenInput { display: none !important; }
+
+
+/* ─────────────────────────────────────────────────
+   BOTONES DE ACCIÓN (btnUp)
+   — flex row dentro de .upActions
+───────────────────────────────────────────────── */
+.upActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.btnUp {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 46px;
+  border-radius: var(--radiusSm);
+  font-size: 14px;
+  font-weight: 800;
+  border: 1.5px solid var(--btnLine);
+  background: linear-gradient(160deg, var(--btnBg) 0%, var(--btnBg2) 100%);
+  color: rgba(240,244,255,.92);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+:root[data-theme="day"] .btnUp { color: #fff; }
+
+.btnUp:hover  { filter: brightness(1.08); }
+.btnUp:active { transform: scale(.97); }
+
+.btnUp .ico {
+  display: inline-flex;
+  width: 20px;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.btnUp span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Variante peligro (borrar) */
+.btnUp-danger {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: linear-gradient(160deg, var(--dangerBg) 0%, rgba(255,59,59,.05) 100%);
+}
+
+/* En pantallas muy pequeñas: icono sin etiqueta en el botón borrar */
+@media (max-width: 380px) {
+  .btnUp-danger span:last-child { display: none; }
+}
+
+
+/* ─────────────────────────────────────────────────
+   BOTONES GRANDES
+───────────────────────────────────────────────── */
+
+/* Botón enviar primario */
+.btnPrimaryBig {
+  width: 100%;
+  height: 56px;
+  border-radius: var(--radius);
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: .3px;
+  border: 2px solid var(--ok);
+  color: var(--ok);
+  background: linear-gradient(160deg, var(--okBg) 0%, rgba(34,197,94,.05) 100%);
+  margin-top: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.btnPrimaryBig:active   { transform: scale(.98); }
+.btnPrimaryBig:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+
+/* Botón volver al control de trabajo */
+.btnBackControl {
+  width: 100%;
+  height: 56px;
+  border-radius: var(--radius);
+  font-size: 16px;
+  font-weight: 900;
+  background: linear-gradient(160deg, var(--btnBg) 0%, var(--btnBg2) 100%);
+  color: rgba(240,244,255,.92);
+  border: 1.5px solid var(--btnLine);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+:root[data-theme="day"] .btnBackControl { color: #fff; }
+
+.btnBackControl:active { transform: scale(.98); }
+
+
+/* ─────────────────────────────────────────────────
+   CHECKBOXES DEL UPLOADER (compactos)
+───────────────────────────────────────────────── */
+.uploader-shell .ckRow input[type="checkbox"] {
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+}
+
+
+/* ─────────────────────────────────────────────────
+   LIGHTBOX / VISOR DE FOTOS
+───────────────────────────────────────────────── */
+.imgModal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.88);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 9999;
+}
+
+.imgModal.open { display: flex; }
+
+.imgModal img {
+  max-width: 100%;
+  max-height: 92dvh;
+  border-radius: var(--radius);
+  box-shadow: 0 20px 60px rgba(0,0,0,.65);
+  object-fit: contain;
+}
+
+.imgModalClose {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  background: rgba(0,0,0,.55);
+  color: #fff;
+  font-size: 18px;
+  font-weight: 900;
+  border: 1px solid rgba(255,255,255,.25);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}

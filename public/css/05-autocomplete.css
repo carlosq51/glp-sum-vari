@@ -1,109 +1,92 @@
 /* =====================================================================
-   05-autocomplete.css — Autocomplete (Supervisor + VIN)
+   05-autocomplete.css — Dropdowns de autocompletado
    ---------------------------------------------------------------------
-   Solo estilos de dropdowns de sugerencias.
-   Si mañana cambias el componente, no afectas layout ni cards.
+   .nameSuggest  → búsqueda de técnicos / supervisores
+   .vinSuggest   → búsqueda de VINs
+   Ambos comparten estructura base y se diferencian en layout de ítem.
    ===================================================================== */
 
-.supNameWrap{
-  position:relative;
-  width:100%;
+/* ─── Wrappers posicionados (el dropdown es absolute dentro de estos) ─── */
+.vinWrap,
+.supVinWrap,
+.supNameWrap {
+  position: relative;
+  width: 100%;
+  min-width: 0;
 }
 
-/* NAMES */
-.nameSuggest{
-  position:absolute;
-  left:0;
-  right:0;
-  top:calc(100% + 8px);
-  z-index:999;
-  background:linear-gradient(180deg, rgba(9,30,96,.98) 0%, rgba(8,26,86,.98) 100%);
-  border:1px solid rgba(255,255,255,.16);
-  border-radius:16px;
-  box-shadow:0 18px 40px rgba(0,0,0,.55);
-  overflow:hidden;
-  max-height:260px;
+/* ─── Base compartida ─── */
+.nameSuggest,
+.vinSuggest {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 1000;
+  background: linear-gradient(160deg, rgba(10,18,55,.98) 0%, rgba(8,14,44,.98) 100%);
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: var(--radius);
+  box-shadow: 0 16px 40px rgba(0,0,0,.55);
+  max-height: 260px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
-.nameSuggest.hidden{ display:none; }
+.nameSuggest.hidden,
+.vinSuggest.hidden { display: none; }
 
-.nameSuggest .nsItem{
-  padding:12px;
-  cursor:pointer;
-  display:flex;
-  flex-direction:column;
-  gap:4px;
-  border-bottom:1px solid rgba(255,255,255,.08);
-  user-select:none;
+/* ─── Ítem base ─── */
+.nameSuggest .nsItem,
+.vinSuggest .vsItem {
+  padding: 12px 14px;
+  cursor: pointer;
+  border-bottom: 1px solid rgba(255,255,255,.07);
+  user-select: none;
+  transition: background .1s;
 }
 
-.nameSuggest .nsItem:last-child{ border-bottom:none; }
+.nameSuggest .nsItem:last-child,
+.vinSuggest .vsItem:last-child { border-bottom: none; }
 
-.nameSuggest .nsName{
-  font-weight:900;
-  font-size:14px;
-  letter-spacing:.2px;
+.nameSuggest .nsItem:hover,
+.vinSuggest .vsItem:hover { background: rgba(255,255,255,.06); }
+
+.nameSuggest .nsItem.active,
+.vinSuggest .vsItem.active {
+  background: rgba(125,211,252,.08);
+  outline: 2px solid rgba(125,211,252,.6);
+  outline-offset: -2px;
 }
 
-.nameSuggest .nsEmail{
-  font-size:12px;
-  color:rgba(234,240,255,.70);
+/* ─── Contenido name suggest ─── */
+.nsName {
+  font-weight: 800;
+  font-size: 14px;
+  letter-spacing: .1px;
 }
 
-.nameSuggest .nsItem:hover{ filter:brightness(1.08); }
-
-.nameSuggest .nsItem.active{
-  outline:2px solid rgba(77,163,255,.85);
-  outline-offset:-2px;
-  background:rgba(255,255,255,.06);
+.nsEmail {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
 }
 
-/* VIN */
-.vinSuggest{
-  position:absolute;
-  left:0;
-  right:0;
-  top:calc(100% + 8px);
-  z-index:999;
-  background:linear-gradient(180deg, rgba(9,30,96,.98) 0%, rgba(8,26,86,.98) 100%);
-  border:1px solid rgba(255,255,255,.16);
-  border-radius:16px;
-  box-shadow:0 18px 40px rgba(0,0,0,.55);
-  overflow:hidden;
-  max-height:260px;
+/* ─── Contenido VIN suggest ─── */
+.vinSuggest .vsItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 
-.vinSuggest.hidden{ display:none; }
-
-.vinSuggest .vsItem{
-  padding:12px;
-  cursor:pointer;
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:10px;
-  border-bottom:1px solid rgba(255,255,255,.08);
-  user-select:none;
+.vsVin {
+  font-family: ui-monospace, Menlo, monospace;
+  font-weight: 800;
+  letter-spacing: .6px;
+  font-size: 14px;
 }
 
-.vinSuggest .vsItem:last-child{ border-bottom:none; }
-
-.vinSuggest .vsVin{
-  font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
-  letter-spacing:.6px;
-  font-weight:900;
-  font-size:14px;
-}
-
-.vinSuggest .vsHint{
-  font-size:12px;
-  color:rgba(234,240,255,.70);
-}
-
-.vinSuggest .vsItem:hover{ filter:brightness(1.08); }
-
-.vinSuggest .vsItem.active{
-  outline:2px solid rgba(77,163,255,.85);
-  outline-offset:-2px;
-  background:rgba(255,255,255,.06);
+.vsHint {
+  font-size: 12px;
+  color: var(--muted);
 }
