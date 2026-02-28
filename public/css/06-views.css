@@ -111,17 +111,25 @@
 /* Select marca: override visual */
 #supMarca {
   height: 48px;
-  background: rgba(0,0,0,.25);
-  border: 1px solid rgba(255,255,255,.16);
-  color: var(--text);
+  background: linear-gradient(160deg, var(--btnBg) 0%, var(--btnBg2) 100%);
+  border: 1.5px solid var(--btnLine);
+  color: rgba(240,244,255,.92);
   font-weight: 800;
   border-radius: var(--radiusSm);
 }
 
 :root[data-theme="day"] #supMarca {
-  background: var(--inputBg);
-  border-color: var(--inputLine);
+  background: linear-gradient(160deg, var(--btnBg) 0%, var(--btnBg2) 100%) !important;
+  border: 1.5px solid var(--btnLine) !important;
+  color: rgba(240,244,255,.92) !important;
 }
+
+/* Select de marca: texto negro dentro del desplegable nativo */
+#supMarca option {
+  color: #111827;
+  background: #ffffff;
+}
+
 
 /* Track pill activo (CONVERSIÓN / CALIDAD / RAMAL) */
 button[data-suptrack].active {
@@ -226,3 +234,12 @@ button[data-suptrack].active {
 
 /* stubs ocultos del técnico */
 #accion, #nota, #btnNotaOnly, #btnEnviar { display: none !important; }
+
+/* Supervisor: botones rápidos con estilo azul oscuro */
+#btnSupAyer,
+#btnSupHoy,
+#btnSupEsteMes {
+  background: linear-gradient(160deg, var(--btnBg) 0%, var(--btnBg2) 100%);
+  border: 1.5px solid var(--btnLine);
+  color: rgba(240,244,255,.92);
+}

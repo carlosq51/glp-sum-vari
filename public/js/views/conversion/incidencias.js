@@ -273,13 +273,11 @@ function incSuggestRender_() {
 
   box.innerHTML = INC.sugItems.map((u, i) => {
     const active = i === INC.sugIdx ? "active" : "";
-    const label = u.label || [u.name, u.email].filter(Boolean).join(" - ");
-    const sub = [u.name, u.email].filter(Boolean).join(" • ");
+    const nameOnly = String(u.name || "").trim();
 
     return `
       <div class="nsItem ${active}" data-idx="${i}" role="option" aria-selected="${i === INC.sugIdx}">
-        <div class="nsTitle">${escapeHtml(label)}</div>
-        <div class="nsSub small">${escapeHtml(sub)}</div>
+        <div class="nsTitle">${escapeHtml(nameOnly)}</div>
       </div>
     `;
   }).join("");
@@ -303,7 +301,7 @@ function setSelectedTech_(u) {
 
   const input = incInputTech();
   if (input) {
-    input.value = u ? (u.label || [u.name, u.email].filter(Boolean).join(" - ")) : "";
+    input.value = u ? String(u.name || "").trim() : "";
   }
 
   // select oculto (por compatibilidad / debug / futuro)
@@ -313,7 +311,7 @@ function setSelectedTech_(u) {
     if (u) {
       const opt = document.createElement("option");
       opt.value = String(u.userId || u.email || "");
-      opt.textContent = u.label || [u.name, u.email].filter(Boolean).join(" - ");
+      opt.textContent = String(u.name || "").trim();
       opt.selected = true;
       sel.appendChild(opt);
     }
@@ -322,7 +320,6 @@ function setSelectedTech_(u) {
   incSuggestHide_();
   incRefreshSaveBtn_();
 }
-
 async function fetchTechSuggest_(q) {
   const qq = String(q || "").trim();
   if (!qq) return [];
