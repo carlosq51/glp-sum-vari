@@ -637,15 +637,17 @@ function attachFinalizadosDelegationOnce_(mod) {
       if (!btn) return;
 
       const go = String(btn.dataset.go || "").toUpperCase();
+      const c = ctx_();
+      const k = String(btn.dataset.key || btn.closest("[data-key]")?.dataset?.key || "").trim();
+      const it = k ? c.itemsByKey.get(k) : null;
 
       // --------------------------
       // INC (registrar incidencia)
       // --------------------------
       if (go === "INC") {
         e.stopPropagation();
-        const key = String(btn.dataset.key || btn.closest("[data-key]")?.dataset?.key || "").trim();
-        if (!key) return;
-        await openIncidenciaModalForKey_(key);
+        if (!k) return;
+        await openIncidenciaModalForKey_(k);
         return;
       }
 
@@ -653,18 +655,20 @@ function attachFinalizadosDelegationOnce_(mod) {
       // RF (fotos/fallas)
       // --------------------------
       if (go === "RF") {
-        const vin = String(goBtn.dataset.vin || it.vin || "").trim().toUpperCase();
+        e.stopPropagation();
+
+        const vin = String(btn.dataset.vin || it?.vin || "").trim().toUpperCase();
         if (!vin) return;
 
         if (CORE.state.currentModule === "TECNICO") {
           if ($("vin")) $("vin").value = vin;
-          openRFTecModalForVin_(vin);   // ✅ ahora abre modal con 2 opciones
+          openRFTecModalForVin_(vin);
           return;
         }
 
         if (CORE.state.currentModule === "CALIDAD") {
           if ($("vinQ")) $("vinQ").value = vin;
-          openRFModalForVin_(vin); // ✅ CALIDAD abre modal
+          openRFModalForVin_(vin);
           return;
         }
       }
