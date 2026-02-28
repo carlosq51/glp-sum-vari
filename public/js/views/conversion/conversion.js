@@ -17,7 +17,11 @@ import { showUploaderView } from "../uploader/uploader.js";
 
 import { initRFTecModalUI_, openRFTecModalForVin_ } from "./rf-tecnico-modal.js";
 
-import { initConformidadUI_, openConformidadModalForKey_ } from "./conformidad.js";
+import {
+  initConformidadUI_,
+  openConformidadModalForKey_,
+  setConformidadAfterSaveRefresh_,
+} from "./conformidad.js";
 
 import {
   CORE, $, el_, ctx_, isWorkModule_, getEmail, getVin,
@@ -809,8 +813,14 @@ $("btnScanBar")?.addEventListener("click", async () => {
     await startQR();
   }, "Cambiando a CÓDIGO DE BARRAS...");
 });
+
   initIncidenciasUI_();
   initConformidadUI_();
+
+  setConformidadAfterSaveRefresh_(async () => {
+    await syncNow({ forceFull: true, showOut: false });
+  });
+
   initRFModalUI_();
   initRFTecModalUI_();
 

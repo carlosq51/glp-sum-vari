@@ -11,7 +11,7 @@
   background: rgba(5,7,13,.78);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  z-index: 9900;
+  z-index: 11000; /* antes 9900 */
   display: grid;
   place-items: center;
 }

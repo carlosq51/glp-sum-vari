@@ -26,6 +26,12 @@ const CONF = {
   bound: false,
 };
 
+let afterSaveRefresh_ = null;
+
+export function setConformidadAfterSaveRefresh_(fn) {
+  afterSaveRefresh_ = typeof fn === "function" ? fn : null;
+}
+
 function confEls_() {
   return {
     modal: $("confModal"),
@@ -329,6 +335,11 @@ async function saveConformidad_() {
   }
 
   setMsg_("✅ Conformidad guardada correctamente.");
+
+  setTimeout(() => {
+    try { afterSaveRefresh_?.(); } catch {}
+  }, 400);
+
   setTimeout(() => closeConformidadModal_().catch(() => {}), 450);
 }
 
