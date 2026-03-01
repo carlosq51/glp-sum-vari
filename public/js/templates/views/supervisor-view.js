@@ -50,15 +50,7 @@ export function supervisorView() {
           <button id="btnSupQR" type="button" title="Escanear VIN con cámara">📷</button>
         </div>
 
-        <div
-          class="supDateRow"
-          style="
-            display:grid;
-            grid-template-columns: 1fr 1fr auto auto;
-            gap:10px;
-            align-items:center;
-          "
-        >
+        <div class="supDateRow">
           <input id="supFrom" type="date" />
           <input id="supTo" type="date" />
           <button id="btnSupAyer" type="button" class="btn3" title="Rango: Ayer">AYER</button>

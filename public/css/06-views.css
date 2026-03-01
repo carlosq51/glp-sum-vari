@@ -70,17 +70,38 @@
 }
 
 /* Fila de fechas: desde / hasta / AYER / HOY */
+/* Fila de fechas: desde / hasta / AYER / HOY */
 .supDateRow {
   display: grid;
-  grid-template-columns: 1fr 1fr 76px 76px;
+  grid-template-columns: minmax(0,1fr) minmax(0,1fr) minmax(0,76px) minmax(0,76px);
   gap: 10px;
   align-items: center;
   width: 100%;
 }
 
-@media (max-width: 480px) {
-  .supDateRow { grid-template-columns: 1fr 1fr; }
-  .supDateRow button { height: 48px; }
+.supDateRow > * {
+  min-width: 0;
+}
+
+.supDateRow input,
+.supDateRow button {
+  width: 100%;
+}
+
+@media (max-width: 520px) {
+  .supDateRow {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .supDateRow button {
+    height: 48px;
+  }
+}
+
+@media (max-width: 400px) {
+  .supDateRow {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Fila VIN supervisor (input + QR) */
