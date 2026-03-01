@@ -16,7 +16,7 @@ export function qrModal() {
 
           <div class="twoWide" style="margin-top:12px;">
             <button id="btnScanQR"  type="button" class="btnInicio">QR</button>
-            <button id="btnScanBar" type="button" class="btnPausa">CÓDIGO DE BARRAS (CODE_128)</button>
+            <button id="btnScanBar" type="button" class="btnPausa">CÓDIGO DE BARRAS</button>
           </div>
 
           <div id="qrMsg" class="small" style="margin-top:10px;"></div>
