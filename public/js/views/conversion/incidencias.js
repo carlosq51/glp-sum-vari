@@ -13,7 +13,7 @@ import {
 import {
   renderActivas_, renderFinalizados_, patchVisibleCards_,
   rebuildListsFromStore_, snapshotNotasActivas_, restoreNotasActivas_,
-} from "../../core/render-work.js";
+} from "../../work/index.js";
 
 // -----------------------------------------
 // Estado local del modal

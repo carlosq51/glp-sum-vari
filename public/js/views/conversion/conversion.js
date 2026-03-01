@@ -36,7 +36,7 @@ import {
   renderActivas_, renderFinalizados_, patchVisibleCards_,
   rebuildListsFromStore_, snapshotNotasActivas_, restoreNotasActivas_,
   computeLiveMs_, allowedActionsByEstado
-} from "../../core/render-work.js";
+} from "../../work/index.js";
 
 import { startLoopsFor_, stopLoopsFor_, clearModuleUI_ } from "../../core/loops.js";
 

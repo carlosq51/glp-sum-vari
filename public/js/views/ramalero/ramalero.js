@@ -8,7 +8,7 @@ import {
 
 import {
   renderActivas_, renderFinalizados_, rebuildListsFromStore_, patchVisibleCards_
-} from "../../core/render-work.js";
+} from "../../work/index.js";
 
 import { startLoopsFor_, stopLoopsFor_, clearModuleUI_ } from "../../core/loops.js";
 import { syncNow, tickClocksUI_ } from "../conversion/conversion.js";

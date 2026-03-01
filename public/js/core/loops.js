@@ -6,7 +6,7 @@ import { CORE, ctx_ } from "./state.js";
 import { el_ } from "./dom.js";
 import { setEstadoText } from "./ui-shell.js";
 
-import { snapshotNotasActivas_, restoreNotasActivas_, renderActivas_, renderFinalizados_ } from "./render-work.js";
+import { snapshotNotasActivas_, restoreNotasActivas_, renderActivas_, renderFinalizados_ } from "../work/index.js";
 
 const timersByModule = {
   TECNICO: { syncTimer: null, clockTimer: null, estadoTimer: null },
