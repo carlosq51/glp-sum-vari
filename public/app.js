@@ -4,7 +4,7 @@
 // =========================
 /* global Html5Qrcode, Html5QrcodeSupportedFormats */
 
-import { appShell } from "./js/templates/views/shell.js";
+import { appShell } from "./js/templates/layout/shell.js";
 
 import {
   $, CORE, initTheme_, loadEmail, saveEmail, clearEmail,
