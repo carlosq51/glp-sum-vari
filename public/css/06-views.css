@@ -6,6 +6,214 @@
    ===================================================================== */
 
 /* ─────────────────────────────────────────────────
+   TOPBAR APP
+───────────────────────────────────────────────── */
+.topbarShell {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  margin-bottom: 12px;
+}
+
+.topbarMain {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+  width: 100%;
+}
+
+.topbarLeft {
+  min-width: 0;
+  display: grid;
+  grid-template-rows: auto auto;
+  gap: 8px;
+}
+
+/* fila 1: título + saludo */
+.topbarTitleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+}
+
+.topbarTitleRow h2 {
+  margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  line-height: 1.05;
+}
+
+.topbarHello {
+  flex: 0 0 auto;
+  text-align: right;
+  white-space: nowrap;
+  font-weight: 700;
+  font-size: 13px;
+  line-height: 1;
+  color: rgba(240,244,255,.78);
+  text-transform: none;
+  letter-spacing: .2px;
+  opacity: .95;
+  transform: translateX(100px);
+}
+
+/* fila 2: pill + logout alineados */
+.topbarMetaRow {
+  display: flex;
+  align-items: center;
+  min-height: 42px;
+}
+
+.topbarMetaRow .pill,
+.topbarLeft .pill {
+  width: fit-content;
+  max-width: 100%;
+  margin: 0;
+}
+
+.topbarRight {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  min-height: 100%;
+}
+
+.topbarRight > button {
+  min-width: 0;
+  align-self: end;
+}
+
+/* fila 3: acciones SIEMPRE en una sola fila */
+.topbarActions {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) 160px;
+  gap: 10px;
+  width: 100%;
+  align-items: center;
+}
+
+.topbarActions > * {
+  min-width: 0;
+}
+
+#btnTheme {
+  width: 100%;
+}
+
+#btnRegistroFallas {
+  width: 100%;
+}
+
+#btnGoHome {
+  width: 100%;
+}
+
+/* tablet / móvil */
+@media (max-width: 520px) {
+  .topbarMain {
+    grid-template-columns: minmax(0, 1fr) auto; /* NO bajar logout */
+    gap: 10px;
+    align-items: end;
+  }
+
+  .topbarLeft {
+    gap: 6px;
+  }
+
+  .topbarTitleRow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .topbarTitleRow h2 {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 18px;
+    white-space: nowrap;
+    line-height: 1.05;
+  }
+
+  .topbarHello {
+    flex: 0 0 auto;
+    font-size: 12px;
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .topbarMetaRow {
+    min-height: 40px;
+  }
+
+  .topbarMetaRow .pill {
+    max-width: 100%;
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .topbarRight {
+    align-items: flex-end;
+    justify-content: flex-end;
+  }
+
+  .topbarRight > button {
+    width: auto;          /* NO full width */
+    min-width: 132px;
+    height: 40px;
+    padding-inline: 14px;
+  }
+
+  .topbarActions {
+    grid-template-columns: 58px minmax(0, 1fr) 132px; /* misma fila */
+    gap: 8px;
+  }
+
+  #btnTheme,
+  #btnRegistroFallas,
+  #btnGoHome {
+    width: 100%;
+    height: 42px;
+  }
+}
+
+/* extra pequeño */
+@media (max-width: 380px) {
+  .topbarTitleRow {
+    gap: 6px;
+  }
+
+  .topbarTitleRow h2 {
+    font-size: 17px;
+  }
+
+  .topbarHello {
+    font-size: 11px;
+  }
+
+  .topbarActions {
+    grid-template-columns: 52px minmax(0, 1fr) 120px;
+    gap: 6px;
+  }
+
+  .topbarRight > button {
+    min-width: 120px;
+    padding-inline: 10px;
+    font-size: 13px;
+  }
+
+  .topbarMetaRow .pill {
+    font-size: 11px;
+  }
+}
+/* ─────────────────────────────────────────────────
    VIN ROW (input + botón QR + botón acción full)
 ───────────────────────────────────────────────── */
 .vinRow3 {

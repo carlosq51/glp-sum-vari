@@ -10,7 +10,7 @@ import {
   $, CORE, initTheme_, loadEmail, saveEmail, clearEmail,
   showLoginUI, showAppUI, setUserPillUI, applyDebugVisibilityUI,
   effectiveModulos, computeRolLock_, enforceRolLock_,
-  hideAllModulesUI, showHubUI,
+  hideAllModulesUI, showHubUI, syncTopbarHomeButtonUI,
 } from "./js/core/core.js";
 
 import { openView } from "./js/core/router-lite.js";
@@ -36,6 +36,7 @@ async function doLogin(email) {
 
   applyDebugVisibilityUI();
   setUserPillUI();
+  syncTopbarHomeButtonUI();
 
   // rolLock solo aplica TECNICO
   CORE.state.rolLock = computeRolLock_(CORE.state.currentProfile);
@@ -106,6 +107,16 @@ $("btnRegistroFallas")?.addEventListener("click", () => {
   showUploaderView({ vin: vinActual, screen: "menu" });
 });
 
+$("btnGoHome")?.addEventListener("click", () => {
+  const mods = effectiveModulos(CORE.state.currentProfile);
+
+  hideUploaderView();
+  hideAllModulesUI();
+
+  showHubUI(mods, (m) => openModule(m));
+  CORE.state.currentModule = null;
+});
+
 $("btnMe")?.addEventListener("click", async () => {
   const email = CORE.getEmail();
   await doLogin(email);
@@ -124,6 +135,8 @@ $("btnLogout")?.addEventListener("click", () => {
 
   hideAllModulesUI();
   $("viewHub").style.display = "none";
+  $("btnGoHome")?.classList.add("hidden");
+
   document.getElementById("debugWrap")?.classList.add("debug-hidden");
   document.getElementById("viewUploader")?.style && (document.getElementById("viewUploader").style.display = "none");
 
