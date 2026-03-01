@@ -2,7 +2,10 @@
 // public/js/core/loops.js
 // Loops sin circular imports: recibe callbacks
 // =========================
-import { CORE, ctx_, el_, setEstadoText } from "./core.js";
+import { CORE, ctx_ } from "./state.js";
+import { el_ } from "./dom.js";
+import { setEstadoText } from "./ui-shell.js";
+
 import { snapshotNotasActivas_, restoreNotasActivas_, renderActivas_, renderFinalizados_ } from "./render-work.js";
 
 const timersByModule = {
@@ -51,6 +54,7 @@ export function clearModuleUI_(mod) {
     c.finalKeys = [];
     c.lastSyncSince = null;
     c.lastSyncRev = null;
+    c.lastSyncAtMs = 0;
   } finally {
     CORE.state.currentModule = prev;
   }
