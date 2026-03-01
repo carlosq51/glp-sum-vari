@@ -64,9 +64,12 @@ export function renderActivas_() {
           <div class="jobActionsSlot">${buildBotonesByEstado_(estado)}</div>
 
           ${
-            CORE.state.currentModule === "TECNICO" || CORE.state.currentModule === "CALIDAD"
+            CORE.state.currentModule === "TECNICO"
               ? `<button class="btnRF" type="button" data-go="RF">📸 Registrar fotos / fallas</button>`
-              : ""
+              : "",
+            CORE.state.currentModule === "CALIDAD"
+                ? `<button class="btnRF" type="button" data-go="RF">📸 Registrar calidad / fallas</button>`
+                : ""
           }
 
           <div class="jobNoteBlock">
@@ -127,8 +130,11 @@ export function renderFinalizados_(avgTopHTML = "") {
         ${buildIncidenciasBtnHTML_(it, k)}
 
         ${
-          CORE.state.currentModule === "TECNICO" || CORE.state.currentModule === "CALIDAD"
-            ? `<button class="btnRF" type="button" data-go="RF" data-vin="${vin}">📸 Registrar fotos / fallas</button>`
+        CORE.state.currentModule === "TECNICO"
+            ? `<button class="btnRF" type="button" data-go="RF">📸 Registrar fotos / fallas</button>`
+            : "",
+        CORE.state.currentModule === "CALIDAD"
+            ? `<button class="btnRF" type="button" data-go="RF">📸 Registrar calidad / fallas</button>`
             : ""
         }
       </div>
