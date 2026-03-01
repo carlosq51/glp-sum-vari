@@ -5,6 +5,7 @@ import {
 } from "../../core/core.js";
 
 import { enviarEventoRamalero_ } from "./ramalero-eventos.js";
+import { askConfirmFinish_ } from "../conversion/modals/confirm-finish.js";
 
 let boundDelegation_ = false;
 
@@ -43,6 +44,18 @@ export function initRamaleroDelegation_() {
       if (accion === "NOTA") {
         const ta = card.querySelector("textarea.notaCard");
         nota = String(ta?.value || "").trim();
+      }
+
+      // Confirmación de seguridad para FIN
+      if (accion === "FIN") {
+        const ok = await askConfirmFinish_({
+          title: "Confirmar finalización",
+          message: "¿Seguro que quieres finalizar este ramal? Esta acción puede cerrar la tarea actual.",
+          acceptText: "Sí, finalizar",
+          cancelText: "Cancelar",
+        });
+
+        if (!ok) return;
       }
 
       await enviarEventoRamalero_(it, accion, nota);
