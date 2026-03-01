@@ -5,7 +5,14 @@
 
 import { CORE, getJSON_user, escapeHtml, fmtShort_ } from "../../core/core.js";
 
-import { avgWeightedByMedianMad_ } from "./sup-stats.js";
+import {
+  avgRobustWithContextPrior_,
+  buildContextStats_,
+  getContextPrior_,
+  normalizeTrack_,
+  normalizeRol_,
+  normalizeMarca_,
+} from "./sup-stats.js";
 import { isFinalizado_, matchMarca_, durationMsFromItem_ } from "./sup-filters.js";
 import { groupByVinForUI_ } from "./sup-grouping.js";
 import { renderAvgCard_, renderTable_ } from "./sup-render.js";
@@ -81,19 +88,73 @@ function renderSupervisor_(j) {
     : list;
 
   // -------- promedio robusto (solo FINALIZADOS, no RAMAL) --------
-  const durMs = [];
-  for (const it of list) {
+  // -------- promedio robusto con prior contextual --------
+
+  // 1) Históricos válidos para construir referencia contextual
+  const historyItems = items.filter((it) => {
     const rol = String(it.rol || it.rolTrabajo || "").toUpperCase();
     const isRamal = rol === "RAMALERO" || rol === "RAMAL";
+    if (isRamal) return false;
+    if (!isFinalizado_(it.estado)) return false;
+    return durationMsFromItem_(it) > 0;
+  });
+
+  // 2) Enriquecemos items para que el builder entienda track
+  const historyForStats = historyItems.map((it) => ({
+    ...it,
+    _track: supTrack,
+  }));
+
+  // 3) Construimos mapa de medianas por contexto
+  const statsMap = buildContextStats_(historyForStats, durationMsFromItem_);
+
+  // 4) Duraciones del filtro actual
+  const durMs = [];
+  const rolesInCurrentList = new Set();
+
+  for (const it of list) {
+    const rolRaw = String(it.rol || it.rolTrabajo || "").toUpperCase();
+    const isRamal = rolRaw === "RAMALERO" || rolRaw === "RAMAL";
     if (isRamal) continue;
 
     if (!isFinalizado_(it.estado)) continue;
 
     const d = durationMsFromItem_(it);
-    if (d > 0) durMs.push(d);
+    if (d > 0) {
+      durMs.push(d);
+      rolesInCurrentList.add(rolRaw);
+    }
   }
 
-  const stats = avgWeightedByMedianMad_(durMs, 3.5);
+  // 5) Determinar contexto actual
+  // Si hay un solo rol dominante/único en la lista, lo usamos.
+  // Si hay mezcla, usamos rol "ALL" implícito cayendo a track+marca o track.
+  let currentRol = "";
+  if (rolesInCurrentList.size === 1) {
+    currentRol = [...rolesInCurrentList][0];
+  }
+
+  const contextPrior = getContextPrior_(statsMap, {
+    track: supTrack,
+    rol: currentRol,
+    marca: marcaSel,
+  }, 4);
+
+  // 6) Estimación final
+  const stats = avgRobustWithContextPrior_(durMs, contextPrior, {
+    priorWeight: 6,
+    k: 2.1,
+  });
+
+  // Debug opcional
+  // console.log("SUP context stats", {
+  //   supTrack,
+  //   marcaSel,
+  //   currentRol,
+  //   contextPrior,
+  //   stats,
+  //   durMs,
+  // });
 
   // -------- contadores rol (solo FINALIZADOS) --------
   const techName = rawTechName || "Técnico";
