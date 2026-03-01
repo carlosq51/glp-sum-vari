@@ -1,5 +1,5 @@
 // =========================
-// public/js/views/conversion/conformidad.js
+// public/js/views/conversion/modals/conformidad.js
 // Modal de conformidad de equipo (TANQUE / REDUCTOR)
 // - ligado a VIN de la card
 // - escaneo QR / código de barras del equipo
@@ -13,7 +13,7 @@ import {
   ctx_,
   requireEmailOrStop,
   postJSON_user,
-} from "../../core/core.js";
+} from "../../../core/core.js";
 
 // --------------------------
 // STATE

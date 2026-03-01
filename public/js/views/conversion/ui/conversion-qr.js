@@ -1,3 +1,4 @@
+// public/js/views/conversion/ui/conversion-qr.js
 /* global Html5Qrcode, Html5QrcodeSupportedFormats */
 
 import {
@@ -6,11 +7,11 @@ import {
   el_,
   getRolTrabajoCurrent_,
   withLock,
-} from "../../core/core.js";
+} from "../../../core/core.js";
 
-import { refreshEstadoForVinRole } from "./conversion-estado.js";
-import { autoStartFromScan_ } from "./conversion-eventos.js";
-import { syncNow } from "./conversion-sync.js";
+import { refreshEstadoForVinRole } from "../data/conversion-estado.js";
+import { autoStartFromScan_ } from "../data/conversion-eventos.js";
+import { syncNow } from "../data/conversion-sync.js";
 
 // --------------------------
 // QR WORK_VIN

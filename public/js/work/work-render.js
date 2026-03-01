@@ -66,8 +66,7 @@ export function renderActivas_() {
           ${
             CORE.state.currentModule === "TECNICO"
               ? `<button class="btnRF" type="button" data-go="RF">📸 Registrar fotos / fallas</button>`
-              : "",
-            CORE.state.currentModule === "CALIDAD"
+              : CORE.state.currentModule === "CALIDAD"
                 ? `<button class="btnRF" type="button" data-go="RF">📸 Registrar calidad / fallas</button>`
                 : ""
           }
@@ -130,12 +129,11 @@ export function renderFinalizados_(avgTopHTML = "") {
         ${buildIncidenciasBtnHTML_(it, k)}
 
         ${
-        CORE.state.currentModule === "TECNICO"
+          CORE.state.currentModule === "TECNICO"
             ? `<button class="btnRF" type="button" data-go="RF">📸 Registrar fotos / fallas</button>`
-            : "",
-        CORE.state.currentModule === "CALIDAD"
-            ? `<button class="btnRF" type="button" data-go="RF">📸 Registrar calidad / fallas</button>`
-            : ""
+            : CORE.state.currentModule === "CALIDAD"
+              ? `<button class="btnRF" type="button" data-go="RF">📸 Registrar calidad / fallas</button>`
+              : ""
         }
       </div>
     `;

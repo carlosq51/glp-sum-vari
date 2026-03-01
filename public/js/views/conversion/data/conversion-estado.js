@@ -1,4 +1,4 @@
-// public/js/views/conversion/conversion-estado.js
+// public/js/views/conversion/data/conversion-estado.js
 
 import {
   CORE,
@@ -13,17 +13,17 @@ import {
   msToHMS_,
   withLock,
   keyOfItem_,
-} from "../../core/core.js";
+} from "../../../core/core.js";
 
 import {
   computeLiveMs_,
   rebuildListsFromStore_,
   renderActivas_,
   renderFinalizados_,
-} from "../../work/index.js";
+} from "../../../work/index.js";
 
-import { isWorkModule_ } from "../../core/core.js";
-import { normalizeItem_ } from "./conversion-store.js";
+import { isWorkModule_ } from "../../../core/core.js";
+import { normalizeItem_ } from "../state/conversion-store.js";
 import { syncNow } from "./conversion-sync.js";
 
 let estadoDebounceTimer_ = null;

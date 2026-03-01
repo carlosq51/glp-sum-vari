@@ -1,6 +1,6 @@
-// public/js/views/conversion/rf-tecnico-modal.js
-import { CORE, setOut } from "../../core/core.js";
-import { showUploaderView, hideUploaderView } from "../uploader/uploader.js";
+// public/js/views/conversion/modals/rf-tecnico-modal.js
+import { CORE, setOut } from "../../../core/core.js";
+import { showUploaderView, hideUploaderView } from "../../uploader/uploader.js";
 
 const RFT = { open:false, vin:"" };
 

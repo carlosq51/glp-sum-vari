@@ -1,4 +1,4 @@
-// public/js/views/conversion/conversion-sync.js
+// public/js/views/conversion/data/conversion-sync.js
 
 import {
   CORE,
@@ -11,7 +11,7 @@ import {
   getJSON,
   enforceRolLock_,
   isWorkModule_,
-} from "../../core/core.js";
+} from "../../../core/core.js";
 
 import {
   rebuildListsFromStore_,
@@ -20,13 +20,13 @@ import {
   patchVisibleCards_,
   snapshotNotasActivas_,
   restoreNotasActivas_,
-} from "../../work/index.js";
+} from "../../../work/index.js";
 
 import {
   applySyncResultToStore_,
   storeFullReplace_,
   detectIfNeedsFullRerender_,
-} from "./conversion-store.js";
+} from "../state/conversion-store.js";
 
 import { autoStartFromScan_ } from "./conversion-eventos.js";
 

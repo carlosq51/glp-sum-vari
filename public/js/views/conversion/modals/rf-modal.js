@@ -1,7 +1,7 @@
-// public/js/views/conversion/rf-modal.js
-import { CORE, setOut } from "../../core/core.js";
-import { showUploaderView } from "../uploader/uploader.js";
-import { hideUploaderView } from "../uploader/uploader.js"; // ✅ añade
+// public/js/views/conversion/modals/rf-modal.js
+import { CORE, setOut } from "../../../core/core.js";
+import { showUploaderView } from "../../uploader/uploader.js";
+import { hideUploaderView } from "../../uploader/uploader.js"; // ✅ añade
 
 const RF = { open: false, vin: "" };
 

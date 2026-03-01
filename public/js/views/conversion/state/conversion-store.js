@@ -1,4 +1,4 @@
-// public/js/views/conversion/conversion-store.js
+// public/js/views/conversion/state/conversion-store.js
 
 import {
   CORE,
@@ -9,7 +9,7 @@ import {
   vinCacheSet_,
   ramalCacheGet_,
   ramalCacheSet_,
-} from "../../core/core.js";
+} from "../../../core/core.js";
 
 // --------------------------
 // NORMALIZE / MERGE

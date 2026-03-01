@@ -1,4 +1,4 @@
-// public/js/views/conversion/conversion-eventos.js
+// public/js/views/conversion/data/conversion-eventos.js
 
 import {
   CORE,
@@ -10,7 +10,7 @@ import {
   setOut,
   keyOfItem_,
   postJSON_user,
-} from "../../core/core.js";
+} from "../../../core/core.js";
 
 import {
   allowedActionsByEstado,
@@ -19,9 +19,9 @@ import {
   restoreNotasActivas_,
   renderActivas_,
   renderFinalizados_,
-} from "../../work/index.js";
+} from "../../../work/index.js";
 
-import { normalizeItem_, mergePrevAndCache_ } from "./conversion-store.js";
+import { normalizeItem_, mergePrevAndCache_ } from "../state/conversion-store.js";
 import { syncNow } from "./conversion-sync.js";
 
 let lastAutoStart_ = { k: "", t: 0 };

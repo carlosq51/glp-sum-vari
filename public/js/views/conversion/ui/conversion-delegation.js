@@ -1,17 +1,17 @@
-// public/js/views/conversion/conversion-delegation.js
+// public/js/views/conversion/ui/conversion-delegation.js
 import {
   CORE,
   $,
   el_,
   ctx_,
   enforceRolLock_,
-} from "../../core/core.js";
+} from "../../../core/core.js";
 
-import { enviarEvento } from "./conversion-eventos.js";
-import { openIncidenciaModalForKey_ } from "./incidencias.js";
-import { openRFModalForVin_ } from "./rf-modal.js";
-import { openRFTecModalForVin_ } from "./rf-tecnico-modal.js";
-import { openConformidadModalForKey_ } from "./conformidad.js";
+import { enviarEvento } from "../data/conversion-eventos.js";
+import { openIncidenciaModalForKey_ } from "../modals/incidencias.js";
+import { openRFModalForVin_ } from "../modals/rf-modal.js";
+import { openRFTecModalForVin_ } from "../modals/rf-tecnico-modal.js";
+import { openConformidadModalForKey_ } from "../modals/conformidad.js";
 
 function attachWorkDelegationOnce_(mod) {
   const prev = CORE.state.currentModule;

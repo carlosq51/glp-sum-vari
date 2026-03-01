@@ -1,3 +1,5 @@
+// public/js/views/conversion/ui/conversion-vin-autocomplete.js
+
 import {
   CORE,
   $,
@@ -6,11 +8,11 @@ import {
   getRolTrabajoCurrent_,
   setEstadoText,
   withLock,
-} from "../../core/core.js";
+} from "../../../core/core.js";
 
-import { refreshEstadoForVinRole, scheduleEstadoRefresh_ } from "./conversion-estado.js";
-import { autoStartFromScan_ } from "./conversion-eventos.js";
-import { syncNow } from "./conversion-sync.js";
+import { refreshEstadoForVinRole, scheduleEstadoRefresh_ } from "../data/conversion-estado.js";
+import { autoStartFromScan_ } from "../data/conversion-eventos.js";
+import { syncNow } from "../data/conversion-sync.js";
 
 // --------------------------
 // VIN AUTOCOMPLETE

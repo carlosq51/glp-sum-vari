@@ -1,12 +1,12 @@
 /* global Html5Qrcode, Html5QrcodeSupportedFormats */
 
-import { initIncidenciasUI_ } from "./incidencias.js";
-import { initRFModalUI_ } from "./rf-modal.js";
-import { initRFTecModalUI_ } from "./rf-tecnico-modal.js";
+import { initIncidenciasUI_ } from "./modals/incidencias.js";
+import { initRFModalUI_ } from "./modals/rf-modal.js";
+import { initRFTecModalUI_ } from "./modals/rf-tecnico-modal.js";
 import {
   initConformidadUI_,
   setConformidadAfterSaveRefresh_,
-} from "./conformidad.js";
+} from "./modals/conformidad.js";
 
 import {
   CORE,
@@ -24,14 +24,14 @@ import {
 import { computeLiveMs_, renderFinalizados_ } from "../../work/index.js";
 import { startLoopsFor_, stopLoopsFor_, clearModuleUI_ } from "../../core/loops.js";
 
-import { syncNow } from "./conversion-sync.js";
+import { syncNow } from "./data/conversion-sync.js";
 import {
   refreshEstadoForVinRole,
   initEstadoUI_,
-} from "./conversion-estado.js";
-import { initConversionDelegation_ } from "./conversion-delegation.js";
-import { initVinAutocomplete_ } from "./conversion-vin-autocomplete.js";
-import { initConversionQR_ } from "./conversion-qr.js";
+} from "./data/conversion-estado.js";
+import { initConversionDelegation_ } from "./ui/conversion-delegation.js";
+import { initVinAutocomplete_ } from "./ui/conversion-vin-autocomplete.js";
+import { initConversionQR_ } from "./ui/conversion-qr.js";
 
 // --------------------------
 // TICK CLOCK
@@ -139,4 +139,4 @@ export function exit(mod) {
   clearModuleUI_(mod);
 }
 
-export { syncNow } from "./conversion-sync.js";
+export { syncNow } from "./data/conversion-sync.js";

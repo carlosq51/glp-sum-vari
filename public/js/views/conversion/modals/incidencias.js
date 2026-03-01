@@ -1,5 +1,5 @@
 // =========================
-// public/js/views/conversion/incidencias.js
+// public/js/views/conversion/modals/incidencias.js
 // Modal de incidencias (CALIDAD)
 // - abre/cierra modal
 // - autocomplete de técnicos (api/name-suggest)
@@ -8,12 +8,12 @@
 
 import {
   CORE, $, el_, ctx_, setOut, withLock, getJSON, postJSON, escapeHtml, getEmail
-} from "../../core/core.js";
+} from "../../../core/core.js";
 
 import {
   renderActivas_, renderFinalizados_, patchVisibleCards_,
   rebuildListsFromStore_, snapshotNotasActivas_, restoreNotasActivas_,
-} from "../../work/index.js";
+} from "../../../work/index.js";
 
 // -----------------------------------------
 // Estado local del modal
