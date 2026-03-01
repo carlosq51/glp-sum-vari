@@ -12,6 +12,7 @@ import { openIncidenciaModalForKey_ } from "../modals/incidencias.js";
 import { openRFModalForVin_ } from "../modals/rf-modal.js";
 import { openRFTecModalForVin_ } from "../modals/rf-tecnico-modal.js";
 import { openConformidadModalForKey_ } from "../modals/conformidad.js";
+import { askConfirmFinish_ } from "../modals/confirm-finish.js";
 
 function attachWorkDelegationOnce_(mod) {
   const prev = CORE.state.currentModule;
@@ -56,6 +57,18 @@ function attachWorkDelegationOnce_(mod) {
         }
         if (accion === "NOTA" && $("nota")) {
           $("nota").value = String(card.querySelector("textarea.notaCard")?.value || "");
+        }
+
+        // ✅ Confirmación de seguridad antes de finalizar
+        if (accion === "FIN") {
+        const ok = await askConfirmFinish_({
+            title: "Confirmar finalización",
+            message: "¿Seguro que quieres finalizar este trabajo? Esta acción puede cerrar la tarea actual.",
+            acceptText: "Sí, finalizar",
+            cancelText: "Cancelar",
+        });
+
+        if (!ok) return;
         }
 
         await enviarEvento(accion, { clearKey: k });

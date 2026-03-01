@@ -6,6 +6,11 @@ import {
 } from "../../core/core.js";
 
 import { syncNow } from "../conversion/conversion.js";
+import {
+  rebuildListsFromStore_,
+  renderActivas_,
+  renderFinalizados_,
+} from "../../work/index.js";
 
 export async function crearNuevoRamal_() {
   const ramalIdEl = $("ramalId");
@@ -20,17 +25,24 @@ export async function crearNuevoRamal_() {
     return;
   }
 
-  const j = await postJSON_user("/api/evento", {
-    email,
-    rolTrabajo: "RAMALERO",
-    accion: "INICIO",
-    tipoRamal,
-  }, "Iniciando...");
+  const j = await postJSON_user(
+    "/api/evento",
+    {
+      email,
+      rolTrabajo: "RAMALERO",
+      accion: "INICIO",
+      tipoRamal,
+    },
+    "Iniciando..."
+  );
 
   setOut(j);
   if (!j?.ok) return;
 
-  syncNow({ forceFull: true, showOut: false }).catch(() => {});
+  await syncNow({ forceFull: true, showOut: false });
+  rebuildListsFromStore_();
+  renderActivas_();
+  renderFinalizados_();
 }
 
 export async function enviarEventoRamalero_(it, accion, nota = "") {
@@ -50,8 +62,10 @@ export async function enviarEventoRamalero_(it, accion, nota = "") {
 
   const j = await postJSON_user("/api/evento", body, `Enviando ${accion}...`);
   setOut(j);
+  if (!j?.ok) return;
 
-  if (j?.ok) {
-    syncNow({ forceFull: true, showOut: false }).catch(() => {});
-  }
+  await syncNow({ forceFull: true, showOut: false });
+  rebuildListsFromStore_();
+  renderActivas_();
+  renderFinalizados_();
 }

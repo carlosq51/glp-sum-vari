@@ -16,6 +16,8 @@ import { qrModal } from "../modals/qr-modal.js";
 import { rfModal } from "../modals/rf-calidad-modal.js";
 import { rfTecnicoModal } from "../modals/rf-tecnico-modal.js";
 
+import { confirmFinishModal } from "../modals/confirm-finish-modal.js";
+
 export function appShell() {
   return `
     ${loginView()}
@@ -48,5 +50,6 @@ export function appShell() {
     ${incidenciasModal()}
     ${rfModal()}
     ${rfTecnicoModal()}
+    ${confirmFinishModal()}
   `;
 }
