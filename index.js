@@ -152,71 +152,23 @@ app.post("/api/supervisor/report", async (req, res) => {
 // Alias GET para que el frontend actual (GET) funcione sin cambiar app.js
 app.get("/api/supervisor/report", async (req, res) => {
   try {
-    // =========================
-    // 1) leer filtros
-    // =========================
-    const payload = {
-      q: String(req.query.q || "").trim(),
-      from: String(req.query.from || "").trim(),
-      to: String(req.query.to || "").trim(),
-      month: String(req.query.month || "").trim(),
-
-      // ✅ NUEVO: viene del frontend cuando track=RAMAL
-      tipoRamal: String(req.query.tipoRamal || "").trim(),
-    };
-
-
     const track = String(req.query.track || "CONVERSION").toUpperCase();
 
-    // =========================
-    // 2) llamar Apps Script
-    // =========================
+    const payload = {
+      q:         String(req.query.q         || "").trim(),
+      from:      String(req.query.from      || "").trim(),
+      to:        String(req.query.to        || "").trim(),
+      month:     String(req.query.month     || "").trim(),
+      tipoRamal: String(req.query.tipoRamal || "").trim(),
+      track,   // ✅ esta línea faltaba — pasar track a Apps Script
+    };
+
     const j = await callAppsScript("supervisor_report", payload);
     if (!j.ok) return res.json(j);
 
-    let rows = Array.isArray(j.items) ? j.items : [];
-
-    // =========================
-    // 3) AGRUPACIÓN POR TRACK
-    // =========================
-    let outItems = [];
-
-    if (track === "CONVERSION") {
-      // ✅ NO agrupar aquí. Devuelve filas MOTOR y TANQUE tal cual.
-      outItems = rows.filter(r => ["MOTOR", "TANQUE"].includes(String(r.rol || "").toUpperCase()));
-    }
-
-
-    else if (track === "CALIDAD") {
-      outItems = rows.filter(r => String(r.rol || "").toUpperCase() === "CALIDAD");
-    }
-
-    else if (track === "RAMAL") {
-      const qMarca = String(req.query.tipoRamal || "").trim().toUpperCase();
-
-      outItems = rows.filter(r => {
-        const rol = String(r.rol || "").toUpperCase();
-        if (rol !== "RAMALERO") return false;
-
-        // si no hay filtro de marca, devuelve todos los RAMALERO
-        if (!qMarca) return true;
-
-        const tipo = String(r.tipoRamal || r.tipo_ramal || r.tipo || "").trim().toUpperCase();
-
-        // ✅ match flexible: contiene (JETOUR, X5, KYC V3, etc.)
-        return tipo.includes(qMarca);
-      });
-    }
-
-
-    else {
-      outItems = rows;
-    }
-
-    // =========================
-    // 4) RESPUESTA FINAL
-    // =========================
-    return res.json({ ok: true, items: outItems });
+    // El filtro por track ahora lo hace Apps Script directamente,
+    // así que Node ya no necesita volver a filtrar
+    return res.json({ ok: true, items: j.items, count: j.count });
 
   } catch (e) {
     return res.status(500).json({ ok: false, error: String(e.message || e) });
