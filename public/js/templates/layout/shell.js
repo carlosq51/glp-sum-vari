@@ -7,6 +7,7 @@ import { calidadView } from "../views/calidad-view.js";
 import { supervisorView } from "../views/supervisor-view.js";
 import { adminView } from "../views/admin-view.js";
 import { uploaderView } from "../views/uploader-view.js";
+import { movilizadorView } from "../views/movilizador-view.js";
 
 import { topbarView } from "./topbar.js";
 import { loadingOverlay } from "./loading-overlay.js";
@@ -34,10 +35,7 @@ export function appShell() {
       ${calidadView()}
 
       <!-- MOVILIZADOR (stub como lo tenías) -->
-      <div id="viewMOVILIZADOR" class="card" style="display:none;">
-        <h3>Movilizador</h3>
-        <div class="small">Aquí irá la vista de Movilizador.</div>
-      </div>
+      ${movilizadorView()}
 
       ${supervisorView()}
       ${adminView()}

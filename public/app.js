@@ -20,6 +20,7 @@ import * as VConversion from "./js/views/conversion/conversion.js";
 import * as VRamalero from "./js/views/ramalero/ramalero.js";
 import * as VSupervisor from "./js/views/supervisor/supervisor.js";
 import * as VAdmin from "./js/views/admin/admin.js";
+import * as VMovilizador from "./js/views/movilizador/movilizador.js";
 
 const root = document.getElementById("appRoot");
 if (root) root.innerHTML = appShell();
@@ -80,12 +81,13 @@ openView.register("CALIDAD", () => VConversion.enter("CALIDAD"), () => VConversi
 openView.register("RAMALERO", () => VRamalero.enter(), () => VRamalero.exit());
 openView.register("SUPERVISOR", () => VSupervisor.enter(), () => VSupervisor.exit());
 openView.register("ADMIN", () => VAdmin.enter(), () => VAdmin.exit());
-
+openView.register("MOVILIZADOR", () => VMovilizador.enter(), () => VMovilizador.exit());
 // init once for each view (bind listeners once)
 VConversion.init();
 VRamalero.init();
 VSupervisor.init();
 VAdmin.init();
+VMovilizador.init();
 initUploaderView();
 
 // ---------- GLOBAL LISTENERS ----------
@@ -132,7 +134,7 @@ $("btnLogout")?.addEventListener("click", () => {
   VConversion.exit("TECNICO");
   VConversion.exit("CALIDAD");
   VRamalero.exit();
-
+  VMovilizador.exit();
   hideAllModulesUI();
   $("viewHub").style.display = "none";
   $("btnGoHome")?.classList.add("hidden");
