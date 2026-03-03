@@ -6,12 +6,12 @@ import { CORE, ctx_ } from "./state.js";
 import { el_ } from "./dom.js";
 import { setEstadoText } from "./ui-shell.js";
 
-import { snapshotNotasActivas_, restoreNotasActivas_, renderActivas_, renderFinalizados_ } from "../work/index.js";
+import { renderFinalizados_ } from "../work/index.js";
 
 const timersByModule = {
-  TECNICO: { syncTimer: null, clockTimer: null, estadoTimer: null },
-  CALIDAD: { syncTimer: null, clockTimer: null, estadoTimer: null },
-  RAMALERO: { syncTimer: null, clockTimer: null, estadoTimer: null },
+  TECNICO: { syncTimer: null, clockTimer: null, estadoTimer: null, syncStopped: false },
+  CALIDAD: { syncTimer: null, clockTimer: null, estadoTimer: null, syncStopped: false },
+  RAMALERO: { syncTimer: null, clockTimer: null, estadoTimer: null, syncStopped: false },
 };
 
 function tctx_(mod) {
@@ -20,19 +20,27 @@ function tctx_(mod) {
 
 export function stopLoopsFor_(mod) {
   const t = tctx_(mod);
-  if (t.syncTimer) clearInterval(t.syncTimer);
+
+  t.syncStopped = true;
+
+  if (t.syncTimer) clearTimeout(t.syncTimer);
   if (t.clockTimer) clearInterval(t.clockTimer);
   if (t.estadoTimer) clearInterval(t.estadoTimer);
-  t.syncTimer = t.clockTimer = t.estadoTimer = null;
+
+  t.syncTimer = null;
+  t.clockTimer = null;
+  t.estadoTimer = null;
 }
 
 export function clearModuleUI_(mod) {
   const prev = CORE.state.currentModule;
   CORE.state.currentModule = mod;
+
   try {
     if (mod === "RAMALERO") {
       const ramalIdEl = document.getElementById("ramalId");
       if (ramalIdEl) ramalIdEl.value = "";
+
       const tipoEl = document.getElementById("tipoRamal");
       if (tipoEl) tipoEl.value = "";
     } else {
@@ -42,6 +50,7 @@ export function clearModuleUI_(mod) {
 
     const act = el_("activasBox");
     if (act) act.innerHTML = "";
+
     const fin = el_("finalizadosBox");
     if (fin) fin.innerHTML = "";
 
@@ -60,27 +69,64 @@ export function clearModuleUI_(mod) {
   }
 }
 
-export function startLoopsFor_(mod, { syncNow, tickClocksUI, refreshEstadoForVinRole, buildAvgTopHTML } = {}) {
+async function runSyncLoop_(mod, syncNow) {
+  const t = tctx_(mod);
+  if (!syncNow) return;
+  if (t.syncStopped) return;
+
+  try {
+    await syncNow({ forceFull: false, showOut: false });
+  } catch (err) {
+    console.error(`[${mod}] sync loop error:`, err);
+  }
+
+  if (t.syncStopped) return;
+
+  t.syncTimer = setTimeout(() => {
+    runSyncLoop_(mod, syncNow);
+  }, 10000);
+}
+
+export function startLoopsFor_(
+  mod,
+  { syncNow, tickClocksUI, refreshEstadoForVinRole, buildAvgTopHTML } = {}
+) {
   stopLoopsFor_(mod);
 
-  // set currentModule temporal para que el_ ctx_ funcionen
   const prev = CORE.state.currentModule;
   CORE.state.currentModule = mod;
 
   try {
-    syncNow?.({ forceFull: true, showOut: false }).catch(() => {});
-
     const t = tctx_(mod);
+    t.syncStopped = false;
 
-    t.syncTimer = setInterval(() => syncNow?.({ forceFull: false, showOut: false }), 10000);
-    t.clockTimer = setInterval(() => tickClocksUI?.(), 1000);
+    // primer sync inmediato
+    Promise.resolve(syncNow?.({ forceFull: true, showOut: false }))
+      .catch((err) => {
+        console.error(`[${mod}] initial sync error:`, err);
+      })
+      .finally(() => {
+        if (!t.syncStopped) {
+          t.syncTimer = setTimeout(() => {
+            runSyncLoop_(mod, syncNow);
+          }, 10000);
+        }
+      });
+
+    t.clockTimer = setInterval(() => {
+      tickClocksUI?.();
+    }, 1000);
 
     if (mod === "TECNICO" || mod === "CALIDAD") {
-      t.estadoTimer = setInterval(() => refreshEstadoForVinRole?.({ showOut: false }), 8000);
-      setTimeout(() => refreshEstadoForVinRole?.({ showOut: false }).catch(() => {}), 700);
+      t.estadoTimer = setInterval(() => {
+        refreshEstadoForVinRole?.({ showOut: false });
+      }, 8000);
+
+      setTimeout(() => {
+        refreshEstadoForVinRole?.({ showOut: false }).catch(() => {});
+      }, 700);
     }
 
-    // render finalizados (si ya estaban abiertos) con top card opcional
     const c = ctx_();
     if (c.showFinalizados) {
       const avgTop = buildAvgTopHTML ? (buildAvgTopHTML() || "") : "";
