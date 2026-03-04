@@ -1,9 +1,6 @@
 // public/js/templates/views/supervisor-view.js
 export function supervisorView() {
   return `
-    <!-- =========================
-         SUPERVISOR
-         ========================= -->
     <div id="viewSUPERVISOR" class="card" style="display:none;">
       <h3>Supervisor</h3>
       <div class="small">Filtros opcionales: nombre/email, fechas o mes.</div>
@@ -12,7 +9,6 @@ export function supervisorView() {
         <button type="button" class="btn" data-suptrack="CONVERSION">CONVERSIÓN</button>
         <button type="button" class="btn" data-suptrack="CALIDAD">CALIDAD</button>
         <button type="button" class="btn" data-suptrack="RAMAL">RAMAL</button>
-
         <div id="supTrackPill" class="pill small" style="margin-left:auto;">
           CONVERSIÓN (MOTOR + TANQUE)
         </div>
@@ -21,24 +17,12 @@ export function supervisorView() {
       <div class="fullStack" style="margin-top:10px;">
         <div class="supNameWrap" style="display:flex; gap:10px; align-items:center;">
           <input id="supName" type="text" placeholder="Buscar por nombre o email..." autocomplete="off" style="flex:1;" />
-
-          <select id="supMarca" title="Filtrar por marca" style="
-            width:140px;
-            height:44px;
-            border-radius:14px;
-            padding:0 10px;
-            background: rgba(0,0,0,.25);
-            border:1px solid rgba(255,255,255,.18);
-            color: #fff;
-            font-weight:800;
-            outline:none;
-          ">
+          <select id="supMarca" title="Filtrar por marca" style="width:140px;height:44px;border-radius:14px;padding:0 10px;background:rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.18);color:#fff;font-weight:800;outline:none;">
             <option value="ALL">TODOS</option>
             <option value="KYC">KYC</option>
             <option value="JETOUR">JETOUR</option>
             <option value="VW">VOLKSWAGEN</option>
           </select>
-
           <div id="supNameSuggest" class="nameSuggest hidden" role="listbox"></div>
         </div>
 
@@ -46,7 +30,6 @@ export function supervisorView() {
           <div class="supVinWrap">
             <input id="supVin" type="text" placeholder="Buscar por VIN..." />
           </div>
-
           <button id="btnSupQR" type="button" title="Escanear VIN con cámara">📷</button>
         </div>
 
@@ -71,24 +54,25 @@ export function supervisorView() {
       <div id="supAvgCard" style="margin-top:10px;"></div>
       <div id="supSummary" class="small" style="margin-top:10px;"></div>
       <div id="supTable" style="margin-top:10px;"></div>
-          <!-- =========================
-         MODAL: INCIDENCIAS (LISTA)
-         ========================= -->
-      <div id="supIncModal" class="modal" aria-hidden="true">
-        <div class="modalBox">
-          <div class="modalHead">
-            <div class="modalTitle">Incidencias registradas</div>
-            <button id="btnCloseSupInc" title="Cerrar">✕</button>
-          </div>
+    </div>
+  `;
+}
 
-          <div class="modalBody">
-            <div id="supIncInfo" class="small" style="opacity:.9; margin-bottom:10px;"></div>
-            <div id="supIncList"></div>
-            <div id="supIncMsg" class="small" style="margin-top:10px;"></div>
-          </div>
+// Modal global — usado tanto en Supervisor como en Calidad
+export function supIncModal() {
+  return `
+    <div id="supIncModal" class="modal" aria-hidden="true">
+      <div class="modalBox">
+        <div class="modalHead">
+          <div class="modalTitle">Incidencias registradas</div>
+          <button id="btnCloseSupInc" title="Cerrar">✕</button>
+        </div>
+        <div class="modalBody">
+          <div id="supIncInfo" class="small" style="opacity:.9; margin-bottom:10px;"></div>
+          <div id="supIncList"></div>
+          <div id="supIncMsg" class="small" style="margin-top:10px;"></div>
         </div>
       </div>
-      
     </div>
   `;
 }

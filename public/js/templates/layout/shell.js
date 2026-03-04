@@ -4,10 +4,10 @@ import { hubView } from "../views/hub-view.js";
 import { tecnicoView } from "../views/tecnico-view.js";
 import { ramaleroView } from "../views/ramalero-view.js";
 import { calidadView } from "../views/calidad-view.js";
-import { supervisorView } from "../views/supervisor-view.js";
 import { adminView } from "../views/admin-view.js";
 import { uploaderView } from "../views/uploader-view.js";
 import { movilizadorView } from "../views/movilizador-view.js";
+import { supervisorView, supIncModal } from "../views/supervisor-view.js";
 
 import { topbarView } from "./topbar.js";
 import { loadingOverlay } from "./loading-overlay.js";
@@ -49,5 +49,6 @@ export function appShell() {
     ${rfModal()}
     ${rfTecnicoModal()}
     ${confirmFinishModal()}
+    ${supIncModal()}
   `;
 }

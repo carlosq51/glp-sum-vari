@@ -75,8 +75,16 @@ export function buildIncidenciasBtnHTML_(it, key = "") {
       : `<span class="pill small" style="margin-left:8px; opacity:.8;">L:0 M:0 C:0</span>`;
 
   return `
-    <button class="btnRF" type="button" data-go="INC" data-key="${escapeHtml(key)}" style="margin-bottom:10px;">
-      ⚠️ Registrar incidencia ${badge}
-    </button>
+    <div class="jobActionsGrid" style="margin-bottom:10px;">
+      <button class="btnRF" type="button" data-go="INC" data-key="${escapeHtml(key)}"
+        style="margin-top:0;">
+        ⚠️ Registrar ${badge}
+      </button>
+      <button class="btnRF" type="button" data-go="VER_INC"
+        data-vin="${escapeHtml(vin)}" data-cid="${escapeHtml(cid)}"
+        style="margin-top:0;">
+        🔍 Ver incidencias
+      </button>
+    </div>
   `;
 }

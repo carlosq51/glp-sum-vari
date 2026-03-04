@@ -14,6 +14,10 @@ import { openRFTecModalForVin_ } from "../modals/rf-tecnico-modal.js";
 import { openConformidadModalForKey_ } from "../modals/conformidad.js";
 import { askConfirmFinish_ } from "../modals/confirm-finish.js";
 
+import { openSupIncModal_, fetchIncidencias_, renderIncidencias_ } from "../../supervisor/sup-incidencias.js";
+import { escapeHtml, fmtShort_ } from "../../../core/format.js";
+import { getJSON } from "../../../core/core.js";
+
 function attachWorkDelegationOnce_(mod) {
   const prev = CORE.state.currentModule;
   CORE.state.currentModule = mod;
@@ -110,6 +114,19 @@ function attachWorkDelegationOnce_(mod) {
         return;
       }
 
+      if (go === "VER_INC") {
+        e.stopPropagation();
+        const vin = String(goBtn.dataset.vin || it?.vin || "").trim().toUpperCase();
+        const cid = String(goBtn.dataset.cid || it?.conversionId || "").trim();
+        openSupIncModal_();
+        const msg = document.getElementById("supIncMsg");
+        if (msg) msg.textContent = "Cargando...";
+        fetchIncidencias_(vin, cid, { getJSON_user: getJSON })
+          .then(j => renderIncidencias_(j, { vin, conversionId: cid, who: vin }, { escapeHtml, fmtShort_ }))
+          .catch(err => renderIncidencias_({ ok: false, error: String(err?.message || err) }, { vin }, { escapeHtml, fmtShort_ }));
+        return;
+      }
+
       if (go === "CONF") {
         e.stopPropagation();
         await openConformidadModalForKey_(k);
@@ -148,6 +165,19 @@ function attachFinalizadosDelegationOnce_(mod) {
         e.stopPropagation();
         if (!k) return;
         await openIncidenciaModalForKey_(k);
+        return;
+      }
+
+      if (go === "VER_INC") {
+        e.stopPropagation();
+        const vin = String(btn.dataset.vin || it?.vin || "").trim().toUpperCase();
+        const cid = String(btn.dataset.cid || it?.conversionId || "").trim();
+        openSupIncModal_();
+        const msg = document.getElementById("supIncMsg");
+        if (msg) msg.textContent = "Cargando...";
+        fetchIncidencias_(vin, cid, { getJSON_user: getJSON })
+          .then(j => renderIncidencias_(j, { vin, conversionId: cid, who: vin }, { escapeHtml, fmtShort_ }))
+          .catch(err => renderIncidencias_({ ok: false, error: String(err?.message || err) }, { vin }, { escapeHtml, fmtShort_ }));
         return;
       }
 
