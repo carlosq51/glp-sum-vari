@@ -27,6 +27,8 @@ export function renderActivas_() {
     const tipo = escapeHtml(it.tipoRamal || "");
     const live = msToHMS_(computeLiveMs_(it, nowMs));
     const cre = escapeHtml(fmtFechaCreacion_(it.created_at));
+    const motorNombre = escapeHtml(it.motorNombre || "");
+    const tanqueroNombre = escapeHtml(it.tanqueroNombre || "");
 
     const title =
       CORE.state.currentModule === "RAMALERO"
@@ -41,6 +43,12 @@ export function renderActivas_() {
             <div class="jobSub">
               <span><b>Estado:</b> <span class="js-estado">${estado}</span></span>
               <span class="small">Inicio: ${cre}</span>
+              ${CORE.state.currentModule === "CALIDAD" && (motorNombre || tanqueroNombre) ? `
+                <span class="small js-personal">
+                  ${motorNombre ? `🔧 MOTOR: <b>${motorNombre}</b>` : ""}
+                  ${motorNombre && tanqueroNombre ? " &nbsp;|&nbsp; " : ""}
+                  ${tanqueroNombre ? `🛢️ TANQUERO: <b>${tanqueroNombre}</b>` : ""}
+                </span>` : ""}
             </div>
           </div>
           <div class="jobRight">
@@ -116,6 +124,8 @@ export function renderFinalizados_(avgTopHTML = "") {
     const estado = escapeHtml(String(it.estado || "FINALIZADO").toUpperCase());
     const live = msToHMS_(computeLiveMs_(it, nowMs));
     const cre = escapeHtml(fmtFechaCreacion_(it.created_at));
+    const motorNombre = escapeHtml(it.motorNombre || "");
+    const tanqueroNombre = escapeHtml(it.tanqueroNombre || "");
 
     out += `
       <div class="card" style="margin-top:10px;" data-key="${escapeHtml(k)}">
@@ -125,6 +135,12 @@ export function renderFinalizados_(avgTopHTML = "") {
           <div class="pill" style="font-size:18px; font-weight:800;">⏱ ${live}</div>
         </div>
         <div class="small">Inicio: ${cre}</div>
+        ${CORE.state.currentModule === "CALIDAD" && (motorNombre || tanqueroNombre) ? `
+          <div class="small js-personal" style="margin-top:4px;">
+            ${motorNombre ? `🔧 MOTOR: <b>${motorNombre}</b>` : ""}
+            ${motorNombre && tanqueroNombre ? " &nbsp;|&nbsp; " : ""}
+            ${tanqueroNombre ? `🛢️ TANQUERO: <b>${tanqueroNombre}</b>` : ""}
+          </div>` : ""}
 
         ${buildIncidenciasBtnHTML_(it, k)}
 
@@ -189,6 +205,21 @@ export function patchVisibleCards_() {
         if (regRow) {
           regRow.textContent = regVal || "—";
           regRow.classList.toggle("na", !regVal);
+        }
+      }
+    } catch {}
+
+    try {
+      if (CORE.state.currentModule === "CALIDAD") {
+        const personalEl = card.querySelector(".js-personal");
+        if (personalEl) {
+          const m = escapeHtml(it.motorNombre || "");
+          const t = escapeHtml(it.tanqueroNombre || "");
+          personalEl.innerHTML = [
+            m ? `🔧 MOTOR: <b>${m}</b>` : "",
+            m && t ? "&nbsp;|&nbsp;" : "",
+            t ? `🛢️ TANQUERO: <b>${t}</b>` : "",
+          ].join("");
         }
       }
     } catch {}

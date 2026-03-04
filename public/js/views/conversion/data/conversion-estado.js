@@ -23,7 +23,7 @@ import {
 } from "../../../work/index.js";
 
 import { isWorkModule_ } from "../../../core/core.js";
-import { normalizeItem_ } from "../state/conversion-store.js";
+import { normalizeItem_, fetchNombresParaVin_ } from "../state/conversion-store.js";
 import { syncNow } from "./conversion-sync.js";
 
 let estadoDebounceTimer_ = null;
@@ -48,7 +48,20 @@ export async function refreshEstadoForVinRole({ showOut = false } = {}) {
   const c = ctx_();
   const v = vin.toUpperCase();
   for (const it of c.itemsByKey.values()) {
-    if (String(it.vin || "").toUpperCase() === v && String(it.rolTrabajo || "").toUpperCase() === rolTrabajo) {
+    if (
+      String(it.vin || "").toUpperCase() === v &&
+      String(it.rolTrabajo || "").toUpperCase() === rolTrabajo
+    ) {
+      // Enriquecer con nombres si Calidad y aún no los tiene
+      // DESPUÉS
+      if (CORE.state.currentModule === "CALIDAD" && !it.motorNombre && !it.tanqueroNombre) {
+        fetchNombresParaVin_(v).then(({ motorNombre, tanqueroNombre }) => {
+          it.motorNombre = motorNombre;
+          it.tanqueroNombre = tanqueroNombre;
+          renderActivas_();
+          renderFinalizados_();
+        }).catch(() => {});
+      }
       setEstadoText(`Estado: ${it.estado} | Tiempo: ${msToHMS_(computeLiveMs_(it))}`);
       return;
     }
@@ -60,12 +73,18 @@ export async function refreshEstadoForVinRole({ showOut = false } = {}) {
 
   const it2 = normalizeItem_(j);
   const k2 = keyOfItem_(it2);
-  c.itemsByKey.set(k2, it2);
 
+  // Si es Calidad, enriquecemos con nombres antes de guardar
+  // DESPUÉS
+  if (CORE.state.currentModule === "CALIDAD" && it2.vin) {
+    const { motorNombre, tanqueroNombre } = await fetchNombresParaVin_(it2.vin);
+    it2.motorNombre = motorNombre;
+    it2.tanqueroNombre = tanqueroNombre;
+  }
+  c.itemsByKey.set(k2, it2);
   rebuildListsFromStore_();
   renderActivas_();
   renderFinalizados_();
-
   setEstadoText(`Estado: ${it2.estado} | Tiempo: ${msToHMS_(computeLiveMs_(it2))}`);
 }
 

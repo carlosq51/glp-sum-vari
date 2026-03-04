@@ -29,6 +29,7 @@ import {
 } from "../state/conversion-store.js";
 
 import { autoStartFromScan_ } from "./conversion-eventos.js";
+import { fetchNombresParaVin_ } from "../state/conversion-store.js";
 
 // --------------------------
 // SYNC
@@ -76,6 +77,26 @@ export async function syncNow({ forceFull = false, showOut = false } = {}) {
   }
 
   rebuildListsFromStore_();
+
+  // Enriquecer con nombres MOTOR/TANQUERO para Calidad
+  if (CORE.state.currentModule === "CALIDAD") {
+    const vinsAEnriquecer = [];
+    for (const k of [...c.activeKeys, ...c.finalKeys]) {
+      const it = c.itemsByKey.get(k);
+      if (it && it.vin && !it.motorNombre && !it.tanqueroNombre) {
+        vinsAEnriquecer.push({ k, it, vin: it.vin });
+      }
+    }
+    // fetch en paralelo (caché evita llamadas duplicadas)
+    await Promise.all(
+      vinsAEnriquecer.map(({ it, vin }) =>
+        fetchNombresParaVin_(vin).then(({ motorNombre, tanqueroNombre }) => {
+          it.motorNombre = motorNombre;
+          it.tanqueroNombre = tanqueroNombre;
+        }).catch(() => {})
+      )
+    );
+  }
 
   const needsFull = detectIfNeedsFullRerender_(prevA, prevF);
   if (needsFull) {
