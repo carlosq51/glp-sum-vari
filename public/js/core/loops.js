@@ -84,7 +84,7 @@ async function runSyncLoop_(mod, syncNow) {
 
   t.syncTimer = setTimeout(() => {
     runSyncLoop_(mod, syncNow);
-  }, 10000);
+  }, 60000);
 }
 
 export function startLoopsFor_(
