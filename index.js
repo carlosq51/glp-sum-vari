@@ -1,5 +1,6 @@
 ﻿import express from "express";
 import dotenv from "dotenv";
+import { existsSync } from "fs";
 
 dotenv.config();
 
@@ -8,7 +9,10 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json({ limit: "30mb" }));
 app.use(express.urlencoded({ extended: true, limit: "30mb" }));
-app.use(express.static("public"));
+
+// Serve Vite build output if available, otherwise fallback to source
+const staticDir = existsSync("dist") ? "dist" : "public";
+app.use(express.static(staticDir));
 
 // ping local
 app.get("/ping", (req, res) => res.json({ ok: true, msg: "pong" }));

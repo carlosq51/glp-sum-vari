@@ -5,6 +5,10 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "start": "node index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -21,5 +25,9 @@
   "bugs": {
     "url": "https://github.com/carlosq51/glp-sum-vari/issues"
   },
-  "homepage": "https://github.com/carlosq51/glp-sum-vari#readme"
+  "homepage": "https://github.com/carlosq51/glp-sum-vari#readme",
+  "devDependencies": {
+    "autoprefixer": "^10.4.27",
+    "vite": "^6.4.1"
+  }
 }
