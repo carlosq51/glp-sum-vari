@@ -96,6 +96,19 @@
   background: #ffffff;
 }
 
+/* Track buttons: fila completa */
+.supTrackRow {
+  display: flex;
+  gap: var(--gap, 10px);
+  width: 100%;
+  margin: 10px 0 6px;
+}
+
+.supTrackRow > .btn {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
 /* Track pill activo (CONVERSIÓN / CALIDAD / RAMAL) */
 button[data-suptrack].active {
   outline: 2px solid rgba(125,211,252,.85);

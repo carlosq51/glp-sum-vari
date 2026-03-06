@@ -5,13 +5,13 @@ export function supervisorView() {
       <h3>Supervisor</h3>
       <div class="small">Filtros opcionales: nombre/email, fechas o mes.</div>
 
-      <div class="row" style="gap:10px; margin:10px 0; flex-wrap:wrap;">
+      <div class="supTrackRow">
         <button type="button" class="btn" data-suptrack="CONVERSION">CONVERSIÓN</button>
         <button type="button" class="btn" data-suptrack="CALIDAD">CALIDAD</button>
         <button type="button" class="btn" data-suptrack="RAMAL">RAMAL</button>
-        <div id="supTrackPill" class="pill small" style="margin-left:auto;">
-          CONVERSIÓN (MOTOR + TANQUE)
-        </div>
+      </div>
+      <div id="supTrackPill" class="pill small" style="text-align:center;">
+        CONVERSIÓN (MOTOR + TANQUE)
       </div>
 
       <div class="fullStack" style="margin-top:10px;">

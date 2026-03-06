@@ -1,8 +1,8 @@
 // =========================
 // views/uploader/uploader-ui.js
 // UI + eventos + scanners + previews
+// Usa el módulo compartido qr-scanner.js
 // =========================
-/* global Html5Qrcode, Html5QrcodeSupportedFormats */
 
 import {
   CONTROL_URL,
@@ -14,6 +14,8 @@ import {
   uploadCalidadBatch,
   uploadConformidad,
 } from "./uploader-api.js";
+
+import { createScanner, getScanConfig } from "../../core/qr-scanner.js";
 
 export function initUploaderUI(root, options = {}) {
   const shell = root.querySelector(".uploader-shell") || root;
@@ -28,10 +30,10 @@ export function initUploaderUI(root, options = {}) {
   let qcFiles = [null, null, null, null];
   let confFile = null;
 
-  let qrParams = null;
-  let qrFalla = null;
-  let qrQc = null;
-  let qrConf = null;
+  const scannerParams = createScanner("up_qrReader_params");
+  const scannerFalla  = createScanner("up_qrReader_falla");
+  const scannerQc     = createScanner("up_qrReader_qc");
+  const scannerConf   = createScanner("up_qrReader_conf");
 
   const slotLabels = {
     vin: "Foto del VIN",
@@ -69,9 +71,7 @@ export function initUploaderUI(root, options = {}) {
     }
   }
 
-  function normalizeScanText(t) {
-    return String(t || "").replace(/\s+/g, "").trim();
-  }
+  // normalizeScanText se importa de qr-scanner.js (usado internamente por createScanner)
 
   function showScreen(name) {
     Object.values(screens).forEach((s) => s && s.classList.remove("active"));
@@ -549,25 +549,43 @@ export function initUploaderUI(root, options = {}) {
   }
 
   // =========================
-  // Scanners (params/falla/qc/conf)
+  // Scanners (params/falla/qc/conf) – usa qr-scanner.js compartido
   // =========================
-  async function stopScanner(which) {
-    const map = {
-      params: { inst: () => qrParams, box: "qrBox_params", stop: "btnStop_params", mode: "scanMode_params" },
-      falla: { inst: () => qrFalla, box: "qrBox_falla", stop: "btnStop_falla", mode: "scanMode_falla" },
-      qc: { inst: () => qrQc, box: "qrBox_qc", stop: "btnStop_qc", mode: "scanMode_qc" },
-      conf: { inst: () => qrConf, box: "qrBox_conf", stop: "btnStop_conf", mode: "scanMode_conf" },
-    };
+  const scannerMap = {
+    params: {
+      scanner: scannerParams,
+      box: "qrBox_params", stop: "btnStop_params",
+      msg: "scanMsg_params", mode: "scanMode_params",
+      setVin: (v) => {
+        if ($("vinText")) $("vinText").value = v;
+        refreshStatus().catch(() => {});
+      },
+    },
+    falla: {
+      scanner: scannerFalla,
+      box: "qrBox_falla", stop: "btnStop_falla",
+      msg: "scanMsg_falla", mode: "scanMode_falla",
+      setVin: (v) => { if ($("fallaVin")) $("fallaVin").value = v; },
+    },
+    qc: {
+      scanner: scannerQc,
+      box: "qrBox_qc", stop: "btnStop_qc",
+      msg: "scanMsg_qc", mode: "scanMode_qc",
+      setVin: (v) => { if ($("qcVin")) $("qcVin").value = v; },
+    },
+    conf: {
+      scanner: scannerConf,
+      box: "qrBox_conf", stop: "btnStop_conf",
+      msg: "scanMsg_conf", mode: "scanMode_conf",
+      setVin: (v) => { if ($("confVin")) $("confVin").value = v; },
+    },
+  };
 
-    const m = map[which];
+  async function stopScanner(which) {
+    const m = scannerMap[which];
     if (!m) return;
 
-    const inst = m.inst();
-    if (inst) {
-      try {
-        await inst.stop();
-      } catch {}
-    }
+    await m.scanner.stop();
 
     const boxEl = $(m.box);
     const stopEl = $(m.stop);
@@ -586,88 +604,15 @@ export function initUploaderUI(root, options = {}) {
   }
 
   async function startScanner(which, mode) {
-    if (typeof Html5Qrcode === "undefined") {
-      const msgId =
-        which === "params"
-          ? "scanMsg_params"
-          : which === "falla"
-          ? "scanMsg_falla"
-          : which === "qc"
-          ? "scanMsg_qc"
-          : "scanMsg_conf";
-      setText(msgId, "❌ Falta html5-qrcode. Agrega <script src='https://unpkg.com/html5-qrcode'></script>");
-      return;
-    }
-
     await stopScanner(which);
 
-    const cfg = {
-      params: {
-        readerId: "qrReader_params",
-        box: "qrBox_params",
-        stop: "btnStop_params",
-        msg: "scanMsg_params",
-        mode: "scanMode_params",
-        setVin: (v) => {
-          if ($("vinText")) $("vinText").value = v;
-          refreshStatus().catch(() => {});
-        },
-        getInst: () => qrParams,
-        setInst: (v) => {
-          qrParams = v;
-        },
-      },
-      falla: {
-        readerId: "qrReader_falla",
-        box: "qrBox_falla",
-        stop: "btnStop_falla",
-        msg: "scanMsg_falla",
-        mode: "scanMode_falla",
-        setVin: (v) => {
-          if ($("fallaVin")) $("fallaVin").value = v;
-        },
-        getInst: () => qrFalla,
-        setInst: (v) => {
-          qrFalla = v;
-        },
-      },
-      qc: {
-        readerId: "qrReader_qc",
-        box: "qrBox_qc",
-        stop: "btnStop_qc",
-        msg: "scanMsg_qc",
-        mode: "scanMode_qc",
-        setVin: (v) => {
-          if ($("qcVin")) $("qcVin").value = v;
-        },
-        getInst: () => qrQc,
-        setInst: (v) => {
-          qrQc = v;
-        },
-      },
-      conf: {
-        readerId: "qrReader_conf",
-        box: "qrBox_conf",
-        stop: "btnStop_conf",
-        msg: "scanMsg_conf",
-        mode: "scanMode_conf",
-        setVin: (v) => {
-          if ($("confVin")) $("confVin").value = v;
-        },
-        getInst: () => qrConf,
-        setInst: (v) => {
-          qrConf = v;
-        },
-      },
-    };
+    const m = scannerMap[which];
+    if (!m) return;
 
-    const c = cfg[which];
-    if (!c) return;
-
-    const boxEl = $(c.box);
-    const stopEl = $(c.stop);
-    const msgEl = $(c.msg);
-    const modeEl = $(c.mode);
+    const boxEl = $(m.box);
+    const stopEl = $(m.stop);
+    const msgEl = $(m.msg);
+    const modeEl = $(m.mode);
 
     if (boxEl) boxEl.style.display = "block";
     if (stopEl) stopEl.style.display = "inline-block";
@@ -676,43 +621,18 @@ export function initUploaderUI(root, options = {}) {
       modeEl.textContent = mode === "QR" ? "Modo: SOLO QR" : "Modo: SOLO BARRAS (CODE_128 y otros)";
     }
 
-    if (!c.getInst()) c.setInst(new Html5Qrcode(`up_${c.readerId}`));
-
-    const formats =
-      mode === "QR"
-        ? [Html5QrcodeSupportedFormats.QR_CODE]
-        : [
-            Html5QrcodeSupportedFormats.CODE_128,
-            Html5QrcodeSupportedFormats.CODE_39,
-            Html5QrcodeSupportedFormats.EAN_13,
-            Html5QrcodeSupportedFormats.EAN_8,
-            Html5QrcodeSupportedFormats.UPC_A,
-            Html5QrcodeSupportedFormats.UPC_E,
-            Html5QrcodeSupportedFormats.ITF,
-            Html5QrcodeSupportedFormats.CODABAR,
-          ];
-
-    const scanConfig =
-      mode === "QR"
-        ? { fps: 12, qrbox: { width: 280, height: 280 }, formatsToSupport: formats }
-        : { fps: 12, qrbox: { width: 200, height: 360 }, formatsToSupport: formats };
-
     try {
-      await c.getInst().start(
-        { facingMode: "environment" },
-        scanConfig,
-        (decodedText) => {
-          const val = normalizeScanText(decodedText);
-          if (!val) return;
-
-          c.setVin(val);
-          if (msgEl) msgEl.textContent = `Detectado (${mode === "QR" ? "QR" : "BARRAS"}): ${val}`;
+      await m.scanner.start({
+        mode,
+        msgEl: $(m.msg),
+        onDecoded: (code) => {
+          m.setVin(code);
+          if ($(m.msg)) $(m.msg).textContent = `Detectado (${mode === "QR" ? "QR" : "BARRAS"}): ${code}`;
           stopScanner(which).catch(() => {});
         },
-        () => {}
-      );
+      });
     } catch (e) {
-      if (msgEl) msgEl.textContent = `Error cámara (${mode}): ${e}`;
+      if ($(m.msg)) $(m.msg).textContent = `Error cámara (${mode}): ${e}`;
     }
   }
 
