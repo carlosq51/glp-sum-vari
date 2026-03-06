@@ -8,7 +8,7 @@
 #qrReader_conf {
   border-radius: var(--radius);
   overflow: hidden;
-  border: 1px solid var(--surfaceLine);
+  border: var(--border-w) solid var(--surfaceLine);
 }
 
 /* Forzar ancho completo al vídeo */

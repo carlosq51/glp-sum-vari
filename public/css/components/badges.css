@@ -6,10 +6,10 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 800;
+  padding: 3px var(--gap);
+  border-radius: var(--radius-full);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-extrabold);
   letter-spacing: .2px;
 }
 

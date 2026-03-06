@@ -5,10 +5,10 @@
 .modal {
   position: fixed;
   inset: 0;
-  background: rgba(5,7,13,.72);
+  background: var(--backdrop);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  z-index: 10000;
+  z-index: var(--z-modal);
   display: none;
   align-items: center;
   justify-content: center;
@@ -26,8 +26,8 @@
   max-height: calc(100dvh - 24px);
   display: flex;
   flex-direction: column;
-  background: linear-gradient(180deg, var(--surface) 0%, var(--surface2) 100%);
-  border: 1px solid var(--surfaceLine);
+  background: var(--grad-surface-v);
+  border: var(--border-w) solid var(--surfaceLine);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   overflow: hidden;
@@ -52,25 +52,25 @@
   align-items: center;
   justify-content: space-between;
   padding: 16px 16px 12px;
-  border-bottom: 1px solid var(--modalLine);
+  border-bottom: var(--border-w) solid var(--modalLine);
   flex-shrink: 0;
 }
 
 .modalTitle {
-  font-weight: 800;
-  font-size: 16px;
+  font-weight: var(--fw-extrabold);
+  font-size: var(--fs-lg);
 }
 
 .modalHead button {
-  width: 40px;
-  height: 40px;
+  width: var(--h-btn-sm);
+  height: var(--h-btn-sm);
   padding: 0;
-  border-radius: 999px;
-  background: linear-gradient(160deg, var(--btnBg) 0%, var(--btnBg2) 100%);
-  border: 1.5px solid var(--btnLine);
-  font-size: 18px;
-  font-weight: 900;
-  color: rgba(240,244,255,.92);
+  border-radius: var(--radius-full);
+  background: var(--grad-btn);
+  border: var(--border-w-md) solid var(--btnLine);
+  font-size: var(--fs-2xl);
+  font-weight: var(--fw-black);
+  color: var(--btnText);
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;

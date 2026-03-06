@@ -7,15 +7,15 @@ select,
 textarea {
   width: 100%;
   padding: 0 14px;
-  height: 48px;
-  font-size: 15px;
+  height: var(--h-input);
+  font-size: var(--fs-body);
   font-family: inherit;
   border-radius: var(--radiusSm);
-  border: 1.5px solid var(--inputLine);
+  border: var(--border-w-md) solid var(--inputLine);
   background: var(--inputBg);
   color: var(--text);
   outline: none;
-  transition: border-color .15s, box-shadow .15s;
+  transition: border-color var(--dur-base), box-shadow var(--dur-base);
   appearance: none;
   -webkit-appearance: none;
 }
@@ -24,7 +24,7 @@ input:focus,
 select:focus,
 textarea:focus {
   border-color: var(--inputFocus);
-  box-shadow: 0 0 0 3px rgba(125,211,252,.15);
+  box-shadow: 0 0 0 3px var(--focusGlow);
 }
 
 /* Select — flecha custom (dark) */
@@ -50,7 +50,7 @@ textarea {
 
 /* Input VIN (monoespaciado) */
 input.mono {
-  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   letter-spacing: .8px;
-  font-weight: 700;
+  font-weight: var(--fw-bold);
 }

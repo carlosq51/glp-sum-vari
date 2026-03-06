@@ -22,52 +22,48 @@
 
 /* Slot de foto */
 .uploader-shell .slotCard {
-  background: linear-gradient(160deg, var(--surface) 0%, var(--surface2) 100%);
-  border: 1px solid var(--surfaceLine);
+  background: var(--grad-surface);
+  border: var(--border-w) solid var(--surfaceLine);
   border-radius: var(--radius);
   padding: 14px;
-  margin-top: 10px;
+  margin-top: var(--gap);
 }
 
 /* Card de opción del menú */
 .uploader-shell .menuCard {
-  background: linear-gradient(160deg, var(--surface) 0%, var(--surface2) 100%);
-  border: 1px solid var(--surfaceLine);
+  background: var(--grad-surface);
+  border: var(--border-w) solid var(--surfaceLine);
   border-radius: var(--radius);
   padding: 16px;
-  margin: 10px 0;
+  margin: var(--gap) 0;
   box-shadow: var(--shadowSm);
 }
 
 /* Box genérico (sección con fondo suave) */
 .uploader-shell .box {
-  background: rgba(255,255,255,.04);
-  border: 1px solid var(--surfaceLine);
+  background: var(--glass);
+  border: var(--border-w) solid var(--surfaceLine);
   border-radius: var(--radius);
   padding: 14px;
-  margin: 10px 0;
-}
-
-:root[data-theme="day"] .uploader-shell .box {
-  background: rgba(11,18,32,.03);
+  margin: var(--gap) 0;
 }
 
 /* Grilla del menú inicial */
 .menuGrid {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 10px;
+  gap: var(--gap);
 }
 
 /* Textos de menú */
 .menuTitle {
-  font-weight: 900;
-  font-size: 17px;
+  font-weight: var(--fw-black);
+  font-size: var(--fs-xl);
   margin: 0 0 4px;
 }
 
 .menuDesc {
-  font-size: 13px;
+  font-size: var(--fs-sm);
   color: var(--muted);
   margin: 0 0 12px;
 }
@@ -78,17 +74,17 @@
 ───────────────────────────────────────────────── */
 .uploader-shell label {
   display: block;
-  font-weight: 800;
-  font-size: 14px;
-  margin-bottom: 6px;
+  font-weight: var(--fw-extrabold);
+  font-size: var(--fs-md);
+  margin-bottom: var(--gap-xs);
   color: var(--text);
 }
 
 /* miniInfo: nombre de archivo, conteo, etc. */
 .miniInfo {
-  font-size: 12px;
+  font-size: var(--fs-xs);
   color: var(--muted);
-  margin-top: 6px;
+  margin-top: var(--gap-xs);
 }
 
 /* Input file siempre oculto */
@@ -102,8 +98,8 @@
 .upActions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 8px;
+  gap: var(--gap-sm);
+  margin-top: var(--gap-sm);
 }
 
 .btnUp {
@@ -111,22 +107,20 @@
   min-width: 0;
   height: 46px;
   border-radius: var(--radiusSm);
-  font-size: 14px;
-  font-weight: 800;
-  border: 1.5px solid var(--btnLine);
-  background: linear-gradient(160deg, var(--btnBg) 0%, var(--btnBg2) 100%);
-  color: rgba(240,244,255,.92);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-extrabold);
+  border: var(--border-w-md) solid var(--btnLine);
+  background: var(--grad-btn);
+  color: var(--btnText);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: var(--gap-sm);
   white-space: nowrap;
   overflow: hidden;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
-
-:root[data-theme="day"] .btnUp { color: #fff; }
 
 .btnUp:hover  { filter: brightness(1.08); }
 .btnUp:active { transform: scale(.97); }
@@ -147,7 +141,7 @@
 .btnUp-danger {
   border-color: var(--danger);
   color: var(--danger);
-  background: linear-gradient(160deg, var(--dangerBg) 0%, rgba(255,59,59,.05) 100%);
+  background: linear-gradient(160deg, var(--dangerBg) 0%, var(--dangerBgFade) 100%);
 }
 
 /* En pantallas muy pequeñas: icono sin etiqueta en el botón borrar */
@@ -163,14 +157,14 @@
 /* Botón enviar primario */
 .btnPrimaryBig {
   width: 100%;
-  height: 56px;
+  height: var(--h-btn-lg);
   border-radius: var(--radius);
-  font-size: 16px;
-  font-weight: 900;
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-black);
   letter-spacing: .3px;
-  border: 2px solid var(--ok);
+  border: var(--border-w-lg) solid var(--ok);
   color: var(--ok);
-  background: linear-gradient(160deg, var(--okBg) 0%, rgba(34,197,94,.05) 100%);
+  background: linear-gradient(160deg, var(--okBg) 0%, var(--okBgFade) 100%);
   margin-top: 16px;
   cursor: pointer;
   display: flex;
@@ -185,19 +179,17 @@
 /* Botón volver al control de trabajo */
 .btnBackControl {
   width: 100%;
-  height: 56px;
+  height: var(--h-btn-lg);
   border-radius: var(--radius);
-  font-size: 16px;
-  font-weight: 900;
-  background: linear-gradient(160deg, var(--btnBg) 0%, var(--btnBg2) 100%);
-  color: rgba(240,244,255,.92);
-  border: 1.5px solid var(--btnLine);
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-black);
+  background: var(--grad-btn);
+  color: var(--btnText);
+  border: var(--border-w-md) solid var(--btnLine);
   box-shadow: var(--shadow);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
-
-:root[data-theme="day"] .btnBackControl { color: #fff; }
 
 .btnBackControl:active { transform: scale(.98); }
 
@@ -223,7 +215,7 @@
   align-items: center;
   justify-content: center;
   padding: 16px;
-  z-index: 9999;
+  z-index: var(--z-lightbox);
 }
 
 .imgModal.open { display: flex; }
@@ -240,14 +232,14 @@
   position: fixed;
   top: 16px;
   right: 16px;
-  width: 44px;
-  height: 44px;
-  border-radius: 999px;
+  width: var(--h-btn);
+  height: var(--h-btn);
+  border-radius: var(--radius-full);
   background: rgba(0,0,0,.55);
   color: #fff;
-  font-size: 18px;
-  font-weight: 900;
-  border: 1px solid rgba(255,255,255,.25);
+  font-size: var(--fs-2xl);
+  font-weight: var(--fw-black);
+  border: var(--border-w) solid rgba(255,255,255,.25);
   cursor: pointer;
   display: grid;
   place-items: center;

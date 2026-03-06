@@ -5,13 +5,13 @@
 .pill {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--gap-xs);
   padding: 5px 12px;
-  border-radius: 999px;
-  border: 1px solid var(--pillLine);
+  border-radius: var(--radius-full);
+  border: var(--border-w) solid var(--pillLine);
   background: var(--pillBg);
-  font-size: 13px;
-  font-weight: 700;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
   line-height: 1;
   white-space: nowrap;
 }

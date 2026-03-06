@@ -4,8 +4,8 @@
 
 .card {
   width: 100%;
-  background: linear-gradient(160deg, var(--surface) 0%, var(--surface2) 100%);
-  border: 1px solid var(--surfaceLine);
+  background: var(--grad-surface);
+  border: var(--border-w) solid var(--surfaceLine);
   border-radius: var(--radius);
   padding: 16px;
   margin-top: 12px;
@@ -16,11 +16,9 @@
 
 /* Card interna (dentro de modal / card padre) */
 .innerCard {
-  background: rgba(255,255,255,.05);
-  border: 1px solid var(--surfaceLine);
+  background: var(--glass);
+  border: var(--border-w) solid var(--surfaceLine);
   border-radius: var(--radiusSm);
   padding: 12px;
-  margin-top: 10px;
+  margin-top: var(--gap);
 }
-
-:root[data-theme="day"] .innerCard { background: rgba(11,18,32,.03); }

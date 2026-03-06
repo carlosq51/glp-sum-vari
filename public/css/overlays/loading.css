@@ -5,10 +5,10 @@
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(5,7,13,.78);
+  background: var(--backdropHeavy);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  z-index: 11000;
+  z-index: var(--z-overlay);
   display: grid;
   place-items: center;
 }
@@ -20,8 +20,8 @@
   padding: 24px 20px;
   border-radius: var(--radius);
   text-align: center;
-  background: linear-gradient(160deg, var(--surface) 0%, var(--surface2) 100%);
-  border: 1px solid var(--surfaceLine);
+  background: var(--grad-surface);
+  border: var(--border-w) solid var(--surfaceLine);
   box-shadow: var(--shadow);
   display: grid;
   gap: 16px;
@@ -40,8 +40,8 @@
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .overlay-text {
-  font-weight: 800;
-  font-size: 15px;
+  font-weight: var(--fw-extrabold);
+  font-size: var(--fs-body);
   color: rgba(240,244,255,.88);
   display: flex;
   align-items: center;

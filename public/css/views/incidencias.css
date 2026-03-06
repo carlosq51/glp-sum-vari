@@ -13,7 +13,7 @@
   width: 100%;
   max-width: none;
   display: block;
-  height: 44px;
+  height: var(--h-btn);
 }
 
 #incModal #incTechSuggest {

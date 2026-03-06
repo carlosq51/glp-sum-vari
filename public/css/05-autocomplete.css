@@ -22,9 +22,9 @@
   left: 0;
   right: 0;
   top: calc(100% + 6px);
-  z-index: 1000;
+  z-index: var(--z-dropdown);
   background: linear-gradient(160deg, rgba(10,18,55,.98) 0%, rgba(8,14,44,.98) 100%);
-  border: 1px solid rgba(255,255,255,.14);
+  border: var(--border-w) solid rgba(255,255,255,.14);
   border-radius: var(--radius);
   box-shadow: 0 16px 40px rgba(0,0,0,.55);
   max-height: 260px;
@@ -36,7 +36,7 @@
 :root[data-theme="day"] .nameSuggest,
 :root[data-theme="day"] .vinSuggest {
   background: linear-gradient(180deg, #ffffff 0%, #f7f9ff 100%);
-  border: 1px solid rgba(11,18,32,.12);
+  border: var(--border-w) solid rgba(11,18,32,.12);
   box-shadow: 0 14px 30px rgba(11,18,32,.12);
 }
 
@@ -48,9 +48,9 @@
 .vinSuggest .vsItem {
   padding: 12px 14px;
   cursor: pointer;
-  border-bottom: 1px solid rgba(255,255,255,.07);
+  border-bottom: var(--border-w) solid rgba(255,255,255,.07);
   user-select: none;
-  transition: background .1s;
+  transition: background var(--dur-fast);
 }
 
 .nameSuggest .nsItem:last-child,
@@ -68,13 +68,13 @@
 
 /* ─── Contenido name suggest ─── */
 .nsName {
-  font-weight: 800;
-  font-size: 14px;
+  font-weight: var(--fw-extrabold);
+  font-size: var(--fs-md);
   letter-spacing: .1px;
 }
 
 .nsEmail {
-  font-size: 12px;
+  font-size: var(--fs-xs);
   color: var(--muted);
   margin-top: 2px;
 }
@@ -84,17 +84,17 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: var(--gap);
 }
 
 .vsVin {
-  font-family: ui-monospace, Menlo, monospace;
-  font-weight: 800;
+  font-family: var(--font-mono);
+  font-weight: var(--fw-extrabold);
   letter-spacing: .6px;
-  font-size: 14px;
+  font-size: var(--fs-md);
 }
 
 .vsHint {
-  font-size: 12px;
+  font-size: var(--fs-xs);
   color: var(--muted);
 }

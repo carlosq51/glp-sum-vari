@@ -3,19 +3,17 @@
    ===================================================================== */
 
 .thumb {
-  width: 80px;
-  height: 80px;
+  width: var(--h-thumb);
+  height: var(--h-thumb);
   border-radius: var(--radiusSm);
-  border: 1px solid var(--surfaceLine);
-  background: rgba(255,255,255,.05);
+  border: var(--border-w) solid var(--surfaceLine);
+  background: var(--glass);
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
   position: relative;
 }
-
-:root[data-theme="day"] .thumb { background: rgba(11,18,32,.04); }
 
 .thumb img {
   width: 100%;
@@ -29,6 +27,6 @@
 .thumbGrid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
-  margin-top: 10px;
+  gap: var(--gap-sm);
+  margin-top: var(--gap);
 }

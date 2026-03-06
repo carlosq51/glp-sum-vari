@@ -13,10 +13,8 @@ html, body {
 
 body {
   margin: 0;
-  /* ui-rounded cae bien en iOS/macOS; fallback a system-ui en Android */
-  font-family: ui-rounded, "Hiragino Maru Gothic ProN", Quicksand, Comfortaa,
-               Nunito, "Varela Round", system-ui, -apple-system, sans-serif;
-  font-size: 15px;
+  font-family: var(--font-body);
+  font-size: var(--fs-body);
   line-height: 1.5;
   color: var(--text);
   overflow-x: hidden;
@@ -48,12 +46,12 @@ body {
 }
 
 /* ─── Tipografía ─── */
-h2 { margin: 4px 0;   font-size: 20px; font-weight: 800; letter-spacing: -.2px; }
-h3 { margin: 0 0 10px; font-size: 18px; font-weight: 800; }
-h4 { margin: 0 0 8px;  font-size: 15px; font-weight: 700; opacity: .9; }
+h2 { margin: 4px 0;   font-size: var(--fs-3xl); font-weight: var(--fw-extrabold); letter-spacing: -.2px; }
+h3 { margin: 0 0 var(--gap); font-size: var(--fs-2xl); font-weight: var(--fw-extrabold); }
+h4 { margin: 0 0 var(--gap-sm);  font-size: var(--fs-body); font-weight: var(--fw-bold); opacity: .9; }
 
 .small {
-  font-size: 13px;
+  font-size: var(--fs-sm);
   color: var(--muted);
   line-height: 1.4;
 }
@@ -62,6 +60,6 @@ h4 { margin: 0 0 8px;  font-size: 15px; font-weight: 700; opacity: .9; }
 ::placeholder { color: var(--placeholder); }
 
 :focus-visible {
-  outline: 2px solid rgba(125,211,252,.65);
+  outline: var(--border-w-lg) solid var(--focusRing);
   outline-offset: 2px;
 }

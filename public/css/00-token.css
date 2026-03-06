@@ -68,6 +68,79 @@
    --actionTextWarn: var(--warn);
    --actionTextDanger: var(--danger);
    --actionTextNote: rgba(240,244,255,.92);
+
+  /* ── Tipografía ── */
+  --font-body: ui-rounded, "Hiragino Maru Gothic ProN", Quicksand, Comfortaa,
+               Nunito, "Varela Round", system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --fs-2xs: 11px;
+  --fs-xs:  12px;
+  --fs-sm:  13px;
+  --fs-md:  14px;
+  --fs-body: 15px;
+  --fs-lg:  16px;
+  --fs-xl:  17px;
+  --fs-2xl: 18px;
+  --fs-3xl: 20px;
+
+  --fw-bold:      700;
+  --fw-extrabold: 800;
+  --fw-black:     900;
+
+  /* ── Espaciado ── */
+  --gap:    10px;
+  --gap-sm: 8px;
+  --gap-xs: 6px;
+
+  /* ── Alturas táctiles ── */
+  --h-btn-sm:   40px;
+  --h-btn:      44px;
+  --h-input:    48px;
+  --h-input-lg: 50px;
+  --h-btn-lg:   56px;
+  --h-thumb:    80px;
+
+  /* ── Bordes ── */
+  --border-w:    1px;
+  --border-w-md: 1.5px;
+  --border-w-lg: 2px;
+  --radius-full: 999px;
+
+  /* ── Z-index ── */
+  --z-sticky:   2;
+  --z-dropdown: 1000;
+  --z-lightbox: 9999;
+  --z-modal:    10000;
+  --z-overlay:  11000;
+
+  /* ── Texto de botones ── */
+  --btnText: rgba(240,244,255,.92);
+
+  /* ── Backdrops ── */
+  --backdrop:      rgba(5,7,13,.72);
+  --backdropHeavy: rgba(5,7,13,.78);
+
+  /* ── Glass ── */
+  --glass: rgba(255,255,255,.05);
+
+  /* ── Gradientes compartidos ── */
+  --grad-btn:       linear-gradient(160deg, var(--btnBg) 0%, var(--btnBg2) 100%);
+  --grad-surface:   linear-gradient(160deg, var(--surface) 0%, var(--surface2) 100%);
+  --grad-surface-v: linear-gradient(180deg, var(--surface) 0%, var(--surface2) 100%);
+
+  /* Fades de estado (extremo tenue de gradientes de acción) */
+  --okBgFade:     rgba(34,197,94,.05);
+  --warnBgFade:   rgba(250,204,21,.05);
+  --dangerBgFade: rgba(255,59,59,.05);
+
+  /* ── Transiciones ── */
+  --dur-fast: .1s;
+  --dur-base: .15s;
+
+  /* ── Focus ── */
+  --focusRing: rgba(125,211,252,.65);
+  --focusGlow: rgba(125,211,252,.15);
 }
 
 /* ─── TEMA DAY ─── */
@@ -111,5 +184,13 @@
    --actionTextOk: #0b1220;
    --actionTextWarn: #0b1220;
    --actionTextDanger: #0b1220;
-   --actionTextNote: #0b1220;
+   --actionTextNote: #fff;
+
+  /* ── Overrides Day ── */
+  --btnText: #fff;
+  --glass:   rgba(11,18,32,.04);
+
+  --okBgFade:     rgba(22,163,74,.03);
+  --warnBgFade:   rgba(180,83,9,.03);
+  --dangerBgFade: rgba(220,38,38,.03);
 }

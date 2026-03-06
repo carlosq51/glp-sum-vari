@@ -17,9 +17,9 @@
 /* Resumen */
 #movSummary {
   margin-top: 12px;
-  font-weight: 800;
-  font-size: 14px;
-  color: rgba(240,244,255,.92);
+  font-weight: var(--fw-extrabold);
+  font-size: var(--fs-md);
+  color: var(--btnText);
 }
 
 /* Contenedor general de resultados */
@@ -37,9 +37,9 @@
 #viewMOVILIZADOR .tableWrap {
   width: 100%;
   overflow: auto;
-  border-radius: 16px;
+  border-radius: var(--radius);
   background: rgba(0,0,0,.14);
-  border: 1px solid rgba(255,255,255,.10);
+  border: var(--border-w) solid var(--codeLine);
   box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
   -webkit-overflow-scrolling: touch;
 }
@@ -56,24 +56,24 @@
 #viewMOVILIZADOR .table thead th {
   position: sticky;
   top: 0;
-  z-index: 2;
+  z-index: var(--z-sticky);
   text-align: left;
-  font-size: 13px;
-  font-weight: 900;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-black);
   letter-spacing: .25px;
   padding: 12px 14px;
   color: rgba(240,244,255,.96);
   background: linear-gradient(180deg, rgba(10,20,85,.98) 0%, rgba(17,38,140,.96) 100%);
-  border-bottom: 1px solid rgba(255,255,255,.12);
+  border-bottom: var(--border-w) solid rgba(255,255,255,.12);
   white-space: nowrap;
 }
 
 /* Celdas */
 #viewMOVILIZADOR .table tbody td {
   padding: 12px 14px;
-  font-size: 14px;
+  font-size: var(--fs-md);
   color: rgba(240,244,255,.94);
-  border-bottom: 1px solid rgba(255,255,255,.08);
+  border-bottom: var(--border-w) solid rgba(255,255,255,.08);
   vertical-align: middle;
 }
 
@@ -92,8 +92,8 @@
 
 /* VIN más legible */
 #viewMOVILIZADOR .table tbody td:first-child {
-  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  font-weight: 900;
+  font-family: var(--font-mono);
+  font-weight: var(--fw-black);
   letter-spacing: .45px;
   color: #ffffff;
   white-space: nowrap;
@@ -114,20 +114,20 @@
 #viewMOVILIZADOR .movEmpty {
   padding: 16px 14px;
   border-radius: 14px;
-  background: rgba(255,255,255,.05);
-  border: 1px dashed rgba(255,255,255,.16);
+  background: var(--glass);
+  border: var(--border-w) dashed rgba(255,255,255,.16);
   color: rgba(240,244,255,.85);
 }
 
 /* Aviso amarillo */
 #viewMOVILIZADOR .movWarn {
-  margin-bottom: 10px;
+  margin-bottom: var(--gap);
   padding: 10px 12px;
-  border-radius: 12px;
+  border-radius: var(--radiusSm);
   background: rgba(255, 209, 102, .10);
-  border: 1px solid rgba(255, 209, 102, .28);
+  border: var(--border-w) solid rgba(255, 209, 102, .28);
   color: #ffe08a;
-  font-size: 13px;
+  font-size: var(--fs-sm);
   line-height: 1.35;
 }
 
@@ -139,32 +139,32 @@
 
 #viewMOVILIZADOR .tableWrap::-webkit-scrollbar-thumb {
   background: rgba(255,255,255,.18);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
 }
 
 #viewMOVILIZADOR .tableWrap::-webkit-scrollbar-track {
   background: rgba(255,255,255,.04);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
 }
 
 /* ─── Mobile ─── */
 @media (max-width: 520px) {
   #movSummary {
-    font-size: 13px;
+    font-size: var(--fs-sm);
   }
 
   #viewMOVILIZADOR .table thead th {
     padding: 11px 12px;
-    font-size: 12px;
+    font-size: var(--fs-xs);
   }
 
   #viewMOVILIZADOR .table tbody td {
     padding: 11px 12px;
-    font-size: 13px;
+    font-size: var(--fs-sm);
   }
 
   #viewMOVILIZADOR .table tbody td:first-child {
-    font-size: 13px;
+    font-size: var(--fs-sm);
     letter-spacing: .35px;
   }
 
@@ -190,6 +190,6 @@
   }
 
   #viewMOVILIZADOR .table tbody td:last-child {
-    font-size: 12px;
+    font-size: var(--fs-xs);
   }
 }
