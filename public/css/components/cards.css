@@ -1,0 +1,26 @@
+/* =====================================================================
+   components/cards.css — Cards y superficies
+   ===================================================================== */
+
+.card {
+  width: 100%;
+  background: linear-gradient(160deg, var(--surface) 0%, var(--surface2) 100%);
+  border: 1px solid var(--surfaceLine);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-top: 12px;
+  box-shadow: var(--shadow);
+}
+
+.card.flat { margin-top: 0; } /* para anidar sin margen */
+
+/* Card interna (dentro de modal / card padre) */
+.innerCard {
+  background: rgba(255,255,255,.05);
+  border: 1px solid var(--surfaceLine);
+  border-radius: var(--radiusSm);
+  padding: 12px;
+  margin-top: 10px;
+}
+
+:root[data-theme="day"] .innerCard { background: rgba(11,18,32,.03); }

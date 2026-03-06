@@ -1,3 +1,8 @@
+// =========================
+// public/js/work/work-notes.js
+// Snapshot/restore de textareas de notas
+// =========================
+
 import { el_ } from "../core/dom.js";
 
 export function snapshotNotasActivas_() {

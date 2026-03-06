@@ -1,4 +1,8 @@
+// =========================
 // public/js/templates/views/tecnico-view.js
+// Template HTML: vista técnico (conversión MOTOR/TANQUE)
+// =========================
+
 export function tecnicoView() {
   return `
     <!-- =========================

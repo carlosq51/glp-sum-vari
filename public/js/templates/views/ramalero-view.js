@@ -1,4 +1,8 @@
+// =========================
 // public/js/templates/views/ramalero-view.js
+// Template HTML: vista ramalero (armado de ramales)
+// =========================
+
 export function ramaleroView() {
   return `
     <!-- =========================

@@ -1,0 +1,34 @@
+/* =====================================================================
+   components/thumbs.css — Miniaturas de fotos
+   ===================================================================== */
+
+.thumb {
+  width: 80px;
+  height: 80px;
+  border-radius: var(--radiusSm);
+  border: 1px solid var(--surfaceLine);
+  background: rgba(255,255,255,.05);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+}
+
+:root[data-theme="day"] .thumb { background: rgba(11,18,32,.04); }
+
+.thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  cursor: zoom-in;
+}
+
+/* Grid 4 miniaturas */
+.thumbGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-top: 10px;
+}

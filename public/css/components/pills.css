@@ -1,0 +1,17 @@
+/* =====================================================================
+   components/pills.css — Pills / Tags
+   ===================================================================== */
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--pillLine);
+  background: var(--pillBg);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}

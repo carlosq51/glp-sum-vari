@@ -1,4 +1,8 @@
+// =========================
 // public/js/templates/modals/rf-tecnico-modal.js
+// Template HTML: modal de registro parámetros/fallas (técnico)
+// =========================
+
 export function rfTecnicoModal() {
   return `
     <div id="rfTecModal" class="modal" aria-hidden="true">

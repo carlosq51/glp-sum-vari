@@ -1,4 +1,8 @@
+// =========================
 // public/js/templates/modals/rf-calidad-modal.js
+// Template HTML: modal de registro fotos/fallas (calidad)
+// =========================
+
 export function rfModal() {
   return `
     <!-- =========================

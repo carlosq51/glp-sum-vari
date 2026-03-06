@@ -1,3 +1,8 @@
+// =========================
+// public/js/work/work-render.js
+// Render de cards: activas, finalizados, patch visible
+// =========================
+
 import { CORE, ctx_ } from "../core/state.js";
 import { el_ } from "../core/dom.js";
 import { cssEsc_, escapeHtml, fmtFechaCreacion_, msToHMS_ } from "../core/format.js";

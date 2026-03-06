@@ -1,0 +1,90 @@
+/* =====================================================================
+   overlays/modal.css — Sistema de modales centrados
+   ===================================================================== */
+
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(5,7,13,.72);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 10000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  overflow: auto;
+}
+
+.modal.show {
+  display: flex;
+}
+
+.modalBox {
+  position: relative;
+  width: min(100%, 560px);
+  max-height: calc(100dvh - 24px);
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, var(--surface) 0%, var(--surface2) 100%);
+  border: 1px solid var(--surfaceLine);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.modalBox::before {
+  display: none;
+}
+
+@media (min-width: 600px) {
+  .modal {
+    padding: 16px;
+  }
+
+  .modalBox {
+    max-height: calc(100dvh - 32px);
+  }
+}
+
+.modalHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 16px 12px;
+  border-bottom: 1px solid var(--modalLine);
+  flex-shrink: 0;
+}
+
+.modalTitle {
+  font-weight: 800;
+  font-size: 16px;
+}
+
+.modalHead button {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 999px;
+  background: linear-gradient(160deg, var(--btnBg) 0%, var(--btnBg2) 100%);
+  border: 1.5px solid var(--btnLine);
+  font-size: 18px;
+  font-weight: 900;
+  color: rgba(240,244,255,.92);
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadowSm);
+}
+
+.modalBody {
+  padding: 14px 16px 24px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  flex: 1;
+}
+
+body.modal-open {
+  overflow: hidden;
+}

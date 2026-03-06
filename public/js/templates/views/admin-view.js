@@ -1,4 +1,8 @@
+// =========================
 // public/js/templates/views/admin-view.js
+// Template HTML: vista admin (stub)
+// =========================
+
 export function adminView() {
   return `
     <!-- ADMIN -->

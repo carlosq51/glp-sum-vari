@@ -1,0 +1,18 @@
+/* =====================================================================
+   views/ramalero.css — Vista Ramalero
+   ===================================================================== */
+
+.ramalRow3 {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr 1fr;
+  gap: 10px;
+  width: 100%;
+}
+
+.ramalRow3 select,
+.ramalRow3 input,
+.ramalRow3 button { height: 50px; margin: 0; }
+
+@media (max-width: 440px) {
+  .ramalRow3 { grid-template-columns: 1fr; }
+}

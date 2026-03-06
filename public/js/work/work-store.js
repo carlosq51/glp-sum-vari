@@ -1,3 +1,8 @@
+// =========================
+// public/js/work/work-store.js
+// Reconstruye listas activas/finalizados desde el store
+// =========================
+
 import { ctx_ } from "../core/state.js";
 import { isFinalizado_, shouldShowItemInCurrentModule_ } from "./work-status.js";
 

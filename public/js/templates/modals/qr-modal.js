@@ -1,4 +1,8 @@
+// =========================
 // public/js/templates/modals/qr-modal.js
+// Template HTML: modal de escaneo QR
+// =========================
+
 export function qrModal() {
   return `
     <!-- =========================

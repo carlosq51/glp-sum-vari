@@ -1,0 +1,19 @@
+/* =====================================================================
+   components/badges.css — Badges de estado
+   ===================================================================== */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .2px;
+}
+
+.badge-ok     { color: var(--ok);     background: var(--okBg); }
+.badge-warn   { color: var(--warn);   background: var(--warnBg); }
+.badge-danger { color: var(--danger); background: var(--dangerBg); }
+.badge-note   { color: var(--note);   background: var(--noteBg); }

@@ -1,0 +1,18 @@
+/* =====================================================================
+   components/code.css — Bloques de código y status
+   ===================================================================== */
+
+pre,
+.status {
+  background: var(--codeBg);
+  border: 1px solid var(--codeLine);
+  border-radius: var(--radiusSm);
+  padding: 12px 14px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+  color: var(--text);
+}

@@ -1,4 +1,8 @@
+// =========================
 // public/js/templates/modals/conformidad-modal.js
+// Template HTML: modal de conformidad de equipo
+// =========================
+
 export function conformidadModal() {
   return `
     <!-- =========================

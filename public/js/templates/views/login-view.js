@@ -1,4 +1,8 @@
+// =========================
 // public/js/templates/views/login-view.js
+// Template HTML: pantalla de login
+// =========================
+
 export function loginView() {
   return `
     <!-- =========================

@@ -1,4 +1,8 @@
+// =========================
 // public/js/templates/views/calidad-view.js
+// Template HTML: vista control de calidad
+// =========================
+
 export function calidadView() {
   return `
     <!-- =========================

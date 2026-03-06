@@ -1,3 +1,8 @@
+// =========================
+// public/js/work/work-templates.js
+// HTML templates para cards de trabajo (botones, asignado, incidencias)
+// =========================
+
 import { CORE } from "../core/state.js";
 import { escapeHtml } from "../core/format.js";
 

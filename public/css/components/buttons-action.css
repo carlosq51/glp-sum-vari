@@ -1,0 +1,72 @@
+/* =====================================================================
+   components/buttons-action.css — Botones de acción (INICIO/PAUSA/FIN/NOTA)
+   ===================================================================== */
+
+.btnAction,
+.btnRF {
+  width: 100%;
+  height: 56px;
+  border-radius: var(--radius);
+  font-size: 16px;
+  font-weight: 900;
+  margin-top: 8px;
+}
+
+/* Contenedor de acciones dentro de cada job card */
+.jobActionsGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  width: 100%;
+  margin-top: 10px;
+}
+
+/* Todos los botones dentro de la grilla llenan su celda */
+.jobActionsGrid > button {
+  width: 100%;
+  height: 56px;
+  margin-top: 0;
+  min-width: 0;
+}
+
+/* Si solo hay un botón (ej: INICIO o GUARDAR NOTA), ocupa todo el ancho */
+.jobActionsGrid > button:only-child {
+  grid-column: 1 / -1;
+}
+
+.btnInicio,
+.btnReanudar {
+  border-color: var(--ok);
+  color: var(--actionTextOk);
+  background: linear-gradient(160deg, var(--okBg) 0%, rgba(34,197,94,.05) 100%);
+}
+
+.btnPausa {
+  border-color: var(--warn);
+  color: var(--actionTextWarn);
+  background: linear-gradient(160deg, var(--warnBg) 0%, rgba(250,204,21,.05) 100%);
+}
+
+.btnFin {
+  border-color: var(--danger);
+  color: var(--actionTextDanger);
+  background: linear-gradient(160deg, var(--dangerBg) 0%, rgba(255,59,59,.05) 100%);
+}
+
+.btnNota,
+.btnRF {
+  color: var(--actionTextNote);
+}
+
+:root[data-theme="day"] .btnInicio,
+:root[data-theme="day"] .btnReanudar {
+  color: var(--actionTextOk);
+}
+
+:root[data-theme="day"] .btnPausa {
+  color: var(--actionTextWarn);
+}
+
+:root[data-theme="day"] .btnFin {
+  color: var(--actionTextDanger);
+}

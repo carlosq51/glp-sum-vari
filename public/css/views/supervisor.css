@@ -1,0 +1,117 @@
+/* =====================================================================
+   views/supervisor.css — Vista Supervisor
+   ===================================================================== */
+
+/* Fila: input nombre + select marca */
+.supFilterTop {
+  display: grid;
+  grid-template-columns: 1fr 130px;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+}
+
+@media (max-width: 400px) {
+  .supFilterTop { grid-template-columns: 1fr; }
+}
+
+/* Fila de fechas: desde / hasta / AYER / HOY */
+.supDateRow {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) minmax(0,1fr) minmax(0,76px) minmax(0,76px);
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+}
+
+.supDateRow > * {
+  min-width: 0;
+}
+
+.supDateRow input,
+.supDateRow button {
+  width: 100%;
+}
+
+@media (max-width: 520px) {
+  .supDateRow {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .supDateRow button {
+    height: 48px;
+  }
+}
+
+@media (max-width: 400px) {
+  .supDateRow {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Fila VIN supervisor (input + QR) */
+.supVinRow {
+  display: grid;
+  grid-template-columns: 1fr 50px;
+  gap: 10px;
+  width: 100%;
+  align-items: stretch;
+}
+
+#supVin {
+  width: 100%;
+  height: 50px;
+  margin: 0;
+}
+
+#btnSupQR {
+  width: 50px;
+  height: 50px;
+  padding: 0;
+  border-radius: var(--radiusSm);
+  font-size: 18px;
+  display: grid;
+  place-items: center;
+}
+
+/* Select marca: override visual */
+#supMarca {
+  height: 48px;
+  background: linear-gradient(160deg, var(--btnBg) 0%, var(--btnBg2) 100%);
+  border: 1.5px solid var(--btnLine);
+  color: rgba(240,244,255,.92);
+  font-weight: 800;
+  border-radius: var(--radiusSm);
+}
+
+:root[data-theme="day"] #supMarca {
+  background: linear-gradient(160deg, var(--btnBg) 0%, var(--btnBg2) 100%) !important;
+  border: 1.5px solid var(--btnLine) !important;
+  color: rgba(240,244,255,.92) !important;
+}
+
+/* Select de marca: texto negro dentro del desplegable nativo */
+#supMarca option {
+  color: #111827;
+  background: #ffffff;
+}
+
+/* Track pill activo (CONVERSIÓN / CALIDAD / RAMAL) */
+button[data-suptrack].active {
+  outline: 2px solid rgba(125,211,252,.85);
+  outline-offset: 1px;
+  transform: translateY(-1px);
+}
+
+/* Forzar ancho completo en supervisor */
+#viewSUPERVISOR .supNameWrap,
+#viewSUPERVISOR #supName { width: 100%; }
+
+/* Botones rápidos con estilo azul oscuro */
+#btnSupAyer,
+#btnSupHoy,
+#btnSupEsteMes {
+  background: linear-gradient(160deg, var(--btnBg) 0%, var(--btnBg2) 100%);
+  border: 1.5px solid var(--btnLine);
+  color: rgba(240,244,255,.92);
+}

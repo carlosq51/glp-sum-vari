@@ -1,4 +1,8 @@
+// =========================
 // public/js/templates/views/movilizador-view.js
+// Template HTML: vista movilizador
+// =========================
+
 export function movilizadorView() {
   return `
     <div id="viewMOVILIZADOR" class="card" style="display:none;">

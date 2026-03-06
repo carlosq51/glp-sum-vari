@@ -1,4 +1,8 @@
+// =========================
 // public/js/templates/modals/incidencias-modal.js
+// Template HTML: modal de registro de incidencias
+// =========================
+
 export function incidenciasModal() {
   return `
     <!-- =========================

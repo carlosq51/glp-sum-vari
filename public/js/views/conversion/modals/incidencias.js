@@ -640,10 +640,6 @@ export function initIncidenciasUI_() {
     clearIncFoto_();
     incSetMsg("");
   });
-  incEl("btnIncFotoClear")?.addEventListener("click", () => {
-    clearIncFoto_();
-    incSetMsg("");
-  });
 
   incSuggestBox()?.addEventListener("mousedown", (e) => {
     const row = e.target.closest(".nsItem[data-idx]");

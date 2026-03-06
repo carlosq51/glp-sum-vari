@@ -1,0 +1,23 @@
+/* =====================================================================
+   views/incidencias.css — Modal de incidencias (ajustes específicos)
+   ===================================================================== */
+
+#incModal .supNameWrap {
+  width: 100%;
+  max-width: none;
+  display: block;
+  position: relative;
+}
+
+#incModal #incTechInput {
+  width: 100%;
+  max-width: none;
+  display: block;
+  height: 44px;
+}
+
+#incModal #incTechSuggest {
+  left: 0;
+  right: 0;
+  width: 100%;
+}

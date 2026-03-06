@@ -1,4 +1,8 @@
+// =========================
 // public/js/templates/views/uploader-view.js
+// Template HTML: uploader GLP (parámetros, fallas, calidad, conformidad)
+// =========================
+
 export function uploaderView() {
   return `
     <!-- =========================

@@ -1,0 +1,16 @@
+/* =====================================================================
+   views/qr-reader.css — Lector QR (html5-qrcode)
+   ===================================================================== */
+
+.qrReader,
+[id^="qrReader"],
+#qrReader,
+#qrReader_conf {
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--surfaceLine);
+}
+
+/* Forzar ancho completo al vídeo */
+.qrReader video,
+[id^="qrReader"] video { width: 100% !important; }

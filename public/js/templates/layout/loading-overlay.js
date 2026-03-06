@@ -1,4 +1,8 @@
-// public/js/templates/modals/loading-overlay.js
+// =========================
+// public/js/templates/layout/loading-overlay.js
+// Template HTML: overlay de carga (spinner + dots)
+// =========================
+
 export function loadingOverlay() {
   return `
     <!-- =========================

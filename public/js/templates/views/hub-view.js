@@ -1,4 +1,8 @@
+// =========================
 // public/js/templates/views/hub-view.js
+// Template HTML: selección de módulo (hub)
+// =========================
+
 export function hubView() {
   return `
     <!-- HUB -->

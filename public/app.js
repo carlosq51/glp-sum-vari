@@ -1,6 +1,6 @@
 // =========================
-// public/app.js  (NUEVO - MODULAR)
-// conversion = TECNICO + CALIDAD ✅
+// public/app.js
+// Bootstrap: monta shell, login, router, listeners globales
 // =========================
 /* global Html5Qrcode, Html5QrcodeSupportedFormats */
 
@@ -11,6 +11,7 @@ import {
   showLoginUI, showAppUI, setUserPillUI, applyDebugVisibilityUI,
   effectiveModulos, computeRolLock_, enforceRolLock_,
   hideAllModulesUI, showHubUI, syncTopbarHomeButtonUI,
+  getJSON_user, getEmail, toggleTheme_,
 } from "./js/core/core.js";
 
 import { openView } from "./js/core/router-lite.js";
@@ -29,7 +30,7 @@ if (root) root.innerHTML = appShell();
 async function doLogin(email) {
   if (!email) return showLoginUI("Pon tu email.");
 
-  const j = await CORE.getJSON_user(`/api/me?email=${encodeURIComponent(email)}`, "Iniciando sesión...");
+  const j = await getJSON_user(`/api/me?email=${encodeURIComponent(email)}`, "Iniciando sesión...");
   if (!j?.ok) return showLoginUI(j?.error || "No se pudo iniciar sesión.");
 
   CORE.state.currentProfile = j.profile;
@@ -91,7 +92,7 @@ VMovilizador.init();
 initUploaderView();
 
 // ---------- GLOBAL LISTENERS ----------
-$("btnTheme")?.addEventListener("click", CORE.toggleTheme_);
+$("btnTheme")?.addEventListener("click", toggleTheme_);
 
 $("btnRegistroFallas")?.addEventListener("click", () => {
   // Oculta vistas actuales
@@ -120,7 +121,7 @@ $("btnGoHome")?.addEventListener("click", () => {
 });
 
 $("btnMe")?.addEventListener("click", async () => {
-  const email = CORE.getEmail();
+  const email = getEmail();
   await doLogin(email);
 });
 

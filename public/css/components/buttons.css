@@ -1,0 +1,54 @@
+/* =====================================================================
+   components/buttons.css — Botones base y variantes
+   ===================================================================== */
+
+button {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 16px;
+  height: 44px;
+  font-size: 14px;
+  font-weight: 800;
+  font-family: inherit;
+  letter-spacing: .2px;
+  border-radius: var(--radiusSm);
+  border: 1.5px solid var(--btnLine);
+  background: linear-gradient(160deg, var(--btnBg) 0%, var(--btnBg2) 100%);
+  color: rgba(240,244,255,.92);
+  transition: filter .12s, transform .1s;
+  user-select: none;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+}
+
+:root[data-theme="day"] button { color: #fff; }
+
+button:hover   { filter: brightness(1.08); }
+button:active  { transform: scale(.97); }
+button:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+  transform: none;
+  filter: none;
+}
+
+/* Variante ghost (semitransparente) */
+button.btn2 {
+  background: var(--pillBg);
+  border-color: var(--pillLine);
+  color: var(--text);
+}
+
+/* Variante muted (code-style) */
+button.btn3 {
+  background: var(--codeBg);
+  border-color: var(--codeLine);
+  color: var(--muted);
+}
+
+:root[data-theme="day"] #incModal .btn3 {
+  color: var(--text);
+}

@@ -1,4 +1,8 @@
+// =========================
 // public/js/templates/modals/confirm-finish-modal.js
+// Template HTML: modal de confirmación de finalización
+// =========================
+
 export function confirmFinishModal() {
   return `
     <!-- =========================

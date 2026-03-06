@@ -1,3 +1,8 @@
+// =========================
+// public/js/work/work-status.js
+// Estados de trabajo: finalizado, acciones permitidas, filtro por módulo
+// =========================
+
 import { CORE } from "../core/state.js";
 
 export function isFinalizado_(it) {

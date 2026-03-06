@@ -1,0 +1,9 @@
+/* =====================================================================
+   views/debug.css — Elementos ocultos / debug / stubs
+   ===================================================================== */
+
+.debug-hidden { display: none !important; }
+#debugWrap    { display: none !important; }
+
+/* stubs ocultos del técnico */
+#accion, #nota, #btnNotaOnly, #btnEnviar { display: none !important; }

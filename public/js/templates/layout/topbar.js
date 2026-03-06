@@ -1,4 +1,8 @@
-// public/js/templates/views/topbar.js
+// =========================
+// public/js/templates/layout/topbar.js
+// Template HTML: barra superior (título, user pill, acciones)
+// =========================
+
 export function topbarView() {
   return `
     <div class="topbarShell">
