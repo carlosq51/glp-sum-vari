@@ -17,15 +17,16 @@ import {
   isWorkModule_,
   getVin,
   getRolTrabajoCurrent_,
+  requireEmailOrStop,
   setEstadoText,
   msToHMS_,
   withLock,
 } from "../../core/core.js";
 
-import { computeLiveMs_, renderFinalizados_ } from "../../work/index.js";
+import { computeLiveMs_, renderFinalizados_, rebuildListsFromStore_ } from "../../work/index.js";
 import { startLoopsFor_, stopLoopsFor_, clearModuleUI_ } from "../../core/loops.js";
 
-import { syncNow } from "./data/conversion-sync.js";
+import { syncNow, fetchFinalizados_ } from "./data/conversion-sync.js";
 import {
   refreshEstadoForVinRole,
   initEstadoUI_,
@@ -106,6 +107,21 @@ export function init() {
       const c = ctx_();
       c.showFinalizados = !c.showFinalizados;
       el_("btnFinalizados").textContent = c.showFinalizados ? "Ocultar finalizados" : "Ver finalizados";
+      if (c.showFinalizados && !c._finalizadosLoaded) {
+        let email;
+        try { email = requireEmailOrStop(); } catch { return; }
+        const j = await fetchFinalizados_(email);
+        if (j?.ok && Array.isArray(j.items)) {
+          const { normalizeItem_ } = await import("./state/conversion-store.js");
+          for (const raw of j.items) {
+            const it = normalizeItem_(raw);
+            const k = `${it.conversionId}|${it.rolTrabajo}`;
+            c.itemsByKey.set(k, it);
+          }
+          rebuildListsFromStore_();
+          c._finalizadosLoaded = true;
+        }
+      }
       renderFinalizados_();
     }, "Cargando finalizados...");
   });
@@ -121,6 +137,21 @@ export function init() {
       const c = ctx_();
       c.showFinalizados = !c.showFinalizados;
       el_("btnFinalizadosQ").textContent = c.showFinalizados ? "Ocultar finalizados" : "Ver finalizados";
+      if (c.showFinalizados && !c._finalizadosLoaded) {
+        let email;
+        try { email = requireEmailOrStop(); } catch { return; }
+        const j = await fetchFinalizados_(email);
+        if (j?.ok && Array.isArray(j.items)) {
+          const { normalizeItem_ } = await import("./state/conversion-store.js");
+          for (const raw of j.items) {
+            const it = normalizeItem_(raw);
+            const k = `${it.conversionId}|${it.rolTrabajo}`;
+            c.itemsByKey.set(k, it);
+          }
+          rebuildListsFromStore_();
+          c._finalizadosLoaded = true;
+        }
+      }
       renderFinalizados_();
     }, "Cargando finalizados...");
   });

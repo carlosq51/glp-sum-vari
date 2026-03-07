@@ -29,19 +29,23 @@ import {
 } from "../state/conversion-store.js";
 
 import { autoStartFromScan_ } from "./conversion-eventos.js";
-import { fetchNombresParaVin_ } from "../state/conversion-store.js";
+import { fetchNombresParaVin_, ensureNombresCache_ } from "../state/conversion-store.js";
 
 // --------------------------
 // SYNC
 // --------------------------
 export async function apiSync_(email, since) {
   try {
-    const body = { email, since };
+    const body = { email, since, excludeFinalizados: true };
     const j = await postJSON("/api/sync", body);
     if (j && j.ok) return { mode: "sync", data: j };
   } catch {}
-  const j2 = await getJSON(`/api/mis-activas?email=${encodeURIComponent(email)}`);
+  const j2 = await getJSON(`/api/mis-activas?email=${encodeURIComponent(email)}&excludeFinalizados=true`);
   return { mode: "legacy", data: j2 };
+}
+
+export async function fetchFinalizados_(email) {
+  return getJSON(`/api/mis-finalizadas?email=${encodeURIComponent(email)}`);
 }
 
 export async function syncNow({ forceFull = false, showOut = false } = {}) {
@@ -80,22 +84,15 @@ export async function syncNow({ forceFull = false, showOut = false } = {}) {
 
   // Enriquecer con nombres MOTOR/TANQUERO para Calidad
   if (CORE.state.currentModule === "CALIDAD") {
-    const vinsAEnriquecer = [];
+    const byVin = await ensureNombresCache_();
     for (const k of [...c.activeKeys, ...c.finalKeys]) {
       const it = c.itemsByKey.get(k);
       if (it && it.vin && !it.motorNombre && !it.tanqueroNombre) {
-        vinsAEnriquecer.push({ k, it, vin: it.vin });
+        const nombres = byVin.get(it.vin.toUpperCase().trim()) || { motorNombre: "", tanqueroNombre: "" };
+        it.motorNombre = nombres.motorNombre;
+        it.tanqueroNombre = nombres.tanqueroNombre;
       }
     }
-    // fetch en paralelo (caché evita llamadas duplicadas)
-    await Promise.all(
-      vinsAEnriquecer.map(({ it, vin }) =>
-        fetchNombresParaVin_(vin).then(({ motorNombre, tanqueroNombre }) => {
-          it.motorNombre = motorNombre;
-          it.tanqueroNombre = tanqueroNombre;
-        }).catch(() => {})
-      )
-    );
   }
 
   const needsFull = detectIfNeedsFullRerender_(prevA, prevF);

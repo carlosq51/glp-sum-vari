@@ -100,8 +100,10 @@ export function renderActivas_() {
 
 export function renderFinalizados_(avgTopHTML = "") {
   const c = ctx_();
-  const wrap = el_("finalizadosWrap");
-  const box = el_("finalizadosBox");
+  const suffix = CORE.state.currentModule === "CALIDAD" ? "Q"
+               : CORE.state.currentModule === "RAMALERO" ? "R" : "";
+  const wrap = el_("finalizadosWrap" + suffix);
+  const box = el_("finalizadosBox" + suffix);
   if (!wrap || !box) return;
 
   if (!c.showFinalizados) {

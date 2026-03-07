@@ -121,45 +121,38 @@ export function detectIfNeedsFullRerender_(prevActiveKeys, prevFinalKeys) {
 // --------------------------
 // NOMBRES MOTOR/TANQUERO PARA CALIDAD
 // --------------------------
-// --------------------------
-// NOMBRES MOTOR/TANQUERO PARA CALIDAD
-// --------------------------
-const _nombresCache = new Map(); // caché en memoria por VIN
+let _nombresCache = null;   // { ts, byVin: Map<VIN, {motorNombre,tanqueroNombre}> }
+const NOMBRES_TTL_MS = 5 * 60 * 1000; // 5 min
 
-export async function fetchNombresParaVin_(vin) {
-  const vinUp = vin.toUpperCase();
-
-  // Si ya lo tenemos en caché, devolver directo
-  if (_nombresCache.has(vinUp)) return _nombresCache.get(vinUp);
+export async function ensureNombresCache_() {
+  const now = Date.now();
+  if (_nombresCache && (now - _nombresCache.ts) < NOMBRES_TTL_MS) return _nombresCache.byVin;
 
   try {
-    const url = `/api/supervisor/report?vin=${encodeURIComponent(vinUp)}&track=CONVERSION`;
-    const j = await getJSON(url);
-    if (!j?.ok || !Array.isArray(j.items)) {
-      const empty = { motorNombre: "", tanqueroNombre: "" };
-      _nombresCache.set(vinUp, empty);
-      return empty;
+    const j = await getJSON("/api/supervisor/report?track=CONVERSION");
+    const byVin = new Map();
+    if (j?.ok && Array.isArray(j.items)) {
+      for (const it of j.items) {
+        const vin = String(it.vin || "").toUpperCase().trim();
+        if (!vin) continue;
+        const rol = String(it.rol || "").toUpperCase();
+        const entry = byVin.get(vin) || { motorNombre: "", tanqueroNombre: "" };
+        if (rol === "MOTOR") entry.motorNombre = String(it.userName || "").trim();
+        if (rol === "TANQUE" || rol === "TANQUERO") entry.tanqueroNombre = String(it.userName || "").trim();
+        byVin.set(vin, entry);
+      }
     }
-
-    const items = j.items.filter(it => String(it.vin || "").toUpperCase() === vinUp);
-
-    const motor  = items.find(it => String(it.rol || "").toUpperCase() === "MOTOR");
-    const tanque = items.find(it =>
-      String(it.rol || "").toUpperCase() === "TANQUE" ||
-      String(it.rol || "").toUpperCase() === "TANQUERO"
-    );
-
-    const result = {
-      motorNombre:    String(motor?.userName  || "").trim(),
-      tanqueroNombre: String(tanque?.userName || "").trim(),
-    };
-
-    _nombresCache.set(vinUp, result);
-    return result;
-
+    _nombresCache = { ts: now, byVin };
+    return byVin;
   } catch {
-    const empty = { motorNombre: "", tanqueroNombre: "" };
-    _nombresCache.set(vinUp, empty);
-    return empty;
+    const byVin = new Map();
+    _nombresCache = { ts: now, byVin };
+    return byVin;
   }
+}
+
+export async function fetchNombresParaVin_(vin) {
+  const vinUp = String(vin || "").toUpperCase().trim();
+  const byVin = await ensureNombresCache_();
+  return byVin.get(vinUp) || { motorNombre: "", tanqueroNombre: "" };
 }
