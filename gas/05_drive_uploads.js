@@ -1,4 +1,4 @@
-// ✅ SOLO upload crea carpetas (con lock para evitar duplicados)
+// ✅ SOLO upload crea carpetas (con UserLock para no bloquear otros usuarios)
 function uploadFiles_(data) {
   const vin = normalizeVin_(data.vin);
   if (!vin) throw new Error("VIN inválido");
@@ -6,7 +6,7 @@ function uploadFiles_(data) {
   const dateStr = data.dateStr || todayDateStr_();
   const root = DriveApp.getFolderById(ROOT_FOLDER_ID);
 
-  const lock = LockService.getScriptLock();
+  const lock = LockService.getUserLock();
   lock.waitLock(20000);
   try {
     const ctx = getOrCreateCarContext_(root, vin, dateStr);
@@ -64,7 +64,7 @@ function uploadOne_(data) {
 
   const root = DriveApp.getFolderById(ROOT_FOLDER_ID);
 
-  const lock = LockService.getScriptLock();
+  const lock = LockService.getUserLock();
   lock.waitLock(20000);
   try {
     const ctx = getOrCreateCarContext_(root, vin, dateStr);
@@ -124,7 +124,7 @@ function uploadFalla_(data) {
   const files = data.files || [];
   if (!files.length && !note) throw new Error("No hay fotos ni nota para registrar falla.");
 
-  const lock = LockService.getScriptLock();
+  const lock = LockService.getUserLock();
   lock.waitLock(20000);
   try {
     const ctx = getOrCreateCarContext_(root, vin, dateStr);
@@ -194,7 +194,7 @@ function uploadCalidad_(data) {
   const valid = files.filter(x => x && x.slot && CALIDAD_SLOT_NAMES[x.slot] && x.b64);
   if (valid.length < 3) throw new Error("Calidad requiere mínimo 3 fotos.");
 
-  const lock = LockService.getScriptLock();
+  const lock = LockService.getUserLock();
   lock.waitLock(20000);
   try {
     const ctx = getOrCreateCarContext_(root, vin, dateStr);
@@ -257,7 +257,7 @@ function uploadConformidad_(data) {
 
   const root = DriveApp.getFolderById(ROOT_FOLDER_ID);
 
-  const lock = LockService.getScriptLock();
+  const lock = LockService.getUserLock();
   lock.waitLock(20000);
   try {
     const ctx = getOrCreateCarContext_(root, vin, dateStr);
@@ -333,7 +333,7 @@ function uploadIncidencia_(data) {
 
   const root = DriveApp.getFolderById(ROOT_FOLDER_ID);
 
-  const lock = LockService.getScriptLock();
+  const lock = LockService.getUserLock();
   lock.waitLock(20000);
   try {
     const ctx = getOrCreateCarContext_(root, vin, dateStr);

@@ -124,6 +124,8 @@ export function detectIfNeedsFullRerender_(prevActiveKeys, prevFinalKeys) {
 let _nombresCache = null;   // { ts, byVin: Map<VIN, {motorNombre,tanqueroNombre}> }
 const NOMBRES_TTL_MS = 5 * 60 * 1000; // 5 min
 
+export function clearNombresCache_() { _nombresCache = null; }
+
 export async function ensureNombresCache_() {
   const now = Date.now();
   if (_nombresCache && (now - _nombresCache.ts) < NOMBRES_TTL_MS) return _nombresCache.byVin;

@@ -18,7 +18,7 @@ export function initRamaleroActions_() {
 
   $("btnActivasR")?.addEventListener("click", async () => {
     if (CORE.state.currentModule !== "RAMALERO") return;
-    await withLock(async () => syncNow({ forceFull: true, showOut: true }), "Refrescando...");
+    await withLock(async () => syncNow({ forceFull: true, showOut: true, _fromLock: true }), "Refrescando...");
   });
 
   $("btnFinalizadosR")?.addEventListener("click", async () => {

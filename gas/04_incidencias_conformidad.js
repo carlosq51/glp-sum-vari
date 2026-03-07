@@ -68,7 +68,7 @@ function equipoConformidad_(p) {
     // ✅ UN solo viaje de escritura en lugar de 8
     sh.getRange(rowIndex, 1, 1, lastCol).setValues([rowData]);
 
-    bumpRev_();
+    bumpRevSafe_();
 
     return { ok: true, conversionId, rolTrabajo, equipoCodigo,
              checks: { ck1, ck2, ck3, ck4 } };

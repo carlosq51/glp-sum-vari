@@ -98,7 +98,7 @@ export function init() {
 
   $("btnActivas")?.addEventListener("click", async () => {
     if (CORE.state.currentModule !== "TECNICO") return;
-    await withLock(async () => syncNow({ forceFull: true, showOut: true }), "Refrescando...");
+    await withLock(async () => syncNow({ forceFull: true, showOut: true, _fromLock: true }), "Refrescando...");
   });
 
   $("btnFinalizados")?.addEventListener("click", async () => {
@@ -128,7 +128,7 @@ export function init() {
 
   $("btnActivasQ")?.addEventListener("click", async () => {
     if (CORE.state.currentModule !== "CALIDAD") return;
-    await withLock(async () => syncNow({ forceFull: true, showOut: true }), "Refrescando...");
+    await withLock(async () => syncNow({ forceFull: true, showOut: true, _fromLock: true }), "Refrescando...");
   });
 
   $("btnFinalizadosQ")?.addEventListener("click", async () => {

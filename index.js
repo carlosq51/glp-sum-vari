@@ -301,7 +301,8 @@ app.post("/api/sync", async (req, res) => {
     // intenta action "sync" si existe en tu .gs
     try {
       const excludeFinalizados = req.body?.excludeFinalizados ?? true;
-      const j = await callAppsScript("sync", { email, userId, since, excludeFinalizados });
+      const forceRefresh = !!req.body?.forceRefresh;
+      const j = await callAppsScript("sync", { email, userId, since, excludeFinalizados, forceRefresh });
       return res.json(j);
     } catch (e1) {
       // fallback: usa mis_activas y envuelve como sync

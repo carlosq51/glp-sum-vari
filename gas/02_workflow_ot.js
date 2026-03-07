@@ -22,14 +22,14 @@ function ensureConversionId_(vin) {
 
   const lastRow = sh.getLastRow();
   if (lastRow >= 2) {
-    const rng = sh.getRange(2, colVIN, lastRow - 1, 1);
-    const found = rng.createTextFinder(vinN).matchEntireCell(true).findNext();
-    if (found) {
-      const r = found.getRow();
-      const cid = String(sh.getRange(r, colCID).getValue() || "").trim();
-      if (cid) {
-        cache_().put(ckey, cid, 600);
-        return cid;
+    const data = sh.getRange(2, 1, lastRow - 1, sh.getLastColumn()).getValues();
+    for (const row of data) {
+      if (normalizeVin_(row[colVIN - 1]) === vinN) {
+        const cid = String(row[colCID - 1] || "").trim();
+        if (cid) {
+          cache_().put(ckey, cid, 600);
+          return cid;
+        }
       }
     }
   }
@@ -44,7 +44,8 @@ function ensureConversionId_(vin) {
   if (colEST) rowToAppend[colEST - 1] = "PENDIENTE";
   if (colOBS) rowToAppend[colOBS - 1] = "";
 
-  sh.appendRow(rowToAppend);
+  const nextRow = sh.getLastRow() + 1;
+  sh.getRange(nextRow, 1, 1, rowToAppend.length).setValues([rowToAppend]);
 
   cache_().put(ckey, newId, 600);
   return newId;
@@ -72,13 +73,15 @@ function findConversionIdByVin_(vin) {
   const lastRow = sh.getLastRow();
   if (lastRow < 2) return null;
 
-  const rng = sh.getRange(2, colVIN, lastRow - 1, 1);
-  const found = rng.createTextFinder(vinN).matchEntireCell(true).findNext();
-  if (!found) { cache_().put(ckey, "", 30); return null; }
-
-  const cid = String(sh.getRange(found.getRow(), colCID).getValue() || "").trim();
-  cache_().put(ckey, cid, 30);
-  return cid || null;
+  const data = sh.getRange(2, 1, lastRow - 1, sh.getLastColumn()).getValues();
+  for (const row of data) {
+    if (normalizeVin_(row[colVIN - 1]) === vinN) {
+      const cid = String(row[colCID - 1] || "").trim();
+      if (cid) { cache_().put(ckey, cid, 30); return cid; }
+    }
+  }
+  cache_().put(ckey, "", 30);
+  return null;
 }
 
 
@@ -95,14 +98,18 @@ function updateCalidadRow_(calidadId, patch) {
   const qidN = String(calidadId || "").trim();
   if (!qidN) return false;
 
-  const found = sh.getRange(2, colQID, last - 1, 1)
-    .createTextFinder(qidN).matchEntireCell(true).findNext();
-  if (!found) return false;
-
-  const rowIndex = found.getRow();
-  // ✅ Leer toda la fila, modificar en memoria, escribir de una vez
   const lastCol = sh.getLastColumn();
-  const rowData = sh.getRange(rowIndex, 1, 1, lastCol).getValues()[0];
+  const data = sh.getRange(2, 1, last - 1, lastCol).getValues();
+  let rowIndex = -1;
+  let rowData = null;
+  for (let i = 0; i < data.length; i++) {
+    if (String(data[i][colQID - 1] || "").trim() === qidN) {
+      rowIndex = i + 2;
+      rowData = data[i];
+      break;
+    }
+  }
+  if (!rowData) return false;
 
   if (map["ESTADO_GENERAL"] && patch?.estado_general != null) {
     rowData[map["ESTADO_GENERAL"] - 1] = String(patch.estado_general).trim().toUpperCase();
@@ -127,14 +134,18 @@ function updateRamalRow_(ramalId, patch) {
   const rid = String(ramalId || "").trim();
   if (!rid) return false;
 
-  const found = sh.getRange(2, colRID, last - 1, 1)
-    .createTextFinder(rid).matchEntireCell(true).findNext();
-  if (!found) return false;
-
-  const rowIndex = found.getRow();
-  // ✅ Igual que updateCalidadRow_: leer -> modificar -> escribir en un viaje
   const lastCol = sh.getLastColumn();
-  const rowData = sh.getRange(rowIndex, 1, 1, lastCol).getValues()[0];
+  const data = sh.getRange(2, 1, last - 1, lastCol).getValues();
+  let rowIndex = -1;
+  let rowData = null;
+  for (let i = 0; i < data.length; i++) {
+    if (String(data[i][colRID - 1] || "").trim() === rid) {
+      rowIndex = i + 2;
+      rowData = data[i];
+      break;
+    }
+  }
+  if (!rowData) return false;
 
   if (map["ESTADO_GENERAL"] && patch?.estado_general != null) {
     rowData[map["ESTADO_GENERAL"] - 1] = String(patch.estado_general).trim().toUpperCase();
@@ -195,7 +206,8 @@ function ensureCalidadId_(vin) {
   if (colEST) rowToAppend[colEST - 1] = "PENDIENTE";
   if (colOBS) rowToAppend[colOBS - 1] = "";
 
-  sh.appendRow(rowToAppend);
+  const nextRowQ = sh.getLastRow() + 1;
+  sh.getRange(nextRowQ, 1, 1, rowToAppend.length).setValues([rowToAppend]);
 
   cache_().put(ckey, newId, 600);
   return newId;
@@ -236,71 +248,9 @@ function createRamalId_(userId, tipoRamal) {
   if (colEST) row[colEST - 1] = "PENDIENTE";
   if (colOBS) row[colOBS - 1] = "";
 
-  sh.appendRow(row);
+  const nextRowR = sh.getLastRow() + 1;
+  sh.getRange(nextRowR, 1, 1, row.length).setValues([row]);
   return ramalId;
-}
-
-function updateRamalRow_(ramalId, patch) {
-  const sh = sh_(SHEETS.RAMAL);
-  const map = headersMap_(sh);
-  const colRID = map["RAMAL_ID"];
-  if (!colRID) return false;
-
-  const last = sh.getLastRow();
-  if (last < 2) return false;
-
-  const rid = String(ramalId || "").trim();
-  if (!rid) return false;
-
-  const rng = sh.getRange(2, colRID, last - 1, 1);
-  const found = rng.createTextFinder(rid).matchEntireCell(true).findNext();
-  if (!found) return false;
-
-  const rowIndex = found.getRow();
-
-  if (map["ESTADO_GENERAL"] && patch?.estado_general != null) {
-    sh.getRange(rowIndex, map["ESTADO_GENERAL"])
-      .setValue(String(patch.estado_general).trim().toUpperCase());
-  }
-
-  if (map["OBSERVACIONES"] && patch?.observaciones != null) {
-    sh.getRange(rowIndex, map["OBSERVACIONES"]).setValue(String(patch.observaciones));
-  }
-
-  return true;
-}
-
-/***********************
- *  3e) CALIDAD1: update estado/obs por calidadId
- ***********************/
-function updateCalidadRow_(calidadId, patch) {
-  const sh = sh_(SHEETS.CALIDAD);
-  const map = headersMap_(sh);
-  const colQID = map["CALIDAD_ID"];
-  if (!colQID) return false;
-
-  const last = sh.getLastRow();
-  if (last < 2) return false;
-
-  const qidN = String(calidadId || "").trim();
-  if (!qidN) return false;
-
-  const rng = sh.getRange(2, colQID, last - 1, 1);
-  const found = rng.createTextFinder(qidN).matchEntireCell(true).findNext();
-  if (!found) return false;
-
-  const rowIndex = found.getRow();
-
-  if (map["ESTADO_GENERAL"] && patch?.estado_general != null) {
-    sh.getRange(rowIndex, map["ESTADO_GENERAL"])
-      .setValue(String(patch.estado_general).trim().toUpperCase());
-  }
-
-  if (map["OBSERVACIONES"] && patch?.observaciones != null) {
-    sh.getRange(rowIndex, map["OBSERVACIONES"]).setValue(String(patch.observaciones));
-  }
-
-  return true;
 }
 
 /***********************
@@ -319,7 +269,6 @@ function hasOtMotorOrTanque_(conversionId) {
 
   const cidN = String(conversionId || "").trim();
   const data = shA.getRange(2, 1, last - 1, shA.getLastColumn()).getValues();
-
   for (const r of data) {
     if (String(r[aCID - 1] || "").trim() !== cidN) continue;
     const rol = String(r[aROL - 1] || "").trim().toUpperCase();
@@ -340,7 +289,6 @@ function setConvEstadoGeneral_(conversionId, estadoGeneral) {
 
   const cidN = String(conversionId || "").trim();
   const data = shC.getRange(2, 1, last - 1, shC.getLastColumn()).getValues();
-
   for (let i = 0; i < data.length; i++) {
     if (String(data[i][colCID - 1] || "").trim() === cidN) {
       shC.getRange(i + 2, colEST).setValue(String(estadoGeneral || "").trim().toUpperCase());
@@ -389,10 +337,10 @@ function ensureActiveAssignment_(workId, userId, roleTrabajo) {
     const data = sh.getRange(2, 1, lastRow - 1, sh.getLastColumn()).getValues();
     for (let i = 0; i < data.length; i++) {
       const row = data[i];
-      const cid = String(row[colCID - 1] || "").trim();
+      if (String(row[colCID - 1] || "").trim() !== widN) continue;
       const rol = normalizeRole_(row[colROL - 1]);
       const act = String(row[colACT - 1] || "").toUpperCase() === "TRUE";
-      if (cid === widN && rol === roleN && act) {
+      if (rol === roleN && act) {
         activeRowIndex = i + 2;
         activeUid = String(row[colUID - 1] || "").trim();
         break;
@@ -430,9 +378,10 @@ function ensureActiveAssignment_(workId, userId, roleTrabajo) {
   rowToAppend[map["LAST_NOTA"] - 1] = "";
   rowToAppend[map["LAST_NOTA_TS"] - 1] = "";
 
-  sh.appendRow(rowToAppend);
+  const nextRowA = sh.getLastRow() + 1;
+  sh.getRange(nextRowA, 1, 1, rowToAppend.length).setValues([rowToAppend]);
 
-  return { created: true, asignacionId: newAId, rowIndex: sh.getLastRow() };
+  return { created: true, asignacionId: newAId, rowIndex: nextRowA };
 }
 
 /***********************
@@ -463,7 +412,8 @@ function insertEvent_(userId, workId, roleTrabajo, accion, nota) {
   rowToAppend[colACC - 1] = normalizeAction_(accion);
   if (colNOT) rowToAppend[colNOT - 1] = String(nota || "");
 
-  sh.appendRow(rowToAppend);
+  const nextRowE = sh.getLastRow() + 1;
+  sh.getRange(nextRowE, 1, 1, rowToAppend.length).setValues([rowToAppend]);
 
   return rowToAppend[colEID - 1];
 }
@@ -556,30 +506,31 @@ function applyActionToAssignmentRow_(row, cols, accion, nota) {
 /***********************
  *  8) Update CONV121 ESTADO_GENERAL desde ASIGNACIONES (solo MOTOR/TANQUE)
  ***********************/
-// ✅ 1) updateConversionStatusFromAssignments_ — una sola lectura de CONV
 function updateConversionStatusFromAssignments_(conversionId) {
+  const cidN = String(conversionId || "").trim();
+  if (!cidN) return;
+
   const shC = sh_(SHEETS.CONV);
   const hC = headersMap_(shC);
-  const colCID = hC["CONVERSION_ID"];
-  const colEST = hC["ESTADO_GENERAL"];
-  if (!colCID || !colEST) return;
+  const colCID_C = hC["CONVERSION_ID"];
+  const colEST_C = hC["ESTADO_GENERAL"];
+  if (!colCID_C || !colEST_C) return;
 
   const lastC = shC.getLastRow();
   if (lastC < 2) return;
 
-  // ✅ Una sola lectura
   const dataC = shC.getRange(2, 1, lastC - 1, shC.getLastColumn()).getValues();
   let convRowIndex = -1;
-
+  let currentEst = "";
   for (let i = 0; i < dataC.length; i++) {
-    if (String(dataC[i][colCID - 1] || "").trim() !== String(conversionId || "").trim()) continue;
-    // ✅ Chequeo FINALIZADO en la misma pasada, sin segunda lectura
-    if (String(dataC[i][colEST - 1] || "").trim().toUpperCase() === "FINALIZADO") return;
-    convRowIndex = i + 2;
-    break;
+    if (String(dataC[i][colCID_C - 1] || "").trim() === cidN) {
+      convRowIndex = i + 2;
+      currentEst = String(dataC[i][colEST_C - 1] || "").trim().toUpperCase();
+      break;
+    }
   }
-
   if (convRowIndex < 0) return;
+  if (currentEst === "FINALIZADO") return;
 
   const shA = sh_(SHEETS.ASSIGN);
   const hA = headersMap_(shA);
@@ -592,13 +543,12 @@ function updateConversionStatusFromAssignments_(conversionId) {
   let motor = null, tanque = null;
   const lastA = shA.getLastRow();
   if (lastA >= 2) {
-    const data = shA.getRange(2, 1, lastA - 1, shA.getLastColumn()).getValues();
-    const cidN = String(conversionId || "").trim();
-    for (const r of data) {
-      if (String(r[aCID - 1] || "").trim() !== cidN) continue;
-      if (String(r[aACT - 1] || "").toUpperCase() !== "TRUE") continue;
-      const rol = String(r[aROL - 1] || "").trim().toUpperCase();
-      const est = String(r[aEST - 1] || "").trim().toUpperCase();
+    const dataA = shA.getRange(2, 1, lastA - 1, shA.getLastColumn()).getValues();
+    for (const row of dataA) {
+      if (String(row[aCID - 1] || "").trim() !== cidN) continue;
+      if (String(row[aACT - 1] || "").toUpperCase() !== "TRUE") continue;
+      const rol = String(row[aROL - 1] || "").trim().toUpperCase();
+      const est = String(row[aEST - 1] || "").trim().toUpperCase();
       if (rol === "MOTOR") motor = est;
       if (rol === "TANQUE") tanque = est;
     }
@@ -609,7 +559,7 @@ function updateConversionStatusFromAssignments_(conversionId) {
     : (motor === "FINALIZADO" && tanque === "FINALIZADO") ? "FINALIZADO"
     : "EN PROCESO";
 
-  shC.getRange(convRowIndex, colEST).setValue(estadoGeneral);
+  shC.getRange(convRowIndex, colEST_C).setValue(estadoGeneral);
 }
 
 
@@ -705,8 +655,10 @@ function registrarEvento_fast_(params) {
     const fa = row2[hA["FECHA_ASIGNACION"] - 1];
     const faIso = toIso_(fa);
 
+    // ✅ Usar maps fusionados en vez de getAsignadoByVin_ individual
+    const maps = buildAllMaps_();
     const asgVin = (rolTrabajo === "MOTOR" || rolTrabajo === "TANQUE")
-      ? getAsignadoByVin_(vin)
+      ? (maps.asgByVin[vin] || { tanque: "", reductor: "" })
       : { tanque: "", reductor: "" };
 
     return {
@@ -739,51 +691,83 @@ function registrarEvento_fast_(params) {
 
 /***********************
  *  10) MIS ACTIVAS: mapeo workId -> meta (vin/tipo)
+ *  ✅ OPTIMIZADO: buildAllMaps_ fusiona 3 maps en 1 lectura por hoja
  ***********************/
-// ✅ 2) buildWorkIdMetaMap_ — un solo getRange por sheet en lugar de N
-function buildWorkIdMetaMap_() {
-  const key = "WORKID2META";
-  const cached = cacheGetJson_(key);
-  if (cached && cached.t && (Date.now() - cached.t) < 5000 && cached.m) return cached.m;
+let _allMapsCache_ = null;
 
-  const m = {};
+function buildAllMaps_() {
+  if (_allMapsCache_) return _allMapsCache_;
+
+  const key = "ALL_MAPS_V2";
+  const cached = cacheGetJson_(key);
+  if (cached && cached.t && (Date.now() - cached.t) < 60000 && cached.meta) {
+    _allMapsCache_ = { meta: cached.meta, asgByVin: cached.asgByVin, regByCid: cached.regByCid };
+    return _allMapsCache_;
+  }
+
+  const meta = {};
+  const asgByVin = {};
+  const regByCid = {};
 
   function isoOrNull_(x) {
     return (x instanceof Date && !isNaN(x.getTime())) ? x.toISOString() : null;
   }
 
-  // CONV121
+  // ── CONV121: 1 lectura → meta + asgByVin + regByCid ──
   try {
     const shC = sh_(SHEETS.CONV);
     const hC = headersMap_(shC);
     const cCID = hC["CONVERSION_ID"];
     const cVIN = hC["CHASIS_ID"];
     const cCRE = hC["FECHA_CREACION"];
+    const cTanA = hC["TANQUE_ASIGNADO"] || hC["TANQUE_REGISTRADO"] || hC["TANQUE"];
+    const cRedA = hC["REDUCTOR_ASIGNADO"] || hC["REDUCTOR_REGISTRADO"] || hC["REDUCTOR"];
+    const cTanR = hC["TANQUE_REGISTRADO"];
+    const cRedR = hC["REDUCTOR_REGISTRADO"];
+
     if (cCID && cVIN) {
       const last = shC.getLastRow();
       if (last >= 2) {
-        // ✅ Un solo bloque completo
         const data = shC.getRange(2, 1, last - 1, shC.getLastColumn()).getValues();
         for (const row of data) {
           const id = String(row[cCID - 1] || "").trim();
           if (!id) continue;
-          m[id] = {
-            vin: String(row[cVIN - 1] || "").trim().toUpperCase(),
+          const vin = String(row[cVIN - 1] || "").trim().toUpperCase();
+
+          meta[id] = {
+            vin,
             tipoRamal: "",
             fechaCreacion: cCRE ? isoOrNull_(row[cCRE - 1]) : null,
           };
+
+          if (vin) {
+            asgByVin[vin] = {
+              tanque: cTanA ? String(row[cTanA - 1] || "").trim() : "",
+              reductor: cRedA ? String(row[cRedA - 1] || "").trim() : "",
+            };
+          }
+
+          if (cTanR || cRedR) {
+            regByCid[id] = {
+              tanque_registrado: cTanR ? String(row[cTanR - 1] || "").trim() : "",
+              reductor_registrado: cRedR ? String(row[cRedR - 1] || "").trim() : "",
+            };
+          }
         }
       }
     }
   } catch {}
 
-  // CALIDAD1
+  // ── CALIDAD1: 1 lectura → meta + regByCid ──
   try {
     const shQ = sh_(SHEETS.CALIDAD);
     const hQ = headersMap_(shQ);
     const qID = hQ["CALIDAD_ID"];
     const qVIN = hQ["CHASIS_ID"];
     const qCRE = hQ["FECHA_CREACION"];
+    const qTanR = hQ["TANQUE_REGISTRADO"];
+    const qRedR = hQ["REDUCTOR_REGISTRADO"];
+
     if (qID && qVIN) {
       const last = shQ.getLastRow();
       if (last >= 2) {
@@ -791,17 +775,23 @@ function buildWorkIdMetaMap_() {
         for (const row of data) {
           const id = String(row[qID - 1] || "").trim();
           if (!id) continue;
-          m[id] = {
+          meta[id] = {
             vin: String(row[qVIN - 1] || "").trim().toUpperCase(),
             tipoRamal: "",
             fechaCreacion: qCRE ? isoOrNull_(row[qCRE - 1]) : null,
           };
+          if ((qTanR || qRedR)) {
+            regByCid[id] = {
+              tanque_registrado: qTanR ? String(row[qTanR - 1] || "").trim() : "",
+              reductor_registrado: qRedR ? String(row[qRedR - 1] || "").trim() : "",
+            };
+          }
         }
       }
     }
   } catch {}
 
-  // RAMALERO1
+  // ── RAMALERO1: 1 lectura → meta ──
   try {
     const shR = sh_(SHEETS.RAMAL);
     const hR = headersMap_(shR);
@@ -815,7 +805,7 @@ function buildWorkIdMetaMap_() {
         for (const row of data) {
           const id = String(row[rID - 1] || "").trim();
           if (!id) continue;
-          m[id] = {
+          meta[id] = {
             vin: "",
             tipoRamal: String(row[rTIP - 1] || "").trim().toUpperCase(),
             fechaCreacion: rCRE ? isoOrNull_(row[rCRE - 1]) : null,
@@ -825,112 +815,15 @@ function buildWorkIdMetaMap_() {
     }
   } catch {}
 
-  cachePutJson_(key, { t: Date.now(), m }, 5);
-  return m;
+  _allMapsCache_ = { meta, asgByVin, regByCid };
+  cachePutJson_(key, { t: Date.now(), meta, asgByVin, regByCid }, 60);
+  return _allMapsCache_;
 }
 
-
-function buildAsignadoByVinMap_() {
-  const key = "ASG_BY_VIN";
-  const cached = cacheGetJson_(key);
-  if (cached && cached.t && (Date.now() - cached.t) < 5000 && cached.m) return cached.m;
-
-  const sh = sh_(SHEETS.CONV);
-  const h = headersMap_(sh);
-
-  const colVIN = h["CHASIS_ID"];
-  const colTan = h["TANQUE_ASIGNADO"] || h["TANQUE_REGISTRADO"] || h["TANQUE"];
-  const colRed = h["REDUCTOR_ASIGNADO"] || h["REDUCTOR_REGISTRADO"] || h["REDUCTOR"];
-
-  if (!colVIN) return {};
-
-  const lastRow = sh.getLastRow();
-  if (lastRow < 2) return {};
-
-  const lastCol = sh.getLastColumn();
-  const data = sh.getRange(2, 1, lastRow - 1, lastCol).getValues();
-
-  const map = {};
-  for (const row of data) {
-    const vin = String(row[colVIN - 1] || "").trim().toUpperCase();
-    if (!vin) continue;
-
-    map[vin] = {
-      tanque: colTan ? String(row[colTan - 1] || "").trim() : "",
-      reductor: colRed ? String(row[colRed - 1] || "").trim() : "",
-    };
-  }
-
-  cachePutJson_(key, { t: Date.now(), m: map }, 5);
-  return map;
-}
-
-function buildRegistradoByConversionIdMap_() {
-  const key = "REG_BY_CID";
-  const cached = cacheGetJson_(key);
-  if (cached && cached.t && (Date.now() - cached.t) < 5000 && cached.m) return cached.m;
-
-  const map = {};
-
-  // CONV121
-  try {
-    const sh = sh_(SHEETS.CONV);
-    const h = headersMap_(sh);
-
-    const colCID = h["CONVERSION_ID"];
-    const colTan = h["TANQUE_REGISTRADO"];
-    const colRed = h["REDUCTOR_REGISTRADO"];
-
-    if (colCID && (colTan || colRed)) {
-      const lastRow = sh.getLastRow();
-      if (lastRow >= 2) {
-        const data = sh.getRange(2, 1, lastRow - 1, sh.getLastColumn()).getValues();
-        for (const row of data) {
-          const cid = String(row[colCID - 1] || "").trim();
-          if (!cid) continue;
-
-          map[cid] = {
-            tanque_registrado: colTan ? String(row[colTan - 1] || "").trim() : "",
-            reductor_registrado: colRed ? String(row[colRed - 1] || "").trim() : "",
-          };
-        }
-      }
-    }
-  } catch (err) {
-    console.log("[buildRegistradoByConversionIdMap_] error CONV", err);
-  }
-
-  // CALIDAD1 opcional si allí están los registrados reales de calidad
-  try {
-    const sh = sh_(SHEETS.CALIDAD);
-    const h = headersMap_(sh);
-
-    const colCID = h["CALIDAD_ID"];
-    const colTan = h["TANQUE_REGISTRADO"];
-    const colRed = h["REDUCTOR_REGISTRADO"];
-
-    if (colCID && (colTan || colRed)) {
-      const lastRow = sh.getLastRow();
-      if (lastRow >= 2) {
-        const data = sh.getRange(2, 1, lastRow - 1, sh.getLastColumn()).getValues();
-        for (const row of data) {
-          const cid = String(row[colCID - 1] || "").trim();
-          if (!cid) continue;
-
-          map[cid] = {
-            tanque_registrado: colTan ? String(row[colTan - 1] || "").trim() : "",
-            reductor_registrado: colRed ? String(row[colRed - 1] || "").trim() : "",
-          };
-        }
-      }
-    }
-  } catch (err) {
-    console.log("[buildRegistradoByConversionIdMap_] error CALIDAD", err);
-  }
-
-  cachePutJson_(key, { t: Date.now(), m: map }, 5);
-  return map;
-}
+// Backwards-compatible wrappers
+function buildWorkIdMetaMap_() { return buildAllMaps_().meta; }
+function buildAsignadoByVinMap_() { return buildAllMaps_().asgByVin; }
+function buildRegistradoByConversionIdMap_() { return buildAllMaps_().regByCid; }
 
 function api_misActivas_fast_(profile, opts) {
   const excludeFin = !!(opts && opts.excludeFinalizados);
@@ -1042,98 +935,137 @@ const EMPTY_REG_ = Object.freeze({ tanque_registrado: "", reductor_registrado: "
 
 /***********************
  *  11) ESTADO: soporta RAMALERO
+ *  ✅ OPTIMIZADO: fast-path sin lock para asignaciones existentes
  ***********************/
-function api_estado_fast_(payload) {
-  const lock = LockService.getScriptLock();
-  lock.waitLock(8000);
+function findActiveAssignmentRow_(workId, userId, roleTrabajo) {
+  const sh = sh_(SHEETS.ASSIGN);
+  const hA = headersMap_(sh);
+  const colCID = hA["CONVERSION_ID"];
+  const colUID = hA["USER_ID"];
+  const colROL = hA["ROL_TRABAJO"];
+  const colACT = hA["ACTIVO"];
+  if (!colCID || !colUID || !colROL || !colACT) return null;
 
-  try {
-    const email = String(payload.email || "").trim().toLowerCase();
-    const rolTrabajo = normalizeRole_(payload.rolTrabajo);
+  const widN = String(workId || "").trim();
+  const uidN = String(userId || "").trim();
+  const roleN = normalizeRole_(roleTrabajo);
 
-    if (!ALLOWED_ROLES.has(rolTrabajo)) {
-      return { ok: false, error: "ROL inválido." };
+  const lastRow = sh.getLastRow();
+  if (lastRow < 2) return null;
+
+  const data = sh.getRange(2, 1, lastRow - 1, sh.getLastColumn()).getValues();
+  for (let i = 0; i < data.length; i++) {
+    const row = data[i];
+    if (String(row[colCID - 1] || "").trim() !== widN) continue;
+    const rol = normalizeRole_(row[colROL - 1]);
+    const act = String(row[colACT - 1] || "").toUpperCase() === "TRUE";
+    const uid = String(row[colUID - 1] || "").trim();
+    if (rol === roleN && act && uid === uidN) {
+      return { rowIndex: i + 2, rowData: row };
     }
-
-    const profile = payload.userId
-      ? { userId: String(payload.userId).trim(), email }
-      : getUserProfileByEmail_(email);
-
-    const userId = profile.userId;
-
-    let workId = "";
-    let vin = "";
-
-    if (rolTrabajo === "RAMALERO") {
-      workId = String(payload.conversionId || "").trim();
-      if (!workId) return { ok: false, error: "RAMALERO requiere conversionId." };
-
-    } else if (rolTrabajo === "CALIDAD") {
-      vin = normalizeVin_(payload.vin);
-      if (!vin || !vinExistsInList_(vin)) return { ok: false, error: "VIN inválido." };
-      workId = ensureCalidadId_(vin);
-      maybeFinalizeConvOnCalidadOpenByVin_(vin);
-
-    } else {
-      vin = normalizeVin_(payload.vin);
-      if (!vin || !vinExistsInList_(vin)) return { ok: false, error: "VIN inválido." };
-      workId = ensureConversionId_(vin);
-    }
-
-    const asg = ensureActiveAssignment_(workId, userId, rolTrabajo);
-    dedupeAssignments_(workId, userId, rolTrabajo);
-
-    const shA = sh_(SHEETS.ASSIGN);
-    const hA = headersMap_(shA);
-
-    const row = shA.getRange(asg.rowIndex, 1, 1, shA.getLastColumn()).getValues()[0];
-
-    const estado = String(row[hA["ESTADO_ACTUAL"] - 1] || "").toUpperCase();
-    const baseMs = Number(row[hA["TIEMPO_TRAB_MS"] - 1] || 0);
-    const run = row[hA["RUNNING_SINCE"] - 1] instanceof Date ? row[hA["RUNNING_SINCE"] - 1] : null;
-
-    const fa = row[hA["FECHA_ASIGNACION"] - 1];
-    const faIso = toIso_(fa);
-
-    const asgVin = (rolTrabajo === "MOTOR" || rolTrabajo === "TANQUE")
-      ? getAsignadoByVin_(vin)
-      : { tanque: "", reductor: "" };
-
-    const reg = (rolTrabajo === "MOTOR" || rolTrabajo === "TANQUE")
-      ? getRegistradoByConversionId_(workId)
-      : { tanque_registrado: "", reductor_registrado: "" };
-
-    return {
-      ok: true,
-      profile,
-      vin,
-      rolTrabajo,
-      conversionId: workId,
-      userId,
-      estado,
-
-      tanque_asignado: asgVin.tanque || "",
-      reductor_asignado: asgVin.reductor || "",
-
-      tanque_registrado: reg.tanque_registrado || "",
-      reductor_registrado: reg.reductor_registrado || "",
-
-      created_at: faIso,
-      fecha_inicio: faIso,
-      fecha_asignacion: faIso,
-
-      tiempo_ms: baseMs,
-      tiempo_hms: fmtHMS_(baseMs),
-
-      running_since: run ? run.toISOString() : null,
-      last_nota: String(row[hA["LAST_NOTA"] - 1] || ""),
-      last_nota_ts: toIso_(row[hA["LAST_NOTA_TS"] - 1]),
-      updated_at: toIso_(row[hA["UPDATED_AT"] - 1]),
-    };
-
-  } finally {
-    lock.releaseLock();
   }
+  return null;
+}
+
+function api_estado_fast_(payload) {
+  const email = String(payload.email || "").trim().toLowerCase();
+  const rolTrabajo = normalizeRole_(payload.rolTrabajo);
+
+  if (!ALLOWED_ROLES.has(rolTrabajo)) {
+    return { ok: false, error: "ROL inválido." };
+  }
+
+  const profile = payload.userId
+    ? { userId: String(payload.userId).trim(), email }
+    : getUserProfileByEmail_(email);
+
+  const userId = profile.userId;
+
+  let workId = "";
+  let vin = "";
+
+  if (rolTrabajo === "RAMALERO") {
+    workId = String(payload.conversionId || "").trim();
+    if (!workId) return { ok: false, error: "RAMALERO requiere conversionId." };
+
+  } else if (rolTrabajo === "CALIDAD") {
+    vin = normalizeVin_(payload.vin);
+    if (!vin || !vinExistsInList_(vin)) return { ok: false, error: "VIN inválido." };
+    workId = findConversionIdByVin_(vin) ? ensureCalidadId_(vin) : null;
+    if (!workId) workId = ensureCalidadId_(vin);
+
+  } else {
+    vin = normalizeVin_(payload.vin);
+    if (!vin || !vinExistsInList_(vin)) return { ok: false, error: "VIN inválido." };
+    workId = findConversionIdByVin_(vin) || ensureConversionId_(vin);
+  }
+
+  // ✅ Fast path: buscar asignación existente SIN lock
+  const existing = findActiveAssignmentRow_(workId, userId, rolTrabajo);
+  let row;
+  if (existing) {
+    row = existing.rowData;
+  } else {
+    // Slow path: necesitamos crear asignación → lock
+    const lock = LockService.getScriptLock();
+    lock.waitLock(8000);
+    try {
+      if (rolTrabajo === "CALIDAD") {
+        maybeFinalizeConvOnCalidadOpenByVin_(vin);
+      }
+      const asg = ensureActiveAssignment_(workId, userId, rolTrabajo);
+      const shA = sh_(SHEETS.ASSIGN);
+      row = shA.getRange(asg.rowIndex, 1, 1, shA.getLastColumn()).getValues()[0];
+    } finally {
+      lock.releaseLock();
+    }
+  }
+
+  const hA = headersMap_(sh_(SHEETS.ASSIGN));
+  const estado = String(row[hA["ESTADO_ACTUAL"] - 1] || "").toUpperCase();
+  const baseMs = Number(row[hA["TIEMPO_TRAB_MS"] - 1] || 0);
+  const run = row[hA["RUNNING_SINCE"] - 1] instanceof Date ? row[hA["RUNNING_SINCE"] - 1] : null;
+
+  const fa = row[hA["FECHA_ASIGNACION"] - 1];
+  const faIso = toIso_(fa);
+
+  // ✅ Usar maps fusionados en vez de llamadas individuales
+  const maps = buildAllMaps_();
+  const asgVin = (rolTrabajo === "MOTOR" || rolTrabajo === "TANQUE")
+    ? (maps.asgByVin[vin] || { tanque: "", reductor: "" })
+    : { tanque: "", reductor: "" };
+
+  const reg = (rolTrabajo === "MOTOR" || rolTrabajo === "TANQUE")
+    ? (maps.regByCid[workId] || { tanque_registrado: "", reductor_registrado: "" })
+    : { tanque_registrado: "", reductor_registrado: "" };
+
+  return {
+    ok: true,
+    profile,
+    vin,
+    rolTrabajo,
+    conversionId: workId,
+    userId,
+    estado,
+
+    tanque_asignado: asgVin.tanque || "",
+    reductor_asignado: asgVin.reductor || "",
+
+    tanque_registrado: reg.tanque_registrado || "",
+    reductor_registrado: reg.reductor_registrado || "",
+
+    created_at: faIso,
+    fecha_inicio: faIso,
+    fecha_asignacion: faIso,
+
+    tiempo_ms: baseMs,
+    tiempo_hms: fmtHMS_(baseMs),
+
+    running_since: run ? run.toISOString() : null,
+    last_nota: String(row[hA["LAST_NOTA"] - 1] || ""),
+    last_nota_ts: toIso_(row[hA["LAST_NOTA_TS"] - 1]),
+    updated_at: toIso_(row[hA["UPDATED_AT"] - 1]),
+  };
 }
 
 /***********************
@@ -1164,6 +1096,13 @@ function api_sync_(payload) {
     const now = Date.now();
     Logger.log(`[api_sync_] ${label} | +${now - prev} ms | total ${now - t0} ms`);
     prev = now;
+  }
+
+  // Flush server caches if user requested a hard refresh
+  if (payload.forceRefresh) {
+    _allMapsCache_ = null;
+    try { cache_().removeAll(["ALL_MAPS_V2", "WORKID2META", "ASG_BY_VIN", "REG_BY_CID"]); } catch (e) {}
+    lap("forceRefresh: caches cleared");
   }
 
   const email = String(payload.email || "").trim().toLowerCase();
@@ -1237,7 +1176,6 @@ function dedupeAssignments_(workId, userId, roleTrabajo) {
   const rol = normalizeRole_(roleTrabajo);
 
   const data = sh.getRange(2, 1, last - 1, sh.getLastColumn()).getValues();
-
   const hits = [];
   for (let i = 0; i < data.length; i++) {
     const row = data[i];
@@ -1245,7 +1183,6 @@ function dedupeAssignments_(workId, userId, roleTrabajo) {
     if (String(row[colUID - 1] || "").trim() !== uid) continue;
     if (normalizeRole_(row[colROL - 1]) !== rol) continue;
     if (String(row[colACT - 1] || "").toUpperCase() !== "TRUE") continue;
-
     const fecha = colFAS && row[colFAS - 1] instanceof Date ? row[colFAS - 1].getTime() : 0;
     hits.push({ rowIndex: i + 2, fecha });
   }
@@ -1254,7 +1191,8 @@ function dedupeAssignments_(workId, userId, roleTrabajo) {
 
   hits.sort((a, b) => (b.fecha - a.fecha) || (b.rowIndex - a.rowIndex));
 
-  for (const h of hits.slice(1)) {
+  const toDeactivate = hits.slice(1);
+  for (const h of toDeactivate) {
     sh.getRange(h.rowIndex, colACT).setValue(false);
   }
 }

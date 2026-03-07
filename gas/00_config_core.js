@@ -95,19 +95,24 @@ function findRealConversionIdByVin_(vin) {
   return "";
 }
 
+const _sheetCache_ = {};
 function sh_(name) {
+  if (_sheetCache_[name]) return _sheetCache_[name];
   const sh = SpreadsheetApp.getActive().getSheetByName(name);
   if (!sh) throw new Error(`No encuentro la hoja "${name}".`);
+  _sheetCache_[name] = sh;
   return sh;
 }
 
+const _headersCache_ = {};
 function headersMap_(sheet) {
   const name = sheet.getName();
+  if (_headersCache_[name]) return _headersCache_[name];
   const lastCol = sheet.getLastColumn();
   if (lastCol < 1) return {};
   const key = `HDR_${name}_${lastCol}`;
   const cached = cacheGetJson_(key);
-  if (cached && cached.map) return cached.map;
+  if (cached && cached.map) { _headersCache_[name] = cached.map; return cached.map; }
 
   const headers = sheet.getRange(1, 1, 1, lastCol).getDisplayValues()[0];
   const map = {};
@@ -116,6 +121,7 @@ function headersMap_(sheet) {
     if (keyH) map[keyH] = i + 1; // 1-based
   }
   cachePutJson_(key, { map }, 600);
+  _headersCache_[name] = map;
   return map;
 }
 
@@ -196,18 +202,23 @@ function propSet_(k, v) {
 
 /**
  * Revision global monotónica para sync.
+ * Asume que el caller ya tiene ScriptLock.
+ * Si se llama sin lock externo, usar bumpRevSafe_().
  */
 function bumpRev_() {
+  const n = Number(prop_("REV") || "0") + 1;
+  propSet_("REV", String(n));
+  propSet_("REV_TS", String(Date.now()));
+  // Invalidar caches de mapas para que el próximo sync los reconstruya
+  cache_().removeAll(["ALL_MAPS_V2", "WORKID2META", "ASG_BY_VIN", "REG_BY_CID"]);
+  return String(n);
+}
+
+function bumpRevSafe_() {
   const lock = LockService.getScriptLock();
   lock.waitLock(8000);
-  try {
-    const n = Number(prop_("REV") || "0") + 1;
-    propSet_("REV", String(n));
-    propSet_("REV_TS", String(Date.now()));
-    return String(n);
-  } finally {
-    lock.releaseLock();
-  }
+  try { return bumpRev_(); }
+  finally { lock.releaseLock(); }
 }
 
 function getRev_() {

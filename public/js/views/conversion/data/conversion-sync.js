@@ -29,18 +29,18 @@ import {
 } from "../state/conversion-store.js";
 
 import { autoStartFromScan_ } from "./conversion-eventos.js";
-import { fetchNombresParaVin_, ensureNombresCache_ } from "../state/conversion-store.js";
+import { fetchNombresParaVin_, ensureNombresCache_, clearNombresCache_ } from "../state/conversion-store.js";
 
 // --------------------------
 // SYNC
 // --------------------------
-export async function apiSync_(email, since) {
+export async function apiSync_(email, since, { forceRefresh = false } = {}) {
   try {
-    const body = { email, since, excludeFinalizados: true };
+    const body = { email, since, excludeFinalizados: true, forceRefresh };
     const j = await postJSON("/api/sync", body);
     if (j && j.ok) return { mode: "sync", data: j };
   } catch {}
-  const j2 = await getJSON(`/api/mis-activas?email=${encodeURIComponent(email)}&excludeFinalizados=true`);
+  const j2 = await getJSON(`/api/mis-activas?email=${encodeURIComponent(email)}&excludeFinalizados=true&_t=${Date.now()}`);
   return { mode: "legacy", data: j2 };
 }
 
@@ -48,8 +48,8 @@ export async function fetchFinalizados_(email) {
   return getJSON(`/api/mis-finalizadas?email=${encodeURIComponent(email)}`);
 }
 
-export async function syncNow({ forceFull = false, showOut = false } = {}) {
-  if (CORE.state.uiLocked) return;
+export async function syncNow({ forceFull = false, showOut = false, _fromLock = false } = {}) {
+  if (!_fromLock && CORE.state.uiLocked) return;
   if (!isWorkModule_()) return;
 
   let email;
@@ -57,12 +57,13 @@ export async function syncNow({ forceFull = false, showOut = false } = {}) {
   catch { return; }
 
   const c = ctx_();
+  if (forceFull) clearNombresCache_();
   const prevA = c.activeKeys.slice();
   const prevF = c.finalKeys.slice();
   const snapNotas = snapshotNotasActivas_();
 
   const since = forceFull ? null : c.lastSyncSince;
-  const res = await apiSync_(email, since);
+  const res = await apiSync_(email, since, { forceRefresh: forceFull });
   const j = res.data;
 
   if (showOut) setOut(j);
@@ -95,7 +96,7 @@ export async function syncNow({ forceFull = false, showOut = false } = {}) {
     }
   }
 
-  const needsFull = detectIfNeedsFullRerender_(prevA, prevF);
+  const needsFull = forceFull || detectIfNeedsFullRerender_(prevA, prevF);
   if (needsFull) {
     renderActivas_();
     renderFinalizados_();
