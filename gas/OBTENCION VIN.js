@@ -107,3 +107,14 @@ function normalizarVIN_(v) {
   // mayúsculas + sin espacios/guiones
   return String(v).toUpperCase().replace(/[\s-]/g, "").trim();
 }
+
+function setupSupabaseProps() {
+  const props = PropertiesService.getScriptProperties();
+
+  props.setProperties({
+    SUPABASE_URL: 'https://kfysqxpnkzjomektleqk.supabase.co',
+    SUPABASE_KEY: 'sb_publishable_157nqJOjAdpjuFjXGPrAnQ_gZ7-IQGg'
+  });
+
+  Logger.log('Propiedades guardadas');
+}

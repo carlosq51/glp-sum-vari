@@ -57,6 +57,18 @@ function findRealConversionIdByVin_(vin) {
   const cached = cacheGetJson_(cacheKey);
   if (cached && typeof cached.value === "string") return cached.value;
 
+  if (supabaseEnabled_()) {
+    const rows = supabaseSelect_("work_orders", {
+      select: "id",
+      tipo_ot: "eq.CONVERSION",
+      vin: "eq." + v,
+      limit: 1,
+    });
+    const value = rows[0] ? String(rows[0].id || "").trim() : "";
+    if (value) cachePutJson_(cacheKey, { value: value }, 300);
+    return value;
+  }
+
   const sh = sh_(SHEETS.CONV);
   const hdr = headersMap_(sh);
 
@@ -172,6 +184,46 @@ function toIso_(d) {
 }
 
 /***********************
+ *  DB-READY HELPERS
+ *  Canonical column names = what the DB will use.
+ *  Aliases = legacy Sheet header variants still supported.
+ ***********************/
+const COLUMN_ALIASES = {
+  "VIN":               ["VIN", "CHASIS", "CHASIS_ID"],
+  "REDUCTOR_ASIGNADO": ["REDUCTOR_ASIGNADO", "REDU_AUTO", "REDUCTOR", "REDU"],
+  "TANQUE_ASIGNADO":   ["TANQUE_ASIGNADO", "TANQ_AUTO", "TANQUE", "TANQ"],
+};
+
+/** Resolve canonical name → 1-based col index, trying aliases. Returns 0 if missing. */
+function resolveCol_(headersMap, canonicalName) {
+  const aliases = COLUMN_ALIASES[canonicalName];
+  if (aliases) {
+    for (const a of aliases) { if (headersMap[a]) return headersMap[a]; }
+    return 0;
+  }
+  return headersMap[canonicalName] || 0;
+}
+
+/** Derives TIPO_OT (work order type) from ROL_TRABAJO for polymorphic FK. */
+function tipoOtFromRole_(rol) {
+  const r = normalizeRole_(rol);
+  if (r === "MOTOR" || r === "TANQUE" || r === "MOVILIZADOR") return "CONVERSION";
+  if (r === "CALIDAD") return "CALIDAD";
+  if (r === "RAMALERO") return "RAMALERO";
+  return "CONVERSION";
+}
+
+/** Build Drive URLs from a file ID. In DB only store fileId; URLs are computed. */
+function driveUrls_(fileId) {
+  if (!fileId) return { url: "", thumbUrl: "", imgUrl: "" };
+  return {
+    url:      "https://drive.google.com/file/d/" + fileId + "/view",
+    thumbUrl: "https://drive.google.com/thumbnail?id=" + fileId + "&sz=w400",
+    imgUrl:   "https://drive.google.com/uc?export=view&id=" + fileId,
+  };
+}
+
+/***********************
  *  CACHE
  ***********************/
 function cache_() {
@@ -200,15 +252,33 @@ function propSet_(k, v) {
   PropertiesService.getScriptProperties().setProperty(k, String(v));
 }
 
+function appConfigGet_(key) {
+  if (!supabaseEnabled_()) return prop_(key);
+  const rows = supabaseSelect_("app_config", {
+    select: "key,value",
+    key: "eq." + key,
+    limit: 1,
+  });
+  return rows[0] ? String(rows[0].value || "") : "";
+}
+
+function appConfigSet_(key, value) {
+  const val = String(value == null ? "" : value);
+  if (supabaseEnabled_()) {
+    supabaseUpsertRows_("app_config", [{ key: key, value: val }], "key");
+  }
+  propSet_(key, val);
+}
+
 /**
  * Revision global monotónica para sync.
  * Asume que el caller ya tiene ScriptLock.
  * Si se llama sin lock externo, usar bumpRevSafe_().
  */
 function bumpRev_() {
-  const n = Number(prop_("REV") || "0") + 1;
-  propSet_("REV", String(n));
-  propSet_("REV_TS", String(Date.now()));
+  const n = Number(appConfigGet_("REV") || prop_("REV") || "0") + 1;
+  appConfigSet_("REV", String(n));
+  appConfigSet_("REV_TS", String(Date.now()));
   // Invalidar caches de mapas para que el próximo sync los reconstruya
   cache_().removeAll(["ALL_MAPS_V2", "WORKID2META", "ASG_BY_VIN", "REG_BY_CID"]);
   return String(n);
@@ -222,7 +292,7 @@ function bumpRevSafe_() {
 }
 
 function getRev_() {
-  const rev = prop_("REV") || "0";
-  const ts = Number(prop_("REV_TS") || "0");
+  const rev = appConfigGet_("REV") || prop_("REV") || "0";
+  const ts = Number(appConfigGet_("REV_TS") || prop_("REV_TS") || "0");
   return { rev, ts };
 }
