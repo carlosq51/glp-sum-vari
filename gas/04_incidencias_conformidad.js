@@ -19,20 +19,6 @@ function equipoConformidad_(p) {
                         return { ok: false, error: "rolTrabajo inválido" };
     if (!equipoCodigo)  return { ok: false, error: "Falta equipoCodigo" };
 
-    if (supabaseEnabled_()) {
-      const patch = {
-        conf_ck1: ck1,
-        conf_ck2: ck2,
-        conf_ck3: ck3,
-        conf_ck4: ck4,
-        conf_ts: new Date().toISOString(),
-        conf_by: email,
-      };
-      if (rolTrabajo === "TANQUE") patch.tanque_registrado = equipoCodigo;
-      if (rolTrabajo === "MOTOR") patch.reductor_registrado = equipoCodigo;
-      supabasePatch_("work_orders", { id: "eq." + conversionId }, patch);
-    }
-
     const sh  = sh_(SHEETS.CONV);
     const hdr = headersMap_(sh);
 
@@ -134,55 +120,6 @@ function incidencias_list_(payload) {
   }
 
   const realConversionId = findRealConversionIdByVin_(vin);
-
-  if (supabaseEnabled_()) {
-    const rowsByVin = supabaseSelect_("incidencias", {
-      select: "fecha_hora,mes,work_order_id,vin,tecnico,tipo,nota,registrado_por,foto_file_id,foto_folder_id,foto_batch_id",
-      vin: "eq." + vin,
-      order: "fecha_hora.desc",
-      limit: limit,
-    });
-    const rowsByConv = realConversionId ? supabaseSelect_("incidencias", {
-      select: "fecha_hora,mes,work_order_id,vin,tecnico,tipo,nota,registrado_por,foto_file_id,foto_folder_id,foto_batch_id",
-      work_order_id: "eq." + realConversionId,
-      order: "fecha_hora.desc",
-      limit: limit,
-    }) : [];
-    const seen = {};
-    const items = rowsByVin.concat(rowsByConv).filter(function(row) {
-      const key = [
-        row.fecha_hora || "",
-        row.work_order_id || "",
-        row.vin || "",
-        row.tecnico || "",
-        row.nota || "",
-      ].join("|");
-      if (seen[key]) return false;
-      seen[key] = true;
-      return true;
-    }).map(function(row) {
-      const urls = driveUrls_(row.foto_file_id);
-      return {
-        fecha: row.fecha_hora || "",
-        mes: row.mes || "",
-        conversionId: row.work_order_id || "",
-        vin: row.vin || "",
-        tecnico: row.tecnico || "",
-        tipo: row.tipo || "",
-        nota: row.nota || "",
-        registradoPor: row.registrado_por || "",
-        fotoFileId: row.foto_file_id || "",
-        fotoUrl: urls.url || "",
-        fotoThumbUrl: urls.thumbUrl || "",
-        fotoImgUrl: urls.imgUrl || "",
-        fotoFolderId: row.foto_folder_id || "",
-        fotoBatchId: row.foto_batch_id || "",
-      };
-    }).sort(function(a, b) {
-      return new Date(b.fecha || 0).getTime() - new Date(a.fecha || 0).getTime();
-    }).slice(0, limit);
-    return { ok: true, items: items, resolved: { vin: vin, realConversionId: realConversionId } };
-  }
 
   const sh  = ensureIncSheet_();
   const hdr = headersMapByRow_(sh, 1);
@@ -333,24 +270,6 @@ function incidencia_add_(payload) {
   if (!["LEVE", "MODERADA", "CRITICA"].includes(tipo)) throw new Error("Tipo inválido.");
 
   const rol = getRoleByEmail_(email);
-  if (supabaseEnabled_()) {
-    const now = new Date();
-    const tz = SpreadsheetApp.getActive().getSpreadsheetTimeZone();
-    const mes = Utilities.formatDate(now, tz, "yyyy-MM");
-    supabaseInsertOne_("incidencias", {
-      fecha_hora: now.toISOString(),
-      mes: mes,
-      work_order_id: conversionId || null,
-      vin: vin || null,
-      tecnico: tecnico,
-      tipo: tipo,
-      registrado_por: email,
-      nota: nota,
-      foto_file_id: fotoFileId,
-      foto_folder_id: fotoFolderId,
-      foto_batch_id: fotoBatchId,
-    });
-  }
 
 
   const sh = ensureIncSheet_();

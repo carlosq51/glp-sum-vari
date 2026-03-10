@@ -5,15 +5,6 @@ function vinExistsInList_(vin) {
   const vinN = normalizeVin_(vin);
   if (!vinN) return false;
 
-  if (supabaseEnabled_()) {
-    const rows = supabaseSelect_("vins", {
-      select: "vin",
-      vin: "eq." + vinN,
-      limit: 1,
-    });
-    return rows.length > 0;
-  }
-
   const sh = sh_(SHEETS.VIN_LIST);
   const lastRow = sh.getLastRow();
   if (lastRow < 2) return false;
@@ -35,21 +26,6 @@ function vinExistsInList_(vin) {
 function getAsignadoByVin_(vin) {
   const vinN = normalizeVin_(vin);
   if (!vinN) return { tanque: "", reductor: "" };
-
-  if (supabaseEnabled_()) {
-    const rows = supabaseSelect_("vins", {
-      select: "tanque_asignado,reductor_asignado",
-      vin: "eq." + vinN,
-      limit: 1,
-    });
-    if (rows[0]) {
-      return {
-        tanque: String(rows[0].tanque_asignado || "").trim(),
-        reductor: String(rows[0].reductor_asignado || "").trim(),
-      };
-    }
-    return { tanque: "", reductor: "" };
-  }
 
   const sh = sh_(SHEETS.VIN_LIST);
   const map = headersMap_(sh);
@@ -83,21 +59,6 @@ function getAsignadoByVin_(vin) {
 function getRegistradoByConversionId_(conversionId) {
   const cid = String(conversionId || "").trim();
   if (!cid) return { tanque_registrado: "", reductor_registrado: "" };
-
-  if (supabaseEnabled_()) {
-    const rows = supabaseSelect_("work_orders", {
-      select: "tanque_registrado,reductor_registrado",
-      id: "eq." + cid,
-      limit: 1,
-    });
-    if (rows[0]) {
-      return {
-        tanque_registrado: String(rows[0].tanque_registrado || "").trim(),
-        reductor_registrado: String(rows[0].reductor_registrado || "").trim(),
-      };
-    }
-    return { tanque_registrado: "", reductor_registrado: "" };
-  }
 
   const sh = sh_(SHEETS.CONV);
   const h = headersMap_(sh);
@@ -145,18 +106,6 @@ function parseModulos_(raw) {
   return [...new Set(parts)];
 }
 
-function getUserModulesById_(userId) {
-  const uid = String(userId || "").trim();
-  if (!uid || !supabaseEnabled_()) return null;
-  const rows = supabaseSelect_("usuario_modulos", {
-    select: "modulo",
-    user_id: "eq." + uid,
-  });
-  return rows.map(function(r) {
-    return String(r.modulo || "").trim().toUpperCase();
-  }).filter(Boolean);
-}
-
 function getUserInfoById_(userId) {
   const uid = String(userId || "").trim();
   if (!uid) return { email: "", name: "" };
@@ -164,22 +113,6 @@ function getUserInfoById_(userId) {
   const ckey = `UID2INFO_${uid}`;
   const cached = cacheGetJson_(ckey);
   if (cached && (cached.email !== undefined)) return cached;
-
-  if (supabaseEnabled_()) {
-    const rows = supabaseSelect_("usuarios", {
-      select: "id,email,nombre,activo",
-      id: "eq." + uid,
-      limit: 1,
-    });
-    if (rows[0] && rows[0].activo !== false) {
-      const info = {
-        email: String(rows[0].email || "").trim().toLowerCase(),
-        name: String(rows[0].nombre || "").trim(),
-      };
-      cachePutJson_(ckey, info, 300);
-      return info;
-    }
-  }
 
   try {
     const shU = sh_(SHEETS.USERS);
@@ -219,28 +152,6 @@ function getUserProfileByEmail_(email) {
   const ckey = `USER_${emailN}`;
   const cached = cacheGetJson_(ckey);
   if (cached && cached.userId) return cached;
-
-  if (supabaseEnabled_()) {
-    const rows = supabaseSelect_("usuarios", {
-      select: "id,email,nombre,rol,especialidad,activo",
-      email: "eq." + emailN,
-      limit: 1,
-    });
-    const row = rows[0];
-    if (!row) throw new Error("Email no registrado en USUARIOS.");
-    if (row.activo === false) throw new Error("Usuario inactivo.");
-
-    const profile = {
-      userId: String(row.id || "").trim(),
-      email: emailN,
-      nombre: String(row.nombre || "").trim(),
-      rol: String(row.rol || "TECNICO").trim().toUpperCase(),
-      especialidad: String(row.especialidad || "AMBOS").trim().toUpperCase(),
-      modulos: getUserModulesById_(row.id),
-    };
-    cachePutJson_(ckey, profile, 300);
-    return profile;
-  }
 
   const shU = sh_(SHEETS.USERS);
   const hU = headersMap_(shU);
@@ -296,29 +207,6 @@ function getUserListCached_() {
     return cached.items;
   }
 
-  if (supabaseEnabled_()) {
-    const rows = supabaseSelect_("usuarios", {
-      select: "id,nombre,email,rol,activo",
-      activo: "eq.true",
-      order: "nombre.asc",
-    });
-    const items = rows.map(function(r) {
-      const name = String(r.nombre || "").trim();
-      const email = String(r.email || "").trim().toLowerCase();
-      return {
-        userId: String(r.id || "").trim(),
-        name: name,
-        email: email,
-        rol: String(r.rol || "").trim().toUpperCase(),
-        hay: (name + " " + email).toLowerCase(),
-      };
-    }).filter(function(r) {
-      return r.userId && (r.name || r.email);
-    });
-    cachePutJson_(key, { t: Date.now(), items: items }, 180);
-    return items;
-  }
-
   const shU = sh_(SHEETS.USERS);
   const hU = headersMap_(shU);
 
@@ -364,24 +252,6 @@ function buildUserMap_() {
   const cached = cacheGetJson_(key);
   if (cached && cached.t && (Date.now() - cached.t) < 180000 && cached.m) return cached.m;
 
-  if (supabaseEnabled_()) {
-    const rows = supabaseSelect_("usuarios", {
-      select: "id,nombre,email,activo",
-      activo: "eq.true",
-    });
-    const m = {};
-    rows.forEach(function(r) {
-      const id = String(r.id || "").trim();
-      if (!id) return;
-      m[id] = {
-        name: String(r.nombre || "").trim(),
-        email: String(r.email || "").trim().toLowerCase(),
-      };
-    });
-    cachePutJson_(key, { t: Date.now(), m: m }, 180);
-    return m;
-  }
-
   const shU = sh_(SHEETS.USERS);
   const hU = headersMap_(shU);
 
@@ -421,18 +291,6 @@ function getVinSetCached_() {
   const cached = cacheGetJson_(key);
   if (cached && cached.t && (Date.now() - cached.t) < 180000 && Array.isArray(cached.vins)) {
     return cached.vins;
-  }
-
-  if (supabaseEnabled_()) {
-    const rows = supabaseSelect_("vins", {
-      select: "vin",
-      order: "vin.asc",
-    });
-    const arr = rows.map(function(r) {
-      return normalizeVin_(r.vin);
-    }).filter(Boolean);
-    cachePutJson_(key, { t: Date.now(), vins: arr }, 80);
-    return arr;
   }
 
   const sh = sh_(SHEETS.VIN_LIST);

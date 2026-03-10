@@ -9,20 +9,6 @@ function ensureConversionId_(vin) {
   const cached = cache_().get(ckey);
   if (cached) return cached;
 
-  if (supabaseEnabled_()) {
-    const rows = supabaseSelect_("work_orders", {
-      select: "id",
-      tipo_ot: "eq.CONVERSION",
-      vin: "eq." + vinN,
-      limit: 1,
-    });
-    if (rows[0] && rows[0].id) {
-      const existingId = String(rows[0].id).trim();
-      cache_().put(ckey, existingId, 600);
-      return existingId;
-    }
-  }
-
   const sh = sh_(SHEETS.CONV);
   const map = headersMap_(sh);
 
@@ -52,17 +38,6 @@ function ensureConversionId_(vin) {
   const rowToAppend = Array(sh.getLastColumn()).fill("");
   const now = now_();
 
-  if (supabaseEnabled_()) {
-    supabaseInsertOne_("work_orders", {
-      id: newId,
-      tipo_ot: "CONVERSION",
-      vin: vinN,
-      fecha_creacion: now.toISOString(),
-      estado_general: "PENDIENTE",
-      observaciones: "",
-    });
-  }
-
   rowToAppend[colCID - 1] = newId;
   rowToAppend[colVIN - 1] = vinN;
   if (colCRE) rowToAppend[colCRE - 1] = now;
@@ -89,18 +64,6 @@ function findConversionIdByVin_(vin) {
   const cached = cache_().get(ckey);
   if (cached !== null) return cached || null;
 
-  if (supabaseEnabled_()) {
-    const rows = supabaseSelect_("work_orders", {
-      select: "id",
-      tipo_ot: "eq.CONVERSION",
-      vin: "eq." + vinN,
-      limit: 1,
-    });
-    const cidDb = rows[0] ? String(rows[0].id || "").trim() : "";
-    cache_().put(ckey, cidDb, 30);
-    return cidDb || null;
-  }
-
   const sh = sh_(SHEETS.CONV);
   const map = headersMap_(sh);
   const colCID = map["CONVERSION_ID"];
@@ -124,13 +87,6 @@ function findConversionIdByVin_(vin) {
 
 // ✅ 4) updateCalidadRow_ y updateRamalRow_ — setValues en lugar de setValue por celda
 function updateCalidadRow_(calidadId, patch) {
-  if (supabaseEnabled_()) {
-    const dbPatch = {};
-    if (patch?.estado_general != null) dbPatch.estado_general = String(patch.estado_general).trim().toUpperCase();
-    if (patch?.observaciones != null) dbPatch.observaciones = String(patch.observaciones);
-    if (Object.keys(dbPatch).length) supabasePatch_("work_orders", { id: "eq." + String(calidadId || "").trim() }, dbPatch);
-  }
-
   const sh = sh_(SHEETS.CALIDAD);
   const map = headersMap_(sh);
   const colQID = map["CALIDAD_ID"];
@@ -167,13 +123,6 @@ function updateCalidadRow_(calidadId, patch) {
 }
 
 function updateRamalRow_(ramalId, patch) {
-  if (supabaseEnabled_()) {
-    const dbPatch = {};
-    if (patch?.estado_general != null) dbPatch.estado_general = String(patch.estado_general).trim().toUpperCase();
-    if (patch?.observaciones != null) dbPatch.observaciones = String(patch.observaciones);
-    if (Object.keys(dbPatch).length) supabasePatch_("work_orders", { id: "eq." + String(ramalId || "").trim() }, dbPatch);
-  }
-
   const sh = sh_(SHEETS.RAMAL);
   const map = headersMap_(sh);
   const colRID = map["RAMAL_ID"];
@@ -221,20 +170,6 @@ function ensureCalidadId_(vin) {
   const cached = cache_().get(ckey);
   if (cached) return cached;
 
-  if (supabaseEnabled_()) {
-    const rows = supabaseSelect_("work_orders", {
-      select: "id",
-      tipo_ot: "eq.CALIDAD",
-      vin: "eq." + vinN,
-      limit: 1,
-    });
-    if (rows[0] && rows[0].id) {
-      const existingId = String(rows[0].id).trim();
-      cache_().put(ckey, existingId, 600);
-      return existingId;
-    }
-  }
-
   const sh = sh_(SHEETS.CALIDAD);
   const map = headersMap_(sh);
 
@@ -264,22 +199,10 @@ function ensureCalidadId_(vin) {
 
   const newId = uuid_();
   const rowToAppend = Array(sh.getLastColumn()).fill("");
-  const now = now_();
-
-  if (supabaseEnabled_()) {
-    supabaseInsertOne_("work_orders", {
-      id: newId,
-      tipo_ot: "CALIDAD",
-      vin: vinN,
-      fecha_creacion: now.toISOString(),
-      estado_general: "PENDIENTE",
-      observaciones: "",
-    });
-  }
 
   rowToAppend[colQID - 1] = newId;
   rowToAppend[colVIN - 1] = vinN;
-  if (colCRE) rowToAppend[colCRE - 1] = now;
+  if (colCRE) rowToAppend[colCRE - 1] = now_();
   if (colEST) rowToAppend[colEST - 1] = "PENDIENTE";
   if (colOBS) rowToAppend[colOBS - 1] = "";
 
@@ -317,24 +240,11 @@ function createRamalId_(userId, tipoRamal) {
 
   const ramalId = uuid_();
   const row = Array(sh.getLastColumn()).fill("");
-  const now = now_();
-
-  if (supabaseEnabled_()) {
-    supabaseInsertOne_("work_orders", {
-      id: ramalId,
-      tipo_ot: "RAMALERO",
-      user_id: String(userId || "").trim(),
-      tipo_ramal: tipo,
-      fecha_creacion: now.toISOString(),
-      estado_general: "PENDIENTE",
-      observaciones: "",
-    });
-  }
 
   row[colRID - 1] = ramalId;
   row[colUID - 1] = String(userId || "").trim();
   row[colTIP - 1] = tipo;
-  if (colCRE) row[colCRE - 1] = now;
+  if (colCRE) row[colCRE - 1] = now_();
   if (colEST) row[colEST - 1] = "PENDIENTE";
   if (colOBS) row[colOBS - 1] = "";
 
@@ -395,170 +305,10 @@ function maybeFinalizeConvOnCalidadOpenByVin_(vin) {
   return setConvEstadoGeneral_(cid, "FINALIZADO");
 }
 
-function findAssignmentMirrorRowById_(assignmentId) {
-  const aid = String(assignmentId || "").trim();
-  if (!aid) return null;
-
-  const sh = sh_(SHEETS.ASSIGN);
-  const map = headersMap_(sh);
-  const colAID = map["ASIGNACION_ID"];
-  if (!colAID) return null;
-
-  const last = sh.getLastRow();
-  if (last < 2) return null;
-
-  const data = sh.getRange(2, 1, last - 1, sh.getLastColumn()).getValues();
-  for (let i = 0; i < data.length; i++) {
-    if (String(data[i][colAID - 1] || "").trim() === aid) {
-      return { rowIndex: i + 2, rowData: data[i], map: map, sheet: sh };
-    }
-  }
-  return null;
-}
-
-function buildAssignmentMirrorRow_(sh, map, record) {
-  const row = Array(sh.getLastColumn()).fill("");
-  const fechaAsignacion = record.fecha_asignacion ? new Date(record.fecha_asignacion) : now_();
-  const updatedAt = record.updated_at ? new Date(record.updated_at) : fechaAsignacion;
-  const runningSince = record.running_since ? new Date(record.running_since) : "";
-  const lastNotaTs = record.last_nota_ts ? new Date(record.last_nota_ts) : "";
-
-  row[map["ASIGNACION_ID"] - 1] = String(record.id || "").trim();
-  row[map["CONVERSION_ID"] - 1] = String(record.work_order_id || "").trim();
-  row[map["USER_ID"] - 1] = String(record.user_id || "").trim();
-  row[map["ROL_TRABAJO"] - 1] = String(record.rol_trabajo || "").trim().toUpperCase();
-  row[map["ACTIVO"] - 1] = record.activo !== false;
-  row[map["FECHA_ASIGNACION"] - 1] = fechaAsignacion;
-  row[map["TIEMPO_TRAB_MS"] - 1] = Number(record.tiempo_trab_ms || 0);
-  if (map["TIEMPO_TRAB"]) row[map["TIEMPO_TRAB"] - 1] = fmtHMS_(Number(record.tiempo_trab_ms || 0));
-  row[map["ESTADO_ACTUAL"] - 1] = String(record.estado_actual || "SIN_INICIAR").trim().toUpperCase();
-  row[map["UPDATED_AT"] - 1] = updatedAt;
-  row[map["RUNNING_SINCE"] - 1] = runningSince;
-  row[map["LAST_NOTA"] - 1] = String(record.last_nota || "");
-  row[map["LAST_NOTA_TS"] - 1] = lastNotaTs;
-  if (map["TIPO_OT"]) row[map["TIPO_OT"] - 1] = String(record.tipo_ot || tipoOtFromRole_(record.rol_trabajo)).trim().toUpperCase();
-  return row;
-}
-
-function syncAssignmentMirrorRecord_(record) {
-  const sh = sh_(SHEETS.ASSIGN);
-  const map = headersMap_(sh);
-  const required = ["ASIGNACION_ID", "CONVERSION_ID", "USER_ID", "ROL_TRABAJO", "ACTIVO", "FECHA_ASIGNACION", "TIEMPO_TRAB_MS", "ESTADO_ACTUAL", "UPDATED_AT", "RUNNING_SINCE", "LAST_NOTA", "LAST_NOTA_TS"];
-  const missing = required.filter(function(k) { return !map[k]; });
-  if (missing.length) throw new Error("ASIGNACIONES: faltan headers: " + missing.join(", "));
-
-  const row = buildAssignmentMirrorRow_(sh, map, record);
-  const existing = findAssignmentMirrorRowById_(record.id);
-  if (existing) {
-    sh.getRange(existing.rowIndex, 1, 1, row.length).setValues([row]);
-    return existing.rowIndex;
-  }
-
-  const nextRow = sh.getLastRow() + 1;
-  sh.getRange(nextRow, 1, 1, row.length).setValues([row]);
-  return nextRow;
-}
-
-function applyActionToAssignmentRecord_(record, accion, nota) {
-  const now = now_();
-  const next = normalizeAction_(accion);
-  let ms = Number(record.tiempo_trab_ms || 0);
-  let estado = String(record.estado_actual || "SIN_INICIAR").toUpperCase();
-  let runningSince = record.running_since ? new Date(record.running_since) : null;
-
-  validateNextActionByEstado_(estado, next);
-
-  if (next === "NOTA") {
-    return {
-      tiempo_trab_ms: ms,
-      estado_actual: estado,
-      running_since: runningSince ? runningSince.toISOString() : null,
-      updated_at: now.toISOString(),
-      last_nota: String(nota || ""),
-      last_nota_ts: now.toISOString(),
-    };
-  }
-
-  function closeRunning_(endDate) {
-    if (runningSince instanceof Date && !isNaN(runningSince.getTime())) {
-      ms += Math.max(0, endDate.getTime() - runningSince.getTime());
-      runningSince = null;
-    }
-  }
-
-  if (next === "INICIO" || next === "REANUDAR") {
-    estado = "TRABAJANDO";
-    runningSince = now;
-  } else if (next === "PAUSA") {
-    closeRunning_(now);
-    estado = "PAUSADO";
-  } else if (next === "FIN") {
-    closeRunning_(now);
-    estado = "FINALIZADO";
-  }
-
-  return {
-    tiempo_trab_ms: ms,
-    estado_actual: estado,
-    running_since: runningSince ? runningSince.toISOString() : null,
-    updated_at: now.toISOString(),
-  };
-}
-
 /***********************
  *  4) ASIGNACIONES: ensure active assignment + rowIndex
  ***********************/
 function ensureActiveAssignment_(workId, userId, roleTrabajo) {
-  if (supabaseEnabled_()) {
-    const roleN = normalizeRole_(roleTrabajo);
-    const widN = String(workId || "").trim();
-    const uidN = String(userId || "").trim();
-    const existing = supabaseSelect_("asignaciones", {
-      select: "id,work_order_id,user_id,tipo_ot,rol_trabajo,activo,fecha_asignacion,tiempo_trab_ms,estado_actual,updated_at,running_since,last_nota,last_nota_ts",
-      work_order_id: "eq." + widN,
-      rol_trabajo: "eq." + roleN,
-      activo: "eq.true",
-      limit: 1,
-    })[0];
-
-    if (existing && String(existing.user_id || "").trim() === uidN) {
-      const rowIndex = syncAssignmentMirrorRecord_(existing);
-      return { created: false, rowIndex: rowIndex, record: existing };
-    }
-
-    if (existing && String(existing.user_id || "").trim() !== uidN) {
-      if (isExclusiveRole_(roleN)) {
-        const ownerName = getUserNameById_(existing.user_id) || existing.user_id;
-        throw new Error(`OT ya estÃ¡ asignada a otro usuario (${ownerName}). No puedes tomarla en ${roleN}.`);
-      }
-      const deactivated = supabasePatch_("asignaciones", { id: "eq." + String(existing.id || "").trim() }, {
-        activo: false,
-        updated_at: now_().toISOString(),
-      })[0] || existing;
-      deactivated.activo = false;
-      syncAssignmentMirrorRecord_(deactivated);
-    }
-
-    const nowIso = now_().toISOString();
-    const record = supabaseInsertOne_("asignaciones", {
-      id: uuid_(),
-      work_order_id: widN,
-      user_id: uidN,
-      tipo_ot: tipoOtFromRole_(roleN),
-      rol_trabajo: roleN,
-      activo: true,
-      fecha_asignacion: nowIso,
-      tiempo_trab_ms: 0,
-      estado_actual: "SIN_INICIAR",
-      updated_at: nowIso,
-      running_since: null,
-      last_nota: "",
-      last_nota_ts: null,
-    });
-    const rowIndex = syncAssignmentMirrorRecord_(record);
-    return { created: true, asignacionId: record.id, rowIndex: rowIndex, record: record };
-  }
-
   const sh = sh_(SHEETS.ASSIGN);
   const map = headersMap_(sh);
 
@@ -640,35 +390,6 @@ function ensureActiveAssignment_(workId, userId, roleTrabajo) {
  *  5) EVENTOS: auditoría
  ***********************/
 function insertEvent_(userId, workId, roleTrabajo, accion, nota) {
-  if (supabaseEnabled_()) {
-    const nowIso = now_().toISOString();
-    const event = supabaseInsertOne_("eventos", {
-      id: uuid_(),
-      timestamp: nowIso,
-      user_id: String(userId || "").trim(),
-      work_order_id: String(workId || "").trim(),
-      tipo_ot: tipoOtFromRole_(roleTrabajo),
-      rol_trabajo: normalizeRole_(roleTrabajo),
-      accion: normalizeAction_(accion),
-      nota: String(nota || ""),
-    });
-
-    const shMirror = sh_(SHEETS.EVENTS);
-    const mapMirror = headersMap_(shMirror);
-    const rowToAppendMirror = Array(shMirror.getLastColumn()).fill("");
-    rowToAppendMirror[mapMirror["EVENTO_ID"] - 1] = event.id;
-    rowToAppendMirror[mapMirror["TIMESTAMP"] - 1] = new Date(event.timestamp);
-    rowToAppendMirror[mapMirror["USER_ID"] - 1] = event.user_id;
-    rowToAppendMirror[mapMirror["CONVERSION_ID"] - 1] = event.work_order_id;
-    rowToAppendMirror[mapMirror["ROL_TRABAJO"] - 1] = event.rol_trabajo;
-    rowToAppendMirror[mapMirror["ACCION"] - 1] = event.accion;
-    if (mapMirror["NOTA"]) rowToAppendMirror[mapMirror["NOTA"] - 1] = event.nota || "";
-    if (mapMirror["TIPO_OT"]) rowToAppendMirror[mapMirror["TIPO_OT"] - 1] = event.tipo_ot;
-    const nextRowMirror = shMirror.getLastRow() + 1;
-    shMirror.getRange(nextRowMirror, 1, 1, rowToAppendMirror.length).setValues([rowToAppendMirror]);
-    return event.id;
-  }
-
   const sh = sh_(SHEETS.EVENTS);
   const map = headersMap_(sh);
 
@@ -794,29 +515,6 @@ function updateConversionStatusFromAssignments_(conversionId) {
   const cidN = String(conversionId || "").trim();
   if (!cidN) return;
 
-  if (supabaseEnabled_()) {
-    const rows = supabaseSelect_("asignaciones", {
-      select: "rol_trabajo,estado_actual",
-      work_order_id: "eq." + cidN,
-      activo: "eq.true",
-    });
-    let motor = null;
-    let tanque = null;
-    rows.forEach(function(row) {
-      const rol = String(row.rol_trabajo || "").trim().toUpperCase();
-      const est = String(row.estado_actual || "").trim().toUpperCase();
-      if (rol === "MOTOR") motor = est;
-      if (rol === "TANQUE") tanque = est;
-    });
-
-    const any = motor || tanque;
-    const estadoGeneral = !any ? "PENDIENTE"
-      : (motor === "FINALIZADO" && tanque === "FINALIZADO") ? "FINALIZADO"
-      : "EN PROCESO";
-
-    supabasePatch_("work_orders", { id: "eq." + cidN }, { estado_general: estadoGeneral });
-  }
-
   const shC = sh_(SHEETS.CONV);
   const hC = headersMap_(shC);
   const colCID_C = hC["CONVERSION_ID"];
@@ -930,76 +628,6 @@ function registrarEvento_fast_(params) {
 
     const asg = ensureActiveAssignment_(workId, userId, rolTrabajo);
 
-    let estadoOut = "";
-    let tiempoOut = 0;
-    let runningSinceOut = null;
-    let lastNotaOut = "";
-    let lastNotaTsOut = null;
-    let updatedAtOut = null;
-    let faIso = null;
-
-    if (supabaseEnabled_()) {
-      const currentRecord = asg.record || findActiveAssignmentRow_(workId, userId, rolTrabajo)?.rowData;
-      if (!currentRecord) throw new Error("No se pudo cargar la asignación activa.");
-
-      const patch = applyActionToAssignmentRecord_(currentRecord, accion, nota);
-      const updated = supabasePatch_("asignaciones", { id: "eq." + String(currentRecord.id || "").trim() }, patch)[0];
-      const merged = Object.assign({}, currentRecord, updated || {}, patch);
-      syncAssignmentMirrorRecord_(merged);
-
-      const eventoId = insertEvent_(userId, workId, rolTrabajo, accion, nota);
-
-      if (rolTrabajo === "MOTOR" || rolTrabajo === "TANQUE") {
-        updateConversionStatusFromAssignments_(workId);
-      }
-
-      if (rolTrabajo === "CALIDAD") {
-        const obs = (accion === "NOTA") ? String(nota || "") : null;
-        updateCalidadRow_(workId, { estado_general: merged.estado_actual, observaciones: obs });
-      }
-
-      if (rolTrabajo === "RAMALERO") {
-        const obs = (accion === "NOTA") ? String(nota || "") : null;
-        updateRamalRow_(workId, { estado_general: merged.estado_actual, observaciones: obs });
-      }
-
-      const rev = bumpRev_();
-      faIso = merged.fecha_asignacion || null;
-      estadoOut = String(merged.estado_actual || "");
-      tiempoOut = Number(merged.tiempo_trab_ms || 0);
-      runningSinceOut = merged.running_since || null;
-      lastNotaOut = String(merged.last_nota || "");
-      lastNotaTsOut = merged.last_nota_ts || null;
-      updatedAtOut = merged.updated_at || null;
-
-      const maps = buildAllMaps_();
-      const asgVin = (rolTrabajo === "MOTOR" || rolTrabajo === "TANQUE")
-        ? (maps.asgByVin[vin] || { tanque: "", reductor: "" })
-        : { tanque: "", reductor: "" };
-
-      return {
-        ok: true,
-        rev,
-        eventoId,
-        conversionId: workId,
-        created_at: faIso,
-        fecha_inicio: faIso,
-        fecha_asignacion: faIso,
-        tanque_asignado: asgVin.tanque || "",
-        reductor_asignado: asgVin.reductor || "",
-        userId,
-        vin,
-        rolTrabajo,
-        accion,
-        estado: estadoOut,
-        tiempo_ms: tiempoOut,
-        running_since: runningSinceOut,
-        last_nota: lastNotaOut,
-        last_nota_ts: lastNotaTsOut,
-        updated_at: updatedAtOut,
-      };
-    }
-
     const shA = sh_(SHEETS.ASSIGN);
     const hA = headersMap_(shA);
 
@@ -1030,7 +658,7 @@ function registrarEvento_fast_(params) {
     const rev = bumpRev_();
 
     const fa = row2[hA["FECHA_ASIGNACION"] - 1];
-    faIso = toIso_(fa);
+    const faIso = toIso_(fa);
 
     // ✅ Usar maps fusionados en vez de getAsignadoByVin_ individual
     const maps = buildAllMaps_();
@@ -1085,41 +713,6 @@ function buildAllMaps_() {
   const meta = {};
   const asgByVin = {};
   const regByCid = {};
-
-  if (supabaseEnabled_()) {
-    const vinRows = supabaseSelect_("vins", {
-      select: "vin,tanque_asignado,reductor_asignado",
-    });
-    vinRows.forEach(function(row) {
-      const vin = String(row.vin || "").trim().toUpperCase();
-      if (!vin) return;
-      asgByVin[vin] = {
-        tanque: String(row.tanque_asignado || "").trim(),
-        reductor: String(row.reductor_asignado || "").trim(),
-      };
-    });
-
-    const workRows = supabaseSelect_("work_orders", {
-      select: "id,tipo_ot,vin,tipo_ramal,fecha_creacion,tanque_registrado,reductor_registrado",
-    });
-    workRows.forEach(function(row) {
-      const id = String(row.id || "").trim();
-      if (!id) return;
-      meta[id] = {
-        vin: String(row.vin || "").trim().toUpperCase(),
-        tipoRamal: String(row.tipo_ramal || "").trim().toUpperCase(),
-        fechaCreacion: row.fecha_creacion || null,
-      };
-      regByCid[id] = {
-        tanque_registrado: String(row.tanque_registrado || "").trim(),
-        reductor_registrado: String(row.reductor_registrado || "").trim(),
-      };
-    });
-
-    _allMapsCache_ = { meta: meta, asgByVin: asgByVin, regByCid: regByCid };
-    cachePutJson_(key, { t: Date.now(), meta: meta, asgByVin: asgByVin, regByCid: regByCid }, 60);
-    return _allMapsCache_;
-  }
 
   function isoOrNull_(x) {
     return (x instanceof Date && !isNaN(x.getTime())) ? x.toISOString() : null;
@@ -1244,61 +837,6 @@ function api_misActivas_fast_(profile, opts) {
   const userId = String(profile.userId || "").trim();
   if (!userId) return { ok: false, error: "Profile sin userId." };
 
-  if (supabaseEnabled_()) {
-    const meta = buildWorkIdMetaMap_();
-    const asgByVin = buildAsignadoByVinMap_();
-    const regByCid = buildRegistradoByConversionIdMap_();
-    const rows = supabaseSelect_("asignaciones", {
-      select: "id,work_order_id,user_id,rol_trabajo,activo,tiempo_trab_ms,estado_actual,updated_at,running_since,last_nota,last_nota_ts,fecha_asignacion",
-      user_id: "eq." + userId,
-      activo: "eq.true",
-      order: "updated_at.desc",
-    });
-
-    const items = [];
-    const seen = new Set();
-    rows.forEach(function(row) {
-      const workId = String(row.work_order_id || "").trim();
-      const rol = String(row.rol_trabajo || "").trim().toUpperCase();
-      const estado = String(row.estado_actual || "").trim().toUpperCase();
-      if (!workId || !rol) return;
-      if (excludeFin && estado === "FINALIZADO") return;
-      if (onlyFin && estado !== "FINALIZADO") return;
-
-      const dedupeKey = workId + "|" + rol;
-      if (seen.has(dedupeKey)) return;
-      seen.add(dedupeKey);
-
-      const metaIt = meta[workId] || {};
-      const vin = String(metaIt.vin || "").trim().toUpperCase();
-      const asgVin = vin ? (asgByVin[vin] || EMPTY_ASG_) : EMPTY_ASG_;
-      const reg = (rol === "MOTOR" || rol === "TANQUE") ? (regByCid[workId] || EMPTY_REG_) : EMPTY_REG_;
-
-      items.push({
-        conversionId: workId,
-        vin: vin,
-        tipoRamal: metaIt.tipoRamal || "",
-        created_at: row.fecha_asignacion || null,
-        fecha_inicio: row.fecha_asignacion || null,
-        fecha_creacion: metaIt.fechaCreacion || null,
-        rolTrabajo: rol,
-        estado: estado,
-        tanque_asignado: asgVin.tanque || "",
-        reductor_asignado: asgVin.reductor || "",
-        tanque_registrado: reg.tanque_registrado || "",
-        reductor_registrado: reg.reductor_registrado || "",
-        tiempo_ms: Number(row.tiempo_trab_ms || 0),
-        running_since: row.running_since || null,
-        last_nota: String(row.last_nota || ""),
-        last_nota_ts: row.last_nota_ts || null,
-        updated_at: row.updated_at || null,
-        fecha_asignacion: row.fecha_asignacion || null,
-      });
-    });
-
-    return { ok: true, profile: profile, items: items };
-  }
-
   const shA = sh_(SHEETS.ASSIGN);
   const hA = headersMap_(shA);
 
@@ -1406,20 +944,6 @@ const EMPTY_REG_ = Object.freeze({ tanque_registrado: "", reductor_registrado: "
  *  ✅ OPTIMIZADO: fast-path sin lock para asignaciones existentes
  ***********************/
 function findActiveAssignmentRow_(workId, userId, roleTrabajo) {
-  if (supabaseEnabled_()) {
-    const rows = supabaseSelect_("asignaciones", {
-      select: "id,work_order_id,user_id,rol_trabajo,activo,tiempo_trab_ms,estado_actual,updated_at,running_since,last_nota,last_nota_ts,fecha_asignacion",
-      work_order_id: "eq." + String(workId || "").trim(),
-      user_id: "eq." + String(userId || "").trim(),
-      rol_trabajo: "eq." + normalizeRole_(roleTrabajo),
-      activo: "eq.true",
-      limit: 1,
-    });
-    if (!rows[0]) return null;
-    const rowIndex = syncAssignmentMirrorRecord_(rows[0]);
-    return { rowIndex: rowIndex, rowData: rows[0] };
-  }
-
   const sh = sh_(SHEETS.ASSIGN);
   const hA = headersMap_(sh);
   const colCID = hA["CONVERSION_ID"];
@@ -1496,28 +1020,20 @@ function api_estado_fast_(payload) {
         maybeFinalizeConvOnCalidadOpenByVin_(vin);
       }
       const asg = ensureActiveAssignment_(workId, userId, rolTrabajo);
-      row = asg.record || null;
-      if (!row) {
-        const shA = sh_(SHEETS.ASSIGN);
-        row = shA.getRange(asg.rowIndex, 1, 1, shA.getLastColumn()).getValues()[0];
-      }
+      const shA = sh_(SHEETS.ASSIGN);
+      row = shA.getRange(asg.rowIndex, 1, 1, shA.getLastColumn()).getValues()[0];
     } finally {
       lock.releaseLock();
     }
   }
 
-  const isSupabaseRow = supabaseEnabled_() && row && row.work_order_id !== undefined;
-  const hA = isSupabaseRow ? null : headersMap_(sh_(SHEETS.ASSIGN));
-  const estado = isSupabaseRow
-    ? String(row.estado_actual || "").toUpperCase()
-    : String(row[hA["ESTADO_ACTUAL"] - 1] || "").toUpperCase();
-  const baseMs = isSupabaseRow
-    ? Number(row.tiempo_trab_ms || 0)
-    : Number(row[hA["TIEMPO_TRAB_MS"] - 1] || 0);
-  const run = isSupabaseRow
-    ? (row.running_since ? new Date(row.running_since) : null)
-    : (row[hA["RUNNING_SINCE"] - 1] instanceof Date ? row[hA["RUNNING_SINCE"] - 1] : null);
-  const faIso = isSupabaseRow ? (row.fecha_asignacion || null) : toIso_(row[hA["FECHA_ASIGNACION"] - 1]);
+  const hA = headersMap_(sh_(SHEETS.ASSIGN));
+  const estado = String(row[hA["ESTADO_ACTUAL"] - 1] || "").toUpperCase();
+  const baseMs = Number(row[hA["TIEMPO_TRAB_MS"] - 1] || 0);
+  const run = row[hA["RUNNING_SINCE"] - 1] instanceof Date ? row[hA["RUNNING_SINCE"] - 1] : null;
+
+  const fa = row[hA["FECHA_ASIGNACION"] - 1];
+  const faIso = toIso_(fa);
 
   // ✅ Usar maps fusionados en vez de llamadas individuales
   const maps = buildAllMaps_();
@@ -1552,9 +1068,9 @@ function api_estado_fast_(payload) {
     tiempo_hms: fmtHMS_(baseMs),
 
     running_since: run ? run.toISOString() : null,
-    last_nota: isSupabaseRow ? String(row.last_nota || "") : String(row[hA["LAST_NOTA"] - 1] || ""),
-    last_nota_ts: isSupabaseRow ? (row.last_nota_ts || null) : toIso_(row[hA["LAST_NOTA_TS"] - 1]),
-    updated_at: isSupabaseRow ? (row.updated_at || null) : toIso_(row[hA["UPDATED_AT"] - 1]),
+    last_nota: String(row[hA["LAST_NOTA"] - 1] || ""),
+    last_nota_ts: toIso_(row[hA["LAST_NOTA_TS"] - 1]),
+    updated_at: toIso_(row[hA["UPDATED_AT"] - 1]),
   };
 }
 

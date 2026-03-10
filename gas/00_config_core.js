@@ -57,18 +57,6 @@ function findRealConversionIdByVin_(vin) {
   const cached = cacheGetJson_(cacheKey);
   if (cached && typeof cached.value === "string") return cached.value;
 
-  if (supabaseEnabled_()) {
-    const rows = supabaseSelect_("work_orders", {
-      select: "id",
-      tipo_ot: "eq.CONVERSION",
-      vin: "eq." + v,
-      limit: 1,
-    });
-    const value = rows[0] ? String(rows[0].id || "").trim() : "";
-    if (value) cachePutJson_(cacheKey, { value: value }, 300);
-    return value;
-  }
-
   const sh = sh_(SHEETS.CONV);
   const hdr = headersMap_(sh);
 
@@ -252,33 +240,15 @@ function propSet_(k, v) {
   PropertiesService.getScriptProperties().setProperty(k, String(v));
 }
 
-function appConfigGet_(key) {
-  if (!supabaseEnabled_()) return prop_(key);
-  const rows = supabaseSelect_("app_config", {
-    select: "key,value",
-    key: "eq." + key,
-    limit: 1,
-  });
-  return rows[0] ? String(rows[0].value || "") : "";
-}
-
-function appConfigSet_(key, value) {
-  const val = String(value == null ? "" : value);
-  if (supabaseEnabled_()) {
-    supabaseUpsertRows_("app_config", [{ key: key, value: val }], "key");
-  }
-  propSet_(key, val);
-}
-
 /**
  * Revision global monotónica para sync.
  * Asume que el caller ya tiene ScriptLock.
  * Si se llama sin lock externo, usar bumpRevSafe_().
  */
 function bumpRev_() {
-  const n = Number(appConfigGet_("REV") || prop_("REV") || "0") + 1;
-  appConfigSet_("REV", String(n));
-  appConfigSet_("REV_TS", String(Date.now()));
+  const n = Number(prop_("REV") || "0") + 1;
+  propSet_("REV", String(n));
+  propSet_("REV_TS", String(Date.now()));
   // Invalidar caches de mapas para que el próximo sync los reconstruya
   cache_().removeAll(["ALL_MAPS_V2", "WORKID2META", "ASG_BY_VIN", "REG_BY_CID"]);
   return String(n);
@@ -292,7 +262,7 @@ function bumpRevSafe_() {
 }
 
 function getRev_() {
-  const rev = appConfigGet_("REV") || prop_("REV") || "0";
-  const ts = Number(appConfigGet_("REV_TS") || prop_("REV_TS") || "0");
+  const rev = prop_("REV") || "0";
+  const ts = Number(prop_("REV_TS") || "0");
   return { rev, ts };
 }
