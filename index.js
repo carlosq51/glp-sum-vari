@@ -431,3 +431,20 @@ app.listen(PORT, "0.0.0.0", () => {
   console.log(`Servidor corriendo en puerto ${PORT}`);
   console.log(`Ábrelo desde tu celular con: http://192.168.18.121:${PORT}`);
 });
+
+app.get("/api/ping-aps", async (req, res) => {
+  try {
+    const j = await callAppsScript("ping", {});
+    return res.json({
+      ok: true,
+      via: "node_to_apps_script",
+      aps: j
+    });
+  } catch (e) {
+    return res.status(500).json({
+      ok: false,
+      via: "node_to_apps_script",
+      error: String(e.message || e)
+    });
+  }
+});
