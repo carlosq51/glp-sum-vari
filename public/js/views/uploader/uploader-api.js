@@ -53,30 +53,48 @@ export async function callAPS(payload, apsUrl = APS_URL) {
 export async function fileToB64Compressed(file) {
   if (!file) return "";
 
-  // Si no es imagen, sube tal cual (dataURL -> b64)
+  // Si no es imagen, sube tal cual
   if (!/^image\//i.test(file.type || "")) {
     return await new Promise((resolve, reject) => {
       const r = new FileReader();
       r.onload = () => resolve(String(r.result).split(",")[1] || "");
-      r.onerror = reject;
+      r.onerror = () => reject(new Error("No se pudo leer el archivo."));
       r.readAsDataURL(file);
     });
   }
 
   const imgURL = URL.createObjectURL(file);
+
   try {
     const img = await new Promise((resolve, reject) => {
       const im = new Image();
-      im.onload = () => resolve(im);
-      im.onerror = reject;
+
+      const timer = setTimeout(() => {
+        reject(new Error("La imagen tardó demasiado en cargar para compresión."));
+      }, 15000);
+
+      im.onload = () => {
+        clearTimeout(timer);
+        resolve(im);
+      };
+
+      im.onerror = () => {
+        clearTimeout(timer);
+        reject(new Error("No se pudo abrir la imagen para compresión."));
+      };
+
       im.src = imgURL;
     });
 
-    const maxW = 1280;
-    const quality = 0.75;
+    const maxW = 960;
+    const quality = 0.65;
 
-    let w = img.naturalWidth || img.width;
-    let h = img.naturalHeight || img.height;
+    let w = img.naturalWidth || img.width || 0;
+    let h = img.naturalHeight || img.height || 0;
+
+    if (!w || !h) {
+      throw new Error("La imagen no tiene dimensiones válidas.");
+    }
 
     if (w > maxW) {
       const scale = maxW / w;
@@ -87,11 +105,24 @@ export async function fileToB64Compressed(file) {
     const canvas = document.createElement("canvas");
     canvas.width = w;
     canvas.height = h;
+
     const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      throw new Error("No se pudo crear el contexto de compresión.");
+    }
+
     ctx.drawImage(img, 0, 0, w, h);
 
     const dataUrl = canvas.toDataURL("image/jpeg", quality);
-    return dataUrl.split(",")[1] || "";
+    const b64 = String(dataUrl).split(",")[1] || "";
+
+    if (!b64) {
+      throw new Error("La compresión devolvió una imagen vacía.");
+    }
+
+    return b64;
+  } catch (err) {
+    throw new Error(`Error comprimiendo imagen: ${err?.message || err}`);
   } finally {
     URL.revokeObjectURL(imgURL);
   }
