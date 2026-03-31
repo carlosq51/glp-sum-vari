@@ -719,17 +719,15 @@ function buildAllMaps_() {
   }
 
   // ── CONV121: 1 lectura → meta + asgByVin + regByCid ──
+  // ── CONV121: 1 lectura → meta + regByCid ──
   try {
     const shC = sh_(SHEETS.CONV);
     const hC = headersMap_(shC);
     const cCID = hC["CONVERSION_ID"];
     const cVIN = hC["CHASIS_ID"];
     const cCRE = hC["FECHA_CREACION"];
-    // DB-READY: canonical names with alias fallback
-    const cTanA = resolveCol_(hC, "TANQUE_ASIGNADO") || hC["TANQUE_REGISTRADO"];
-    const cRedA = resolveCol_(hC, "REDUCTOR_ASIGNADO") || hC["REDUCTOR_REGISTRADO"];
-    const cTanR = hC["TANQUE_REGISTRADO"];
-    const cRedR = hC["REDUCTOR_REGISTRADO"];
+    const cTanR = hC["TANQUE_REGISTRADO"] || 0;
+    const cRedR = hC["REDUCTOR_REGISTRADO"] || 0;
 
     if (cCID && cVIN) {
       const last = shC.getLastRow();
@@ -738,6 +736,7 @@ function buildAllMaps_() {
         for (const row of data) {
           const id = String(row[cCID - 1] || "").trim();
           if (!id) continue;
+
           const vin = String(row[cVIN - 1] || "").trim().toUpperCase();
 
           meta[id] = {
@@ -746,19 +745,37 @@ function buildAllMaps_() {
             fechaCreacion: cCRE ? isoOrNull_(row[cCRE - 1]) : null,
           };
 
-          if (vin) {
-            asgByVin[vin] = {
-              tanque: cTanA ? String(row[cTanA - 1] || "").trim() : "",
-              reductor: cRedA ? String(row[cRedA - 1] || "").trim() : "",
-            };
-          }
+          regByCid[id] = {
+            tanque_registrado: cTanR ? String(row[cTanR - 1] || "").trim() : "",
+            reductor_registrado: cRedR ? String(row[cRedR - 1] || "").trim() : "",
+          };
+        }
+      }
+    }
+  } catch {}
 
-          if (cTanR || cRedR) {
-            regByCid[id] = {
-              tanque_registrado: cTanR ? String(row[cTanR - 1] || "").trim() : "",
-              reductor_registrado: cRedR ? String(row[cRedR - 1] || "").trim() : "",
-            };
-          }
+  // ── LISTA DE VIN GLP: 1 lectura → asgByVin ──
+  try {
+    const shV = sh_(SHEETS.VIN_LIST);
+    const hV = headersMap_(shV);
+
+    const vVIN  = hV["VIN"];
+    const vTanA = hV["TANQUE_ASIGNADO"] || hV["TANQ_AUTO"] || 0;
+    const vRedA = hV["REDUCTOR_ASIGNADO"] || hV["REDU_AUTO"] || 0;
+
+    if (vVIN) {
+      const last = shV.getLastRow();
+      if (last >= 2) {
+        const data = shV.getRange(2, 1, last - 1, shV.getLastColumn()).getValues();
+
+        for (const row of data) {
+          const vin = String(row[vVIN - 1] || "").trim().toUpperCase();
+          if (!vin) continue;
+
+          asgByVin[vin] = {
+            tanque: vTanA ? String(row[vTanA - 1] || "").trim() : "",
+            reductor: vRedA ? String(row[vRedA - 1] || "").trim() : "",
+          };
         }
       }
     }
@@ -822,7 +839,7 @@ function buildAllMaps_() {
   } catch {}
 
   _allMapsCache_ = { meta, asgByVin, regByCid };
-  cachePutJson_(key, { t: Date.now(), meta, asgByVin, regByCid }, 60);
+  //cachePutJson_(key, { t: Date.now(), meta, asgByVin, regByCid }, 60);
   return _allMapsCache_;
 }
 
@@ -933,6 +950,7 @@ function api_misActivas_fast_(profile, opts) {
     });
   }
 
+  if (items.length > MAX_ORDERS_RESPONSE) items.length = MAX_ORDERS_RESPONSE;
   return { ok: true, profile, items };
 }
 

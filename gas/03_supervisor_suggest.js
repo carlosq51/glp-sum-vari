@@ -184,6 +184,7 @@ function api_supervisorReport_(payload) {
 
   // ✅ Sort usando el valor pre-calculado, sin Date.parse en cada comparación
   items.sort((a, b) => b._sortMs - a._sortMs);
+  if (items.length > MAX_ORDERS_RESPONSE) items.length = MAX_ORDERS_RESPONSE;
 
   // Limpiar campo interno antes de devolver
   for (const it of items) delete it._sortMs;

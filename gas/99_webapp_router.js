@@ -6,7 +6,15 @@ function doGet(e) {
     const p = e?.parameter || {};
     const action = String(p.action || "").trim().toLowerCase();
 
-    if (action === "ping") return json_({ ok: true, msg: "pong", time: now_().toISOString() });
+    if (action === "ping") {
+      return json_({
+        ok: true,
+        msg: "pong_apps_script_v2026_03_26_1",
+        source: "apps_script",
+        version: "AS-2026-03-26-1",
+        time: now_().toISOString()
+      });
+    }
 
     requireKey_(p);
     return handleAction_(action, p);
@@ -21,7 +29,15 @@ function doPost(e) {
     const body = e?.postData?.contents ? JSON.parse(e.postData.contents) : {};
     const action = String(body.action || "").trim().toLowerCase();
 
-    if (action === "ping") return json_({ ok: true, msg: "pong", time: now_().toISOString() });
+    if (action === "ping") {
+      return json_({
+        ok: true,
+        msg: "pong_apps_script_v2026_03_26_1",
+        source: "apps_script",
+        version: "AS-2026-03-26-1",
+        time: now_().toISOString()
+      });
+    }
 
     requireKey_(body);
     return handleAction_(action, body);
@@ -248,4 +264,115 @@ function testDebugTrackCalidad() {
   }
 
   Logger.log(`Filas que pasan filtro track=CALIDAD: ${pasaFiltro}`);
+}
+
+function sizeOf_(x) {
+  try { return JSON.stringify(x).length; }
+  catch (e) { return -1; }
+}
+
+function TEST_misActivas_debug() {
+  try {
+    const payload = { email: "grobert925joel@gmail.com", excludeFinalizados: true };
+    const email = String(payload.email || "").trim().toLowerCase();
+    const profile = getUserProfileByEmail_(email);
+
+    Logger.log("profile size=" + sizeOf_(profile));
+
+    const r = api_misActivas_fast_(profile, { excludeFinalizados: true });
+
+    Logger.log("result size=" + sizeOf_(r));
+    Logger.log("items count=" + ((r.items || []).length));
+
+    if (r.items && r.items.length) {
+      Logger.log("first item size=" + sizeOf_(r.items[0]));
+    }
+
+  } catch (err) {
+    Logger.log("ERROR=" + err.message);
+    Logger.log("STACK=" + err.stack);
+  }
+}
+
+function diagnosticSizes() {
+  _allMapsCache_ = null; // forzar reconstrucción
+  const maps = buildAllMaps_();
+  
+  Logger.log("meta     size: " + JSON.stringify(maps.meta).length     + " chars");
+  Logger.log("asgByVin size: " + JSON.stringify(maps.asgByVin).length + " chars");
+  Logger.log("regByCid size: " + JSON.stringify(maps.regByCid).length + " chars");
+  Logger.log("TOTAL    size: " + JSON.stringify(maps).length          + " chars");
+  Logger.log("---");
+  
+  // También medir mis_activas para el usuario más activo
+  const shA = sh_(SHEETS.ASSIGN);
+  const hA  = headersMap_(shA);
+  const last = shA.getLastRow();
+  const data = shA.getRange(2, 1, last-1, shA.getLastColumn()).getValues();
+  
+  const colACT = hA["ACTIVO"] - 1;
+  const colUID = hA["USER_ID"] - 1;
+  const porUsuario = {};
+  
+  for (const r of data) {
+    if (String(r[colACT] || "").toUpperCase() !== "TRUE") continue;
+    const uid = String(r[colUID] || "").trim();
+    porUsuario[uid] = (porUsuario[uid] || 0) + 1;
+  }
+  
+  Logger.log("ACTIVO=TRUE por usuario: " + JSON.stringify(porUsuario));
+  Logger.log("Total ACTIVO=TRUE: " + Object.values(porUsuario).reduce((a,b)=>a+b, 0));
+}
+
+function diagnosticHuerfanos() {
+  const shA = sh_(SHEETS.ASSIGN);
+  const hA  = headersMap_(shA);
+  const last = shA.getLastRow();
+  const data = shA.getRange(2, 1, last-1, shA.getLastColumn()).getValues();
+
+  const colACT = hA["ACTIVO"] - 1;
+  const colUID = hA["USER_ID"] - 1;
+  const colROL = hA["ROL_TRABAJO"] - 1;
+  const colEST = hA["ESTADO_ACTUAL"] - 1;
+  const colCID = hA["CONVERSION_ID"] - 1;
+  const colFAS = hA["FECHA_ASIGNACION"] - 1;
+
+  // Por cada (workId, userId, rol) activo, ¿cuántas filas hay?
+  const grupos = {};
+  for (let i = 0; i < data.length; i++) {
+    const r = data[i];
+    if (String(r[colACT] || "").toUpperCase() !== "TRUE") continue;
+    const key = [
+      String(r[colCID] || "").trim(),
+      String(r[colUID] || "").trim(),
+      String(r[colROL] || "").trim().toUpperCase()
+    ].join("|");
+    if (!grupos[key]) grupos[key] = [];
+    grupos[key].push({ rowIndex: i + 2, estado: String(r[colEST] || ""), fecha: r[colFAS] });
+  }
+
+  let duplicados = 0;
+  let filasDuplicadas = 0;
+  for (const [key, rows] of Object.entries(grupos)) {
+    if (rows.length > 1) {
+      duplicados++;
+      filasDuplicadas += rows.length - 1; // cuántas sobran
+      if (duplicados <= 5) Logger.log(`DUPLICADO: ${key} → ${rows.length} filas activas`);
+    }
+  }
+
+  Logger.log(`Grupos con duplicados: ${duplicados}`);
+  Logger.log(`Filas sobrantes (a desactivar): ${filasDuplicadas}`);
+  Logger.log(`Grupos únicos activos reales: ${Object.keys(grupos).length - duplicados}`);
+}
+
+function diagnosticCacheSizes() {
+  _allMapsCache_ = null;
+  const meta    = buildWorkIdMetaMap_();
+  const asgByVin = buildAsignadoByVinMap_();
+  const regByCid = buildRegistradoByConversionIdMap_();
+  
+  Logger.log("meta     : " + JSON.stringify(meta).length     + " chars");
+  Logger.log("asgByVin : " + JSON.stringify(asgByVin).length + " chars");
+  Logger.log("regByCid : " + JSON.stringify(regByCid).length + " chars");
 }

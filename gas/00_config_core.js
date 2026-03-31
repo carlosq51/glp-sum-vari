@@ -12,6 +12,8 @@ const SHEETS = {
   INC: "INCIDENCIAS",
 };
 
+const MAX_ORDERS_RESPONSE = 21;
+
 const ALLOWED_ROLES = new Set(["MOTOR", "TANQUE", "CALIDAD", "RAMALERO", "MOVILIZADOR"]);
 const ALLOWED_ACTIONS = new Set(["INICIO", "PAUSA", "REANUDAR", "FIN", "NOTA"]);
 
@@ -229,7 +231,17 @@ function cacheGetJson_(key) {
 }
 
 function cachePutJson_(key, obj, ttlSec) {
-  cache_().put(key, JSON.stringify(obj), ttlSec || 120);
+  const json = JSON.stringify(obj);
+  if (json.length > 90000) {
+    Logger.log("[cachePutJson_] SKIP — muy grande: " + json.length + " chars | key=" + key);
+    return;
+  }
+  cache_().put(key, json, ttlSec || 120);
+}
+
+function CLEAR_CACHE() {
+  CacheService.getScriptCache().removeAll(["ALL_MAPS_V2"]);
+  Logger.log("Cache limpiado!");
 }
 
 function prop_(k) {
@@ -265,4 +277,37 @@ function getRev_() {
   const rev = prop_("REV") || "0";
   const ts = Number(prop_("REV_TS") || "0");
   return { rev, ts };
+}
+
+function limitLastOrders_(items, maxItems) {
+  const arr = Array.isArray(items) ? items : [];
+  const limit = Math.max(1, Number(maxItems) || MAX_ORDERS_RESPONSE);
+  if (arr.length <= limit) return arr;
+  return arr.slice(-limit); // se queda con las últimas
+}
+
+function sortOrdersNewestFirst_(items) {
+  const arr = Array.isArray(items) ? items.slice() : [];
+
+  arr.sort((a, b) => {
+    const ta = Date.parse(
+      a?.updated_at ||
+      a?.ts ||
+      a?.fecha_inicio ||
+      a?.created_at ||
+      0
+    ) || 0;
+
+    const tb = Date.parse(
+      b?.updated_at ||
+      b?.ts ||
+      b?.fecha_inicio ||
+      b?.created_at ||
+      0
+    ) || 0;
+
+    return tb - ta; // más nuevo primero
+  });
+
+  return arr;
 }
