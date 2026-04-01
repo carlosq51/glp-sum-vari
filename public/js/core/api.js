@@ -70,12 +70,32 @@ export async function getJSON(url) {
 }
 
 export async function postJSON(url, body) {
-  const r = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  return await r.json();
+  let response;
+  let jsonData;
+  
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    throw new Error(`Fallo de conexión: ${err?.message || err}`);
+  }
+
+  // ✅ Chequea HTTP status
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(`HTTP ${response.status}: ${text.slice(0, 200) || response.statusText}`);
+  }
+
+  try {
+    jsonData = await response.json();
+  } catch (err) {
+    throw new Error(`Respuesta no-JSON desde servidor: ${err?.message || err}`);
+  }
+
+  return jsonData;
 }
 
 export async function getJSON_user(url, msg = "Cargando...") {

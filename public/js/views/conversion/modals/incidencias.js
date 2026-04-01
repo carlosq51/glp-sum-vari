@@ -117,8 +117,9 @@ async function imageFileToUploadPayload_(file) {
   const dataUrl = await fileToDataUrl_(file);
   const img = await loadImage_(dataUrl);
 
-  const maxW = 1600;
-  const maxH = 1600;
+  // ✅ Dimensiones más pequeñas + compresión agresiva para evitar payload gigante
+  const maxW = 960;   // ← Reducido de 1600
+  const maxH = 960;   // ← Reducido de 1600
 
   // ✅ iOS: usa naturalWidth/height como fallback
   let width = img.naturalWidth || img.width || 0;
@@ -148,10 +149,10 @@ async function imageFileToUploadPayload_(file) {
     throw new Error(`Error dibujando en canvas: ${err?.message || err}`);
   }
 
-  // ✅ iOS: try-catch para toDataURL
+  // ✅ iOS: try-catch para toDataURL, con calidad más baja para payload más pequeño
   let outDataUrl;
   try {
-    outDataUrl = canvas.toDataURL("image/jpeg", 0.82);
+    outDataUrl = canvas.toDataURL("image/jpeg", 0.65);  // ← Reducido de 0.82
   } catch (err) {
     throw new Error(`Canvas.toDataURL falló: ${err?.message || err}`);
   }
@@ -161,9 +162,16 @@ async function imageFileToUploadPayload_(file) {
     throw new Error("No se pudo procesar la imagen (base64 vacío?)");
   }
 
+  const b64 = m[2];
+  // ✅ Valida que el base64 no sea demasiado grande (>3.5MB = problema de payload)
+  const b64SizeMB = (b64.length * 0.75) / (1024 * 1024);
+  if (b64SizeMB > 3.5) {
+    throw new Error(`Imagen muy grande (${b64SizeMB.toFixed(1)}MB). Intenta otra.`);
+  }
+
   return {
     mimeType: "image/jpeg",
-    b64: m[2],
+    b64: b64,
     previewUrl: outDataUrl,
     name: (file.name || "incidencia.jpg").replace(/\.[^.]+$/, "") + ".jpg",
   };
@@ -588,8 +596,9 @@ async function saveIncidencia_() {
     setOut(j);
   } catch (e) {
     console.error("[INC save] ERROR:", e);
-    incSetMsg(`❌ ${String(e?.message || e || "Error de red")}`);
-    setOut({ ok: false, error: String(e?.message || e || "Error de red") });
+    const errMsg = String(e?.message || e || "Error desconocido");
+    incSetMsg(`❌ Error: ${errMsg}`);
+    setOut({ ok: false, error: errMsg });
     return;
   }
 
