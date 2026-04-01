@@ -89,13 +89,30 @@ function fileToDataUrl_(file) {
 function loadImage_(src) {
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = reject;
+    
+    // ✅ Timeout para evitar cuelgue en iOS
+    const timeout = setTimeout(() => {
+      reject(new Error("Timeout cargando imagen (iPhone?)"));
+    }, 8000);
+
+    img.onload = () => {
+      clearTimeout(timeout);
+      resolve(img);
+    };
+    
+    img.onerror = () => {
+      clearTimeout(timeout);
+      reject(new Error("No se pudo cargar la imagen"));
+    };
+    
+    // ✅ Evita CORS en data URLs
+    img.crossOrigin = "anonymous";
     img.src = src;
   });
 }
 
 // ✅ comprime y redimensiona para que no reviente el body (base64 crece bastante)
+// iOS fix: mejor manejo de canvas y contexto 2D
 async function imageFileToUploadPayload_(file) {
   const dataUrl = await fileToDataUrl_(file);
   const img = await loadImage_(dataUrl);
@@ -103,7 +120,14 @@ async function imageFileToUploadPayload_(file) {
   const maxW = 1600;
   const maxH = 1600;
 
-  let { width, height } = img;
+  // ✅ iOS: usa naturalWidth/height como fallback
+  let width = img.naturalWidth || img.width || 0;
+  let height = img.naturalHeight || img.height || 0;
+
+  if (!width || !height) {
+    throw new Error("No se pudo obtener dimensiones de la imagen (iPhone?)");
+  }
+
   const ratio = Math.min(maxW / width, maxH / height, 1);
   const w = Math.round(width * ratio);
   const h = Math.round(height * ratio);
@@ -112,13 +136,30 @@ async function imageFileToUploadPayload_(file) {
   canvas.width = w;
   canvas.height = h;
 
+  // ✅ iOS: chequea que ctx no sea null
   const ctx = canvas.getContext("2d");
-  ctx.drawImage(img, 0, 0, w, h);
+  if (!ctx) {
+    throw new Error("Canvas 2D no disponible en este navegador (iPhone?)");
+  }
 
-  // Siempre jpg para estandarizar
-  const outDataUrl = canvas.toDataURL("image/jpeg", 0.82);
+  try {
+    ctx.drawImage(img, 0, 0, w, h);
+  } catch (err) {
+    throw new Error(`Error dibujando en canvas: ${err?.message || err}`);
+  }
+
+  // ✅ iOS: try-catch para toDataURL
+  let outDataUrl;
+  try {
+    outDataUrl = canvas.toDataURL("image/jpeg", 0.82);
+  } catch (err) {
+    throw new Error(`Canvas.toDataURL falló: ${err?.message || err}`);
+  }
+
   const m = outDataUrl.match(/^data:(.*?);base64,(.*)$/);
-  if (!m) throw new Error("No se pudo procesar la imagen.");
+  if (!m || !m[2]) {
+    throw new Error("No se pudo procesar la imagen (base64 vacío?)");
+  }
 
   return {
     mimeType: "image/jpeg",
@@ -142,6 +183,15 @@ async function onIncFotoChange_(e) {
       return;
     }
 
+    // ✅ Validación de tamaño en iPhone
+    const maxSizeMB = 50;
+    const maxSizeBytes = maxSizeMB * 1024 * 1024;
+    if (file.size > maxSizeBytes) {
+      incSetMsg(`❌ Archivo muy grande (máx ${maxSizeMB}MB). Intenta con otra foto.`);
+      clearIncFoto_();
+      return;
+    }
+
     incSetMsg("Procesando foto...");
     const payload = await imageFileToUploadPayload_(file);
 
@@ -159,7 +209,7 @@ async function onIncFotoChange_(e) {
     incSetMsg("");
   } catch (err) {
     console.error("[INC foto] ERROR:", err);
-    incSetMsg("❌ No se pudo procesar la foto.");
+    incSetMsg("❌ No se pudo procesar la foto. " + String(err?.message || ""));
     clearIncFoto_();
   }
 }
