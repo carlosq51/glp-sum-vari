@@ -11,8 +11,11 @@ import {
   showLoginUI, showAppUI, setUserPillUI, applyDebugVisibilityUI,
   effectiveModulos, computeRolLock_, enforceRolLock_,
   hideAllModulesUI, showHubUI, syncTopbarHomeButtonUI,
-  getJSON_user, getEmail, toggleTheme_,
+  getJSON_user, getEmail, toggleTheme_, setLocked, withLock,
+  getJSON, postJSON,
 } from "./js/core/core.js";
+
+import { getUsuarioPerfil, supabaseEnabled } from "./js/core/supabase-client.js";
 
 import { openView } from "./js/core/router-lite.js";
 import { initUploaderView, showUploaderView, hideUploaderView } from "./js/views/uploader/uploader.js";
@@ -30,14 +33,31 @@ if (root) root.innerHTML = appShell();
 async function doLogin(email) {
   if (!email) return showLoginUI("Pon tu email.");
 
-  const j = await getJSON_user(`/api/me?email=${encodeURIComponent(email)}`, "Iniciando sesión...");
-  if (!j?.ok) return showLoginUI(j?.error || "No se pudo iniciar sesión.");
+  try {
+    // Usar Supabase directo si está habilitado, sino fallback a API
+    let profile;
+    
+    if (supabaseEnabled()) {
+      // 🚀 LECTURA DIRECTA DE SUPABASE (Sin Node proxy)
+      await withLock(async () => {
+        profile = await getUsuarioPerfil(email);
+      }, "Iniciando sesión...");
+      
+      if (!profile) {
+        return showLoginUI("Usuario no encontrado en Supabase.");
+      }
+    } else {
+      // Fallback a Node API (para desarrollo sin Supabase)
+      const j = await getJSON_user(`/api/me?email=${encodeURIComponent(email)}`, "Iniciando sesión...");
+      if (!j?.ok) return showLoginUI(j?.error || "No se pudo iniciar sesión.");
+      profile = j.profile;
+    }
 
-  CORE.state.currentProfile = j.profile;
-  saveEmail(email);
+    CORE.state.currentProfile = profile;
+    saveEmail(email);
 
-  applyDebugVisibilityUI();
-  setUserPillUI();
+    applyDebugVisibilityUI();
+    setUserPillUI();
   syncTopbarHomeButtonUI();
 
   // rolLock solo aplica TECNICO

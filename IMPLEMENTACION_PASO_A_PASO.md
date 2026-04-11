@@ -78,94 +78,212 @@ VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 ### 2.2 - Crea las tablas
 
-Copia y pega esto en el editor SQL:
+Copia y pega esto en el editor SQL (**es el schema completo de tu AppScript migrado a PostgreSQL**):
 
 ```sql
--- ═══════════════════════════════════════════════════════════════
--- TABLA: incidencias
--- ═══════════════════════════════════════════════════════════════
-CREATE TABLE IF NOT EXISTS public.incidencias (
-  id BIGSERIAL PRIMARY KEY,
-  vin VARCHAR(17) NOT NULL,
-  conversion_id VARCHAR(50),
-  tipo VARCHAR(20),
-  nota TEXT,
-  tecnico_user_id VARCHAR(100),
-  tecnico_email VARCHAR(255),
-  tecnico_nombre VARCHAR(255),
-  registrado_por VARCHAR(255) NOT NULL,
-  foto_b64 TEXT,
-  foto_mime VARCHAR(100),
-  foto_name VARCHAR(255),
-  fecha_hora TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  
-  INDEX idx_vin (vin),
-  INDEX idx_conversion_id (conversion_id)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- ENUMS (TIPOS PERSONALIZADOS)
+-- ═══════════════════════════════════════════════════════════════════════════
+
+CREATE TYPE rol_enum AS ENUM ('TECNICO', 'SUPERVISOR', 'ADMIN', 'CALIDAD', 'MOVILIZADOR', 'RAMALERO');
+CREATE TYPE modulo_enum AS ENUM ('TECNICO', 'RAMALERO', 'CALIDAD', 'MOVILIZADOR', 'SUPERVISOR', 'ADMIN');
+CREATE TYPE especialidad_enum AS ENUM ('AMBOS', 'MOTOR', 'TANQUE');
+CREATE TYPE tipo_ot_enum AS ENUM ('CONVERSION', 'CALIDAD', 'RAMALERO');
+CREATE TYPE rol_trabajo_enum AS ENUM ('MOTOR', 'TANQUE', 'CALIDAD', 'RAMALERO', 'MOVILIZADOR');
+CREATE TYPE estado_general_enum AS ENUM ('PENDIENTE', 'EN_PROCESO', 'TRABAJANDO', 'FINALIZADO');
+CREATE TYPE estado_actual_enum AS ENUM ('SIN_INICIAR', 'TRABAJANDO', 'PAUSADO', 'FINALIZADO');
+CREATE TYPE accion_enum AS ENUM ('INICIO', 'PAUSA', 'REANUDAR', 'FIN', 'NOTA');
+CREATE TYPE tipo_ramal_enum AS ENUM ('JETOUR', 'VOLKSWAGEN', 'KYC_V3', 'KYC_V5', 'KYC_V7', 'KYC_X5');
+CREATE TYPE incidencia_tipo_enum AS ENUM ('LEVE', 'MODERADA', 'CRITICA');
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- TABLA 1: VINS (Vehículos)
+-- ═══════════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS public.vins (
+  vin VARCHAR(17) PRIMARY KEY,
+  modelo VARCHAR(255),
+  dua VARCHAR(255),
+  cliente VARCHAR(255),
+  reductor_asignado VARCHAR(255),
+  tanque_asignado VARCHAR(255),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- ═══════════════════════════════════════════════════════════════
--- TABLA: eventos
--- ═══════════════════════════════════════════════════════════════
-CREATE TABLE IF NOT EXISTS public.eventos (
-  id BIGSERIAL PRIMARY KEY,
-  vin VARCHAR(17) NOT NULL,
-  conversion_id VARCHAR(50),
-  rol VARCHAR(20),
-  accion VARCHAR(50),
-  nota TEXT,
-  registrado_por VARCHAR(255) NOT NULL,
-  fecha_hora TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  
-  INDEX idx_vin (vin),
-  INDEX idx_conversion_id (conversion_id)
+CREATE INDEX IF NOT EXISTS idx_vins_cliente ON public.vins(cliente);
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- TABLA 2: USUARIOS (Usuarios del Sistema)
+-- ═══════════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS public.usuarios (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email VARCHAR(255) UNIQUE NOT NULL,
+  nombre VARCHAR(255),
+  rol rol_enum NOT NULL,
+  especialidad especialidad_enum DEFAULT 'AMBOS',
+  activo BOOLEAN DEFAULT true,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- ═══════════════════════════════════════════════════════════════
--- TABLA: conformidades
--- ═══════════════════════════════════════════════════════════════
-CREATE TABLE IF NOT EXISTS public.conformidades (
-  id BIGSERIAL PRIMARY KEY,
-  vin VARCHAR(17) NOT NULL,
-  conversion_id VARCHAR(50),
-  asignado_a VARCHAR(255),
-  estado VARCHAR(20) DEFAULT 'PENDIENTE',
+CREATE INDEX IF NOT EXISTS idx_usuarios_email ON public.usuarios(email);
+CREATE INDEX IF NOT EXISTS idx_usuarios_activo ON public.usuarios(activo);
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- TABLA 3: USUARIO_MODULOS (Relación Muchos-a-Muchos: Usuarios ↔ Módulos)
+-- ═══════════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS public.usuario_modulos (
+  user_id UUID NOT NULL REFERENCES public.usuarios(id) ON DELETE CASCADE,
+  modulo modulo_enum NOT NULL,
+  PRIMARY KEY (user_id, modulo)
+);
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- TABLA 4: WORK_ORDERS (Órdenes de Trabajo - UNIFICADA)
+-- ═══════════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS public.work_orders (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tipo_ot tipo_ot_enum NOT NULL,
+  vin VARCHAR(17) REFERENCES public.vins(vin) ON DELETE SET NULL,
+  user_id UUID REFERENCES public.usuarios(id) ON DELETE SET NULL,
+  tipo_ramal tipo_ramal_enum,
+  fecha_creacion TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  estado_general estado_general_enum DEFAULT 'PENDIENTE',
+  observaciones TEXT,
+  tanque_registrado VARCHAR(255),
+  reductor_registrado VARCHAR(255),
+  conf_ck1 BOOLEAN,
+  conf_ck2 BOOLEAN,
+  conf_ck3 BOOLEAN,
+  conf_ck4 BOOLEAN,
+  conf_ts TIMESTAMP WITH TIME ZONE,
+  conf_by VARCHAR(255),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_work_orders_vin ON public.work_orders(vin);
+CREATE INDEX IF NOT EXISTS idx_work_orders_tipo ON public.work_orders(tipo_ot);
+CREATE INDEX IF NOT EXISTS idx_work_orders_estado ON public.work_orders(estado_general);
+CREATE INDEX IF NOT EXISTS idx_work_orders_user ON public.work_orders(user_id);
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- TABLA 5: ASIGNACIONES (Asignación Usuario → Orden de Trabajo)
+-- ═══════════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS public.asignaciones (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  work_order_id UUID NOT NULL REFERENCES public.work_orders(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES public.usuarios(id) ON DELETE CASCADE,
+  tipo_ot tipo_ot_enum NOT NULL,
+  rol_trabajo rol_trabajo_enum NOT NULL,
+  activo BOOLEAN DEFAULT true,
   fecha_asignacion TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  
-  INDEX idx_vin (vin),
-  INDEX idx_conversion_id (conversion_id)
+  tiempo_trab_ms BIGINT DEFAULT 0,
+  estado_actual estado_actual_enum DEFAULT 'SIN_INICIAR',
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  running_since TIMESTAMP WITH TIME ZONE,
+  last_nota TEXT,
+  last_nota_ts TIMESTAMP WITH TIME ZONE,
+  CONSTRAINT unique_active_assignment UNIQUE (work_order_id, rol_trabajo) WHERE activo = true
 );
 
--- ═══════════════════════════════════════════════════════════════
+CREATE INDEX IF NOT EXISTS idx_asignaciones_active ON public.asignaciones(work_order_id, rol_trabajo) WHERE activo = true;
+CREATE INDEX IF NOT EXISTS idx_asignaciones_user ON public.asignaciones(user_id);
+CREATE INDEX IF NOT EXISTS idx_asignaciones_estado ON public.asignaciones(estado_actual);
+CREATE INDEX IF NOT EXISTS idx_asignaciones_updated ON public.asignaciones(updated_at DESC);
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- TABLA 6: EVENTOS (Log de Eventos / Historial)
+-- ═══════════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS public.eventos (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  timestamp TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  user_id UUID REFERENCES public.usuarios(id) ON DELETE SET NULL,
+  work_order_id UUID REFERENCES public.work_orders(id) ON DELETE SET NULL,
+  tipo_ot tipo_ot_enum NOT NULL,
+  rol_trabajo rol_trabajo_enum NOT NULL,
+  accion accion_enum NOT NULL,
+  nota TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_eventos_work_order ON public.eventos(work_order_id);
+CREATE INDEX IF NOT EXISTS idx_eventos_user ON public.eventos(user_id);
+CREATE INDEX IF NOT EXISTS idx_eventos_timestamp ON public.eventos(timestamp DESC);
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- TABLA 7: INCIDENCIAS (Reportes de Anomalías)
+-- ═══════════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS public.incidencias (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  fecha_hora TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  mes VARCHAR(7) NOT NULL,
+  work_order_id UUID REFERENCES public.work_orders(id) ON DELETE SET NULL,
+  vin VARCHAR(17) REFERENCES public.vins(vin) ON DELETE SET NULL,
+  tecnico VARCHAR(255) NOT NULL,
+  tipo incidencia_tipo_enum NOT NULL,
+  registrado_por VARCHAR(255) NOT NULL,
+  nota TEXT,
+  foto_file_id VARCHAR(255),
+  foto_folder_id VARCHAR(255),
+  foto_batch_id VARCHAR(255)
+);
+
+CREATE INDEX IF NOT EXISTS idx_incidencias_vin ON public.incidencias(vin);
+CREATE INDEX IF NOT EXISTS idx_incidencias_work_order ON public.incidencias(work_order_id);
+CREATE INDEX IF NOT EXISTS idx_incidencias_mes ON public.incidencias(mes);
+CREATE INDEX IF NOT EXISTS idx_incidencias_tipo ON public.incidencias(tipo);
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- TABLA 8: APP_CONFIG (Configuración Global)
+-- ═══════════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS public.app_config (
+  key VARCHAR(255) PRIMARY KEY,
+  value TEXT
+);
+
+-- Valores iniciales
+INSERT INTO public.app_config (key, value) VALUES ('REV', '0') ON CONFLICT (key) DO NOTHING;
+INSERT INTO public.app_config (key, value) VALUES ('REV_TS', '0') ON CONFLICT (key) DO NOTHING;
+
+-- ═══════════════════════════════════════════════════════════════════════════
 -- POLÍTICAS DE SEGURIDAD (RLS - Row Level Security)
--- ═══════════════════════════════════════════════════════════════
+-- ═══════════════════════════════════════════════════════════════════════════
 
--- Habilita RLS
-ALTER TABLE public.incidencias ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.vins ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.usuarios ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.usuario_modulos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.work_orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.asignaciones ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.eventos ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.conformidades ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.incidencias ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.app_config ENABLE ROW LEVEL SECURITY;
 
--- Lectura pública (anon puede leer)
-CREATE POLICY "incidencias_read" ON public.incidencias
-FOR SELECT USING (true);
+-- LECTURA PÚBLICA (todos pueden leer)
+CREATE POLICY "vins_read" ON public.vins FOR SELECT USING (true);
+CREATE POLICY "usuarios_read" ON public.usuarios FOR SELECT USING (true);
+CREATE POLICY "usuario_modulos_read" ON public.usuario_modulos FOR SELECT USING (true);
+CREATE POLICY "work_orders_read" ON public.work_orders FOR SELECT USING (true);
+CREATE POLICY "asignaciones_read" ON public.asignaciones FOR SELECT USING (true);
+CREATE POLICY "eventos_read" ON public.eventos FOR SELECT USING (true);
+CREATE POLICY "incidencias_read" ON public.incidencias FOR SELECT USING (true);
+CREATE POLICY "app_config_read" ON public.app_config FOR SELECT USING (true);
 
-CREATE POLICY "eventos_read" ON public.eventos
-FOR SELECT USING (true);
+-- INSERCIÓN (usuarios autenticados pueden crear)
+CREATE POLICY "vins_insert" ON public.vins FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
+CREATE POLICY "usuarios_insert" ON public.usuarios FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
+CREATE POLICY "usuario_modulos_insert" ON public.usuario_modulos FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
+CREATE POLICY "work_orders_insert" ON public.work_orders FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
+CREATE POLICY "asignaciones_insert" ON public.asignaciones FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
+CREATE POLICY "eventos_insert" ON public.eventos FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
+CREATE POLICY "incidencias_insert" ON public.incidencias FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
+CREATE POLICY "app_config_insert" ON public.app_config FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
 
-CREATE POLICY "conformidades_read" ON public.conformidades
-FOR SELECT USING (true);
-
--- Inserción para usuarios autenticados
-CREATE POLICY "incidencias_insert" ON public.incidencias
-FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
-
-CREATE POLICY "eventos_insert" ON public.eventos
-FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
-
-CREATE POLICY "conformidades_insert" ON public.conformidades
-FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
+-- ACTUALIZACIÓN (usuarios autenticados pueden actualizar)
+CREATE POLICY "vins_update" ON public.vins FOR UPDATE USING (auth.uid() IS NOT NULL);
+CREATE POLICY "usuarios_update" ON public.usuarios FOR UPDATE USING (auth.uid() IS NOT NULL);
+CREATE POLICY "usuario_modulos_update" ON public.usuario_modulos FOR UPDATE USING (auth.uid() IS NOT NULL);
+CREATE POLICY "work_orders_update" ON public.work_orders FOR UPDATE USING (auth.uid() IS NOT NULL);
+CREATE POLICY "asignaciones_update" ON public.asignaciones FOR UPDATE USING (auth.uid() IS NOT NULL);
+CREATE POLICY "eventos_update" ON public.eventos FOR UPDATE USING (auth.uid() IS NOT NULL);
+CREATE POLICY "incidencias_update" ON public.incidencias FOR UPDATE USING (auth.uid() IS NOT NULL);
+CREATE POLICY "app_config_update" ON public.app_config FOR UPDATE USING (auth.uid() IS NOT NULL);
 ```
 
 Click en **Run** ✅

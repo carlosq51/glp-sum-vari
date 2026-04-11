@@ -56,7 +56,7 @@ export function normalizeItem_(raw) {
     rolTrabajo: String(pickFirst_(raw?.rolTrabajo, raw?.rol_trabajo, raw?.rol, raw?.ROL_TRABAJO, raw?.ROL)).trim().toUpperCase(),
     estado: String(pickFirst_(raw?.estado, raw?.estado_actual, raw?.estadoActual, raw?.ESTADO_ACTUAL, raw?.ESTADO)).trim().toUpperCase(),
 
-    tiempo_ms: Number(pickFirst_(raw?.tiempo_ms, raw?.tiempoMs, raw?.TIEMPO_TRAB_MS, raw?.TIEMPO_MS, 0)) || 0,
+    tiempo_ms: Number(pickFirst_(raw?.tiempo_ms, raw?.tiempoMs, raw?.tiempo_trab_ms, raw?.TIEMPO_TRAB_MS, raw?.TIEMPO_MS, 0)) || 0,
     running_since: raw?.running_since ?? raw?.RUNNING_SINCE ?? null,
 
     last_nota: String(pickFirst_(raw?.last_nota, raw?.LAST_NOTA, "")),

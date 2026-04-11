@@ -3,6 +3,8 @@
 // INCIDENCIAS: modal + fetch + render + bind
 // =========================
 
+import { getIncidencias, supabaseEnabled } from "../../core/supabase-client.js";
+
 export function openSupIncModal_() {
   const m = document.getElementById("supIncModal");
   m?.classList?.add("show");
@@ -16,7 +18,21 @@ export function fmtIncFecha_(x, { escapeHtml, fmtShort_ }) {
   try { return escapeHtml(fmtShort_(x)); } catch { return escapeHtml(String(x || "")); }
 }
 
-export async function fetchIncidencias_(vin, conversionId, { getJSON_user }) {
+export async function fetchIncidencias_(vin, conversionId, { getJSON_user, withLock }) {
+  if (supabaseEnabled() && vin) {
+    // 🚀 LECTURA DIRECTA DE SUPABASE (Sin Node proxy)
+    try {
+      const items = await withLock(async () => {
+        return await getIncidencias(vin);
+      }, "Cargando incidencias...");
+      return { ok: true, items };
+    } catch (err) {
+      console.warn("[fetchIncidencias_] Supabase error:", err.message);
+      // Fallback a Node API
+    }
+  }
+
+  // Fallback: Node API
   const url =
     `/api/incidencias/list` +
     `?vin=${encodeURIComponent(vin || "")}` +

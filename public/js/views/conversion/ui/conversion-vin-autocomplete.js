@@ -10,6 +10,8 @@ import {
   withLock,
 } from "../../../core/core.js";
 
+import { getVinSuggest, supabaseEnabled } from "../../../core/supabase-client.js";
+
 import { refreshEstadoForVinRole, scheduleEstadoRefresh_ } from "../data/conversion-estado.js";
 import { autoStartFromScan_ } from "../data/conversion-eventos.js";
 import { syncNow } from "../data/conversion-sync.js";
@@ -84,6 +86,17 @@ async function vinAcFetch_(q) {
   try { vinAcAbort?.abort?.(); } catch {}
   vinAcAbort = new AbortController();
 
+  try {
+    if (supabaseEnabled()) {
+      // 🚀 LECTURA DIRECTA DE SUPABASE (Sin Node proxy)
+      const items = await getVinSuggest(q, VIN_AC.LIMIT);
+      return items;
+    }
+  } catch (err) {
+    console.warn("[vinAcFetch_] Supabase error:", err.message);
+  }
+
+  // Fallback: Node API
   const url = `/api/vin-suggest?q=${encodeURIComponent(q)}&limit=${encodeURIComponent(VIN_AC.LIMIT)}`;
   const r = await fetch(url, { signal: vinAcAbort.signal });
   const j = await r.json();

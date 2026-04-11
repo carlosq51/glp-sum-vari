@@ -15,6 +15,8 @@ import {
   keyOfItem_,
 } from "../../../core/core.js";
 
+import { getEstadoTrabajo, supabaseEnabled } from "../../../core/supabase-client.js";
+
 import {
   computeLiveMs_,
   rebuildListsFromStore_,
@@ -67,9 +69,12 @@ export async function refreshEstadoForVinRole({ showOut = false } = {}) {
     }
   }
 
-  const j = await getJSON(`/api/estado?email=${encodeURIComponent(email)}&vin=${encodeURIComponent(vin)}&rolTrabajo=${encodeURIComponent(rolTrabajo)}`);
+  const j = supabaseEnabled() 
+    ? await getEstadoTrabajo(email, vin, rolTrabajo)
+    : await getJSON(`/api/estado?email=${encodeURIComponent(email)}&vin=${encodeURIComponent(vin)}&rolTrabajo=${encodeURIComponent(rolTrabajo)}`);
+  
   if (showOut) setOut(j);
-  if (!j?.ok) { setEstadoText(j?.error || "Error"); return; }
+  if (!j?.ok && !supabaseEnabled()) { setEstadoText(j?.error || "Error"); return; }
 
   const it2 = normalizeItem_(j);
   const k2 = keyOfItem_(it2);

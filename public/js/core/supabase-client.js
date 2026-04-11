@@ -30,12 +30,43 @@ function supabaseHeaders() {
 
 /**
  * Construye query string para Supabase REST API
+ * Soporta operadores: eq, neq, gt, gte, lt, lte, in, is, like
+ * 
+ * Ejemplo:
+ *   buildQuery({ user_id: 'xxx', activo: true })
+ *     → "?user_id=eq.xxx&activo=eq.true"
+ * 
+ *   buildQuery({ 
+ *     user_id: 'xxx', 
+ *     estado: { op: 'neq', val: 'FINALIZADO' }
+ *   })
+ *     → "?user_id=eq.xxx&estado=neq.FINALIZADO"
  */
 function buildQuery(filter = {}) {
   const parts = [];
   Object.entries(filter || {}).forEach(([key, value]) => {
     if (value === null || value === undefined || value === "") return;
-    parts.push(`${encodeURIComponent(key)}=eq.${encodeURIComponent(String(value))}`);
+    
+    let op = "eq";
+    let val = value;
+    
+    // Soportar filtros complejos: { op: "neq", val: "..." }
+    if (value && typeof value === "object" && value.op && value.val !== undefined) {
+      op = value.op;
+      val = value.val;
+    }
+    
+    // Operadores especiales
+    if (Array.isArray(val) && op === "in") {
+      // in filter para arrays
+      val = `(${val.map(v => `"${v}"`).join(",")})`;
+    } else if (typeof val === "boolean") {
+      val = String(val);
+    } else if (op !== "in") {
+      val = String(val);
+    }
+    
+    parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(op)}.${encodeURIComponent(val)}`);
   });
   return parts.length ? ("?" + parts.join("&")) : "";
 }
@@ -146,4 +177,199 @@ export async function supabaseRPC(funcName, data = {}) {
   }
 
   return await res.json();
+}
+
+// =========================
+// HIGH-LEVEL QUERIES (reemplazan /api/*)
+// =========================
+
+/**
+ * GET /api/me — Obtener perfil de usuario
+ */
+export async function getUsuarioPerfil(email) {
+  if (!supabaseEnabled()) throw new Error("Supabase no configurado");
+  
+  const usuarios = await supabaseGet("usuarios", { email });
+  if (!usuarios || !usuarios.length) return null;
+  
+  const usuario = usuarios[0];
+  const modulos = await supabaseGet("usuario_modulos", { user_id: usuario.id });
+  
+  return {
+    id: usuario.id,
+    email: usuario.email,
+    nombre: usuario.nombre,
+    rol: usuario.rol,
+    especialidad: usuario.especialidad,
+    activo: usuario.activo,
+    modulos: Array.isArray(modulos) ? modulos.map(m => m.modulo) : [],
+  };
+}
+
+/**
+ * GET /api/mis-activas — Obtener trabajos activos del usuario
+ * ⚡ OPTIMIZADO: Filtra EN SUPABASE (no trae todo)
+ */
+export async function getMisActivas(email) {
+  if (!supabaseEnabled()) throw new Error("Supabase no configurado");
+  
+  // Obtener user_id
+  const usuarios = await supabaseGet("usuarios", { email });
+  if (!usuarios || !usuarios.length) return [];
+  
+  const userId = usuarios[0].id;
+  
+  // 🚀 FILTRO EN SUPABASE: solo asignaciones activas de este usuario
+  const asignaciones = await supabaseGet("asignaciones", {
+    user_id: userId,
+    activo: true, // Supabase interpreta como: activo=eq.true
+  });
+  
+  if (!asignaciones || !asignaciones.length) return [];
+  
+  // Obtener work_orders (una sola query, luego filtrar local)
+  const workOrderIds = asignaciones.map(a => a.work_order_id).filter(Boolean);
+  const workOrders = workOrderIds.length > 0 
+    ? await supabaseGet("work_orders", {})
+    : [];
+  
+  const woMap = Object.fromEntries(
+    workOrders
+      .filter(wo => workOrderIds.includes(wo.id))
+      .map(wo => [wo.id, wo])
+  );
+  
+  // Enriquecer
+  return asignaciones
+    .map(asg => {
+      const wo = woMap[asg.work_order_id] || {};
+      return {
+        ...asg,
+        ...wo,
+        tiempo_ms: Number(asg.tiempo_trab_ms || 0),
+        estado: asg.estado_actual,
+      };
+    })
+    .filter(it => it.work_order_id);
+}
+
+/**
+ * GET /api/mis-finalizadas — Obtener trabajos finalizados del usuario
+ * ⚡ OPTIMIZADO: Filtra EN SUPABASE (no trae todo)
+ */
+export async function getMisFinalizadas(email) {
+  if (!supabaseEnabled()) throw new Error("Supabase no configurado");
+  
+  // Obtener user_id
+  const usuarios = await supabaseGet("usuarios", { email });
+  if (!usuarios || !usuarios.length) return [];
+  
+  const userId = usuarios[0].id;
+  
+  // 🚀 FILTRO EN SUPABASE: solo asignaciones finalizadas de este usuario
+  const asignaciones = await supabaseGet("asignaciones", {
+    user_id: userId,
+    estado_actual: "FINALIZADO",
+  });
+  
+  if (!asignaciones || !asignaciones.length) return [];
+  
+  // Obtener work_orders (una sola query, luego filtrar local)
+  const workOrderIds = asignaciones.map(a => a.work_order_id).filter(Boolean);
+  const workOrders = workOrderIds.length > 0
+    ? await supabaseGet("work_orders", {})
+    : [];
+  
+  const woMap = Object.fromEntries(
+    workOrders
+      .filter(wo => workOrderIds.includes(wo.id))
+      .map(wo => [wo.id, wo])
+  );
+  
+  // Enriquecer
+  return asignaciones
+    .map(asg => {
+      const wo = woMap[asg.work_order_id] || {};
+      return {
+        ...asg,
+        ...wo,
+        tiempo_ms: Number(asg.tiempo_trab_ms || 0),
+        estado: asg.estado_actual,
+      };
+    })
+    .filter(it => it.work_order_id);
+}
+
+/**
+ * GET /api/estado — Obtener estado de un trabajo específico
+ */
+export async function getEstadoTrabajo(email, vin, rolTrabajo) {
+  if (!supabaseEnabled()) throw new Error("Supabase no configurado");
+  
+  // Obtener usuario
+  const usuarios = await supabaseGet("usuarios", { email });
+  if (!usuarios || !usuarios.length) return null;
+  
+  const userId = usuarios[0].id;
+  
+  // Obtener work_order
+  const wos = await supabaseGet("work_orders", { vin });
+  if (!wos || !wos.length) return null;
+  
+  const workOrderId = wos[0].id;
+  
+  // Obtener asignación
+  const asignaciones = await supabaseGet("asignaciones", {});
+  const asg = asignaciones.find(a => 
+    a.work_order_id === workOrderId &&
+    a.user_id === userId &&
+    a.rol_trabajo === rolTrabajo
+  );
+  
+  return {
+    vin,
+    rolTrabajo,
+    estado: asg ? asg.estado_actual : "SIN_INICIAR",
+    tiempoMs: asg ? asg.tiempo_trab_ms : 0,
+  };
+}
+
+/**
+ * GET /api/incidencias/list — Obtener incidencias de un VIN
+ */
+export async function getIncidencias(vin) {
+  if (!supabaseEnabled()) throw new Error("Supabase no configurado");
+  
+  const incidencias = await supabaseGet("incidencias", { vin });
+  
+  return incidencias
+    .map(inc => ({
+      id: inc.id,
+      fecha_hora: inc.fecha_hora,
+      vin: inc.vin,
+      type: inc.tipo,
+      nota: inc.nota,
+      registrado_por: inc.registrado_por,
+      foto_file_id: inc.foto_file_id,
+    }));
+}
+
+/**
+ * GET /api/vin-suggest — Sugerir VINs por búsqueda
+ */
+export async function getVinSuggest(q = "", limit = 12) {
+  if (!supabaseEnabled()) throw new Error("Supabase no configurado");
+  
+  if (!q) return [];
+  
+  const vins = await supabaseGet("vins", {});
+  
+  return vins
+    .filter(v => v.vin && v.vin.startsWith(q.toUpperCase()))
+    .slice(0, limit)
+    .map(v => ({
+      vin: v.vin,
+      modelo: v.modelo,
+      cliente: v.cliente,
+    }));
 }

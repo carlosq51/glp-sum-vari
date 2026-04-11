@@ -14,8 +14,32 @@ app.use(express.urlencoded({ extended: true, limit: "30mb" }));
 const staticDir = existsSync("dist") ? "dist" : "public";
 app.use(express.static(staticDir));
 
-// ping local
-app.get("/ping", (req, res) => res.json({ ok: true, msg: "pong" }));
+// Helper para medir tiempos
+function measureTime_(fn, label) {
+  const start = Date.now();
+  return async () => {
+    try {
+      const result = await fn();
+      const duration = Date.now() - start;
+      return { result, duration, label };
+    } catch (err) {
+      const duration = Date.now() - start;
+      throw { err, duration, label };
+    }
+  };
+}
+
+// Helper para agregar Server Timing headers
+function addServerTiming_(res, measurements = []) {
+  const timings = measurements
+    .filter(m => m && m.duration)
+    .map(m => `${m.label};dur=${m.duration}`)
+    .join(", ");
+  
+  if (timings) {
+    res.set("Server-Timing", timings);
+  }
+}
 
 // función para llamar Apps Script
 async function callAppsScript(action, payload = {}) {
@@ -47,6 +71,137 @@ async function callAppsScript(action, payload = {}) {
   }
 
   return j;
+}
+
+// =========================
+// SUPABASE FUNCTIONS (Lectura desde BD)
+// =========================
+
+// Cache en memoria para reducir queries a Supabase
+const CACHE = {
+  work_orders: { data: [], ts: 0 },
+  usuarios: { data: [], ts: 0 },
+  asignaciones: { data: [], ts: 0 },
+  TTL_MS: 2 * 60 * 1000, // 2 minutos
+};
+
+function getCachedData_(table) {
+  const cache = CACHE[table];
+  if (!cache) return null;
+  const age = Date.now() - cache.ts;
+  if (age < CACHE.TTL_MS && cache.data.length > 0) {
+    console.log(`[CACHE HIT] ${table} (${age}ms old)`);
+    return cache.data;
+  }
+  return null;
+}
+
+function setCachedData_(table, data) {
+  if (CACHE[table]) {
+    CACHE[table].data = data;
+    CACHE[table].ts = Date.now();
+    console.log(`[CACHE SET] ${table} (${data.length} items)`);
+  }
+}
+
+function supabaseHeaders_() {
+  const SUPABASE_URL = process.env.SUPABASE_URL;
+  // Prioridad: SUPABASE_ANON_KEY > VITE_SUPABASE_ANON_KEY
+  const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+  
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
+  
+  return {
+    "apikey": SUPABASE_ANON_KEY,
+    "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+    "Content-Type": "application/json",
+  };
+}
+
+function buildSupabaseQuery_(filter = {}) {
+  const parts = [];
+  Object.entries(filter || {}).forEach(([key, value]) => {
+    if (value === null || value === undefined || value === "") return;
+    parts.push(`${encodeURIComponent(key)}=eq.${encodeURIComponent(String(value))}`);
+  });
+  return parts.length ? ("?" + parts.join("&")) : "";
+}
+
+async function supabaseGet_(table, filter = {}, opts = {}) {
+  // Si el filtro está vacío y permitimos cache, intentar desde cache
+  if (Object.keys(filter).length === 0 && opts.useCache !== false) {
+    const cached = getCachedData_(table);
+    if (cached) return cached;
+  }
+
+  const headers = supabaseHeaders_();
+  if (!headers) throw new Error("Supabase no configurado (.env)");
+
+  const SUPABASE_URL = process.env.SUPABASE_URL;
+  const url = `${SUPABASE_URL}/rest/v1/${table}${buildSupabaseQuery_(filter)}`;
+  
+  const res = await fetch(url, {
+    method: "GET",
+    headers,
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Supabase GET ${table}: ${res.status} ${text.slice(0, 200)}`);
+  }
+
+  const result = await res.json();
+  
+  // Cachear si no hay filtros
+  if (Object.keys(filter).length === 0) {
+    setCachedData_(table, result);
+  }
+
+  return result;
+}
+
+async function supabasePost_(table, data) {
+  const headers = supabaseHeaders_();
+  if (!headers) throw new Error("Supabase no configurado (.env)");
+
+  const SUPABASE_URL = process.env.SUPABASE_URL;
+  const url = `${SUPABASE_URL}/rest/v1/${table}`;
+  
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { ...headers, "Prefer": "return=representation" },
+    body: JSON.stringify(data),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Supabase POST ${table}: ${res.status} ${text.slice(0, 200)}`);
+  }
+
+  const result = await res.json();
+  return Array.isArray(result) ? result[0] : result;
+}
+
+async function supabasePatch_(table, filter = {}, data) {
+  const headers = supabaseHeaders_();
+  if (!headers) throw new Error("Supabase no configurado (.env)");
+
+  const SUPABASE_URL = process.env.SUPABASE_URL;
+  const url = `${SUPABASE_URL}/rest/v1/${table}${buildSupabaseQuery_(filter)}`;
+  
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: { ...headers, "Prefer": "return=representation" },
+    body: JSON.stringify(data),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Supabase PATCH ${table}: ${res.status} ${text.slice(0, 200)}`);
+  }
+
+  const result = await res.json();
+  return Array.isArray(result) ? result[0] : result;
 }
 
 // =========================
@@ -82,72 +237,316 @@ app.post("/api/uploader/proxy", async (req, res) => {
   }
 });
 
-// endpoint Node → Apps Script (me)
+// endpoint Node → Supabase (me) - LECTURA SOLO
 app.get("/api/me", async (req, res) => {
   try {
     const email = String(req.query.email || "").trim().toLowerCase();
-    if (!email) return res.status(400).json({ ok: false, error: "Falta ?email=" });
+    const timings = [];
+    
+    if (!email) {
+      addServerTiming_(res, timings);
+      return res.status(400).json({ ok: false, error: "Falta ?email=" });
+    }
 
-    const j = await callAppsScript("me", { email });
-    res.json(j);
+    // 🔍 LECTURA DESDE SUPABASE
+    const t1 = Date.now();
+    const usuarios = await supabaseGet_("usuarios", { email });
+    timings.push({ label: "usuarios_by_email", duration: Date.now() - t1 });
+    
+    if (!usuarios || !usuarios.length) {
+      addServerTiming_(res, timings);
+      return res.status(404).json({ ok: false, error: "Usuario no encontrado" });
+    }
+
+    const usuario = usuarios[0];
+    
+    // Obtener módulos del usuario
+    const t2 = Date.now();
+    const modulos = await supabaseGet_("usuario_modulos", { user_id: usuario.id });
+    timings.push({ label: "user_modulos", duration: Date.now() - t2 });
+    
+    addServerTiming_(res, timings);
+    return res.json({
+      ok: true,
+      profile: {
+        id: usuario.id,
+        email: usuario.email,
+        nombre: usuario.nombre,
+        rol: usuario.rol,
+        especialidad: usuario.especialidad,
+        activo: usuario.activo,
+        modulos: Array.isArray(modulos) ? modulos.map(m => m.modulo) : [],
+      }
+    });
   } catch (e) {
+    console.error("[GET /api/me]", e.message);
+    addServerTiming_(res, timings || []);
     res.status(500).json({ ok: false, error: String(e.message || e) });
   }
 });
 
-// endpoint Node → Apps Script (mis_activas)
+// endpoint Node → Supabase (mis_activas) - LECTURA SOLO [OPTIMIZADO + TIMING]
 app.get("/api/mis-activas", async (req, res) => {
   try {
     const email = String(req.query.email || "").trim().toLowerCase();
     const userId = String(req.query.userId || "").trim();
+    const timings = [];
 
     if (!email && !userId) {
       return res.status(400).json({ ok: false, error: "Envía ?email= o ?userId=" });
     }
 
-    const excludeFinalizados = req.query.excludeFinalizados === "true" || req.query.excludeFinalizados === "1";
-    const j = await callAppsScript("mis_activas", { email, userId, excludeFinalizados });
-    res.json(j);
+    // 🚀 LECTURA DESDE SUPABASE: obtener asignaciones activas del usuario
+    let asignaciones = [];
+    
+    if (userId) {
+      const t1 = Date.now();
+      asignaciones = await supabaseGet_("asignaciones", { user_id: userId, activo: true });
+      timings.push({ label: "asg_filter_userid", duration: Date.now() - t1 });
+    } else if (email) {
+      // Primero obtener el ID del usuario por email
+      const t1 = Date.now();
+      const usuarios = await supabaseGet_("usuarios", { email });
+      timings.push({ label: "usuarios_by_email", duration: Date.now() - t1 });
+      
+      if (usuarios && usuarios.length) {
+        const user = usuarios[0];
+        const t2 = Date.now();
+        asignaciones = await supabaseGet_("asignaciones", { user_id: user.id, activo: true });
+        timings.push({ label: "asg_filter_user", duration: Date.now() - t2 });
+      }
+    }
+
+    // Optimización: traer todos los work_orders en paralelo por IDs
+    const workOrderIds = asignaciones
+      .map(a => a.work_order_id)
+      .filter(Boolean);
+
+    let workOrderMap = {};
+    if (workOrderIds.length > 0) {
+      const t3 = Date.now();
+      // Traer todos los work_orders de una vez (no en bucle)
+      const wos = await supabaseGet_("work_orders", {});
+      timings.push({ label: "work_orders_all", duration: Date.now() - t3 });
+      
+      const t4 = Date.now();
+      // Filtrar localmente (más rápido que múltiples queries)
+      workOrderMap = Object.fromEntries(
+        wos.filter(wo => workOrderIds.includes(wo.id))
+          .map(wo => [wo.id, wo])
+      );
+      timings.push({ label: "enrich_local_filter", duration: Date.now() - t4 });
+    }
+
+    // Enriquecer asignaciones con info de work_orders (sin esperas)
+    const items = asignaciones
+      .map(asg => {
+        const wo = workOrderMap[asg.work_order_id] || {};
+        return {
+          ...asg,
+          ...wo,
+          tiempo_ms: Number(asg.tiempo_trab_ms || wo.tiempo_trab_ms || 0),
+          estado: asg.estado_actual || wo.estado_general,
+        };
+      })
+      .filter(it => it.work_order_id); // Filtrar inválidos
+
+    addServerTiming_(res, timings);
+    return res.json({
+      ok: true,
+      items,
+    });
   } catch (e) {
+    console.error("[GET /api/mis-activas]", e.message);
+    addServerTiming_(res, timings || []);
     res.status(500).json({ ok: false, error: String(e.message || e) });
   }
 });
 
+// endpoint Node → Supabase (mis_finalizadas) - LECTURA SOLO [OPTIMIZADO]
 app.get("/api/mis-finalizadas", async (req, res) => {
   try {
     const email = String(req.query.email || "").trim().toLowerCase();
     const userId = String(req.query.userId || "").trim();
-    if (!email && !userId) return res.status(400).json({ ok: false, error: "Envía ?email= o ?userId=" });
-    const j = await callAppsScript("mis_finalizadas", { email, userId });
-    res.json(j);
+    const timings = [];
+    
+    if (!email && !userId) {
+      return res.status(400).json({ ok: false, error: "Envía ?email= o ?userId=" });
+    }
+
+    // 🔍 LECTURA DESDE SUPABASE: obtener asignaciones finalizadas del usuario
+    let asignaciones = [];
+    
+    if (userId) {
+      const t1 = Date.now();
+      asignaciones = await supabaseGet_("asignaciones", { user_id: userId, estado_actual: "FINALIZADO" });
+      timings.push({ label: "asg_finalizadas_userid", duration: Date.now() - t1 });
+    } else if (email) {
+      // Primero obtener el ID del usuario por email
+      const t1 = Date.now();
+      const usuarios = await supabaseGet_("usuarios", { email });
+      timings.push({ label: "usuarios_by_email", duration: Date.now() - t1 });
+      
+      if (usuarios && usuarios.length) {
+        const user = usuarios[0];
+        const t2 = Date.now();
+        asignaciones = await supabaseGet_("asignaciones", { user_id: user.id, estado_actual: "FINALIZADO" });
+        timings.push({ label: "asg_finalizadas_user", duration: Date.now() - t2 });
+      }
+    }
+
+    // Optimización: traer todos los work_orders en paralelo por IDs
+    const workOrderIds = asignaciones
+      .map(a => a.work_order_id)
+      .filter(Boolean);
+
+    let workOrderMap = {};
+    if (workOrderIds.length > 0) {
+      const t3 = Date.now();
+      // Traer todos los work_orders de una vez (no en bucle)
+      const wos = await supabaseGet_("work_orders", {});
+      timings.push({ label: "work_orders_all", duration: Date.now() - t3 });
+      
+      const t4 = Date.now();
+      // Filtrar localmente (más rápido que múltiples queries)
+      workOrderMap = Object.fromEntries(
+        wos.filter(wo => workOrderIds.includes(wo.id))
+          .map(wo => [wo.id, wo])
+      );
+      timings.push({ label: "enrich_local_filter", duration: Date.now() - t4 });
+    }
+
+    // Enriquecer con info de work_orders (sin esperas)
+    const items = asignaciones
+      .map(asg => {
+        const wo = workOrderMap[asg.work_order_id] || {};
+        return {
+          ...asg,
+          ...wo,
+          tiempo_ms: Number(asg.tiempo_trab_ms || wo.tiempo_trab_ms || 0),
+          estado: asg.estado_actual || wo.estado_general,
+        };
+      })
+      .filter(it => it.work_order_id); // Filtrar inválidos
+
+    addServerTiming_(res, timings);
+    return res.json({
+      ok: true,
+      items,
+    });
   } catch (e) {
+    console.error("[GET /api/mis-finalizadas]", e.message);
     res.status(500).json({ ok: false, error: String(e.message || e) });
   }
 });
 
+// ✍️ DUAL-WRITE: Apps Script + Supabase en paralelo
 app.post("/api/evento", async (req, res) => {
   try {
-    // req.body debe traer: email o userId, vin, rolTrabajo, accion, nota
-    const j = await callAppsScript("evento", req.body);
-    res.json(j);
+    const body = req.body || {};
+    
+    // Parallel writes
+    const writeApsPromise = callAppsScript("evento", body).catch(err => {
+      console.warn("[EVENTO] Apps Script error (continuando):", err.message);
+      return null;
+    });
+
+    const writeSupabasePromise = (async () => {
+      try {
+        // Obtener user_id si viene email
+        let userId = body.userId || body.user_id;
+        if (!userId && body.email) {
+          const usuarios = await supabaseGet_("usuarios", { email: body.email });
+          if (usuarios && usuarios.length) {
+            userId = usuarios[0].id;
+          }
+        }
+
+        const eventoData = {
+          timestamp: new Date().toISOString(),
+          user_id: userId || null,
+          work_order_id: body.conversionId || body.work_order_id || null,
+          tipo_ot: body.tipo_ot || "CONVERSION",
+          rol_trabajo: body.rolTrabajo || "TECNICO",
+          accion: (body.accion || "NOTA").toUpperCase(),
+          nota: body.nota || "",
+        };
+
+        return await supabasePost_("eventos", eventoData);
+      } catch (err) {
+        console.warn("[EVENTO] Supabase error (continuando):", err.message);
+        return null;
+      }
+    })();
+
+    const [apsResult, supabaseResult] = await Promise.all([writeApsPromise, writeSupabasePromise]);
+
+    // Retornar resultado de Apps Script (es el primario)
+    return res.json(apsResult || { ok: true, _supabase: true });
   } catch (e) {
+    console.error("[POST /api/evento]", e.message);
     res.status(500).json({ ok: false, error: String(e.message || e) });
   }
 });
 
+// endpoint Node → Supabase (estado) - LECTURA SOLO
 app.get("/api/estado", async (req, res) => {
   try {
     const email = String(req.query.email || "").trim().toLowerCase();
     const vin = String(req.query.vin || "").trim().toUpperCase();
     const rolTrabajo = String(req.query.rolTrabajo || "").trim().toUpperCase();
+    const timings = [];
 
     if (!email) return res.status(400).json({ ok:false, error:"Falta email" });
     if (!vin) return res.status(400).json({ ok:false, error:"Falta vin" });
     if (!rolTrabajo) return res.status(400).json({ ok:false, error:"Falta rolTrabajo" });
 
-    const j = await callAppsScript("estado", { email, vin, rolTrabajo });
-    res.json(j);
+    // 🔍 LECTURA DESDE SUPABASE
+    // 1. Obtener usuario
+    const t1 = Date.now();
+    const usuarios = await supabaseGet_("usuarios", { email });
+    timings.push({ label: "usuarios_by_email", duration: Date.now() - t1 });
+    
+    if (!usuarios || !usuarios.length) {
+      addServerTiming_(res, timings);
+      return res.status(404).json({ ok: false, error: "Usuario no encontrado" });
+    }
+    const userId = usuarios[0].id;
+
+    // 2. Obtener work_order por VIN
+    const t2 = Date.now();
+    const workOrders = await supabaseGet_("work_orders", { vin });
+    timings.push({ label: "work_order_by_vin", duration: Date.now() - t2 });
+    
+    if (!workOrders || !workOrders.length) {
+      addServerTiming_(res, timings);
+      return res.status(404).json({ ok: false, error: "VIN no encontrado" });
+    }
+    const workOrder = workOrders[0];
+
+    // 3. Obtener asignación activa para este usuario + rol
+    const t3 = Date.now();
+    const asignaciones = await supabaseGet_("asignaciones", { 
+      work_order_id: workOrder.id,
+      user_id: userId,
+      rol_trabajo: rolTrabajo,
+    });
+    timings.push({ label: "asignacion_by_triple", duration: Date.now() - t3 });
+
+    const asignacion = asignaciones && asignaciones.length ? asignaciones[0] : null;
+
+    addServerTiming_(res, timings);
+    return res.json({
+      ok: true,
+      vin,
+      rolTrabajo,
+      estado: asignacion?.estado_actual || "SIN_INICIAR",
+      tiempoMs: asignacion?.tiempo_trab_ms || 0,
+      asignacion: asignacion || null,
+    });
   } catch (e) {
+    console.error("[GET /api/estado]", e.message);
+    addServerTiming_(res, timings || []);
     res.status(500).json({ ok:false, error: String(e.message || e) });
   }
 });
@@ -192,37 +591,96 @@ app.get("/api/supervisor/report", async (req, res) => {
   }
 });
 
-// =========================
-// SUPERVISOR: CONVERSION DETAIL (INICIO / FIN por MOTOR y TANQUE)
-// =========================
+// endpoint Node → Supabase (supervisor_conversion_detail) - LECTURA SOLO
 app.get("/api/supervisor/conversion-detail", async (req, res) => {
   try {
     const vin = String(req.query.vin || "").trim().toUpperCase();
-    if (!vin) return res.status(400).json({ ok: false, error: "Falta ?vin=" });
+    const timings = [];
+    
+    if (!vin) {
+      addServerTiming_(res, timings);
+      return res.status(400).json({ ok: false, error: "Falta ?vin=" });
+    }
 
-    // ✅ Esto lo implementamos en Apps Script como action:
-    // action: "supervisor_conversion_detail"
-    // payload: { vin }
-    const j = await callAppsScript("supervisor_conversion_detail", { vin });
+    // 🔍 LECTURA DESDE SUPABASE
+    const t1 = Date.now();
+    const workOrders = await supabaseGet_("work_orders", { vin });
+    timings.push({ label: "work_order_by_vin", duration: Date.now() - t1 });
+    
+    if (!workOrders || !workOrders.length) {
+      addServerTiming_(res, timings);
+      return res.status(404).json({ ok: false, error: "VIN no encontrado" });
+    }
 
-    // esperamos algo como:
-    // { ok:true, vin, motor:{ tecnico,inicio,fin }, tanque:{ tecnico,inicio,fin } }
-    return res.json(j);
+    const wo = workOrders[0];
+
+    // Obtener todas las asignaciones para este work_order
+    const t2 = Date.now();
+    const asignaciones = await supabaseGet_("asignaciones", { work_order_id: wo.id });
+    timings.push({ label: "asignaciones_by_wo", duration: Date.now() - t2 });
+
+    // Separar por rol
+    const motorAsg = asignaciones?.find(a => a.rol_trabajo === "MOTOR");
+    const tanqueAsg = asignaciones?.find(a => a.rol_trabajo === "TANQUE");
+
+    addServerTiming_(res, timings);
+    return res.json({
+      ok: true,
+      vin,
+      motor: motorAsg ? {
+        tecnico: motorAsg.user_id,
+        inicio: motorAsg.running_since,
+        fin: motorAsg.updated_at,
+        estado: motorAsg.estado_actual,
+      } : null,
+      tanque: tanqueAsg ? {
+        tecnico: tanqueAsg.user_id,
+        inicio: tanqueAsg.running_since,
+        fin: tanqueAsg.updated_at,
+        estado: tanqueAsg.estado_actual,
+      } : null,
+    });
   } catch (e) {
+    console.error("[GET /api/supervisor/conversion-detail]", e.message);
+    addServerTiming_(res, timings || []);
     return res.status(500).json({ ok: false, error: String(e.message || e) });
   }
 });
 
+// endpoint Node → Supabase (vin_suggest) - LECTURA SOLO + TIMING
 app.get("/api/vin-suggest", async (req, res) => {
   try {
     const q = String(req.query.q || "").trim().toUpperCase();
     const limit = Number(req.query.limit || 12);
+    const timings = [];
 
-    if (!q) return res.json({ ok: true, items: [] });
+    if (!q) {
+      addServerTiming_(res, timings);
+      return res.json({ ok: true, items: [] });
+    }
 
-    const j = await callAppsScript("vin_suggest", { q, limit });
-    return res.json(j);
+    // 🔍 LECTURA DESDE SUPABASE: buscar VINs que empiecen con q
+    const t1 = Date.now();
+    const vins = await supabaseGet_("vins", {});
+    timings.push({ label: "vins_all", duration: Date.now() - t1 });
+    
+    // Filtro local (Supabase no tiene LIKE directo con anon key en REST API)
+    const t2 = Date.now();
+    const items = vins
+      .filter(v => v.vin && v.vin.startsWith(q))
+      .slice(0, limit)
+      .map(v => ({
+        vin: v.vin,
+        modelo: v.modelo,
+        cliente: v.cliente,
+      }));
+    timings.push({ label: "filter_and_map", duration: Date.now() - t2 });
+
+    addServerTiming_(res, timings);
+    return res.json({ ok: true, items });
   } catch (e) {
+    console.error("[GET /api/vin-suggest]", e.message);
+    addServerTiming_(res, timings || []);
     return res.status(500).json({ ok: false, error: String(e.message || e) });
   }
 });
@@ -324,15 +782,56 @@ app.post("/api/sync", async (req, res) => {
 });
 
 
-// =========================
-// CONFORMIDAD EQUIPO (guardar)
-// =========================
+// ✍️ DUAL-WRITE: Apps Script + Supabase en paralelo
 app.post("/api/equipo-conformidad", async (req, res) => {
   try {
-    // espera: email, conversionId, vin, rolTrabajo, equipoCodigo, checks
-    const j = await callAppsScript("equipo_conformidad", req.body);
-    res.json(j);
+    const body = req.body || {};
+
+    // Parallel writes
+    const writeApsPromise = callAppsScript("equipo_conformidad", body).catch(err => {
+      console.warn("[EQUIPO_CONFORMIDAD] Apps Script error (continuando):", err.message);
+      return null;
+    });
+
+    const writeSupabasePromise = (async () => {
+      try {
+        // Obtener user_id si viene email
+        let userId = body.userId || body.user_id;
+        if (!userId && body.email) {
+          const usuarios = await supabaseGet_("usuarios", { email: body.email });
+          if (usuarios && usuarios.length) {
+            userId = usuarios[0].id;
+          }
+        }
+
+        // Actualizar asignación con estado de conformidad
+        const conformidadData = {
+          conf_ck1: !!body.conf_ck1,
+          conf_ck2: !!body.conf_ck2,
+          conf_ck3: !!body.conf_ck3,
+          conf_ck4: !!body.conf_ck4,
+          conf_ts: new Date().toISOString(),
+          conf_by: body.email || userId,
+        };
+
+        // Actualizar el work_order con datos de conformidad
+        await supabasePatch_("work_orders", 
+          { id: body.conversionId }, 
+          conformidadData
+        );
+
+        return { ok: true, _supabase: true };
+      } catch (err) {
+        console.warn("[EQUIPO_CONFORMIDAD] Supabase error (continuando):", err.message);
+        return null;
+      }
+    })();
+
+    const [apsResult, supabaseResult] = await Promise.all([writeApsPromise, writeSupabasePromise]);
+
+    return res.json(apsResult || { ok: true, _supabase: true });
   } catch (e) {
+    console.error("[POST /api/equipo-conformidad]", e.message);
     res.status(500).json({ ok: false, error: String(e.message || e) });
   }
 });
@@ -346,6 +845,7 @@ app.get("/api/tecnicos-list", async (req, res) => {
   }
 });
 
+// ✍️ DUAL-WRITE: Apps Script + Supabase en paralelo (con foto)
 app.post("/api/incidencia", async (req, res) => {
   try {
     console.log("[INCIDENCIA] body =", Object.keys(req.body || {}));
@@ -353,7 +853,7 @@ app.post("/api/incidencia", async (req, res) => {
     const body = { ...(req.body || {}) };
     let fotoResult = null;
 
-    // ✅ Si viene foto, la subimos primero a Drive
+    // ✅ Si viene foto, la subimos primero a Drive (Apps Script)
     if (body.foto && body.foto.b64) {
       const up = await callAppsScript("uploadIncidencia", {
         vin: body.vin,
@@ -370,7 +870,7 @@ app.post("/api/incidencia", async (req, res) => {
 
       fotoResult = up;
 
-      // ✅ adjuntamos metadata para guardar en sheet
+      // ✅ adjuntamos metadata para guardar en sheet y Supabase
       body.fotoFileId = String(up.photoId || "");
       body.fotoUrl = String(up.photoUrl || "");
       body.fotoThumbUrl = String(up.photoThumbUrl || "");
@@ -378,16 +878,53 @@ app.post("/api/incidencia", async (req, res) => {
       body.fotoFolderId = String(up.subFolderId || up.folderId || "");
       body.fotoBatchId = String(up.batchId || "");
 
-      // ✅ quitamos base64 antes de guardar en sheet
+      // ✅ quitamos base64 antes de guardar
       delete body.foto;
     }
 
-    // ✅ guardar incidencia en hoja
-    const j = await callAppsScript("incidencia_add", body);
+    // PARALLEL WRITES: Apps Script + Supabase
+    const writeApsPromise = callAppsScript("incidencia_add", body).catch(err => {
+      console.warn("[INCIDENCIA] Apps Script error (continuando):", err.message);
+      return null;
+    });
+
+    const writeSupabasePromise = (async () => {
+      try {
+        // Obtener user_id si viene email
+        let userId = body.tecnicoUserId;
+        if (!userId && body.tecnicoEmail) {
+          const usuarios = await supabaseGet_("usuarios", { email: body.tecnicoEmail });
+          if (usuarios && usuarios.length) {
+            userId = usuarios[0].id;
+          }
+        }
+
+        const incidenciaData = {
+          fecha_hora: new Date().toISOString(),
+          mes: new Date().toISOString().substring(0, 7), // 'yyyy-MM'
+          work_order_id: body.conversionId || null,
+          vin: body.vin || null,
+          tecnico: body.tecnicoNombre || body.tecnicoEmail || "",
+          tipo: body.tipo || "LEVE",
+          registrado_por: body.email || body.registrado_por || "",
+          nota: body.nota || "",
+          foto_file_id: body.fotoFileId || "",
+          foto_folder_id: body.fotoFolderId || "",
+          foto_batch_id: body.fotoBatchId || "",
+        };
+
+        return await supabasePost_("incidencias", incidenciaData);
+      } catch (err) {
+        console.warn("[INCIDENCIA] Supabase error (continuando):", err.message);
+        return null;
+      }
+    })();
+
+    const [apsResult, supabaseResult] = await Promise.all([writeApsPromise, writeSupabasePromise]);
 
     // devolvemos también info de foto si hubo
     return res.json({
-      ...j,
+      ...(apsResult || { ok: true }),
       foto: fotoResult
         ? {
             photoId: fotoResult.photoId,
@@ -406,23 +943,57 @@ app.post("/api/incidencia", async (req, res) => {
   }
 });
 
-// =========================
-// INCIDENCIAS LIST (Supervisor view)
-// =========================
+// endpoint Node → Supabase (incidencias list) - LECTURA SOLO + TIMING
 app.get("/api/incidencias/list", async (req, res) => {
   try {
     const vin = String(req.query.vin || "").trim().toUpperCase();
     const conversionId = String(req.query.conversionId || "").trim();
-    const email = String(req.query.email || "").trim().toLowerCase(); // opcional
+    const email = String(req.query.email || "").trim().toLowerCase();
     const limit = Number(req.query.limit || 200);
+    const timings = [];
 
     if (!vin && !conversionId) {
+      addServerTiming_(res, timings);
       return res.status(400).json({ ok:false, error:"Falta vin o conversionId" });
     }
 
-    const j = await callAppsScript("incidencias_list", { vin, conversionId, email, limit });
-    return res.json(j);
+    // 🔍 LECTURA DESDE SUPABASE
+    let incidencias = [];
+    
+    if (vin) {
+      const t1 = Date.now();
+      incidencias = await supabaseGet_("incidencias", { vin });
+      timings.push({ label: "incidencias_by_vin", duration: Date.now() - t1 });
+    } else if (conversionId) {
+      const t1 = Date.now();
+      incidencias = await supabaseGet_("incidencias", { work_order_id: conversionId });
+      timings.push({ label: "incidencias_by_conversion", duration: Date.now() - t1 });
+    }
+
+    const t2 = Date.now();
+    const items = incidencias
+      .slice(0, limit)
+      .map(inc => ({
+        id: inc.id,
+        fecha_hora: inc.fecha_hora,
+        vin: inc.vin,
+        type: inc.tipo,
+        nota: inc.nota,
+        registrado_por: inc.registrado_por,
+        foto_file_id: inc.foto_file_id,
+        foto_folder_id: inc.foto_folder_id,
+        foto_batch_id: inc.foto_batch_id,
+      }));
+    timings.push({ label: "map_response", duration: Date.now() - t2 });
+
+    addServerTiming_(res, timings);
+    return res.json({
+      ok: true,
+      items,
+    });
   } catch (e) {
+    console.error("[GET /api/incidencias/list]", e.message);
+    addServerTiming_(res, timings || []);
     return res.status(500).json({ ok:false, error: String(e.message || e) });
   }
 });
