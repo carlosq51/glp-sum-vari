@@ -158,25 +158,111 @@ export async function supabaseDelete(table, filter = {}) {
 }
 
 /**
- * RPC a Supabase (edge functions)
+ * REALTIME SUBSCRIPTIONS (WebSockets)
+ * Suscripción a cambios en tablas Supabase en tiempo real
  */
-export async function supabaseRPC(funcName, data = {}) {
+
+let realtimeSubscriptions = {}; // { tableName: { ws, listeners: [callbacks] } }
+
+export async function subscribeToChanges(table, callback) {
   if (!supabaseEnabled()) throw new Error("Supabase no configurado");
-
-  const url = `${SUPABASE_CONFIG.URL}/rest/v1/rpc/${funcName}`;
   
-  const res = await fetch(url, {
-    method: "POST",
-    headers: supabaseHeaders(),
-    body: JSON.stringify(data),
-  });
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Supabase RPC ${funcName}: ${res.status} ${text}`);
+  // Si ya existe suscripción, solo agregar listener
+  if (realtimeSubscriptions[table]) {
+    realtimeSubscriptions[table].listeners.push(callback);
+    return () => {
+      realtimeSubscriptions[table].listeners = 
+        realtimeSubscriptions[table].listeners.filter(l => l !== callback);
+    };
   }
+  
+  // Crear nueva suscripción WebSocket
+  const wsUrl = SUPABASE_CONFIG.URL.replace("https://", "wss://").replace("http://", "ws://") + "/realtime/v1";
+  
+  try {
+    const ws = new WebSocket(`${wsUrl}?apikey=${SUPABASE_CONFIG.ANON_KEY}`);
+    
+    realtimeSubscriptions[table] = {
+      ws,
+      listeners: [callback],
+      connected: false,
+    };
+    
+    ws.onopen = () => {
+      realtimeSubscriptions[table].connected = true;
+      // Suscribirse al canal
+      const subscribeMsg = {
+        type: "subscribe",
+        topic: `realtime:${table}`,
+      };
+      ws.send(JSON.stringify(subscribeMsg));
+    };
+    
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        
+        // Filtrar mensajes del canal que nos interesa
+        if (msg.topic !== `realtime:${table}`) return;
+        
+        // Eventos: INSERT, UPDATE, DELETE
+        if (msg.type === "broadcast" || msg.type === "postgres_changes") {
+          const payload = msg.payload || msg;
+          if (payload.new || payload.old) {
+            // Notificar a todos los listeners
+            realtimeSubscriptions[table].listeners.forEach(cb => {
+              try {
+                cb(payload);
+              } catch (e) {
+                console.error(`[Realtime ${table}] Callback error:`, e.message);
+              }
+            });
+          }
+        }
+      } catch (e) {
+        console.warn(`[Realtime ${table}] Parse error:`, e.message);
+      }
+    };
+    
+    ws.onerror = (error) => {
+      console.error(`[Realtime ${table}] WebSocket error:`, error);
+      realtimeSubscriptions[table].connected = false;
+    };
+    
+    ws.onclose = () => {
+      console.warn(`[Realtime ${table}] Desconectado, reintentando en 5s...`);
+      realtimeSubscriptions[table].connected = false;
+      // Reintentar en 5 segundos
+      setTimeout(() => subscribeToChanges(table, callback).catch(() => {}), 5000);
+    };
+    
+    // Retornar función para cancelar la suscripción
+    return () => {
+      realtimeSubscriptions[table].listeners = 
+        realtimeSubscriptions[table].listeners.filter(l => l !== callback);
+      if (realtimeSubscriptions[table].listeners.length === 0) {
+        realtimeSubscriptions[table].ws.close();
+        delete realtimeSubscriptions[table];
+      }
+    };
+  } catch (e) {
+    console.error(`[Realtime ${table}] Error:`, e.message);
+    throw e;
+  }
+}
 
-  return await res.json();
+/**
+ * Obtener estado de todas las suscripciones
+ */
+export function getRealtimeStatus() {
+  const status = {};
+  Object.entries(realtimeSubscriptions).forEach(([table, sub]) => {
+    status[table] = {
+      connected: sub.connected,
+      listeners: sub.listeners.length,
+    };
+  });
+  return status;
 }
 
 // =========================
@@ -356,20 +442,29 @@ export async function getIncidencias(vin) {
 
 /**
  * GET /api/vin-suggest — Sugerir VINs por búsqueda
+ * ✅ Enrutado a través del backend para evitar CORS
  */
 export async function getVinSuggest(q = "", limit = 12) {
-  if (!supabaseEnabled()) throw new Error("Supabase no configurado");
+  if (!q || q.length < 1) return [];
   
-  if (!q) return [];
-  
-  const vins = await supabaseGet("vins", {});
-  
-  return vins
-    .filter(v => v.vin && v.vin.startsWith(q.toUpperCase()))
-    .slice(0, limit)
-    .map(v => ({
+  try {
+    // 🔍 Usar el endpoint del backend (proxy a Supabase)
+    const res = await fetch(`/api/vin-suggest?q=${encodeURIComponent(q)}&limit=${limit}`, {
+      method: "GET",
+    });
+
+    if (!res.ok) {
+      throw new Error(`Backend getVinSuggest: ${res.status}`);
+    }
+
+    const data = await res.json();
+    return (data?.items || []).map(v => ({
       vin: v.vin,
       modelo: v.modelo,
       cliente: v.cliente,
     }));
+  } catch (err) {
+    console.error("[getVinSuggest] Error:", err.message);
+    return [];
+  }
 }

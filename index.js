@@ -285,80 +285,62 @@ app.get("/api/me", async (req, res) => {
   }
 });
 
-// endpoint Node → Supabase (mis_activas) - LECTURA SOLO [OPTIMIZADO + TIMING]
+// endpoint Node → Supabase (mis_activas) - ULTRA RÁPIDO con JOINS
 app.get("/api/mis-activas", async (req, res) => {
   try {
     const email = String(req.query.email || "").trim().toLowerCase();
     const userId = String(req.query.userId || "").trim();
-    const timings = [];
+    const t1 = Date.now();
 
     if (!email && !userId) {
       return res.status(400).json({ ok: false, error: "Envía ?email= o ?userId=" });
     }
 
-    // 🚀 LECTURA DESDE SUPABASE: obtener asignaciones activas del usuario
-    let asignaciones = [];
-    
-    if (userId) {
-      const t1 = Date.now();
-      asignaciones = await supabaseGet_("asignaciones", { user_id: userId, activo: true });
-      timings.push({ label: "asg_filter_userid", duration: Date.now() - t1 });
-    } else if (email) {
-      // Primero obtener el ID del usuario por email
-      const t1 = Date.now();
+    // 1️⃣ Obtén user_id si viene email
+    let finalUserId = userId;
+    if (!finalUserId && email) {
       const usuarios = await supabaseGet_("usuarios", { email });
-      timings.push({ label: "usuarios_by_email", duration: Date.now() - t1 });
-      
-      if (usuarios && usuarios.length) {
-        const user = usuarios[0];
-        const t2 = Date.now();
-        asignaciones = await supabaseGet_("asignaciones", { user_id: user.id, activo: true });
-        timings.push({ label: "asg_filter_user", duration: Date.now() - t2 });
+      if (!usuarios?.length) {
+        return res.status(404).json({ ok: false, error: "Usuario no encontrado" });
       }
+      finalUserId = usuarios[0].id;
     }
 
-    // Optimización: traer todos los work_orders en paralelo por IDs
-    const workOrderIds = asignaciones
-      .map(a => a.work_order_id)
-      .filter(Boolean);
+    // 2️⃣ Query asignaciones ACTIVAS + work_orders (JOINS en DB = RÁPIDO)
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const headers = supabaseHeaders_();
+    
+    let query = `${SUPABASE_URL}/rest/v1/asignaciones?`;
+    query += `user_id=eq.${finalUserId}&activo=eq.true`;
+    query += `&select=*,work_orders(*)&order=updated_at.desc&limit=50`;
 
-    let workOrderMap = {};
-    if (workOrderIds.length > 0) {
-      const t3 = Date.now();
-      // Traer todos los work_orders de una vez (no en bucle)
-      const wos = await supabaseGet_("work_orders", {});
-      timings.push({ label: "work_orders_all", duration: Date.now() - t3 });
-      
-      const t4 = Date.now();
-      // Filtrar localmente (más rápido que múltiples queries)
-      workOrderMap = Object.fromEntries(
-        wos.filter(wo => workOrderIds.includes(wo.id))
-          .map(wo => [wo.id, wo])
-      );
-      timings.push({ label: "enrich_local_filter", duration: Date.now() - t4 });
+    const res_data = await fetch(query, { method: "GET", headers });
+    
+    if (!res_data.ok) {
+      throw new Error(`Supabase ${res_data.status}`);
     }
 
-    // Enriquecer asignaciones con info de work_orders (sin esperas)
-    const items = asignaciones
-      .map(asg => {
-        const wo = workOrderMap[asg.work_order_id] || {};
-        return {
-          ...asg,
-          ...wo,
-          tiempo_ms: Number(asg.tiempo_trab_ms || wo.tiempo_trab_ms || 0),
-          estado: asg.estado_actual || wo.estado_general,
-        };
-      })
-      .filter(it => it.work_order_id); // Filtrar inválidos
+    const asignaciones = await res_data.json();
+    const duration = Date.now() - t1;
 
-    addServerTiming_(res, timings);
+    // Mapea a formato que espera el frontend
+    const items = asignaciones.map(asg => ({
+      ...asg,
+      ...asg.work_orders,
+      tiempo_ms: asg.tiempo_trab_ms || 0,
+      estado: asg.estado_actual,
+    }));
+
+    res.set("Server-Timing", `query;dur=${duration}`);
     return res.json({
       ok: true,
       items,
+      count: items.length,
+      _timing: `${duration}ms`,
     });
+
   } catch (e) {
     console.error("[GET /api/mis-activas]", e.message);
-    addServerTiming_(res, timings || []);
     res.status(500).json({ ok: false, error: String(e.message || e) });
   }
 });
@@ -368,71 +350,53 @@ app.get("/api/mis-finalizadas", async (req, res) => {
   try {
     const email = String(req.query.email || "").trim().toLowerCase();
     const userId = String(req.query.userId || "").trim();
-    const timings = [];
+    const t1 = Date.now();
     
     if (!email && !userId) {
       return res.status(400).json({ ok: false, error: "Envía ?email= o ?userId=" });
     }
 
-    // 🔍 LECTURA DESDE SUPABASE: obtener asignaciones finalizadas del usuario
-    let asignaciones = [];
-    
-    if (userId) {
-      const t1 = Date.now();
-      asignaciones = await supabaseGet_("asignaciones", { user_id: userId, estado_actual: "FINALIZADO" });
-      timings.push({ label: "asg_finalizadas_userid", duration: Date.now() - t1 });
-    } else if (email) {
-      // Primero obtener el ID del usuario por email
-      const t1 = Date.now();
+    // 1️⃣ Obtén user_id si viene email
+    let finalUserId = userId;
+    if (!finalUserId && email) {
       const usuarios = await supabaseGet_("usuarios", { email });
-      timings.push({ label: "usuarios_by_email", duration: Date.now() - t1 });
-      
-      if (usuarios && usuarios.length) {
-        const user = usuarios[0];
-        const t2 = Date.now();
-        asignaciones = await supabaseGet_("asignaciones", { user_id: user.id, estado_actual: "FINALIZADO" });
-        timings.push({ label: "asg_finalizadas_user", duration: Date.now() - t2 });
+      if (!usuarios?.length) {
+        return res.status(404).json({ ok: false, error: "Usuario no encontrado" });
       }
+      finalUserId = usuarios[0].id;
     }
 
-    // Optimización: traer todos los work_orders en paralelo por IDs
-    const workOrderIds = asignaciones
-      .map(a => a.work_order_id)
-      .filter(Boolean);
+    // 2️⃣ Query asignaciones FINALIZADAS + work_orders (JOINS en DB = RÁPIDO)
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const headers = supabaseHeaders_();
+    
+    let query = `${SUPABASE_URL}/rest/v1/asignaciones?`;
+    query += `user_id=eq.${finalUserId}&estado_actual=eq.FINALIZADO`;
+    query += `&select=*,work_orders(*)&order=updated_at.desc&limit=100`;
 
-    let workOrderMap = {};
-    if (workOrderIds.length > 0) {
-      const t3 = Date.now();
-      // Traer todos los work_orders de una vez (no en bucle)
-      const wos = await supabaseGet_("work_orders", {});
-      timings.push({ label: "work_orders_all", duration: Date.now() - t3 });
-      
-      const t4 = Date.now();
-      // Filtrar localmente (más rápido que múltiples queries)
-      workOrderMap = Object.fromEntries(
-        wos.filter(wo => workOrderIds.includes(wo.id))
-          .map(wo => [wo.id, wo])
-      );
-      timings.push({ label: "enrich_local_filter", duration: Date.now() - t4 });
+    const res_data = await fetch(query, { method: "GET", headers });
+    
+    if (!res_data.ok) {
+      throw new Error(`Supabase ${res_data.status}`);
     }
 
-    // Enriquecer con info de work_orders (sin esperas)
-    const items = asignaciones
-      .map(asg => {
-        const wo = workOrderMap[asg.work_order_id] || {};
-        return {
-          ...asg,
-          ...wo,
-          tiempo_ms: Number(asg.tiempo_trab_ms || wo.tiempo_trab_ms || 0),
-          estado: asg.estado_actual || wo.estado_general,
-        };
-      })
-      .filter(it => it.work_order_id); // Filtrar inválidos
+    const asignaciones = await res_data.json();
+    const duration = Date.now() - t1;
 
-    addServerTiming_(res, timings);
+    // Mapea a formato que espera el frontend
+    const items = asignaciones.map(asg => ({
+      ...asg,
+      ...asg.work_orders,
+      tiempo_ms: asg.tiempo_trab_ms || 0,
+      estado: asg.estado_actual,
+    }));
+
+    res.set("Server-Timing", `query;dur=${duration}`);
     return res.json({
       ok: true,
       items,
+      count: items.length,
+      _timing: `${duration}ms`,
     });
   } catch (e) {
     console.error("[GET /api/mis-finalizadas]", e.message);
@@ -445,44 +409,174 @@ app.post("/api/evento", async (req, res) => {
   try {
     const body = req.body || {};
     
-    // Parallel writes
-    const writeApsPromise = callAppsScript("evento", body).catch(err => {
-      console.warn("[EVENTO] Apps Script error (continuando):", err.message);
-      return null;
-    });
+    const email = body.email;
+    const vin = String(body.vin || "").trim().toUpperCase();
+    const rolTrabajo = String(body.rolTrabajo || "").trim().toUpperCase();
+    const accion = String(body.accion || "").trim().toUpperCase();
+    const nota = String(body.nota || "").trim();
 
-    const writeSupabasePromise = (async () => {
-      try {
-        // Obtener user_id si viene email
-        let userId = body.userId || body.user_id;
-        if (!userId && body.email) {
-          const usuarios = await supabaseGet_("usuarios", { email: body.email });
-          if (usuarios && usuarios.length) {
-            userId = usuarios[0].id;
-          }
-        }
+    if (!email || !vin || !rolTrabajo || !accion) {
+      return res.status(400).json({ 
+        ok: false, 
+        error: "Faltan campos: email, vin, rolTrabajo, accion" 
+      });
+    }
 
-        const eventoData = {
-          timestamp: new Date().toISOString(),
-          user_id: userId || null,
-          work_order_id: body.conversionId || body.work_order_id || null,
-          tipo_ot: body.tipo_ot || "CONVERSION",
-          rol_trabajo: body.rolTrabajo || "TECNICO",
-          accion: (body.accion || "NOTA").toUpperCase(),
-          nota: body.nota || "",
-        };
+    const t1 = Date.now();
 
-        return await supabasePost_("eventos", eventoData);
-      } catch (err) {
-        console.warn("[EVENTO] Supabase error (continuando):", err.message);
-        return null;
+    // 1️⃣ Obtener user_id
+    const usuarios = await supabaseGet_("usuarios", { email });
+    if (!usuarios || !usuarios.length) {
+      return res.status(404).json({ ok: false, error: "Usuario no encontrado" });
+    }
+    const userId = usuarios[0].id;
+
+    // 2️⃣ Obtener o CREAR work_order si no existe
+    let workOrders = await supabaseGet_("work_orders", { vin });
+    let workOrderId, tipoOt;
+    
+    if (!workOrders || !workOrders.length) {
+      // VIN existe en tabla vins pero no en work_orders → CREARLA automáticamente
+      const vins = await supabaseGet_("vins", { vin });
+      if (!vins || !vins.length) {
+        return res.status(404).json({ ok: false, error: "VIN no existe" });
       }
-    })();
+      
+      // Crear work_order con tipo_ot = CONVERSION por defecto
+      const woData = {
+        tipo_ot: "CONVERSION",
+        vin: vin,
+        estado_general: "PENDIENTE",
+      };
+      const createdWO = await supabasePost_("work_orders", woData);
+      const wo = Array.isArray(createdWO) ? createdWO[0] : createdWO;
+      workOrderId = wo.id;
+      tipoOt = wo.tipo_ot;
+    } else {
+      workOrderId = workOrders[0].id;
+      tipoOt = workOrders[0].tipo_ot;
+    }
 
-    const [apsResult, supabaseResult] = await Promise.all([writeApsPromise, writeSupabasePromise]);
+    // 3️⃣ Buscar asignación ACTIVA por (work_order_id, rol_trabajo) - SIN filtrar user_id
+    // Esto devuelve la asignación activa EXISTENTE, sea de quien sea
+    let query = `${process.env.SUPABASE_URL}/rest/v1/asignaciones?`;
+    query += `work_order_id=eq.${workOrderId}&rol_trabajo=eq.${rolTrabajo}&activo=eq.true`;
 
-    // Retornar resultado de Apps Script (es el primario)
-    return res.json(apsResult || { ok: true, _supabase: true });
+    const headers = supabaseHeaders_();
+    const res_asg = await fetch(query, { method: "GET", headers });
+    const asignacionesActivas = (await res_asg.json()) || [];
+    const asignacionActiva = asignacionesActivas.length > 0 ? asignacionesActivas[0] : null;
+
+    // 4️⃣ Verificar si ya está asignada a otro usuario
+    if (asignacionActiva && asignacionActiva.user_id !== userId) {
+      // Obtener nombre del usuario que tiene asignada
+      let otroUsuario = "otro usuario";
+      try {
+        const otrosUsuarios = await supabaseGet_("usuarios", { id: asignacionActiva.user_id });
+        if (otrosUsuarios && otrosUsuarios.length) {
+          otroUsuario = `${otrosUsuarios[0].nombre || otrosUsuarios[0].email}`;
+        }
+      } catch (e) { /* ignore */ }
+      
+      return res.status(409).json({ 
+        ok: false, 
+        error: `Esta OT ya está asignada a ${otroUsuario} en rol ${rolTrabajo}.` 
+      });
+    }
+
+    // 5️⃣ Si existe asignación del usuario actual, usarla; si no, será null (crearemos nueva)
+    let asignacion = asignacionActiva && asignacionActiva.user_id === userId ? asignacionActiva : null;
+
+    // 6️⃣ Calcular nuevo estado según acción
+    const estadoActual = asignacion?.estado_actual || "SIN_INICIAR";
+    let nuevoEstado = estadoActual;
+    let runningSince = asignacion?.running_since || null;
+    let tiempoAgregado = 0;
+
+    switch (accion) {
+      case "INICIO":
+        nuevoEstado = "TRABAJANDO";
+        runningSince = new Date().toISOString();
+        break;
+      case "PAUSA":
+        nuevoEstado = "PAUSADO";
+        if (estadoActual === "TRABAJANDO" && runningSince) {
+          tiempoAgregado = Date.now() - new Date(runningSince).getTime();
+        }
+        runningSince = null;
+        break;
+      case "REANUDAR":
+        nuevoEstado = "TRABAJANDO";
+        runningSince = new Date().toISOString();
+        break;
+      case "FIN":
+        nuevoEstado = "FINALIZADO";
+        if (estadoActual === "TRABAJANDO" && runningSince) {
+          tiempoAgregado = Date.now() - new Date(runningSince).getTime();
+        }
+        runningSince = null;
+        break;
+      case "NOTA":
+        // No cambia estado, solo agrega nota
+        break;
+    }
+
+    // 7️⃣ Crear evento en Supabase
+    const eventoData = {
+      timestamp: new Date().toISOString(),
+      user_id: userId,
+      work_order_id: workOrderId,
+      tipo_ot: tipoOt,
+      rol_trabajo: rolTrabajo,
+      accion: accion,
+      nota: nota || "",
+    };
+
+    await supabasePost_("eventos", eventoData);
+
+    // 8️⃣ Si no existe asignación, crearla
+    if (!asignacion) {
+      const asgData = {
+        work_order_id: workOrderId,
+        user_id: userId,
+        tipo_ot: tipoOt,
+        rol_trabajo: rolTrabajo,
+        estado_actual: nuevoEstado,
+        running_since: runningSince,
+        tiempo_trab_ms: 0,
+        activo: true,
+      };
+      asignacion = await supabasePost_("asignaciones", asgData);
+      if (Array.isArray(asignacion)) asignacion = asignacion[0];
+    } else {
+      // 9️⃣ Actualizar asignación existente
+      const updateData = {
+        estado_actual: nuevoEstado,
+        running_since: runningSince,
+        tiempo_trab_ms: (asignacion.tiempo_trab_ms || 0) + tiempoAgregado,
+        updated_at: new Date().toISOString(),
+      };
+      if (accion === "NOTA") {
+        updateData.last_nota = nota;
+        updateData.last_nota_ts = new Date().toISOString();
+      }
+
+      const updateResult = await supabasePatch_("asignaciones", 
+        { id: asignacion.id }, 
+        updateData
+      );
+      asignacion = Array.isArray(updateResult) ? updateResult[0] : updateResult;
+    }
+
+    // 🔟 Retornar asignación actualizada
+    const duration = Date.now() - t1;
+    return res.json({
+      ok: true,
+      ...asignacion,
+      work_orders: workOrders[0],
+      _timing: `${duration}ms`,
+      _source: "supabase",
+    });
   } catch (e) {
     console.error("[POST /api/evento]", e.message);
     res.status(500).json({ ok: false, error: String(e.message || e) });
@@ -647,40 +741,43 @@ app.get("/api/supervisor/conversion-detail", async (req, res) => {
   }
 });
 
-// endpoint Node → Supabase (vin_suggest) - LECTURA SOLO + TIMING
+// endpoint Node → Supabase (vin_suggest) - BÚSQUEDA CONTAINS CON ILIKE
 app.get("/api/vin-suggest", async (req, res) => {
   try {
     const q = String(req.query.q || "").trim().toUpperCase();
     const limit = Number(req.query.limit || 12);
-    const timings = [];
 
-    if (!q) {
-      addServerTiming_(res, timings);
+    if (!q || q.length < 1) {
       return res.json({ ok: true, items: [] });
     }
 
-    // 🔍 LECTURA DESDE SUPABASE: buscar VINs que empiecen con q
     const t1 = Date.now();
-    const vins = await supabaseGet_("vins", {});
-    timings.push({ label: "vins_all", duration: Date.now() - t1 });
-    
-    // Filtro local (Supabase no tiene LIKE directo con anon key en REST API)
-    const t2 = Date.now();
-    const items = vins
-      .filter(v => v.vin && v.vin.startsWith(q))
-      .slice(0, limit)
-      .map(v => ({
-        vin: v.vin,
-        modelo: v.modelo,
-        cliente: v.cliente,
-      }));
-    timings.push({ label: "filter_and_map", duration: Date.now() - t2 });
 
-    addServerTiming_(res, timings);
-    return res.json({ ok: true, items });
+    // 🔍 BÚSQUEDA CONTAINS: busca cualquier VIN que contenga el patrón
+    // Ejemplo: "213" encuentra "TH500213"
+    const searchPattern = encodeURIComponent(`%${q}%`);
+    let query = `${process.env.SUPABASE_URL}/rest/v1/vins?`;
+    query += `vin=ilike.${searchPattern}`;
+    query += `&select=vin,modelo,cliente`;
+    query += `&order=vin.asc&limit=${limit}`;
+
+    const headers = supabaseHeaders_();
+    const res_data = await fetch(query, { method: "GET", headers });
+    
+    if (!res_data.ok) throw new Error(`Status ${res_data.status}`);
+    
+    const items = (await res_data.json()) || [];
+    const duration = Date.now() - t1;
+
+    return res.json({
+      ok: true,
+      items: items.map(v => ({ vin: v.vin, modelo: v.modelo, cliente: v.cliente })),
+      count: items.length,
+      _timing: `${duration}ms`,
+      _source: "supabase",
+    });
   } catch (e) {
     console.error("[GET /api/vin-suggest]", e.message);
-    addServerTiming_(res, timings || []);
     return res.status(500).json({ ok: false, error: String(e.message || e) });
   }
 });
@@ -700,83 +797,130 @@ function hay_(u) {
   return norm_([u.name, u.email, u.label].filter(Boolean).join(" "));
 }
 
-async function ensureNameCache_() {
-  const now = Date.now();
-  if (NAME_CACHE.items.length && (now - NAME_CACHE.ts) < NAME_CACHE_TTL_MS) return;
-
-  // ✅ pide TODO una vez (q="." o all:true)
-  const j = await callAppsScript("name_suggest", { q: ".", limit: 200, all: true });
-
-  const items = Array.isArray(j.items) ? j.items : [];
-  NAME_CACHE.items = items.map(x => ({
-    userId: String(x.userId || x.id || ""),
-    name: String(x.name || x.nombre || ""),
-    email: String(x.email || ""),
-    label: String(x.label || ""),
-  }));
-  NAME_CACHE.ts = now;
-}
+// REMOVED: ensureNameCache_() — Replaced with direct Supabase queries
 
 app.get("/api/name-suggest", async (req, res) => {
   try {
-    const q = norm_(req.query.q);
+    const q = String(req.query.q || "").trim();
     const limit = Math.max(1, Math.min(200, Number(req.query.limit || 12)));
 
-    await ensureNameCache_();
+    const t1 = Date.now();
 
-    // ✅ si q vacío o "." => devuelve lista base
-    if (!q || q === ".") {
-      return res.json({ ok: true, items: NAME_CACHE.items.slice(0, limit) });
+    // 🔍 BÚSQUEDA DIRECTA EN SUPABASE (sin cache)
+    let query = `${process.env.SUPABASE_URL}/rest/v1/usuarios?`;
+    query += `activo=eq.true`;
+    
+    if (q && q !== ".") {
+      // Busca en nombre email (ILIKE case-insensitive)
+      const searchPattern = encodeURIComponent(`%${q}%`);
+      query += `&or=(nombre.ilike.${searchPattern},email.ilike.${searchPattern})`;
     }
+    
+    query += `&select=id,nombre,email,rol,especialidad`;
+    query += `&order=nombre.asc&limit=${limit}`;
 
-    // ✅ filtro local instantáneo
-    const out = [];
-    for (const u of NAME_CACHE.items) {
-      if (hay_(u).includes(q)) {
-        out.push(u);
-        if (out.length >= limit) break;
-      }
-    }
-    return res.json({ ok: true, items: out });
+    const headers = supabaseHeaders_();
+    const res_data = await fetch(query, { method: "GET", headers });
+    
+    if (!res_data.ok) throw new Error(`${res_data.status}`);
+    
+    const items = await res_data.json();
+    const duration = Date.now() - t1;
+
+    // Mapea al formato esperado por frontend
+    const mapped = items.map(u => ({
+      userId: String(u.id || ""),
+      name: String(u.nombre || ""),
+      email: String(u.email || ""),
+      label: `${u.nombre} (${u.email})`,
+    }));
+
+    return res.json({
+      ok: true,
+      items: mapped,
+      count: mapped.length,
+      _timing: `${duration}ms`,
+      _source: "supabase",
+    });
   } catch (e) {
     return res.status(500).json({ ok: false, error: String(e.message || e) });
   }
 });
 
 // =========================
-// SYNC (frontend espera POST /api/sync)
+// 🚀 SYNC optimizado — Supabase directo (SIN AppScript = RÁPIDO)
 // =========================
 app.post("/api/sync", async (req, res) => {
   try {
     const email = String(req.body?.email || "").trim().toLowerCase();
     const userId = String(req.body?.userId || "").trim();
     const since = req.body?.since ?? null;
+    const excludeFinalizados = req.body?.excludeFinalizados ?? true;
+    const t1 = Date.now();
 
     if (!email && !userId) {
       return res.status(400).json({ ok: false, error: "Envía email o userId" });
     }
 
-    // intenta action "sync" si existe en tu .gs
-    try {
-      const excludeFinalizados = req.body?.excludeFinalizados ?? true;
-      const forceRefresh = !!req.body?.forceRefresh;
-      const j = await callAppsScript("sync", { email, userId, since, excludeFinalizados, forceRefresh });
-      return res.json(j);
-    } catch (e1) {
-      // fallback: usa mis_activas y envuelve como sync
-      const excludeFinalizados = req.body?.excludeFinalizados ?? true;
-      const j2 = await callAppsScript("mis_activas", { email, userId, excludeFinalizados });
-      const items = Array.isArray(j2.items) ? j2.items : [];
-      return res.json({
-        ok: true,
-        full: true,
-        items,
-        server_time: new Date().toISOString(),
-        rev: null,
-        mode: "wrapped_mis_activas",
-      });
+    // 1️⃣ Obtén user_id si viene email
+    let finalUserId = userId;
+    if (!finalUserId && email) {
+      const usuarios = await supabaseGet_("usuarios", { email });
+      if (!usuarios?.length) {
+        return res.status(404).json({ ok: false, error: "Usuario no encontrado" });
+      }
+      finalUserId = usuarios[0].id;
     }
+
+    // 2️⃣ Query asignaciones ACTIVAS + work_orders (paralelo)
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const headers = supabaseHeaders_();
+    
+    let query = `${SUPABASE_URL}/rest/v1/asignaciones?`;
+    query += `user_id=eq.${finalUserId}&activo=eq.true`;
+    
+    if (excludeFinalizados) {
+      query += `&estado_actual=neq.FINALIZADO`;
+    }
+    
+    query += `&select=*,work_orders(*)&order=updated_at.desc&limit=50`;
+
+    const res_data = await fetch(query, { method: "GET", headers });
+    
+    if (!res_data.ok) {
+      throw new Error(`Supabase ${res_data.status}`);
+    }
+
+    const asignaciones = await res_data.json();
+    const duration = Date.now() - t1;
+
+    // Mapea a formato que espera el frontend
+    const items = asignaciones.map(asg => ({
+      asignacion_id: asg.id,
+      vin: asg.work_orders?.vin || "",
+      conversion_id: asg.work_order_id,
+      rol_trabajo: asg.rol_trabajo,
+      estado_actual: asg.estado_actual,
+      tiempo_ms: asg.tiempo_trab_ms || 0,
+      running_since: asg.running_since,
+      last_nota: asg.last_nota || "",
+      work_orders: asg.work_orders || {},
+    }));
+
+    return res.json({
+      ok: true,
+      items,
+      count: items.length,
+      full: false,
+      server_time: new Date().toISOString(),
+      rev: null,
+      mode: "sync_supabase",
+      _timing: `${duration}ms`,
+      _source: "supabase_optimized",
+    });
+
   } catch (e) {
+    console.error("[POST /api/sync]", e.message);
     return res.status(500).json({ ok: false, error: String(e.message || e) });
   }
 });
@@ -838,8 +982,29 @@ app.post("/api/equipo-conformidad", async (req, res) => {
 
 app.get("/api/tecnicos-list", async (req, res) => {
   try {
-    const j = await callAppsScript("tecnicos_list", {});
-    res.json(j);
+    const t1 = Date.now();
+
+    // 🔍 LECTURA DIRECTA DE SUPABASE: técnicos activos
+    let query = `${process.env.SUPABASE_URL}/rest/v1/usuarios?`;
+    query += `rol=eq.TECNICO&activo=eq.true`;
+    query += `&select=id,nombre,email,rol,especialidad,created_at`;
+    query += `&order=nombre.asc`;
+
+    const headers = supabaseHeaders_();
+    const res_data = await fetch(query, { method: "GET", headers });
+    
+    if (!res_data.ok) throw new Error(`${res_data.status}`);
+    
+    const items = await res_data.json();
+    const duration = Date.now() - t1;
+
+    return res.json({
+      ok: true,
+      items,
+      count: items.length,
+      _timing: `${duration}ms`,
+      _source: "supabase",
+    });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e.message || e) });
   }
@@ -997,6 +1162,187 @@ app.get("/api/incidencias/list", async (req, res) => {
     return res.status(500).json({ ok:false, error: String(e.message || e) });
   }
 });
+
+// ═════════════════════════════════════════════════════════════════
+// ⚡ ENDPOINTS OPTIMIZADOS SUPABASE (queries ultra-rápidas)
+// ═════════════════════════════════════════════════════════════════
+
+// 1️⃣ GET /api/asignaciones-activas — Por rol (MOTOR, TANQUE, CALIDAD)
+app.get("/api/asignaciones-activas", async (req, res) => {
+  try {
+    const rol = String(req.query.rol || "MOTOR").toUpperCase();
+    const t1 = Date.now();
+
+    // Obtén asignaciones ACTIVAS por rol (ENUM = super rápido)
+    let query = `${process.env.SUPABASE_URL}/rest/v1/asignaciones?`;
+    query += `rol_trabajo=eq.${rol}&activo=eq.true`;
+    query += `&estado_actual=neq.FINALIZADO`;
+    query += `&order=running_since.desc&limit=100`;
+
+    const headers = supabaseHeaders_();
+    const res_data = await fetch(query, { method: "GET", headers });
+    
+    if (!res_data.ok) throw new Error(`${res_data.status}`);
+    
+    const items = await res_data.json();
+    const duration = Date.now() - t1;
+
+    return res.json({
+      ok: true,
+      items,
+      count: items.length,
+      _timing: `${duration}ms`,
+      _source: "supabase",
+    });
+  } catch (e) {
+    console.error("[GET /api/asignaciones-activas]", e.message);
+    res.status(500).json({ ok: false, error: String(e.message) });
+  }
+});
+
+// 2️⃣ GET /api/work-orders — Por estado + tipo (ENUM filtering)
+app.get("/api/work-orders", async (req, res) => {
+  try {
+    const estado = String(req.query.estado || "EN PROCESO").trim();
+    const tipo = String( req.query.tipo || "CONVERSION").toUpperCase();
+    const limit = Math.min(parseInt(req.query.limit || "50"), 500);
+    const t1 = Date.now();
+
+    let query = `${process.env.SUPABASE_URL}/rest/v1/work_orders?`;
+    query += `estado_general=eq.${encodeURIComponent(estado)}&tipo_ot=eq.${tipo}`;
+    query += `&select=*,asignaciones(*)&order=created_at.desc&limit=${limit}`;
+
+    const headers = supabaseHeaders_();
+    const res_data = await fetch(query, { method: "GET", headers });
+    
+    if (!res_data.ok) throw new Error(`${res_data.status}`);
+    
+    const items = await res_data.json();
+    const duration = Date.now() - t1;
+
+    return res.json({
+      ok: true,
+      items,
+      count: items.length,
+      _timing: `${duration}ms`,
+      _source: "supabase",
+    });
+  } catch (e) {
+    console.error("[GET /api/work-orders]", e.message);
+    res.status(500).json({ ok: false, error: String(e.message) });
+  }
+});
+
+// 3️⃣ GET /api/eventos — Timeline (últimas X horas)
+app.get("/api/eventos", async (req, res) => {
+  try {
+    const horasAtras = Math.min(parseInt(req.query.horas || "24"), 365 * 24);
+    const limit = Math.min(parseInt(req.query.limit || "50"), 500);
+    const t1 = Date.now();
+
+    const sinceDate = new Date();
+    sinceDate.setHours(sinceDate.getHours() - horasAtras);
+
+    let query = `${process.env.SUPABASE_URL}/rest/v1/eventos?`;
+    query += `timestamp=gte.${sinceDate.toISOString()}`;
+    query += `&select=*,usuarios(*),work_orders(vin,tipo_ot)`;
+    query += `&order=timestamp.desc&limit=${limit}`;
+
+    const headers = supabaseHeaders_();
+    const res_data = await fetch(query, { method: "GET", headers });
+    
+    if (!res_data.ok) throw new Error(`${res_data.status}`);
+    
+    const items = await res_data.json();
+    const duration = Date.now() - t1;
+
+    return res.json({
+      ok: true,
+      items,
+      count: items.length,
+      _timing: `${duration}ms`,
+      _source: "supabase",
+    });
+  } catch (e) {
+    console.error("[GET /api/eventos]", e.message);
+    res.status(500).json({ ok: false, error: String(e.message) });
+  }
+});
+
+// 4️⃣ GET /api/usuarios-activos — Con módulos
+app.get("/api/usuarios-activos", async (req, res) => {
+  try {
+    const t1 = Date.now();
+
+    let query = `${process.env.SUPABASE_URL}/rest/v1/usuarios?`;
+    query += `activo=eq.true&select=id,email,nombre,rol,especialidad,usuario_modulos(modulo)`;
+    query += `&order=nombre.asc`;
+
+    const headers = supabaseHeaders_();
+    const res_data = await fetch(query, { method: "GET", headers });
+    
+    if (!res_data.ok) throw new Error(`${res_data.status}`);
+    
+    const usuarios = await res_data.json();
+    const duration = Date.now() - t1;
+
+    // Transforma lookup en array
+    const items = usuarios.map(u => ({
+      ...u,
+      modulos: u.usuario_modulos?.map(m => m.modulo) || [],
+    }));
+
+    return res.json({
+      ok: true,
+      items,
+      count: items.length,
+      _timing: `${duration}ms`,
+      _source: "supabase",
+    });
+  } catch (e) {
+    console.error("[GET /api/usuarios-activos]", e.message);
+    res.status(500).json({ ok: false, error: String(e.message) });
+  }
+});
+
+// 5️⃣ GET /api/search/incidencias — Búsqueda LIKE
+app.get("/api/search/incidencias", async (req, res) => {
+  try {
+    const q = String(req.query.q || "").trim();
+
+    if (q.length < 2) {
+      return res.json({ ok: true, items: [], message: "Mínimo 2 caracteres" });
+    }
+
+    const t1 = Date.now();
+
+    let query = `${process.env.SUPABASE_URL}/rest/v1/incidencias?`;
+    query += `nota=ilike.%${encodeURIComponent(q)}%`;
+    query += `&select=id,fecha_hora,vin,tipo,nota,tecnico,registrado_por`;
+    query += `&order=fecha_hora.desc&limit=100`;
+
+    const headers = supabaseHeaders_();
+    const res_data = await fetch(query, { method: "GET", headers });
+    
+    if (!res_data.ok) throw new Error(`${res_data.status}`);
+    
+    const items = await res_data.json();
+    const duration = Date.now() - t1;
+
+    return res.json({
+      ok: true,
+      items,
+      count: items.length,
+      _timing: `${duration}ms`,
+      _source: "supabase",
+    });
+  } catch (e) {
+    console.error("[GET /api/search/incidencias]", e.message);
+    res.status(500).json({ ok: false, error: String(e.message) });
+  }
+});
+
+// ═════════════════════════════════════════════════════════════════
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Servidor corriendo en puerto ${PORT}`);

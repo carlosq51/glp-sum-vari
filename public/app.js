@@ -15,7 +15,7 @@ import {
   getJSON, postJSON,
 } from "./js/core/core.js";
 
-import { getUsuarioPerfil, supabaseEnabled } from "./js/core/supabase-client.js";
+import { getUsuarioPerfil, supabaseEnabled, getRealtimeStatus } from "./js/core/supabase-client.js";
 
 import { openView } from "./js/core/router-lite.js";
 import { initUploaderView, showUploaderView, hideUploaderView } from "./js/views/uploader/uploader.js";
@@ -58,22 +58,27 @@ async function doLogin(email) {
 
     applyDebugVisibilityUI();
     setUserPillUI();
-  syncTopbarHomeButtonUI();
+    syncTopbarHomeButtonUI();
 
-  // rolLock solo aplica TECNICO
-  CORE.state.rolLock = computeRolLock_(CORE.state.currentProfile);
-  enforceRolLock_();
+    // rolLock solo aplica TECNICO
+    CORE.state.rolLock = computeRolLock_(CORE.state.currentProfile);
+    enforceRolLock_();
 
-  const mods = effectiveModulos(CORE.state.currentProfile);
+    const mods = effectiveModulos(CORE.state.currentProfile);
 
-  showAppUI();
+    showAppUI();
 
-  if (mods.length > 1) {
-    hideAllModulesUI();
-    showHubUI(mods, (m) => openModule(m));
-    CORE.state.currentModule = null;
-  } else {
-    openModule(mods[0]);
+    if (mods.length > 1) {
+      hideAllModulesUI();
+      showHubUI(mods, (m) => openModule(m));
+      CORE.state.currentModule = null;
+    } else {
+      openModule(mods[0]);
+    }
+
+  } catch (err) {
+    console.error("Error en login:", err);
+    showLoginUI(err?.message || "Error al iniciar sesión.");
   }
 }
 
@@ -176,3 +181,6 @@ window.addEventListener("load", async () => {
   $("email").value = saved;
   await doLogin(saved);
 });
+
+// 🔌 Exponer funciones de debug en consola
+window.getRealtimeStatus = getRealtimeStatus;

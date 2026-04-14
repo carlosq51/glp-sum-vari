@@ -14,7 +14,7 @@ import {
   withLock,
 } from "../../../core/core.js";
 
-import { getMisActivas, getMisFinalizadas, supabaseEnabled } from "../../../core/supabase-client.js";
+import { getMisActivas, getMisFinalizadas, supabaseEnabled, subscribeToChanges } from "../../../core/supabase-client.js";
 
 import {
   rebuildListsFromStore_,
@@ -35,87 +35,111 @@ import { autoStartFromScan_ } from "./conversion-eventos.js";
 import { fetchNombresParaVin_, ensureNombresCache_, clearNombresCache_ } from "../state/conversion-store.js";
 
 // --------------------------
-// SYNC
+// REALTIME INITIALIZATION
+// --------------------------
+let realtimeUnsubscribers = [];
+
+export async function initializeRealtime_() {
+  if (!supabaseEnabled()) return;
+  
+  // Tabla asignaciones
+  realtimeUnsubscribers.push(
+    await subscribeToChanges("asignaciones", (payload) => {
+      handleRealtimeChange_("asignaciones", payload);
+    })
+  );
+  
+  // Tabla work_orders
+  realtimeUnsubscribers.push(
+    await subscribeToChanges("work_orders", (payload) => {
+      handleRealtimeChange_("work_orders", payload);
+    })
+  );
+  
+  // Tabla incidencias
+  realtimeUnsubscribers.push(
+    await subscribeToChanges("incidencias", (payload) => {
+      handleRealtimeChange_("incidencias", payload);
+    })
+  );
+}
+
+export function destroyRealtime_() {
+  realtimeUnsubscribers.forEach(unsub => {
+    try { unsub(); } catch (e) { console.warn("Unsub error:", e); }
+  });
+  realtimeUnsubscribers = [];
+}
+
+function handleRealtimeChange_(tableName, payload) {
+  const c = ctx_();
+  if (!c) return;
+  
+  // Solo procesar si es un cambio relevante
+  if (tableName === "asignaciones") {
+    // Cambio en asignaciones → refrescar automáticamente
+    syncNow({ forceFull: false, showOut: false })
+      .catch(e => console.warn("[Realtime] Sync error:", e.message));
+  } else if (tableName === "work_orders") {
+    // Cambio en work_orders → refrescar la lista
+    syncNow({ forceFull: false, showOut: false })
+      .catch(e => console.warn("[Realtime] Sync error:", e.message));
+  } else if (tableName === "incidencias") {
+    // Cambio en incidencias → solo si estamos en esa vista
+    if (CORE.state.currentModule === "INCIDENCIAS") {
+      syncNow({ forceFull: false, showOut: false })
+        .catch(e => console.warn("[Realtime] Sync error:", e.message));
+    }
+  }
+}
+
+// --------------------------
+// SYNC (sin logs de timing)
 // --------------------------
 export async function apiSync_(email, since, { forceRefresh = false } = {}) {
-  const t0 = performance.now();
-  
   if (supabaseEnabled()) {
-    // 🚀 LECTURA DIRECTA DE SUPABASE (Sin Node proxy)
     try {
-      const t1 = performance.now();
       const items = await getMisActivas(email);
-      const dur = performance.now() - t1;
-      console.log(`  ⏱ getMisActivas (Supabase): ${dur.toFixed(0)}ms`);
       return { mode: "sync", data: { ok: true, items } };
     } catch (err) {
       console.warn("[apiSync_] Supabase error:", err.message);
-      // Fallback a Node API
     }
   }
   
   // Fallback: Node API
   try {
-    const t1 = performance.now();
     const body = { email, since, excludeFinalizados: true, forceRefresh };
     const j = await postJSON("/api/sync", body);
-    const dur = performance.now() - t1;
-    console.log(`  ⏱ postJSON /api/sync: ${dur.toFixed(0)}ms`);
     if (j && j.ok) return { mode: "sync", data: j };
   } catch {}
   
-  const t1 = performance.now();
   const j2 = await getJSON(`/api/mis-activas?email=${encodeURIComponent(email)}&excludeFinalizados=true&_t=${Date.now()}`);
-  const dur = performance.now() - t1;
-  console.log(`  ⏱ getJSON /api/mis-activas: ${dur.toFixed(0)}ms`);
   return { mode: "legacy", data: j2 };
 }
 
 export async function fetchFinalizados_(email) {
-  const t0 = performance.now();
-  
   if (supabaseEnabled()) {
-    // 🚀 LECTURA DIRECTA DE SUPABASE (Sin Node proxy)
     try {
-      const t1 = performance.now();
       const items = await getMisFinalizadas(email);
-      const dur = performance.now() - t1;
-      console.log(`  ⏱ getMisFinalizadas (Supabase): ${dur.toFixed(0)}ms`);
       return { ok: true, items };
     } catch (err) {
       console.warn("[fetchFinalizados_] Supabase error:", err.message);
-      // Fallback a Node API
     }
   }
   
   // Fallback: Node API
-  const t1 = performance.now();
-  const res = await getJSON(`/api/mis-finalizadas?email=${encodeURIComponent(email)}`);
-  const dur = performance.now() - t1;
-  console.log(`  ⏱ getJSON /api/mis-finalizadas: ${dur.toFixed(0)}ms`);
-  return res;
+  return getJSON(`/api/mis-finalizadas?email=${encodeURIComponent(email)}`);
 }
 
 export async function syncNow({ forceFull = false, showOut = false, _fromLock = false } = {}) {
-  console.log("🔵 [syncNow] CALLED - forceFull=%o, showOut=%o, _fromLock=%o", forceFull, showOut, _fromLock);
-  console.log("  uiLocked=%o, isWorkModule=%o", CORE.state.uiLocked, isWorkModule_());
-  
-  if (!_fromLock && CORE.state.uiLocked) {
-    console.log("  ⛔ UI LOCKED - regresando");
-    return;
-  }
-  if (!isWorkModule_()) {
-    console.log("  ⛔ NO ES WORK MODULE - regresando");
-    return;
-  }
+  if (!_fromLock && CORE.state.uiLocked) return;
+  if (!isWorkModule_()) return;
 
   let email;
   try { 
     email = requireEmailOrStop();
-    console.log("  ✓ email=%o", email);
   }
-  catch (e) { 
-    console.log("  ⛔ NO EMAIL - regresando", e.message);
+  catch { 
     return; 
   }
 
@@ -125,18 +149,8 @@ export async function syncNow({ forceFull = false, showOut = false, _fromLock = 
   const prevF = c.finalKeys.slice();
   const snapNotas = snapshotNotasActivas_();
 
-  // 🚀 TIMING: inicia sync
-  const t0 = performance.now();
-  console.log(`[syncNow] iniciando... forceFull=${forceFull}`);
-
   const since = forceFull ? null : c.lastSyncSince;
-  
-  // 🚀 TIMING: fetch de activas
-  const t1 = performance.now();
   const res = await apiSync_(email, since, { forceRefresh: forceFull });
-  const durFetchActivas = performance.now() - t1;
-  console.log(`⏱ fetch activas: ${durFetchActivas.toFixed(0)}ms`);
-  
   const j = res.data;
 
   if (showOut) setOut(j);
@@ -154,20 +168,11 @@ export async function syncNow({ forceFull = false, showOut = false, _fromLock = 
     c.lastSyncRev = j.rev || c.lastSyncRev;
   }
 
-  // 🚀 TIMING: rebuild store
-  const t2 = performance.now();
   rebuildListsFromStore_();
-  const durRebuild = performance.now() - t2;
-  console.log(`⏱ rebuilding store: ${durRebuild.toFixed(0)}ms`);
 
   // Enriquecer con nombres MOTOR/TANQUERO para Calidad
   if (CORE.state.currentModule === "CALIDAD") {
-    const t3 = performance.now();
     const byVin = await ensureNombresCache_();
-    const durNombresFetch = performance.now() - t3;
-    console.log(`⏱ fetch nombres: ${durNombresFetch.toFixed(0)}ms`);
-    
-    const t4 = performance.now();
     for (const k of [...c.activeKeys, ...c.finalKeys]) {
       const it = c.itemsByKey.get(k);
       if (it && it.vin && !it.motorNombre && !it.tanqueroNombre) {
@@ -176,12 +181,8 @@ export async function syncNow({ forceFull = false, showOut = false, _fromLock = 
         it.tanqueroNombre = nombres.tanqueroNombre;
       }
     }
-    const durNombresEnrich = performance.now() - t4;
-    console.log(`⏱ enrich nombres in items: ${durNombresEnrich.toFixed(0)}ms`);
   }
 
-  // 🚀 TIMING: render
-  const t5 = performance.now();
   const needsFull = forceFull || detectIfNeedsFullRerender_(prevA, prevF);
   if (needsFull) {
     renderActivas_();
@@ -190,8 +191,6 @@ export async function syncNow({ forceFull = false, showOut = false, _fromLock = 
   } else {
     patchVisibleCards_();
   }
-  const durRender = performance.now() - t5;
-  console.log(`⏱ render: ${durRender.toFixed(0)}ms (needsFull=${needsFull})`);
 
   c.lastSyncAtMs = Date.now();
   enforceRolLock_();
@@ -210,8 +209,4 @@ export async function syncNow({ forceFull = false, showOut = false, _fromLock = 
     }
     if (vinCandidato) autoStartFromScan_(vinCandidato, getRolTrabajoCurrent_()).catch(() => {});
   }
-
-  // 🚀 TIMING: total
-  const durTotal = performance.now() - t0;
-  console.log(`✅ [syncNow] completado en ${durTotal.toFixed(0)}ms`);
 }

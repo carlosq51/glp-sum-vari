@@ -26,7 +26,7 @@ import {
 import { computeLiveMs_, renderFinalizados_, rebuildListsFromStore_ } from "../../work/index.js";
 import { startLoopsFor_, stopLoopsFor_, clearModuleUI_ } from "../../core/loops.js";
 
-import { syncNow, fetchFinalizados_ } from "./data/conversion-sync.js";
+import { syncNow, fetchFinalizados_, initializeRealtime_, destroyRealtime_ } from "./data/conversion-sync.js";
 import {
   refreshEstadoForVinRole,
   initEstadoUI_,
@@ -160,6 +160,10 @@ export function init() {
 export function enter(mod) {
   CORE.state.currentModule = mod;
 
+  // 🚀 Inicializar Realtime subscriptions
+  initializeRealtime_()
+    .catch(e => console.warn("[enter] Realtime init error:", e.message));
+
   startLoopsFor_(mod, {
     syncNow,
     tickClocksUI: tickClocksUI_,
@@ -170,6 +174,9 @@ export function enter(mod) {
 export function exit(mod) {
   stopLoopsFor_(mod);
   clearModuleUI_(mod);
+  
+  // 🚀 Limpiar Realtime subscriptions
+  destroyRealtime_();
 }
 
 export { syncNow } from "./data/conversion-sync.js";

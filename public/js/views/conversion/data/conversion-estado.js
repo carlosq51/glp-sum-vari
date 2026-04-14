@@ -27,6 +27,7 @@ import {
 import { isWorkModule_ } from "../../../core/core.js";
 import { normalizeItem_, fetchNombresParaVin_ } from "../state/conversion-store.js";
 import { syncNow } from "./conversion-sync.js";
+import { autoStartFromScan_ } from "./conversion-eventos.js";
 
 let estadoDebounceTimer_ = null;
 
@@ -103,6 +104,17 @@ export function initEstadoUI_() {
   $("btnEstado")?.addEventListener("click", async () => {
     if (CORE.state.currentModule !== "TECNICO") return;
     await withLock(async () => {
+      const vin = getVin();
+      if (!vin) {
+        setEstadoText("❌ Ingresa un VIN primero");
+        return;
+      }
+      const rolTrabajo = getRolTrabajoCurrent_();
+      
+      // 🚀 CREAR OT automáticamente si no existe
+      await autoStartFromScan_(vin, rolTrabajo);
+      
+      // Luego refrescar estado y sincronizar
       await refreshEstadoForVinRole({ showOut: true });
       await syncNow({ forceFull: true, showOut: false });
     }, "Buscando / creando OT...");
@@ -111,6 +123,17 @@ export function initEstadoUI_() {
   $("btnEstadoQ")?.addEventListener("click", async () => {
     if (CORE.state.currentModule !== "CALIDAD") return;
     await withLock(async () => {
+      const vin = getVin();
+      if (!vin) {
+        setEstadoText("❌ Ingresa un VIN primero");
+        return;
+      }
+      const rolTrabajo = getRolTrabajoCurrent_();
+      
+      // 🚀 CREAR OT automáticamente si no existe
+      await autoStartFromScan_(vin, rolTrabajo);
+      
+      // Luego refrescar estado y sincronizar
       await refreshEstadoForVinRole({ showOut: true });
       await syncNow({ forceFull: true, showOut: false });
     }, "Buscando / creando OT...");

@@ -41,13 +41,23 @@ export async function enviarEvento(accionOverride, opts = {}) {
   if (accion === "NOTA") {
     nota = String($("nota")?.value || "").trim();
     if (!nota && opts?.nota) nota = String(opts.nota || "").trim();
-    if (!nota) return setOut({ ok: false, error: "Escribe una nota antes de guardar." });
+    if (!nota) {
+      const err = { ok: false, error: "Escribe una nota antes de guardar." };
+      setOut(err);
+      return err;
+    }
   }
 
-  const vin = getVin();
-  if (!vin) return setOut({ ok: false, error: "Pon el VIN" });
+  // ✅ PERMITIR VIN/ROL OPCIONALES desde autoStartFromScan_
+  // Si vienen en opts, usarlos en lugar de re-leer de la UI
+  let vin = opts?.vin || getVin();
+  if (!vin) {
+    const err = { ok: false, error: "Pon el VIN" };
+    setOut(err);
+    return err;
+  }
 
-  const rolTrabajo = getRolTrabajoCurrent_();
+  let rolTrabajo = opts?.rolTrabajo || getRolTrabajoCurrent_();
 
   // validar acción en estado local
   const c = ctx_();
@@ -55,13 +65,17 @@ export async function enviarEvento(accionOverride, opts = {}) {
   if (itLocal) {
     const allowed = allowedActionsByEstado(itLocal.estado);
     if (!allowed.includes(accion)) {
-      return setOut({ ok: false, error: `Acción ${accion} no permitida desde estado ${itLocal.estado}.` });
+      const err = { ok: false, error: `Acción ${accion} no permitida desde estado ${itLocal.estado}.` };
+      setOut(err);
+      return err;
     }
   }
 
   const j = await postJSON_user("/api/evento", { email, vin, rolTrabajo, accion, nota }, accion === "NOTA" ? "Guardando nota..." : "Registrando...");
   setOut(j);
-  if (!j?.ok) return;
+  
+  // 🔄 Retornar resultado para que autoStartFromScan_ pueda analizarlo
+  if (!j?.ok) return j;
 
   const it2 = normalizeItem_(j);
   const k2 = keyOfItem_(it2);
@@ -81,6 +95,8 @@ export async function enviarEvento(accionOverride, opts = {}) {
   if (accion === "NOTA" && $("nota")) $("nota").value = "";
 
   setTimeout(() => { if (!CORE.state.uiLocked) syncNow({ forceFull: false, showOut: false }); }, 400);
+  
+  return j;
 }
 
 // --------------------------
@@ -94,12 +110,33 @@ export async function autoStartFromScan_(vin, rolTrabajo) {
 
   const k = `${v}|${rol}`;
   const now = Date.now();
-  if (lastAutoStart_.k === k && now - lastAutoStart_.t < 1200) return;
+  
+  // ✅ ANTI-LOOP: Si fue mismo VIN/rol en últimos 5 segundos, salir
+  // Aumentado de 1200ms a 5000ms para evitar loops de sync
+  if (lastAutoStart_.k === k && now - lastAutoStart_.t < 5000) return;
   lastAutoStart_ = { k, t: now };
 
   const c = ctx_();
   const it = [...c.itemsByKey.values()].find((x) => String(x.vin||"").toUpperCase() === v && String(x.rolTrabajo||"").toUpperCase() === rol);
   const estado = String(it?.estado || "").toUpperCase();
 
-  if (estado === "SIN_INICIAR") await enviarEvento("INICIO");
+  // ✅ SOLO crear/iniciar si:
+  // - NO existe asignación local (it === null)
+  // - O existe pero está en SIN_INICIAR (nunca fue iniciada)
+  // ❌ NO reiniciar si ya está TRABAJANDO, PAUSADO, FINALIZADO
+  if (!it || estado === "SIN_INICIAR") {
+    // ✅ PASAR VIN/ROL explícitamente para evitar que se re-lean de UI
+    // Esto previene que syncNow() cree OTs duplicadas con VINs diferentes
+    const result = await enviarEvento("INICIO", { vin: v, rolTrabajo: rol });
+    
+    // 🚨 Si da error 409 (ya asignada a otro usuario), mostrar popup
+    if (result && !result.ok && result.error && result.error.includes("ya está asignada")) {
+      // Mostrar popup con el error
+      const titulo = "⚠️ Orden ya asignada";
+      const msg = result.error;
+      if (typeof confirm !== "undefined") {
+        confirm(`${titulo}\n\n${msg}`);
+      }
+    }
+  }
 }

@@ -123,8 +123,14 @@ function vinAcOnInput_() {
       const items = await vinAcFetch_(q);
       if (vinAcLastQ !== q) return;
 
+      // ✅ Extraer solo el VIN (items ahora son {vin, modelo, cliente})
       vinAcItems = (items || [])
-        .map((v) => String(v || "").toUpperCase())
+        .map((item) => {
+          if (typeof item === 'object' && item !== null && item.vin) {
+            return String(item.vin).toUpperCase();
+          }
+          return String(item || "").toUpperCase();
+        })
         .filter(Boolean);
 
       vinAcIndex = vinAcItems.length ? 0 : -1;
