@@ -145,18 +145,42 @@ function vinAcPick_(vin) {
   const input = vinAcInput_();
   if (!input) return;
 
+  const pickTime = Date.now();
+  console.log(`[VIN_AC_PICK] 📍 Iniciando pick en VIN: ${vin}`);
+  
   input.value = String(vin || "").toUpperCase();
   vinAcHide_();
 
+  console.log(`[VIN_AC_PICK] 🔄 Llamando refreshEstadoForVinRole...`);
   refreshEstadoForVinRole({ showOut: false })
     .then(async () => {
+      const afterRefresh = Date.now();
+      console.log(`[VIN_AC_PICK] ✅ refreshEstadoForVinRole completada después de ${afterRefresh - pickTime}ms`);
+      
+      console.log(`[VIN_AC_PICK] ⏳ Esperando lock para autocomplete flow...`);
       await withLock(async () => {
+        const autoStartStart = Date.now();
+        console.log(`[VIN_AC_PICK] 🚀 Lock adquirido. Iniciando autoStartFromScan...`);
+        
         await autoStartFromScan_(input.value, getRolTrabajoCurrent_());
-        await syncNow({ forceFull: false, showOut: false });
+        console.log(`[VIN_AC_PICK] ✅ autoStartFromScan completada después de ${Date.now() - autoStartStart}ms`);
+        
+        console.log(`[VIN_AC_PICK] 📡 Ejecutando syncNow con forceFull: true...`);
+        const syncStartTime = Date.now();
+        await syncNow({ forceFull: true, showOut: false });
+        console.log(`[VIN_AC_PICK] ✅ syncNow completada después de ${Date.now() - syncStartTime}ms`);
+        
+        console.log(`[VIN_AC_PICK] 🔄 Ejecutando refreshEstadoForVinRole final...`);
         await refreshEstadoForVinRole({ showOut: false });
+        console.log(`[VIN_AC_PICK] ✅ refreshEstadoForVinRole final completada`);
       }, "Iniciando automáticamente...");
+      
+      const totalTime = Date.now() - pickTime;
+      console.log(`[VIN_AC_PICK] ⏱️ TIEMPO TOTAL: ${totalTime}ms (${(totalTime/1000).toFixed(2)}s)`);
     })
-    .catch(() => {});
+    .catch((e) => {
+      console.warn("[VIN_AC_PICK] ❌ Error en flujo autocomplete:", e.message);
+    });
 }
 
 function vinAcOnKeyDown_(e) {

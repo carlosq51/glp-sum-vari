@@ -132,30 +132,56 @@ export async function fetchFinalizados_(email) {
 }
 
 export async function syncNow({ forceFull = false, showOut = false, _fromLock = false } = {}) {
-  if (!_fromLock && CORE.state.uiLocked) return;
-  if (!isWorkModule_()) return;
+  if (!_fromLock && CORE.state.uiLocked) {
+    console.warn("[syncNow] ⏸️ Ignorado: UI está bloqueada (uiLocked=true)");
+    return;
+  }
+  if (!isWorkModule_()) {
+    console.debug("[syncNow] ⏸️ Ignorado: No es work module");
+    return;
+  }
 
   let email;
   try { 
     email = requireEmailOrStop();
   }
   catch { 
+    console.warn("[syncNow] ⏸️ No hay email");
     return; 
   }
 
+  const syncStartTime = Date.now();
   const c = ctx_();
   if (forceFull) clearNombresCache_();
   const prevA = c.activeKeys.slice();
   const prevF = c.finalKeys.slice();
   const snapNotas = snapshotNotasActivas_();
 
+  console.log(`[syncNow] 🔄 Iniciando sync (forceFull=${forceFull}, from=${_fromLock ? "lock" : "user"})`);
+  const apiStartTime = Date.now();
+  
   const since = forceFull ? null : c.lastSyncSince;
   const res = await apiSync_(email, since, { forceRefresh: forceFull });
+  const apiDuration = Date.now() - apiStartTime;
+  console.log(`[syncNow] 📡 apiSync_ completada en ${apiDuration}ms`);
+  
   const j = res.data;
 
   if (showOut) setOut(j);
-  if (!j || !j.ok) return;
+  
+  // ✅ Mejor error handling: siempre mostrar errores importantes
+  if (!j || !j.ok) {
+    const msg = j?.error || "Error al sincronizar";
+    console.warn("[syncNow] ❌ Error:", msg);
+    
+    // Solo mostrar error si es falla crítica o showOut es true
+    if (showOut || msg.includes("Usuario") || msg.includes("no autorizado")) {
+      setOut({ ok: false, error: `Sync error: ${msg}` });
+    }
+    return;
+  }
 
+  const storeStartTime = Date.now();
   if (res.mode === "legacy") {
     storeFullReplace_(j.items || []);
     c.lastSyncSince = new Date().toISOString();
@@ -167,11 +193,18 @@ export async function syncNow({ forceFull = false, showOut = false, _fromLock = 
     c.lastSyncSince = j.server_time || new Date().toISOString();
     c.lastSyncRev = j.rev || c.lastSyncRev;
   }
+  const storeDuration = Date.now() - storeStartTime;
+  console.log(`[syncNow] 💾 Store updated en ${storeDuration}ms`);
 
+  const rebuildStartTime = Date.now();
   rebuildListsFromStore_();
+  const rebuildDuration = Date.now() - rebuildStartTime;
+  console.log(`[syncNow] 🔨 rebuildListsFromStore_ en ${rebuildDuration}ms`);
 
   // Enriquecer con nombres MOTOR/TANQUERO para Calidad
+  let enrichDuration = 0;
   if (CORE.state.currentModule === "CALIDAD") {
+    const enrichStartTime = Date.now();
     const byVin = await ensureNombresCache_();
     for (const k of [...c.activeKeys, ...c.finalKeys]) {
       const it = c.itemsByKey.get(k);
@@ -181,8 +214,11 @@ export async function syncNow({ forceFull = false, showOut = false, _fromLock = 
         it.tanqueroNombre = nombres.tanqueroNombre;
       }
     }
+    enrichDuration = Date.now() - enrichStartTime;
+    console.log(`[syncNow] 🏭 Enriquecer nombres en ${enrichDuration}ms`);
   }
 
+  const renderStartTime = Date.now();
   const needsFull = forceFull || detectIfNeedsFullRerender_(prevA, prevF);
   if (needsFull) {
     renderActivas_();
@@ -191,22 +227,58 @@ export async function syncNow({ forceFull = false, showOut = false, _fromLock = 
   } else {
     patchVisibleCards_();
   }
+  const renderDuration = Date.now() - renderStartTime;
+  console.log(`[syncNow] 🎨 Render en ${renderDuration}ms`);
 
   c.lastSyncAtMs = Date.now();
   enforceRolLock_();
 
-  // auto-start básico
+  const totalDuration = Date.now() - syncStartTime;
+  console.log(`[syncNow] ✅ TOTAL syncNow: ${totalDuration}ms (api:${apiDuration}ms, store:${storeDuration}ms, rebuild:${rebuildDuration}ms, enrich:${enrichDuration}ms, render:${renderDuration}ms)`);
+
+  // ✅ MEJOR: Auto-start SIN_INICIAR solo si NO hay VIN ingresado
+  // Evita crear autos duplicados si el usuario está ingresando VINes manualmente
   if (CORE.state.currentModule === "CALIDAD") {
-    const first = c.activeKeys.map((k) => c.itemsByKey.get(k)).find((it) => it && it.rolTrabajo === "CALIDAD" && it.estado === "SIN_INICIAR");
-    if (first?.vin) autoStartFromScan_(first.vin, "CALIDAD").catch(() => {});
+    const vinInput = getVin();
+    // Solo hacer auto-start si no hay input de VIN
+    if (!vinInput) {
+      const first = c.activeKeys
+        .map((k) => c.itemsByKey.get(k))
+        .find((it) => it && it.rolTrabajo === "CALIDAD" && it.estado === "SIN_INICIAR");
+      if (first?.vin) {
+        console.log(`[SYNC] Auto-start CALIDAD: ${first.vin}`);
+        autoStartFromScan_(first.vin, "CALIDAD").catch((e) => {
+          console.warn("[SYNC] Auto-start error:", e.message);
+        });
+      }
+    }
   }
+
   if (CORE.state.currentModule === "TECNICO") {
     const vinInput = getVin();
-    let vinCandidato = vinInput;
-    if (!vinCandidato) {
-      const first = c.activeKeys.map((k) => c.itemsByKey.get(k)).find((it) => it && (it.rolTrabajo === "MOTOR" || it.rolTrabajo === "TANQUE") && it.estado === "SIN_INICIAR" && String(it.vin || "").trim());
-      vinCandidato = String(first?.vin || "").trim().toUpperCase();
+    const rolActual = getRolTrabajoCurrent_();
+    
+    // Solo hacer auto-start si:
+    // 1. No hay VIN ingresado en input
+    // 2. Hay un rol actual
+    if (!vinInput && rolActual) {
+      const candidates = c.activeKeys
+        .map((k) => c.itemsByKey.get(k))
+        .filter((it) => 
+          it && 
+          (it.rolTrabajo === "MOTOR" || it.rolTrabajo === "TANQUE") && 
+          it.estado === "SIN_INICIAR" && 
+          String(it.vin || "").trim()
+        );
+      
+      // ✅ Solo iniciar la primera, no todas
+      if (candidates.length > 0) {
+        const first = candidates[0];
+        console.log(`[SYNC] Auto-start TECNICO: ${first.vin} | Rol: ${rolActual} (${candidates.length} candidatas)`);
+        autoStartFromScan_(first.vin, rolActual).catch((e) => {
+          console.warn("[SYNC] Auto-start error:", e.message);
+        });
+      }
     }
-    if (vinCandidato) autoStartFromScan_(vinCandidato, getRolTrabajoCurrent_()).catch(() => {});
   }
 }

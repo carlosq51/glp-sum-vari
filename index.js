@@ -82,7 +82,9 @@ const CACHE = {
   work_orders: { data: [], ts: 0 },
   usuarios: { data: [], ts: 0 },
   asignaciones: { data: [], ts: 0 },
+  usersByEmail: {},  // 🔥 Cache específico: email → userId (TTL 30 min)
   TTL_MS: 2 * 60 * 1000, // 2 minutos
+  TTL_USERS_EMAIL: 30 * 60 * 1000, // 30 minutos para email → userId
 };
 
 function getCachedData_(table) {
@@ -102,6 +104,25 @@ function setCachedData_(table, data) {
     CACHE[table].ts = Date.now();
     console.log(`[CACHE SET] ${table} (${data.length} items)`);
   }
+}
+
+// 🔥 CACHE para USER_ID by EMAIL (evita N+1 lookups)
+function getCachedUserIdByEmail_(email) {
+  const entry = CACHE.usersByEmail[email];
+  if (!entry) return null;
+  const age = Date.now() - entry.ts;
+  if (age < CACHE.TTL_USERS_EMAIL) {
+    console.log(`[CACHE HIT] user_id para email (${age}ms old)`);
+    return entry.userId;
+  }
+  // Expirado
+  delete CACHE.usersByEmail[email];
+  return null;
+}
+
+function setCachedUserIdByEmail_(email, userId) {
+  CACHE.usersByEmail[email] = { userId, ts: Date.now() };
+  console.log(`[CACHE SET] user_id para ${email}`);
 }
 
 function supabaseHeaders_() {
@@ -285,7 +306,8 @@ app.get("/api/me", async (req, res) => {
   }
 });
 
-// endpoint Node → Supabase (mis_activas) - ULTRA RÁPIDO con JOINS
+// endpoint Node → Supabase (mis_activas) - ULTRA RÁPIDO con JOINS + CACHE
+// ✅ Filtras por: técnico (id/email) + estado != FINALIZADO
 app.get("/api/mis-activas", async (req, res) => {
   try {
     const email = String(req.query.email || "").trim().toLowerCase();
@@ -296,23 +318,41 @@ app.get("/api/mis-activas", async (req, res) => {
       return res.status(400).json({ ok: false, error: "Envía ?email= o ?userId=" });
     }
 
-    // 1️⃣ Obtén user_id si viene email
+    // 1️⃣ Obtén user_id si viene email (con CACHE para evitar N+1)
     let finalUserId = userId;
+    let tecnicoEmail = email;
     if (!finalUserId && email) {
-      const usuarios = await supabaseGet_("usuarios", { email });
-      if (!usuarios?.length) {
-        return res.status(404).json({ ok: false, error: "Usuario no encontrado" });
+      // 🔥 Primero intenta el cache
+      finalUserId = getCachedUserIdByEmail_(email);
+      
+      if (!finalUserId) {
+        // Cache miss → busca en Supabase
+        const usuarios = await supabaseGet_("usuarios", { email });
+        if (!usuarios?.length) {
+          return res.status(404).json({ ok: false, error: "Usuario no encontrado" });
+        }
+        finalUserId = usuarios[0].id;
+        tecnicoEmail = usuarios[0].email;
+        // 🔥 Cachea el resultado para próximas llamadas
+        setCachedUserIdByEmail_(email, finalUserId);
       }
-      finalUserId = usuarios[0].id;
+    } else if (finalUserId) {
+      // Si vino userId, obtén el email del usuario
+      const usuarios = await supabaseGet_("usuarios", { id: `eq.${finalUserId}` });
+      if (usuarios?.length) {
+        tecnicoEmail = usuarios[0].email;
+      }
     }
 
-    // 2️⃣ Query asignaciones ACTIVAS + work_orders (JOINS en DB = RÁPIDO)
+    // 2️⃣ Query asignaciones ACTIVAS (NO FINALIZADO) + work_orders + usuarios
+    // ✅ Filtro de estado: excluimos FINALIZADO (traemos TRABAJANDO, PAUSADO, SIN_INICIAR)
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const headers = supabaseHeaders_();
     
     let query = `${SUPABASE_URL}/rest/v1/asignaciones?`;
-    query += `user_id=eq.${finalUserId}&activo=eq.true`;
-    query += `&select=*,work_orders(*)&order=updated_at.desc&limit=50`;
+    query += `user_id=eq.${finalUserId}&activo=eq.true&estado_actual=neq.FINALIZADO`;
+    query += `&select=id,work_order_id,tipo_ot,rol_trabajo,estado_actual,running_since,tiempo_trab_ms,updated_at,last_nota,user_id,usuarios!inner(id,email,nombre),work_orders!inner(id,vin)`;
+    query += `&order=updated_at.desc`;
 
     const res_data = await fetch(query, { method: "GET", headers });
     
@@ -323,13 +363,27 @@ app.get("/api/mis-activas", async (req, res) => {
     const asignaciones = await res_data.json();
     const duration = Date.now() - t1;
 
-    // Mapea a formato que espera el frontend
-    const items = asignaciones.map(asg => ({
-      ...asg,
-      ...asg.work_orders,
-      tiempo_ms: asg.tiempo_trab_ms || 0,
-      estado: asg.estado_actual,
-    }));
+    // ✅ MAPEO CON INFO DEL TÉCNICO
+    const items = asignaciones.map(asg => {
+      return {
+        id: asg.id,
+        work_order_id: asg.work_order_id,
+        tipo_ot: asg.tipo_ot,
+        rol_trabajo: asg.rol_trabajo,
+        estado_actual: asg.estado_actual,
+        running_since: asg.running_since,
+        tiempo_trab_ms: asg.tiempo_trab_ms || 0,
+        updated_at: asg.updated_at,
+        last_nota: asg.last_nota || "",
+        vin: asg.work_orders?.vin || "",
+        estado: asg.estado_actual,
+        tiempo_ms: asg.tiempo_trab_ms || 0,
+        // ✨ Información del técnico
+        tecnico_id: asg.user_id,
+        tecnico_email: asg.usuarios?.[0]?.email || tecnicoEmail || "",
+        tecnico_nombre: asg.usuarios?.[0]?.nombre || "",
+      };
+    });
 
     res.set("Server-Timing", `query;dur=${duration}`);
     return res.json({
@@ -345,7 +399,8 @@ app.get("/api/mis-activas", async (req, res) => {
   }
 });
 
-// endpoint Node → Supabase (mis_finalizadas) - LECTURA SOLO [OPTIMIZADO]
+// endpoint Node → Supabase (mis_finalizadas) - LECTURA OPTIMIZADA [ESTADO FILTRADO]
+// ✅ Filtras por: técnico (id/email) + estado = FINALIZADO
 app.get("/api/mis-finalizadas", async (req, res) => {
   try {
     const email = String(req.query.email || "").trim().toLowerCase();
@@ -356,23 +411,41 @@ app.get("/api/mis-finalizadas", async (req, res) => {
       return res.status(400).json({ ok: false, error: "Envía ?email= o ?userId=" });
     }
 
-    // 1️⃣ Obtén user_id si viene email
+    // 1️⃣ Obtén user_id si viene email (con CACHE para evitar N+1)
     let finalUserId = userId;
+    let tecnicoEmail = email;
     if (!finalUserId && email) {
-      const usuarios = await supabaseGet_("usuarios", { email });
-      if (!usuarios?.length) {
-        return res.status(404).json({ ok: false, error: "Usuario no encontrado" });
+      // 🔥 Primero intenta el cache
+      finalUserId = getCachedUserIdByEmail_(email);
+      
+      if (!finalUserId) {
+        // Cache miss → busca en Supabase
+        const usuarios = await supabaseGet_("usuarios", { email });
+        if (!usuarios?.length) {
+          return res.status(404).json({ ok: false, error: "Usuario no encontrado" });
+        }
+        finalUserId = usuarios[0].id;
+        tecnicoEmail = usuarios[0].email;
+        // 🔥 Cachea el resultado
+        setCachedUserIdByEmail_(email, finalUserId);
       }
-      finalUserId = usuarios[0].id;
+    } else if (finalUserId) {
+      // Si vino userId, obtén el email del usuario
+      const usuarios = await supabaseGet_("usuarios", { id: `eq.${finalUserId}` });
+      if (usuarios?.length) {
+        tecnicoEmail = usuarios[0].email;
+      }
     }
 
-    // 2️⃣ Query asignaciones FINALIZADAS + work_orders (JOINS en DB = RÁPIDO)
+    // 2️⃣ Query asignaciones FINALIZADAS (SOLO estado FINALIZADO)
+    // ✅ Incluye JOIN con usuarios para tener info del técnico
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const headers = supabaseHeaders_();
     
     let query = `${SUPABASE_URL}/rest/v1/asignaciones?`;
     query += `user_id=eq.${finalUserId}&estado_actual=eq.FINALIZADO`;
-    query += `&select=*,work_orders(*)&order=updated_at.desc&limit=100`;
+    query += `&select=id,work_order_id,tipo_ot,rol_trabajo,estado_actual,running_since,tiempo_trab_ms,updated_at,last_nota,user_id,usuarios!inner(id,email,nombre),work_orders!inner(id,vin)`;
+    query += `&order=updated_at.desc`;
 
     const res_data = await fetch(query, { method: "GET", headers });
     
@@ -383,13 +456,27 @@ app.get("/api/mis-finalizadas", async (req, res) => {
     const asignaciones = await res_data.json();
     const duration = Date.now() - t1;
 
-    // Mapea a formato que espera el frontend
-    const items = asignaciones.map(asg => ({
-      ...asg,
-      ...asg.work_orders,
-      tiempo_ms: asg.tiempo_trab_ms || 0,
-      estado: asg.estado_actual,
-    }));
+    // ✅ MAPEO CON INFO DEL TÉCNICO
+    const items = asignaciones.map(asg => {
+      return {
+        id: asg.id,
+        work_order_id: asg.work_order_id,
+        tipo_ot: asg.tipo_ot,
+        rol_trabajo: asg.rol_trabajo,
+        estado_actual: asg.estado_actual,
+        running_since: asg.running_since,
+        tiempo_trab_ms: asg.tiempo_trab_ms || 0,
+        updated_at: asg.updated_at,
+        last_nota: asg.last_nota || "",
+        vin: asg.work_orders?.vin || "",
+        estado: asg.estado_actual,
+        tiempo_ms: asg.tiempo_trab_ms || 0,
+        // ✨ Información del técnico
+        tecnico_id: asg.user_id,
+        tecnico_email: asg.usuarios?.[0]?.email || tecnicoEmail || "",
+        tecnico_nombre: asg.usuarios?.[0]?.nombre || "",
+      };
+    });
 
     res.set("Server-Timing", `query;dur=${duration}`);
     return res.json({
@@ -436,25 +523,65 @@ app.post("/api/evento", async (req, res) => {
     let workOrderId, tipoOt;
     
     if (!workOrders || !workOrders.length) {
-      // VIN existe en tabla vins pero no en work_orders → CREARLA automáticamente
-      const vins = await supabaseGet_("vins", { vin });
+      // VIN puede no existir en tabla vins → CREAR PRIMERO (OBLIGATORIO por FK)
+      let vins = await supabaseGet_("vins", { vin });
+      
       if (!vins || !vins.length) {
-        return res.status(404).json({ ok: false, error: "VIN no existe" });
+        // ✅ VIN NO EXISTE → CREAR primero (NECESARIO para FK en work_orders)
+        let createdVin = null;
+        try {
+          const vinData = {
+            vin: vin,
+            modelo: "DESCONOCIDO",
+          };
+          createdVin = await supabasePost_("vins", vinData);
+          console.log(`[EVENTO] VIN creado automáticamente: ${vin}`, createdVin);
+          
+          // Verificar que se creó realmente
+          if (!createdVin || !createdVin.vin) {
+            throw new Error(`VIN creado pero respuesta vacía: ${JSON.stringify(createdVin)}`);
+          }
+        } catch (vinErr) {
+          const errMsg = String(vinErr.message || vinErr);
+          
+          // ✅ Manejar duplicate key (ya existe)
+          if (errMsg.includes("23505") || errMsg.includes("duplicate") || errMsg.includes("already exists")) {
+            console.warn(`[EVENTO] VIN ${vin} ya existe (pero no aparecía en lectura). Reintentando...`);
+            // Reintenta la lectura
+            vins = await supabaseGet_("vins", { vin });
+            if (!vins || !vins.length) {
+              throw new Error(`VIN ${vin} reportó duplicate pero no aparece en lectura. DB inconsistente.`);
+            }
+            console.log(`[EVENTO] VIN ${vin} confirma después de retry`);
+          } else {
+            // ❌ CRÍTICO: Otro tipo de error
+            console.error(`[EVENTO] CRÍTICO - No se pudo crear VIN ${vin}:`, errMsg);
+            throw new Error(`No se pudo crear VIN ${vin} (requerido por FK): ${errMsg}`);
+          }
+        }
       }
       
-      // Crear work_order con tipo_ot = CONVERSION por defecto
-      const woData = {
-        tipo_ot: "CONVERSION",
-        vin: vin,
-        estado_general: "PENDIENTE",
-      };
-      const createdWO = await supabasePost_("work_orders", woData);
-      const wo = Array.isArray(createdWO) ? createdWO[0] : createdWO;
-      workOrderId = wo.id;
-      tipoOt = wo.tipo_ot;
+      // ✅ Ahora sí CREAR work_order (VIN garantizado por FK)
+      try {
+        const woData = {
+          tipo_ot: "CONVERSION",
+          vin: vin,
+          estado_general: "PENDIENTE",
+        };
+        const createdWO = await supabasePost_("work_orders", woData);
+        const wo = Array.isArray(createdWO) ? createdWO[0] : createdWO;
+        workOrderId = wo.id;
+        tipoOt = wo.tipo_ot;
+        console.log(`[EVENTO] Work Order creado: ${workOrderId} para VIN ${vin}`);
+      } catch (woErr) {
+        const errMsg = String(woErr.message || woErr);
+        console.error(`[EVENTO] CRÍTICO - No se pudo crear Work Order:`, errMsg);
+        throw new Error(`No se pudo crear Work Order para VIN ${vin}: ${errMsg}`);
+      }
     } else {
       workOrderId = workOrders[0].id;
       tipoOt = workOrders[0].tipo_ot;
+      console.log(`[EVENTO] Work Order existente encontrado: ${workOrderId}`);
     }
 
     // 3️⃣ Buscar asignación ACTIVA por (work_order_id, rol_trabajo) - SIN filtrar user_id
@@ -471,16 +598,24 @@ app.post("/api/evento", async (req, res) => {
     if (asignacionActiva && asignacionActiva.user_id !== userId) {
       // Obtener nombre del usuario que tiene asignada
       let otroUsuario = "otro usuario";
+      let otroEmail = "";
       try {
         const otrosUsuarios = await supabaseGet_("usuarios", { id: asignacionActiva.user_id });
         if (otrosUsuarios && otrosUsuarios.length) {
-          otroUsuario = `${otrosUsuarios[0].nombre || otrosUsuarios[0].email}`;
+          otroUsuario = `${otrosUsuarios[0].nombre || ""}`.trim() || otrosUsuarios[0].email;
+          otroEmail = otrosUsuarios[0].email || "";
         }
       } catch (e) { /* ignore */ }
       
+      // ✅ Retornar más información para mejor manejo en frontend
       return res.status(409).json({ 
         ok: false, 
-        error: `Esta OT ya está asignada a ${otroUsuario} en rol ${rolTrabajo}.` 
+        error: `Esta OT ya está asignada a ${otroUsuario} en rol ${rolTrabajo}`,
+        errorType: "ALREADY_ASSIGNED",
+        assignedTo: otroUsuario,
+        assignedEmail: otroEmail,
+        assignedRol: rolTrabajo,
+        vin: vin,
       });
     }
 
@@ -492,6 +627,29 @@ app.post("/api/evento", async (req, res) => {
     let nuevoEstado = estadoActual;
     let runningSince = asignacion?.running_since || null;
     let tiempoAgregado = 0;
+
+    // ✅ VALIDACIÓN DE TRANSICIÓN DE ESTADO (lado servidor)
+    // Definir transiciones válidas
+    const transicionesValidas = {
+      "SIN_INICIAR": ["INICIO", "NOTA"],
+      "TRABAJANDO": ["PAUSA", "FIN", "NOTA"],
+      "PAUSADO": ["REANUDAR", "FIN", "NOTA"],
+      "FINALIZADO": ["NOTA"],
+    };
+
+    const accionesValidas = transicionesValidas[estadoActual] || ["INICIO", "NOTA"];
+    if (!accionesValidas.includes(accion)) {
+      console.warn(
+        `[EVENTO] Acción no permitida: estado=${estadoActual}, accion=${accion}. ` +
+        `Permitidas: ${accionesValidas.join(", ")}`
+      );
+      return res.status(400).json({
+        ok: false,
+        error: `Acción ${accion} no permitida desde estado ${estadoActual}`,
+        estadoActual: estadoActual,
+        accionesPermitidas: accionesValidas,
+      });
+    }
 
     switch (accion) {
       case "INICIO":
@@ -568,18 +726,84 @@ app.post("/api/evento", async (req, res) => {
       asignacion = Array.isArray(updateResult) ? updateResult[0] : updateResult;
     }
 
-    // 🔟 Retornar asignación actualizada
+    // 🔟 Retornar asignación actualizada - CON TODOS LOS CAMPOS ESPERADOS Y NORMALIZADOS
     const duration = Date.now() - t1;
-    return res.json({
+    
+    // ✅ NORMALIZACIÓN GARANTIZADA
+    const respuesta = {
       ok: true,
-      ...asignacion,
-      work_orders: workOrders[0],
+      // Campos de asignación
+      id: asignacion.id,
+      work_order_id: workOrderId,
+      user_id: userId,
+      tipo_ot: tipoOt,
+      rol_trabajo: rolTrabajo,
+      estado_actual: asignacion.estado_actual,
+      running_since: asignacion.running_since,
+      tiempo_trab_ms: asignacion.tiempo_trab_ms || 0,
+      activo: asignacion.activo,
+      created_at: asignacion.created_at,
+      updated_at: asignacion.updated_at,
+      last_nota: asignacion.last_nota || "",
+      last_nota_ts: asignacion.last_nota_ts,
+      
+      // Campos mapeados para compatibilidad con frontend
+      vin: vin,  // ✅ VIN GARANTIZADO
+      conversionId: workOrderId,  // Alias
+      estado: asignacion.estado_actual,  // Alias
+      tiempo_ms: asignacion.tiempo_trab_ms || 0,  // Alias
+      rolTrabajo: rolTrabajo,  // camelCase
+      
+      // Metadata
       _timing: `${duration}ms`,
       _source: "supabase",
-    });
+      _debugInfo: {
+        nuevoEstado,
+        estadoActualAnterior: estadoActual,
+        accion,
+      },
+    };
+    
+    console.log(`[EVENTO] ✅ Exitoso: ${accion} para VIN=${vin}, ROL=${rolTrabajo}, ESTADO=${nuevoEstado}`);
+    return res.json(respuesta);
   } catch (e) {
-    console.error("[POST /api/evento]", e.message);
-    res.status(500).json({ ok: false, error: String(e.message || e) });
+    console.error("[POST /api/evento]", e.message, e.stack);
+    
+    // ✅ Retornar error más informativo y categorizado
+    const errorMsg = String(e.message || e);
+    let statusCode = 500;
+    let errorType = "INTERNAL_ERROR";
+    let userMsg = "Error al registrar evento";
+    
+    if (errorMsg.includes("404") || errorMsg.includes("no encontrado")) {
+      statusCode = 404;
+      errorType = "NOT_FOUND";
+      userMsg = "Usuario, VIN o  elemento no encontrado";
+    } else if (errorMsg.includes("Usuario")) {
+      statusCode = 404;
+      errorType = "USER_NOT_FOUND";
+      userMsg = "Usuario no encontrado";
+    } else if (errorMsg.includes("Constraint") || errorMsg.includes("conflict")) {
+      statusCode = 409;
+      errorType = "CONFLICT";
+      userMsg = "Conflicto al crear/actualizar registro";
+    } else if (errorMsg.includes("permission") || errorMsg.includes("forbidden")) {
+      statusCode = 403;
+      errorType = "FORBIDDEN";
+      userMsg = "Permiso denegado";
+    } else if (errorMsg.includes("timeout") || errorMsg.includes("timed out")) {
+      statusCode = 504;
+      errorType = "TIMEOUT";
+      userMsg = "La operación tardó demasiado. Intenta de nuevo.";
+    }
+    
+    res.status(statusCode).json({ 
+      ok: false, 
+      error: userMsg,
+      errorType: errorType,
+      details: errorMsg,
+      _debug: process.env.NODE_ENV === "development" ? e.message : undefined,
+    });
   }
 });
 

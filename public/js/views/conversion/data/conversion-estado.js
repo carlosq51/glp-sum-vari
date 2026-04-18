@@ -75,7 +75,20 @@ export async function refreshEstadoForVinRole({ showOut = false } = {}) {
     : await getJSON(`/api/estado?email=${encodeURIComponent(email)}&vin=${encodeURIComponent(vin)}&rolTrabajo=${encodeURIComponent(rolTrabajo)}`);
   
   if (showOut) setOut(j);
-  if (!j?.ok && !supabaseEnabled()) { setEstadoText(j?.error || "Error"); return; }
+  
+  // ✅ Si hay error (incluso sin showOut), loguear pero no fallar
+  if (!j?.ok) {
+    if (!supabaseEnabled()) {
+      console.warn("[refreshEstadoForVinRole] Error:", j?.error || "Error desconocido");
+      setEstadoText(`⚠️ ${j?.error || "Error al obtener estado"}`);
+      return;
+    } else {
+      // Supabase null response puede significar VIN no existe aún (será creado)
+      console.log("[refreshEstadoForVinRole] VIN no existe aún (será creado al hacer INICIO)");
+      setEstadoText("Listo para crear OT");
+      return;
+    }
+  }
 
   const it2 = normalizeItem_(j);
   const k2 = keyOfItem_(it2);
@@ -103,40 +116,89 @@ export function scheduleEstadoRefresh_(ms = 500) {
 export function initEstadoUI_() {
   $("btnEstado")?.addEventListener("click", async () => {
     if (CORE.state.currentModule !== "TECNICO") return;
+    
+    // ✅ Validaciones rápidas (sin lock)
+    const vin = getVin();
+    if (!vin) {
+      setEstadoText("❌ Ingresa un VIN primero");
+      return;
+    }
+    const rolTrabajo = getRolTrabajoCurrent_();
+    if (!rolTrabajo) {
+      setEstadoText("❌ Selecciona un rol primero");
+      return;
+    }
+    
+    // � LOCK VISUAL INMEDIATO y LANZAR EVENTO
     await withLock(async () => {
-      const vin = getVin();
-      if (!vin) {
-        setEstadoText("❌ Ingresa un VIN primero");
-        return;
-      }
-      const rolTrabajo = getRolTrabajoCurrent_();
+      setEstadoText("🔄 Registrando evento...");
       
-      // 🚀 CREAR OT automáticamente si no existe
+      // 🚀 Lanzar evento y esperar respuesta (rápido, solo POST)
       await autoStartFromScan_(vin, rolTrabajo);
       
-      // Luego refrescar estado y sincronizar
-      await refreshEstadoForVinRole({ showOut: true });
-      await syncNow({ forceFull: true, showOut: false });
-    }, "Buscando / creando OT...");
+    }, "Creando OT...");
+    
+    // 🔄 Sync + Refresh en background (sin lock)
+    setEstadoText("⏳ Sincronizando...");
+    syncNow({ forceFull: true, showOut: false })
+      .then(() => {
+        const c = ctx_();
+        const it = [...c.itemsByKey.values()].find(x => 
+          String(x.vin || "").toUpperCase() === vin &&
+          String(x.rolTrabajo || "").toUpperCase() === rolTrabajo
+        );
+        
+        if (it?.estado === "TRABAJANDO") {
+          setEstadoText("✅ OT TRABAJANDO");
+        } else {
+          setEstadoText(`ℹ️ Estado: ${it?.estado || "SIN_INICIAR"}`);
+        }
+      })
+      .catch(() => {});
   });
 
   $("btnEstadoQ")?.addEventListener("click", async () => {
     if (CORE.state.currentModule !== "CALIDAD") return;
+    
+    // ✅ Validaciones rápidas (sin lock)
+    const vin = getVin();
+    if (!vin) {
+      setEstadoText("❌ Ingresa un VIN primero");
+      return;
+    }
+    const rolTrabajo = getRolTrabajoCurrent_();
+    if (!rolTrabajo) {
+      setEstadoText("❌ Selecciona rol CALIDAD");
+      return;
+    }
+    
+    // � LOCK VISUAL INMEDIATO y LANZAR EVENTO
     await withLock(async () => {
-      const vin = getVin();
-      if (!vin) {
-        setEstadoText("❌ Ingresa un VIN primero");
-        return;
-      }
-      const rolTrabajo = getRolTrabajoCurrent_();
+      setEstadoText("🔄 Registrando evento...");
       
-      // 🚀 CREAR OT automáticamente si no existe
+      // 🚀 Lanzar evento y esperar respuesta (rápido, solo POST)
       await autoStartFromScan_(vin, rolTrabajo);
       
-      // Luego refrescar estado y sincronizar
-      await refreshEstadoForVinRole({ showOut: true });
-      await syncNow({ forceFull: true, showOut: false });
-    }, "Buscando / creando OT...");
+    }, "Creando OT...");
+    
+    // 🔄 Sync + Refresh en background (sin lock)
+    setEstadoText("⏳ Sincronizando...");
+    syncNow({ forceFull: true, showOut: false })
+      .then(() => {
+        const c = ctx_();
+        const it = [...c.itemsByKey.values()].find(x => 
+          String(x.vin || "").toUpperCase() === vin &&
+          String(x.rolTrabajo || "").toUpperCase() === rolTrabajo
+        );
+        
+        if (it?.estado === "TRABAJANDO") {
+          setEstadoText("✅ OT TRABAJANDO");
+        } else {
+          setEstadoText(`ℹ️ Estado: ${it?.estado || "SIN_INICIAR"}`);
+        }
+      })
+      .catch(() => {});
+    }, 100);
   });
 
   $("rol")?.addEventListener("change", () => {

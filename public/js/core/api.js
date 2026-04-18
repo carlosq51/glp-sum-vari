@@ -55,12 +55,32 @@ export function setLocked(on, msg = "Procesando...") {
 }
 
 export async function withLock(fn, msg) {
-  if (CORE.state.uiLocked) return;
+  if (CORE.state.uiLocked) {
+    console.warn(`[withLock] ⚠️ Ya hay un lock activo. Ignorando nueva operación: "${msg}"`);
+    return;
+  }
+  
   setLocked(true, msg);
+  const startTime = Date.now();
+  const lockId = Math.random().toString(36).slice(2, 9);
+  console.log(`[withLock] 🔒 Lock iniciado (${lockId}): "${msg}"`);
+  
   try {
-    return await fn();
+    const result = await fn();
+    const duration = Date.now() - startTime;
+    console.log(`[withLock] ✅ Lock completado (${lockId}): ${duration}ms`, msg);
+    return result;
+  } catch (err) {
+    const duration = Date.now() - startTime;
+    console.error(`[withLock] ❌ Error en lock (${lockId}) después de ${duration}ms:`, err.message);
+    throw err;
   } finally {
     setLocked(false);
+    const duration = Date.now() - startTime;
+    if (duration > 5000) {
+      // ⚠️ Alerta si tardó más de 5 segundos
+      console.warn(`[withLock] ⏱️ DURACIÓN LARGA (${lockId}): ${duration}ms para "${msg}"`);
+    }
   }
 }
 

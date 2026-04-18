@@ -47,7 +47,7 @@ export function normalizeItem_(raw) {
   };
 
   const it = {
-    conversionId: String(pickFirst_(raw?.conversionId, raw?.conversion_id, raw?.CONVERSION_ID, raw?.ID, raw?.id)).trim(),
+    conversionId: String(pickFirst_(raw?.conversionId, raw?.conversion_id, raw?.work_order_id, raw?.CONVERSION_ID, raw?.ID, raw?.id)).trim(),
     vin: String(pickFirst_(raw?.vin, raw?.VIN)).trim().toUpperCase(),
     tipoRamal: String(pickFirst_(raw?.tipoRamal, raw?.tipo_ramal, raw?.tipo, raw?.TIPO_RAMAL, raw?.TIPO)).trim(),
     created_at: raw?.fecha_asignacion ?? raw?.FECHA_ASIGNACION ?? raw?.fecha_inicio ?? raw?.inicio_at ?? raw?.FECHA_INICIO ??
