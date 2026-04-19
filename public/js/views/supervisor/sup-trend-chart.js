@@ -92,6 +92,11 @@ export function renderTrendChart_(canvasEl, items, techName) {
   // Crear gráfico
   const ctx = canvasEl.getContext("2d");
 
+  // Detectar tema actual
+  const isDarkTheme = document.documentElement.dataset.theme === "night";
+  const textColor = isDarkTheme ? "#fff" : "#1f2937"; // Blanco en oscuro, gris oscuro en claro
+  const gridColor = isDarkTheme ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)";
+
   chartInstance = new Chart(ctx, {
     type: "line",
     data: {
@@ -118,7 +123,7 @@ export function renderTrendChart_(canvasEl, items, techName) {
         title: {
           display: true,
           text: `Tendencia de tiempo de conversión - ${techName}`,
-          color: "#fff",
+          color: textColor,
           font: {
             size: 18,
             weight: "bold",
@@ -156,14 +161,14 @@ export function renderTrendChart_(canvasEl, items, techName) {
           title: {
             display: true,
             text: "Fecha",
-            color: "#fff",
+            color: textColor,
             font: {
               size: 14,
               weight: "bold",
             },
           },
           ticks: {
-            color: "#fff",
+            color: textColor,
             maxRotation: 0,
             autoSkip: true,
             maxTicksLimit: 5, // Mostrar ~5 labels distribuidos
@@ -181,7 +186,7 @@ export function renderTrendChart_(canvasEl, items, techName) {
             },
           },
           grid: {
-            color: "rgba(255, 255, 255, 0.1)",
+            color: gridColor,
             drawOnChartArea: true,
           },
         },
@@ -190,20 +195,20 @@ export function renderTrendChart_(canvasEl, items, techName) {
           title: {
             display: true,
             text: "Duración (horas)",
-            color: "#fff",
+            color: textColor,
             font: {
               size: 14,
               weight: "bold",
             },
           },
           ticks: {
-            color: "#fff",
+            color: textColor,
             callback: function (value) {
               return value.toFixed(1) + "h";
             },
           },
           grid: {
-            color: "rgba(255, 255, 255, 0.15)",
+            color: gridColor,
           },
         },
       },

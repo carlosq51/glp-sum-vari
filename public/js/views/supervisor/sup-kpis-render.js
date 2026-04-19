@@ -9,7 +9,7 @@ import { formatHours_, formatPct_ } from "./sup-kpis.js";
  * Renderiza el panel completo de KPIs
  */
 export function renderKPIsPanel_(kpis, techName = "", track = "CONVERSION") {
-  if (!kpis || kpis.totalFinalizados === 0) {
+  if (!kpis || kpis.totalVins === 0) {
     return `<div id="supKPIsPanel" style="display:none;"></div>`;
   }
 
@@ -20,36 +20,125 @@ export function renderKPIsPanel_(kpis, techName = "", track = "CONVERSION") {
     ? `KPIs de ${trackLabel} - ${techName}` 
     : `KPIs de ${trackLabel}`;
 
+  const isConversion = track === "CONVERSION";
+  const isIndividual = !!techName; // Si hay nombre, es búsqueda individual
+
   return `
     <div id="supKPIsPanel" class="sup-kpis-panel">
       <h4 class="sup-kpis-title">${title}</h4>
       
       <div class="sup-kpis-grid">
-        ${renderMainKPIs_(kpis, track)}
+        ${isIndividual 
+          ? renderIndividualKPIs_(kpis, track, techName) 
+          : (isConversion ? renderConversionKPIs_(kpis) : renderGeneralKPIs_(kpis, track))
+        }
+        ${renderCarrosPorDiaKPI_(kpis)}
         ${renderModelKPIs_(kpis)}
+        ${renderOutliersKPI_(kpis, track)}
       </div>
     </div>
   `;
 }
 
 /**
- * Renderiza KPIs principales (tiempo, outliers)
+ * Renderiza KPIs para búsqueda individual (por persona)
  */
-function renderMainKPIs_(kpis, track = "CONVERSION") {
-  const isRamal = track === "RAMAL";
-  const targetClass = kpis.vsTarget <= 0 ? "positive" : "negative";
-  const outlierClass = kpis.outlierPct < 5 ? "positive" : 
-                        kpis.outlierPct < 15 ? "warning" : "negative";
+function renderIndividualKPIs_(kpis, track, techName) {
+  const targetClass = kpis.individual.vsTarget <= 0 ? "positive" : "negative";
+  
+  // Determinar rol predominante
+  let rolLabel = "Técnico";
+  const motorCount = kpis.motor?.count || 0;
+  const tanqueCount = kpis.tanque?.count || 0;
+  
+  if (motorCount > 0 && tanqueCount === 0) {
+    rolLabel = "Motor";
+  } else if (tanqueCount > 0 && motorCount === 0) {
+    rolLabel = "Tanquero";
+  } else if (motorCount > 0 && tanqueCount > 0) {
+    rolLabel = "Motor + Tanquero";
+  }
 
-  // Label de outliers según track
-  const outlierLabel = isRamal 
-    ? "Outliers (<0.5h o >4h)" 
-    : "Outliers (<1h o >10h)";
+  return `
+    <div class="sup-kpi-card main-kpi individual-kpi">
+      <div class="kpi-header">
+        <span class="kpi-icon">👤</span>
+        <span class="kpi-label">${techName} - ${rolLabel}</span>
+      </div>
+      <div class="kpi-value">${formatHours_(kpis.individual.avgHours)}</div>
+      <div class="kpi-detail">
+        <span>Objetivo: ${formatHours_(kpis.individual.targetHours)}</span>
+        <span class="kpi-badge ${targetClass}">
+          ${kpis.individual.vsTarget > 0 ? "+" : ""}${formatHours_(Math.abs(kpis.individual.vsTarget))}
+        </span>
+      </div>
+      <div class="kpi-bar">
+        <div class="kpi-bar-fill ${targetClass}" 
+             style="width: ${Math.min(100, Math.abs(kpis.individual.vsTargetPct))}%">
+        </div>
+      </div>
+      <div class="kpi-note">*Promedio robusto (${kpis.individual.count} items | ${kpis.totalVins} VINs)</div>
+    </div>
+  `;
+}
 
-  // Nota adicional para RAMAL
-  const ramalNote = isRamal 
-    ? '<div class="kpi-note">*Sin outliers en el promedio</div>' 
-    : '';
+/**
+ * Renderiza KPIs para conversión vista general (motor + tanquero separados)
+ */
+function renderConversionKPIs_(kpis) {
+  const motorClass = kpis.motor.vsTarget <= 0 ? "positive" : "negative";
+  const tanqueClass = kpis.tanque.vsTarget <= 0 ? "positive" : "negative";
+
+  return `
+    <!-- Tiempo Motor -->
+    <div class="sup-kpi-card main-kpi">
+      <div class="kpi-header">
+        <span class="kpi-icon">🔧</span>
+        <span class="kpi-label">Motor</span>
+      </div>
+      <div class="kpi-value">${formatHours_(kpis.motor.avgHours)}</div>
+      <div class="kpi-detail">
+        <span>Objetivo: ${formatHours_(kpis.motor.targetHours)}</span>
+        <span class="kpi-badge ${motorClass}">
+          ${kpis.motor.vsTarget > 0 ? "+" : ""}${formatHours_(Math.abs(kpis.motor.vsTarget))}
+        </span>
+      </div>
+      <div class="kpi-bar">
+        <div class="kpi-bar-fill ${motorClass}" 
+             style="width: ${Math.min(100, Math.abs(kpis.motor.vsTargetPct))}%">
+        </div>
+      </div>
+      <div class="kpi-note">*Promedio robusto (${kpis.motor.count} items)</div>
+    </div>
+
+    <!-- Tiempo Tanquero -->
+    <div class="sup-kpi-card main-kpi">
+      <div class="kpi-header">
+        <span class="kpi-icon">⛽</span>
+        <span class="kpi-label">Tanquero</span>
+      </div>
+      <div class="kpi-value">${formatHours_(kpis.tanque.avgHours)}</div>
+      <div class="kpi-detail">
+        <span>Objetivo: ${formatHours_(kpis.tanque.targetHours)}</span>
+        <span class="kpi-badge ${tanqueClass}">
+          ${kpis.tanque.vsTarget > 0 ? "+" : ""}${formatHours_(Math.abs(kpis.tanque.vsTarget))}
+        </span>
+      </div>
+      <div class="kpi-bar">
+        <div class="kpi-bar-fill ${tanqueClass}" 
+             style="width: ${Math.min(100, Math.abs(kpis.tanque.vsTargetPct))}%">
+        </div>
+      </div>
+      <div class="kpi-note">*Promedio robusto (${kpis.tanque.count} items)</div>
+    </div>
+  `;
+}
+
+/**
+ * Renderiza KPIs para ramal/calidad vista general
+ */
+function renderGeneralKPIs_(kpis, track = "RAMAL") {
+  const targetClass = kpis.individual.vsTarget <= 0 ? "positive" : "negative";
 
   return `
     <div class="sup-kpi-card main-kpi">
@@ -57,33 +146,70 @@ function renderMainKPIs_(kpis, track = "CONVERSION") {
         <span class="kpi-icon">⏱️</span>
         <span class="kpi-label">Tiempo Promedio</span>
       </div>
-      <div class="kpi-value">${formatHours_(kpis.avgHours)}</div>
+      <div class="kpi-value">${formatHours_(kpis.individual.avgHours)}</div>
       <div class="kpi-detail">
-        <span>Objetivo: ${formatHours_(kpis.targetHours)}</span>
+        <span>Objetivo: ${formatHours_(kpis.individual.targetHours)}</span>
         <span class="kpi-badge ${targetClass}">
-          ${kpis.vsTarget > 0 ? "+" : ""}${formatHours_(Math.abs(kpis.vsTarget))}
+          ${kpis.individual.vsTarget > 0 ? "+" : ""}${formatHours_(Math.abs(kpis.individual.vsTarget))}
         </span>
       </div>
       <div class="kpi-bar">
         <div class="kpi-bar-fill ${targetClass}" 
-             style="width: ${Math.min(100, Math.abs(kpis.vsTargetPct))}%">
+             style="width: ${Math.min(100, Math.abs(kpis.individual.vsTargetPct))}%">
         </div>
       </div>
-      ${ramalNote}
+      <div class="kpi-note">*Promedio robusto (${kpis.individual.count} items)</div>
     </div>
+  `;
+}
 
-    <div class="sup-kpi-card">
+/**
+ * Renderiza KPI de carros convertidos por día (destacado)
+ */
+function renderCarrosPorDiaKPI_(kpis) {
+  const carrosPorDia = kpis.carrosPorDia || 0;
+  const carrosPorDiaRedondeado = Math.round(carrosPorDia * 10) / 10; // 1 decimal
+  
+  // Clase para determinar si ocupa 1 o 2 columnas
+  const spanClass = kpis.isIndividual ? "individual-kpi" : "";
+  
+  return `
+    <div class="sup-kpi-card carros-dia-kpi ${spanClass}">
       <div class="kpi-header">
-        <span class="kpi-icon">⚠️</span>
-        <span class="kpi-label">${outlierLabel}</span>
+        <span class="kpi-icon">🚗</span>
+        <span class="kpi-label">Carros por Día</span>
       </div>
-      <div class="kpi-value">${kpis.outliers}</div>
+      <div class="kpi-value" style="color: #10b981; font-size: 48px; font-weight: 700;">${carrosPorDiaRedondeado}</div>
       <div class="kpi-detail">
-        <span>Total: ${kpis.totalFinalizados}</span>
-        <span class="kpi-badge ${outlierClass}">
-          ${kpis.outlierPct.toFixed(1)}%
-        </span>
+        <span style="font-size: 13px;">${kpis.totalVins} carros • ${kpis.totalDias} días</span>
       </div>
+      <div class="kpi-note">*Promedio de VINs únicos por día</div>
+    </div>
+  `;
+}
+
+/**
+ * Renderiza KPI de outliers (al final de todos los KPIs)
+ */
+function renderOutliersKPI_(kpis, track) {
+  const isRamal = track === "RAMAL";
+  const outlierClass = kpis.outlierPct < 5 ? "positive" : 
+                        kpis.outlierPct < 15 ? "warning" : "negative";
+
+  const outlierLabel = isRamal 
+    ? "Outliers (<0.5h o >4h)" 
+    : "Outliers (<1h o >10h)";
+
+  return `
+    <div class="sup-kpi-card compact-kpi outliers-kpi">
+      <div class="kpi-header-compact">
+        <span class="kpi-icon-small">⚠️</span>
+        <span class="kpi-label-small">${outlierLabel}</span>
+      </div>
+      <div class="kpi-value-compact">
+        ${kpis.outliers} <span class="kpi-badge-inline ${outlierClass}">${kpis.outlierPct.toFixed(1)}%</span>
+      </div>
+      <div class="kpi-detail-compact">VINs: ${kpis.totalVins} | Total: ${kpis.totalItems}</div>
     </div>
   `;
 }
@@ -105,7 +231,7 @@ function renderModelKPIs_(kpis) {
 
   return models.map(model => {
     const data = kpis.byModel[model.key];
-    if (!data || data.count === 0) return "";
+    if (!data || data.vinCount === 0) return "";
 
     const targetClass = data.vsTarget <= 0 ? "positive" : "negative";
 
@@ -117,7 +243,7 @@ function renderModelKPIs_(kpis) {
         </div>
         <div class="kpi-value-small">${formatHours_(data.avgHours)}</div>
         <div class="kpi-detail">
-          <span>Cant: ${data.count}</span>
+          <span>VINs: ${data.vinCount}</span>
           <span class="kpi-badge ${targetClass}">
             ${formatPct_(data.vsTargetPct)}
           </span>

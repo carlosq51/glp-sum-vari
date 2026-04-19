@@ -23,8 +23,14 @@
 
 .sup-kpis-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(2, 1fr);
   gap: 16px;
+}
+
+@media (min-width: 1024px) {
+  .sup-kpis-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 /* Tarjetas de KPI */
@@ -171,3 +177,104 @@ body.dark-mode .sup-kpi-card {
 body.dark-mode .sup-kpi-card:hover {
   background: rgba(255, 255, 255, 0.08);
 }
+
+/* ============================================================
+   Estilos compactos para outliers
+   ============================================================ */
+
+.sup-kpi-card.compact-kpi {
+  grid-column: span 1;
+  padding: 12px 16px;
+  min-height: auto;
+}
+
+.kpi-header-compact {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.kpi-icon-small {
+  font-size: 16px;
+}
+
+.kpi-label-small {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.kpi-value-compact {
+  color: #fff;
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 4px;
+  line-height: 1.2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.kpi-badge-inline {
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 11px;
+  display: inline-block;
+}
+
+.kpi-badge-inline.positive {
+  background: rgba(16, 185, 129, 0.3);
+  color: #6ee7b7;
+  border: 1px solid rgba(16, 185, 129, 0.5);
+}
+
+.kpi-badge-inline.warning {
+  background: rgba(245, 158, 11, 0.3);
+  color: #fcd34d;
+  border: 1px solid rgba(245, 158, 11, 0.5);
+}
+
+.kpi-badge-inline.negative {
+  background: rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.5);
+}
+
+.kpi-detail-compact {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* Responsive para vista móvil */
+@media (max-width: 640px) {
+  .sup-kpis-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sup-kpi-card.main-kpi,
+  .sup-kpi-card.compact-kpi {
+    grid-column: span 1;
+  }
+}
+
+/* KPI individual (persona específica) - ocupa ancho completo */
+.sup-kpi-card.individual-kpi {
+  grid-column: 1 / -1;
+  background: rgba(255, 255, 255, 0.15);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.sup-kpi-card.individual-kpi:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Outliers al final - ancho completo */
+.sup-kpi-card.outliers-kpi {
+  grid-column: 1 / -1;
+  margin-top: 8px;
+}
+

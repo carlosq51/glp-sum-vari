@@ -188,7 +188,7 @@ function renderSupervisor_(j) {
   // Calcular y renderizar KPIs
   const kpisContainer = document.getElementById("supKPIsPanel");
   if (kpisContainer) {
-    const kpis = calculateKPIs_(list, supTrack);
+    const kpis = calculateKPIs_(list, supTrack, hasTechFilter);
     const kpisHTML = renderKPIsPanel_(kpis, hasTechFilter ? techName : "", supTrack);
     kpisContainer.outerHTML = kpisHTML;
   }
