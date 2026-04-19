@@ -16,6 +16,9 @@ import {
 import { isFinalizado_, matchMarca_, durationMsFromItem_ } from "./sup-filters.js";
 import { groupByVinForUI_ } from "./sup-grouping.js";
 import { renderAvgCard_, renderTable_ } from "./sup-render.js";
+import { renderTrendChart_, destroyTrendChart_ } from "./sup-trend-chart.js";
+import { calculateKPIs_ } from "./sup-kpis.js";
+import { renderKPIsPanel_ } from "./sup-kpis-render.js";
 
 import { bindSupIncidencias_ } from "./sup-incidencias.js";
 import { bindSupQR_ } from "./sup-qr.js";
@@ -182,6 +185,20 @@ function renderSupervisor_(j) {
 
   renderAvgCard_(avgCard, { stats, techName, motorCount, tanqueCount, finalizedCount, escapeHtml });
 
+  // Calcular y renderizar KPIs
+  const kpisContainer = document.getElementById("supKPIsPanel");
+  if (kpisContainer) {
+    const kpis = calculateKPIs_(list, supTrack);
+    const kpisHTML = renderKPIsPanel_(kpis, hasTechFilter ? techName : "", supTrack);
+    kpisContainer.outerHTML = kpisHTML;
+  }
+
+  // Renderizar gráfico de tendencias (solo si hay técnico seleccionado)
+  const canvasEl = document.getElementById("supTrendChart");
+  if (canvasEl) {
+    renderTrendChart_(canvasEl, list, hasTechFilter ? techName : "");
+  }
+
   if (!box) return;
 
   if (!list.length) {
@@ -213,6 +230,7 @@ export function init() {
       const el = document.getElementById(id);
       if (el) el.value = "";
     });
+    destroyTrendChart_();
     fetchSupervisorReport_().catch(() => {});
   });
 
@@ -237,4 +255,5 @@ export function enter() {
 
 export function exit() {
   clearTimeout(supTimer);
+  destroyTrendChart_();
 }

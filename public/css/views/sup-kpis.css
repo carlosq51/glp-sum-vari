@@ -1,0 +1,173 @@
+/* ============================================================
+   sup-kpis.css
+   Estilos para KPIs de supervisor
+   ============================================================ */
+
+.sup-kpis-panel {
+  background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+  border-radius: 12px;
+  padding: 24px;
+  margin: 20px 0;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.sup-kpis-title {
+  color: #fff;
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0 0 20px 0;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.sup-kpis-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+/* Tarjetas de KPI */
+.sup-kpi-card {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  padding: 16px;
+  transition: all 0.3s ease;
+}
+
+.sup-kpi-card:hover {
+  background: rgba(255, 255, 255, 0.15);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.sup-kpi-card.main-kpi {
+  grid-column: span 2;
+}
+
+@media (max-width: 768px) {
+  .sup-kpi-card.main-kpi {
+    grid-column: span 1;
+  }
+}
+
+/* Header del KPI */
+.kpi-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.kpi-icon {
+  font-size: 20px;
+}
+
+.kpi-label {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Valores */
+.kpi-value {
+  color: #fff;
+  font-size: 32px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  line-height: 1;
+}
+
+.kpi-value-small {
+  color: #fff;
+  font-size: 24px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  line-height: 1;
+}
+
+/* Detalle */
+.kpi-detail {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.8);
+  margin-bottom: 8px;
+}
+
+/* Nota adicional */
+.kpi-note {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
+  font-style: italic;
+  margin-top: 4px;
+  text-align: center;
+}
+
+/* Badges */
+.kpi-badge {
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.kpi-badge.positive {
+  background: rgba(16, 185, 129, 0.3);
+  color: #6ee7b7;
+  border: 1px solid rgba(16, 185, 129, 0.5);
+}
+
+.kpi-badge.warning {
+  background: rgba(245, 158, 11, 0.3);
+  color: #fcd34d;
+  border: 1px solid rgba(245, 158, 11, 0.5);
+}
+
+.kpi-badge.negative {
+  background: rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.5);
+}
+
+/* Barra de progreso */
+.kpi-bar {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+.kpi-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.5s ease;
+}
+
+.kpi-bar-fill.positive {
+  background: linear-gradient(90deg, #10b981, #6ee7b7);
+}
+
+.kpi-bar-fill.negative {
+  background: linear-gradient(90deg, #ef4444, #fca5a5);
+}
+
+/* Modo oscuro */
+body.dark-mode .sup-kpis-panel {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+}
+
+body.dark-mode .sup-kpi-card {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+body.dark-mode .sup-kpi-card:hover {
+  background: rgba(255, 255, 255, 0.08);
+}

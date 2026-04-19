@@ -1062,10 +1062,32 @@ async function handleSupervisorReport_(payload, res) {
 
   const raw = await resp.json();
 
+  // Obtener modelos de VINs (consulta separada)
+  const vinsSet = new Set();
+  (raw || []).forEach(asg => {
+    const wo = asg.work_orders || {};
+    if (wo.vin) vinsSet.add(wo.vin);
+  });
+
+  let vinsMap = {};
+  if (vinsSet.size > 0) {
+    const vinsArray = Array.from(vinsSet);
+    const vinsUrl = `${SUPABASE_URL}/rest/v1/vins?select=vin,modelo&vin=in.(${vinsArray.join(",")})`;
+    const vinsResp = await fetch(vinsUrl, { method: "GET", headers }).catch(() => null);
+    
+    if (vinsResp && vinsResp.ok) {
+      const vinsData = await vinsResp.json();
+      (vinsData || []).forEach(v => {
+        vinsMap[v.vin] = v.modelo || "";
+      });
+    }
+  }
+
   // Mapear a formato esperado por el frontend
   let items = (raw || []).map(asg => {
     const user = asg.usuarios || {};
     const wo = asg.work_orders || {};
+    const vin = wo.vin || "";
     return {
       // IDs
       id: asg.id,
@@ -1076,7 +1098,8 @@ async function handleSupervisorReport_(payload, res) {
       userName: user.nombre || "",
       userEmail: user.email || "",
       // Work order info
-      vin: wo.vin || "",
+      vin: vin,
+      modelo: vinsMap[vin] || "",
       tipoRamal: wo.tipo_ramal || "",
       tipo_ot: asg.tipo_ot,
       // Assignment info
