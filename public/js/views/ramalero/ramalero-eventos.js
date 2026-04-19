@@ -1,16 +1,31 @@
 import {
   $,
+  ctx_,
+  keyOfItem_,
   requireEmailOrStop,
   setOut,
   postJSON_user,
 } from "../../core/core.js";
 
-import { syncNow } from "../conversion/conversion.js";
+import { normalizeItem_, mergePrevAndCache_ } from "../conversion/state/conversion-store.js";
 import {
   rebuildListsFromStore_,
   renderActivas_,
   renderFinalizados_,
 } from "../../work/index.js";
+
+/** Aplica la respuesta del server al store local sin full sync */
+function patchStoreFromResponse_(j) {
+  const c = ctx_();
+  const it = normalizeItem_(j);
+  const k = keyOfItem_(it);
+  const prev = c.itemsByKey.get(k);
+  mergePrevAndCache_(it, prev);
+  c.itemsByKey.set(k, it);
+  rebuildListsFromStore_();
+  renderActivas_();
+  renderFinalizados_();
+}
 
 export async function crearNuevoRamal_() {
   const ramalIdEl = $("ramalId");
@@ -25,24 +40,27 @@ export async function crearNuevoRamal_() {
     return;
   }
 
-  const j = await postJSON_user(
-    "/api/evento",
-    {
-      email,
-      rolTrabajo: "RAMALERO",
-      accion: "INICIO",
-      tipoRamal,
-    },
-    "Iniciando..."
-  );
+  let j;
+  try {
+    j = await postJSON_user(
+      "/api/evento",
+      {
+        email,
+        rolTrabajo: "RAMALERO",
+        accion: "INICIO",
+        tipoRamal,
+      },
+      "Iniciando..."
+    );
+  } catch (err) {
+    setOut({ ok: false, error: err?.message || "Error de conexión" });
+    return;
+  }
 
   setOut(j);
   if (!j?.ok) return;
 
-  await syncNow({ forceFull: true, showOut: false });
-  rebuildListsFromStore_();
-  renderActivas_();
-  renderFinalizados_();
+  patchStoreFromResponse_(j);
 }
 
 export async function enviarEventoRamalero_(it, accion, nota = "") {
@@ -60,12 +78,15 @@ export async function enviarEventoRamalero_(it, accion, nota = "") {
     nota,
   };
 
-  const j = await postJSON_user("/api/evento", body, `Enviando ${accion}...`);
+  let j;
+  try {
+    j = await postJSON_user("/api/evento", body, `Enviando ${accion}...`);
+  } catch (err) {
+    setOut({ ok: false, error: err?.message || "Error de conexión" });
+    return;
+  }
   setOut(j);
   if (!j?.ok) return;
 
-  await syncNow({ forceFull: true, showOut: false });
-  rebuildListsFromStore_();
-  renderActivas_();
-  renderFinalizados_();
+  patchStoreFromResponse_(j);
 }

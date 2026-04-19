@@ -18,13 +18,11 @@ export function ramaleroView() {
             <select id="tipoRamal">
               <option value="">Selecciona tipo de ramal</option>
               <option value="JETOUR">JETOUR</option>
-              <option value="VOLKSWAGEN POLO">VOLKSWAGEN POLO</option>
-              <option value="VOLKSWAGEN TERA">VOLKSWAGEN TERA</option>
-              <option value="KYC V3 / V5">KYC V3 / V5</option>
+              <option value="VOLKSWAGEN">VOLKSWAGEN</option>
+              <option value="KYC V3">KYC V3</option>
+              <option value="KYC V5">KYC V5</option>
               <option value="KYC V7">KYC V7</option>
-              <option value="KYC X3">KYC X3</option>
-              <option value="KYC X5 SIMPLE">KYC X5 SIMPLE</option>
-              <option value="KYC X5 DOBLE">KYC X5 DOBLE</option>
+              <option value="KYC X5">KYC X5</option>
             </select>
 
             <input

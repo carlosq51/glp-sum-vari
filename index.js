@@ -1,4 +1,4 @@
-﻿import express from "express";
+import express from "express";
 import dotenv from "dotenv";
 import { existsSync } from "fs";
 
@@ -9,6 +9,17 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json({ limit: "30mb" }));
 app.use(express.urlencoded({ extended: true, limit: "30mb" }));
+
+// Inyecta variables VITE_* como window.__ENV__ para que funcione sin Vite
+app.get("/env-config.js", (_req, res) => {
+  res.type("application/javascript");
+  res.send(
+    `window.__ENV__=${JSON.stringify({
+      VITE_SUPABASE_URL: process.env.VITE_SUPABASE_URL || "",
+      VITE_SUPABASE_ANON_KEY: process.env.VITE_SUPABASE_ANON_KEY || "",
+    })};`
+  );
+});
 
 // Serve Vite build output if available, otherwise fallback to source
 const staticDir = existsSync("dist") ? "dist" : "public";
@@ -41,7 +52,7 @@ function addServerTiming_(res, measurements = []) {
   }
 }
 
-// función para llamar Apps Script
+// funci�n para llamar Apps Script
 async function callAppsScript(action, payload = {}) {
   const APS_URL = process.env.APS_URL;
   const APS_KEY = process.env.APS_KEY;
@@ -82,9 +93,9 @@ const CACHE = {
   work_orders: { data: [], ts: 0 },
   usuarios: { data: [], ts: 0 },
   asignaciones: { data: [], ts: 0 },
-  usersByEmail: {},  // 🔥 Cache específico: email → userId (TTL 30 min)
+  usersByEmail: {},  // ?? Cache espec�fico: email ? userId (TTL 30 min)
   TTL_MS: 2 * 60 * 1000, // 2 minutos
-  TTL_USERS_EMAIL: 30 * 60 * 1000, // 30 minutos para email → userId
+  TTL_USERS_EMAIL: 30 * 60 * 1000, // 30 minutos para email ? userId
 };
 
 function getCachedData_(table) {
@@ -106,7 +117,7 @@ function setCachedData_(table, data) {
   }
 }
 
-// 🔥 CACHE para USER_ID by EMAIL (evita N+1 lookups)
+// ?? CACHE para USER_ID by EMAIL (evita N+1 lookups)
 function getCachedUserIdByEmail_(email) {
   const entry = CACHE.usersByEmail[email];
   if (!entry) return null;
@@ -149,7 +160,7 @@ function buildSupabaseQuery_(filter = {}) {
 }
 
 async function supabaseGet_(table, filter = {}, opts = {}) {
-  // Si el filtro está vacío y permitimos cache, intentar desde cache
+  // Si el filtro est� vac�o y permitimos cache, intentar desde cache
   if (Object.keys(filter).length === 0 && opts.useCache !== false) {
     const cached = getCachedData_(table);
     if (cached) return cached;
@@ -245,7 +256,7 @@ app.post("/api/uploader/proxy", async (req, res) => {
     console.log("[UPLOADER_PROXY] keys:", Object.keys(body || {}));
 
     if (!UPLOADER_ACTIONS.has(action)) {
-      return res.status(400).json({ ok: false, error: "Acción uploader no permitida" });
+      return res.status(400).json({ ok: false, error: "Acci�n uploader no permitida" });
     }
 
     const { action: _omit, ...payload } = body;
@@ -258,7 +269,7 @@ app.post("/api/uploader/proxy", async (req, res) => {
   }
 });
 
-// endpoint Node → Supabase (me) - LECTURA SOLO
+// endpoint Node ? Supabase (me) - LECTURA SOLO
 app.get("/api/me", async (req, res) => {
   try {
     const email = String(req.query.email || "").trim().toLowerCase();
@@ -269,7 +280,7 @@ app.get("/api/me", async (req, res) => {
       return res.status(400).json({ ok: false, error: "Falta ?email=" });
     }
 
-    // 🔍 LECTURA DESDE SUPABASE
+    // ?? LECTURA DESDE SUPABASE
     const t1 = Date.now();
     const usuarios = await supabaseGet_("usuarios", { email });
     timings.push({ label: "usuarios_by_email", duration: Date.now() - t1 });
@@ -281,7 +292,7 @@ app.get("/api/me", async (req, res) => {
 
     const usuario = usuarios[0];
     
-    // Obtener módulos del usuario
+    // Obtener m�dulos del usuario
     const t2 = Date.now();
     const modulos = await supabaseGet_("usuario_modulos", { user_id: usuario.id });
     timings.push({ label: "user_modulos", duration: Date.now() - t2 });
@@ -306,8 +317,8 @@ app.get("/api/me", async (req, res) => {
   }
 });
 
-// endpoint Node → Supabase (mis_activas) - ULTRA RÁPIDO con JOINS + CACHE
-// ✅ Filtras por: técnico (id/email) + estado != FINALIZADO
+// endpoint Node ? Supabase (mis_activas) - ULTRA R�PIDO con JOINS + CACHE
+// ? Filtras por: t�cnico (id/email) + estado != FINALIZADO
 app.get("/api/mis-activas", async (req, res) => {
   try {
     const email = String(req.query.email || "").trim().toLowerCase();
@@ -315,55 +326,67 @@ app.get("/api/mis-activas", async (req, res) => {
     const t1 = Date.now();
 
     if (!email && !userId) {
-      return res.status(400).json({ ok: false, error: "Envía ?email= o ?userId=" });
+      return res.status(400).json({ ok: false, error: "Env�a ?email= o ?userId=" });
     }
 
-    // 1️⃣ Obtén user_id si viene email (con CACHE para evitar N+1)
+    // 1?? Obt�n user_id si viene email (con CACHE para evitar N+1)
     let finalUserId = userId;
     let tecnicoEmail = email;
     if (!finalUserId && email) {
-      // 🔥 Primero intenta el cache
+      // ?? Primero intenta el cache
       finalUserId = getCachedUserIdByEmail_(email);
       
       if (!finalUserId) {
-        // Cache miss → busca en Supabase
+        // Cache miss ? busca en Supabase
         const usuarios = await supabaseGet_("usuarios", { email });
         if (!usuarios?.length) {
           return res.status(404).json({ ok: false, error: "Usuario no encontrado" });
         }
         finalUserId = usuarios[0].id;
         tecnicoEmail = usuarios[0].email;
-        // 🔥 Cachea el resultado para próximas llamadas
+        // ?? Cachea el resultado para pr�ximas llamadas
         setCachedUserIdByEmail_(email, finalUserId);
       }
     } else if (finalUserId) {
-      // Si vino userId, obtén el email del usuario
+      // Si vino userId, obt�n el email del usuario
       const usuarios = await supabaseGet_("usuarios", { id: `eq.${finalUserId}` });
       if (usuarios?.length) {
         tecnicoEmail = usuarios[0].email;
       }
     }
 
-    // 2️⃣ Query asignaciones ACTIVAS (NO FINALIZADO) + work_orders + usuarios
-    // ✅ Filtro de estado: excluimos FINALIZADO (traemos TRABAJANDO, PAUSADO, SIN_INICIAR)
+    // 2?? Query asignaciones ACTIVAS + usuarios + work_orders (LEFT JOIN)
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const headers = supabaseHeaders_();
     
     let query = `${SUPABASE_URL}/rest/v1/asignaciones?`;
     query += `user_id=eq.${finalUserId}&activo=eq.true&estado_actual=neq.FINALIZADO`;
-    query += `&select=id,work_order_id,tipo_ot,rol_trabajo,estado_actual,running_since,tiempo_trab_ms,updated_at,last_nota,user_id,usuarios!inner(id,email,nombre),work_orders!inner(id,vin)`;
+    query += `&select=id,work_order_id,tipo_ot,rol_trabajo,estado_actual,running_since,tiempo_trab_ms,updated_at,last_nota,user_id,usuarios!inner(id,email,nombre),work_orders(id,vin,tipo_ramal,fecha_creacion,vins(reductor_asignado,tanque_asignado))`;
     query += `&order=updated_at.desc`;
 
     const res_data = await fetch(query, { method: "GET", headers });
     
     if (!res_data.ok) {
-      throw new Error(`Supabase ${res_data.status}`);
+      throw new Error(`Supabase asignaciones ${res_data.status}`);
     }
 
-    const asignaciones = await res_data.json();
+    let asignaciones = await res_data.json();
+    
+    // Extraer VIN, tipo_ramal y fecha_creacion desde work_orders JOIN
+    asignaciones = asignaciones.map(asg => {
+      const wo = Array.isArray(asg.work_orders) 
+        ? asg.work_orders[0] 
+        : asg.work_orders;
+      asg.vin = wo?.vin || "";
+      asg.tipo_ramal = wo?.tipo_ramal || "";
+      asg.wo_fecha_creacion = wo?.fecha_creacion || "";
+      asg.reductor_asignado = wo?.vins?.reductor_asignado || "";
+      asg.tanque_asignado = wo?.vins?.tanque_asignado || "";
+      return asg;
+    });
+    
     const duration = Date.now() - t1;
 
-    // ✅ MAPEO CON INFO DEL TÉCNICO
     const items = asignaciones.map(asg => {
       return {
         id: asg.id,
@@ -372,13 +395,18 @@ app.get("/api/mis-activas", async (req, res) => {
         rol_trabajo: asg.rol_trabajo,
         estado_actual: asg.estado_actual,
         running_since: asg.running_since,
+        created_at: asg.running_since || asg.wo_fecha_creacion || "",
+        fecha_creacion: asg.wo_fecha_creacion || "",
         tiempo_trab_ms: asg.tiempo_trab_ms || 0,
         updated_at: asg.updated_at,
         last_nota: asg.last_nota || "",
-        vin: asg.work_orders?.vin || "",
+        vin: asg.vin || "",
+        tipo_ramal: asg.tipo_ramal || "",
+        tipoRamal: asg.tipo_ramal || "",
         estado: asg.estado_actual,
         tiempo_ms: asg.tiempo_trab_ms || 0,
-        // ✨ Información del técnico
+        reductor_asignado: asg.reductor_asignado || "",
+        tanque_asignado: asg.tanque_asignado || "",
         tecnico_id: asg.user_id,
         tecnico_email: asg.usuarios?.[0]?.email || tecnicoEmail || "",
         tecnico_nombre: asg.usuarios?.[0]?.nombre || "",
@@ -399,8 +427,8 @@ app.get("/api/mis-activas", async (req, res) => {
   }
 });
 
-// endpoint Node → Supabase (mis_finalizadas) - LECTURA OPTIMIZADA [ESTADO FILTRADO]
-// ✅ Filtras por: técnico (id/email) + estado = FINALIZADO
+// endpoint Node ? Supabase (mis_finalizadas) - LECTURA OPTIMIZADA [ESTADO FILTRADO]
+// ? Filtras por: t�cnico (id/email) + estado = FINALIZADO
 app.get("/api/mis-finalizadas", async (req, res) => {
   try {
     const email = String(req.query.email || "").trim().toLowerCase();
@@ -408,55 +436,67 @@ app.get("/api/mis-finalizadas", async (req, res) => {
     const t1 = Date.now();
     
     if (!email && !userId) {
-      return res.status(400).json({ ok: false, error: "Envía ?email= o ?userId=" });
+      return res.status(400).json({ ok: false, error: "Env�a ?email= o ?userId=" });
     }
 
-    // 1️⃣ Obtén user_id si viene email (con CACHE para evitar N+1)
+    // 1?? Obt�n user_id si viene email (con CACHE para evitar N+1)
     let finalUserId = userId;
     let tecnicoEmail = email;
     if (!finalUserId && email) {
-      // 🔥 Primero intenta el cache
+      // ?? Primero intenta el cache
       finalUserId = getCachedUserIdByEmail_(email);
       
       if (!finalUserId) {
-        // Cache miss → busca en Supabase
+        // Cache miss ? busca en Supabase
         const usuarios = await supabaseGet_("usuarios", { email });
         if (!usuarios?.length) {
           return res.status(404).json({ ok: false, error: "Usuario no encontrado" });
         }
         finalUserId = usuarios[0].id;
         tecnicoEmail = usuarios[0].email;
-        // 🔥 Cachea el resultado
+        // ?? Cachea el resultado
         setCachedUserIdByEmail_(email, finalUserId);
       }
     } else if (finalUserId) {
-      // Si vino userId, obtén el email del usuario
+      // Si vino userId, obt�n el email del usuario
       const usuarios = await supabaseGet_("usuarios", { id: `eq.${finalUserId}` });
       if (usuarios?.length) {
         tecnicoEmail = usuarios[0].email;
       }
     }
 
-    // 2️⃣ Query asignaciones FINALIZADAS (SOLO estado FINALIZADO)
-    // ✅ Incluye JOIN con usuarios para tener info del técnico
+    // 2?? Query asignaciones FINALIZADAS + usuarios + work_orders (LEFT JOIN)
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const headers = supabaseHeaders_();
     
     let query = `${SUPABASE_URL}/rest/v1/asignaciones?`;
     query += `user_id=eq.${finalUserId}&estado_actual=eq.FINALIZADO`;
-    query += `&select=id,work_order_id,tipo_ot,rol_trabajo,estado_actual,running_since,tiempo_trab_ms,updated_at,last_nota,user_id,usuarios!inner(id,email,nombre),work_orders!inner(id,vin)`;
+    query += `&select=id,work_order_id,tipo_ot,rol_trabajo,estado_actual,running_since,tiempo_trab_ms,updated_at,last_nota,user_id,usuarios!inner(id,email,nombre),work_orders(id,vin,tipo_ramal,fecha_creacion,vins(reductor_asignado,tanque_asignado))`;
     query += `&order=updated_at.desc`;
 
     const res_data = await fetch(query, { method: "GET", headers });
     
     if (!res_data.ok) {
-      throw new Error(`Supabase ${res_data.status}`);
+      throw new Error(`Supabase asignaciones ${res_data.status}`);
     }
 
-    const asignaciones = await res_data.json();
+    let asignaciones = await res_data.json();
+    
+    // Extraer VIN y fecha_creacion desde work_orders JOIN
+    asignaciones = asignaciones.map(asg => {
+      const wo = Array.isArray(asg.work_orders) 
+        ? asg.work_orders[0] 
+        : asg.work_orders;
+      asg.vin = wo?.vin || "";
+      asg.tipo_ramal = wo?.tipo_ramal || "";
+      asg.wo_fecha_creacion = wo?.fecha_creacion || "";
+      asg.reductor_asignado = wo?.vins?.reductor_asignado || "";
+      asg.tanque_asignado = wo?.vins?.tanque_asignado || "";
+      return asg;
+    });
+    
     const duration = Date.now() - t1;
 
-    // ✅ MAPEO CON INFO DEL TÉCNICO
     const items = asignaciones.map(asg => {
       return {
         id: asg.id,
@@ -465,13 +505,18 @@ app.get("/api/mis-finalizadas", async (req, res) => {
         rol_trabajo: asg.rol_trabajo,
         estado_actual: asg.estado_actual,
         running_since: asg.running_since,
+        created_at: asg.running_since || asg.wo_fecha_creacion || "",
+        fecha_creacion: asg.wo_fecha_creacion || "",
         tiempo_trab_ms: asg.tiempo_trab_ms || 0,
         updated_at: asg.updated_at,
         last_nota: asg.last_nota || "",
-        vin: asg.work_orders?.vin || "",
+        vin: asg.vin || "",
+        tipo_ramal: asg.tipo_ramal || "",
+        tipoRamal: asg.tipo_ramal || "",
         estado: asg.estado_actual,
         tiempo_ms: asg.tiempo_trab_ms || 0,
-        // ✨ Información del técnico
+        reductor_asignado: asg.reductor_asignado || "",
+        tanque_asignado: asg.tanque_asignado || "",
         tecnico_id: asg.user_id,
         tecnico_email: asg.usuarios?.[0]?.email || tecnicoEmail || "",
         tecnico_nombre: asg.usuarios?.[0]?.nombre || "",
@@ -491,16 +536,49 @@ app.get("/api/mis-finalizadas", async (req, res) => {
   }
 });
 
-// ✍️ DUAL-WRITE: Apps Script + Supabase en paralelo
+// ?? DUAL-WRITE: Apps Script + Supabase en paralelo
 app.post("/api/evento", async (req, res) => {
   try {
     const body = req.body || {};
     
     const email = body.email;
-    const vin = String(body.vin || "").trim().toUpperCase();
+    let vin = String(body.vin || "").trim().toUpperCase();
     const rolTrabajo = String(body.rolTrabajo || "").trim().toUpperCase();
     const accion = String(body.accion || "").trim().toUpperCase();
     const nota = String(body.nota || "").trim();
+    const tipoRamal = String(body.tipoRamal || "").trim();
+    const conversionIdBody = String(body.conversionId || "").trim();
+
+    // RAMALERO no usa VIN: generar pseudo-VIN o buscar por conversionId
+    const isRamalero = rolTrabajo === "RAMALERO";
+    // Para RAMALERO con WO existente, resolver VIN o generar uno
+    if (isRamalero && !vin && conversionIdBody) {
+      const woExist = await supabaseGet_("work_orders", { id: conversionIdBody });
+      if (woExist?.length) {
+        vin = woExist[0].vin || "";
+        // Si el WO existe pero no tiene VIN, generar pseudo-VIN y actualizar el WO
+        if (!vin) {
+          vin = `RAMAL-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+          // Asegurar que el VIN existe en la tabla vins
+          try {
+            await supabasePost_("vins", { vin, modelo: "RAMAL" });
+          } catch (e) {
+            if (!String(e.message || e).includes("23505") && !String(e.message || e).includes("duplicate")) throw e;
+          }
+          // Actualizar el work_order con el VIN generado
+          try {
+            await supabasePatch_("work_orders", { id: conversionIdBody }, { vin });
+            console.log(`[EVENTO] VIN generado y asignado a WO ${conversionIdBody}: ${vin}`);
+          } catch (e) {
+            console.warn(`[EVENTO] No se pudo actualizar WO con VIN:`, e.message);
+          }
+        }
+      }
+    }
+    if (isRamalero && !vin && accion === "INICIO") {
+      // Nuevo ramal: generar pseudo-VIN único
+      vin = `RAMAL-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+    }
 
     if (!email || !vin || !rolTrabajo || !accion) {
       return res.status(400).json({ 
@@ -511,15 +589,24 @@ app.post("/api/evento", async (req, res) => {
 
     const t1 = Date.now();
 
-    // 1️⃣ Obtener user_id
+    // 1?? Obtener user_id
     const usuarios = await supabaseGet_("usuarios", { email });
     if (!usuarios || !usuarios.length) {
       return res.status(404).json({ ok: false, error: "Usuario no encontrado" });
     }
     const userId = usuarios[0].id;
 
-    // 2️⃣ Obtener o CREAR work_order si no existe
-    let workOrders = await supabaseGet_("work_orders", { vin });
+    // 2️⃣ Mapear rolTrabajo → tipo_ot para buscar el work_order correcto
+    const ROL_TO_TIPO_OT = {
+      "MOTOR": "CONVERSION",
+      "TANQUE": "CONVERSION",
+      "CALIDAD": "CALIDAD",
+      "RAMALERO": "RAMALERO",
+    };
+    const tipoOtBuscado = ROL_TO_TIPO_OT[rolTrabajo] || "CONVERSION";
+
+    // Buscar work_order por VIN + tipo_ot (evita tomar el WO equivocado)
+    let workOrders = await supabaseGet_("work_orders", { vin, tipo_ot: tipoOtBuscado });
     let workOrderId, tipoOt;
     
     if (!workOrders || !workOrders.length) {
@@ -527,7 +614,7 @@ app.post("/api/evento", async (req, res) => {
       let vins = await supabaseGet_("vins", { vin });
       
       if (!vins || !vins.length) {
-        // ✅ VIN NO EXISTE → CREAR primero (NECESARIO para FK en work_orders)
+        // ⚠ VIN NO EXISTE → CREAR primero (NECESARIO para FK en work_orders)
         let createdVin = null;
         try {
           const vinData = {
@@ -561,18 +648,20 @@ app.post("/api/evento", async (req, res) => {
         }
       }
       
-      // ✅ Ahora sí CREAR work_order (VIN garantizado por FK)
+      // ✅ Ahora sí CREAR work_order con el tipo_ot correcto
       try {
         const woData = {
-          tipo_ot: "CONVERSION",
+          tipo_ot: tipoOtBuscado,
           vin: vin,
           estado_general: "PENDIENTE",
         };
+        // RAMALERO: guardar tipo_ramal en el work_order
+        if (isRamalero && tipoRamal) woData.tipo_ramal = tipoRamal;
         const createdWO = await supabasePost_("work_orders", woData);
         const wo = Array.isArray(createdWO) ? createdWO[0] : createdWO;
         workOrderId = wo.id;
         tipoOt = wo.tipo_ot;
-        console.log(`[EVENTO] Work Order creado: ${workOrderId} para VIN ${vin}`);
+        console.log(`[EVENTO] Work Order creado: ${workOrderId} para VIN ${vin}, tipo_ot=${tipoOt}`);
       } catch (woErr) {
         const errMsg = String(woErr.message || woErr);
         console.error(`[EVENTO] CRÍTICO - No se pudo crear Work Order:`, errMsg);
@@ -581,11 +670,11 @@ app.post("/api/evento", async (req, res) => {
     } else {
       workOrderId = workOrders[0].id;
       tipoOt = workOrders[0].tipo_ot;
-      console.log(`[EVENTO] Work Order existente encontrado: ${workOrderId}`);
+      console.log(`[EVENTO] Work Order existente encontrado: ${workOrderId} (tipo_ot=${tipoOt})`);
     }
 
-    // 3️⃣ Buscar asignación ACTIVA por (work_order_id, rol_trabajo) - SIN filtrar user_id
-    // Esto devuelve la asignación activa EXISTENTE, sea de quien sea
+    // 3?? Buscar asignaci�n ACTIVA por (work_order_id, rol_trabajo) - SIN filtrar user_id
+    // Esto devuelve la asignaci�n activa EXISTENTE, sea de quien sea
     let query = `${process.env.SUPABASE_URL}/rest/v1/asignaciones?`;
     query += `work_order_id=eq.${workOrderId}&rol_trabajo=eq.${rolTrabajo}&activo=eq.true`;
 
@@ -594,7 +683,7 @@ app.post("/api/evento", async (req, res) => {
     const asignacionesActivas = (await res_asg.json()) || [];
     const asignacionActiva = asignacionesActivas.length > 0 ? asignacionesActivas[0] : null;
 
-    // 4️⃣ Verificar si ya está asignada a otro usuario
+    // 4?? Verificar si ya est� asignada a otro usuario
     if (asignacionActiva && asignacionActiva.user_id !== userId) {
       // Obtener nombre del usuario que tiene asignada
       let otroUsuario = "otro usuario";
@@ -607,10 +696,10 @@ app.post("/api/evento", async (req, res) => {
         }
       } catch (e) { /* ignore */ }
       
-      // ✅ Retornar más información para mejor manejo en frontend
+      // ? Retornar m�s informaci�n para mejor manejo en frontend
       return res.status(409).json({ 
         ok: false, 
-        error: `Esta OT ya está asignada a ${otroUsuario} en rol ${rolTrabajo}`,
+        error: `Esta OT ya est� asignada a ${otroUsuario} en rol ${rolTrabajo}`,
         errorType: "ALREADY_ASSIGNED",
         assignedTo: otroUsuario,
         assignedEmail: otroEmail,
@@ -619,17 +708,17 @@ app.post("/api/evento", async (req, res) => {
       });
     }
 
-    // 5️⃣ Si existe asignación del usuario actual, usarla; si no, será null (crearemos nueva)
+    // 5?? Si existe asignaci�n del usuario actual, usarla; si no, ser� null (crearemos nueva)
     let asignacion = asignacionActiva && asignacionActiva.user_id === userId ? asignacionActiva : null;
 
-    // 6️⃣ Calcular nuevo estado según acción
+    // 6?? Calcular nuevo estado seg�n acci�n
     const estadoActual = asignacion?.estado_actual || "SIN_INICIAR";
     let nuevoEstado = estadoActual;
     let runningSince = asignacion?.running_since || null;
     let tiempoAgregado = 0;
 
-    // ✅ VALIDACIÓN DE TRANSICIÓN DE ESTADO (lado servidor)
-    // Definir transiciones válidas
+    // ? VALIDACI�N DE TRANSICI�N DE ESTADO (lado servidor)
+    // Definir transiciones v�lidas
     const transicionesValidas = {
       "SIN_INICIAR": ["INICIO", "NOTA"],
       "TRABAJANDO": ["PAUSA", "FIN", "NOTA"],
@@ -640,12 +729,12 @@ app.post("/api/evento", async (req, res) => {
     const accionesValidas = transicionesValidas[estadoActual] || ["INICIO", "NOTA"];
     if (!accionesValidas.includes(accion)) {
       console.warn(
-        `[EVENTO] Acción no permitida: estado=${estadoActual}, accion=${accion}. ` +
+        `[EVENTO] Acci�n no permitida: estado=${estadoActual}, accion=${accion}. ` +
         `Permitidas: ${accionesValidas.join(", ")}`
       );
       return res.status(400).json({
         ok: false,
-        error: `Acción ${accion} no permitida desde estado ${estadoActual}`,
+        error: `Acci�n ${accion} no permitida desde estado ${estadoActual}`,
         estadoActual: estadoActual,
         accionesPermitidas: accionesValidas,
       });
@@ -679,7 +768,7 @@ app.post("/api/evento", async (req, res) => {
         break;
     }
 
-    // 7️⃣ Crear evento en Supabase
+    // 7?? Crear evento en Supabase
     const eventoData = {
       timestamp: new Date().toISOString(),
       user_id: userId,
@@ -692,7 +781,7 @@ app.post("/api/evento", async (req, res) => {
 
     await supabasePost_("eventos", eventoData);
 
-    // 8️⃣ Si no existe asignación, crearla
+    // 8?? Si no existe asignaci�n, crearla
     if (!asignacion) {
       const asgData = {
         work_order_id: workOrderId,
@@ -707,7 +796,7 @@ app.post("/api/evento", async (req, res) => {
       asignacion = await supabasePost_("asignaciones", asgData);
       if (Array.isArray(asignacion)) asignacion = asignacion[0];
     } else {
-      // 9️⃣ Actualizar asignación existente
+      // 9?? Actualizar asignaci�n existente
       const updateData = {
         estado_actual: nuevoEstado,
         running_since: runningSince,
@@ -726,13 +815,40 @@ app.post("/api/evento", async (req, res) => {
       asignacion = Array.isArray(updateResult) ? updateResult[0] : updateResult;
     }
 
-    // 🔟 Retornar asignación actualizada - CON TODOS LOS CAMPOS ESPERADOS Y NORMALIZADOS
+    // 10️⃣ Actualizar estado_general del work_order (MOTOR/TANQUE)
+    // Solo FINALIZADO si AMBAS asignaciones (MOTOR y TANQUE) existen y están FINALIZADO
+    if ((rolTrabajo === "MOTOR" || rolTrabajo === "TANQUE") && tipoOt === "CONVERSION") {
+      try {
+        const allAsg = await supabaseGet_("asignaciones", {
+          work_order_id: workOrderId,
+          activo: true,
+        });
+        let motor = null, tanque = null;
+        for (const a of (allAsg || [])) {
+          const rol = String(a.rol_trabajo || "").toUpperCase();
+          const est = String(a.estado_actual || "").toUpperCase();
+          if (rol === "MOTOR") motor = est;
+          if (rol === "TANQUE") tanque = est;
+        }
+        // Requiere AMBAS asignaciones finalizadas
+        const estadoGeneral = (motor === "FINALIZADO" && tanque === "FINALIZADO")
+          ? "FINALIZADO"
+          : (motor || tanque) ? "EN PROCESO" : "PENDIENTE";
+
+        await supabasePatch_("work_orders", { id: workOrderId }, { estado_general: estadoGeneral });
+        console.log(`[EVENTO] estado_general actualizado: ${estadoGeneral} (motor=${motor}, tanque=${tanque})`);
+      } catch (err) {
+        console.warn("[EVENTO] No se pudo actualizar estado_general:", err.message);
+      }
+    }
+
+    // ?? Retornar asignaci�n actualizada - CON TODOS LOS CAMPOS ESPERADOS Y NORMALIZADOS
     const duration = Date.now() - t1;
     
-    // ✅ NORMALIZACIÓN GARANTIZADA
+    // ? NORMALIZACI�N GARANTIZADA
     const respuesta = {
       ok: true,
-      // Campos de asignación
+      // Campos de asignaci�n
       id: asignacion.id,
       work_order_id: workOrderId,
       user_id: userId,
@@ -748,11 +864,12 @@ app.post("/api/evento", async (req, res) => {
       last_nota_ts: asignacion.last_nota_ts,
       
       // Campos mapeados para compatibilidad con frontend
-      vin: vin,  // ✅ VIN GARANTIZADO
+      vin: vin,  // ? VIN GARANTIZADO
       conversionId: workOrderId,  // Alias
       estado: asignacion.estado_actual,  // Alias
       tiempo_ms: asignacion.tiempo_trab_ms || 0,  // Alias
       rolTrabajo: rolTrabajo,  // camelCase
+      tipoRamal: tipoRamal || "",  // Para RAMALERO
       
       // Metadata
       _timing: `${duration}ms`,
@@ -764,12 +881,12 @@ app.post("/api/evento", async (req, res) => {
       },
     };
     
-    console.log(`[EVENTO] ✅ Exitoso: ${accion} para VIN=${vin}, ROL=${rolTrabajo}, ESTADO=${nuevoEstado}`);
+    console.log(`[EVENTO] ? Exitoso: ${accion} para VIN=${vin}, ROL=${rolTrabajo}, ESTADO=${nuevoEstado}`);
     return res.json(respuesta);
   } catch (e) {
     console.error("[POST /api/evento]", e.message, e.stack);
     
-    // ✅ Retornar error más informativo y categorizado
+    // ? Retornar error m�s informativo y categorizado
     const errorMsg = String(e.message || e);
     let statusCode = 500;
     let errorType = "INTERNAL_ERROR";
@@ -794,7 +911,7 @@ app.post("/api/evento", async (req, res) => {
     } else if (errorMsg.includes("timeout") || errorMsg.includes("timed out")) {
       statusCode = 504;
       errorType = "TIMEOUT";
-      userMsg = "La operación tardó demasiado. Intenta de nuevo.";
+      userMsg = "La operaci�n tard� demasiado. Intenta de nuevo.";
     }
     
     res.status(statusCode).json({ 
@@ -807,7 +924,7 @@ app.post("/api/evento", async (req, res) => {
   }
 });
 
-// endpoint Node → Supabase (estado) - LECTURA SOLO
+// endpoint Node ? Supabase (estado) - LECTURA SOLO
 app.get("/api/estado", async (req, res) => {
   try {
     const email = String(req.query.email || "").trim().toLowerCase();
@@ -819,7 +936,7 @@ app.get("/api/estado", async (req, res) => {
     if (!vin) return res.status(400).json({ ok:false, error:"Falta vin" });
     if (!rolTrabajo) return res.status(400).json({ ok:false, error:"Falta rolTrabajo" });
 
-    // 🔍 LECTURA DESDE SUPABASE
+    // ?? LECTURA DESDE SUPABASE
     // 1. Obtener usuario
     const t1 = Date.now();
     const usuarios = await supabaseGet_("usuarios", { email });
@@ -842,7 +959,7 @@ app.get("/api/estado", async (req, res) => {
     }
     const workOrder = workOrders[0];
 
-    // 3. Obtener asignación activa para este usuario + rol
+    // 3. Obtener asignaci�n activa para este usuario + rol
     const t3 = Date.now();
     const asignaciones = await supabaseGet_("asignaciones", { 
       work_order_id: workOrder.id,
@@ -870,46 +987,130 @@ app.get("/api/estado", async (req, res) => {
 });
 
 // =========================
-// SUPERVISOR REPORT
+// SUPERVISOR REPORT (Supabase directo)
 // =========================
 app.post("/api/supervisor/report", async (req, res) => {
   try {
-    // filtros opcionales: role, q (nombre/email), from, to, month
     const payload = req.body || {};
-    const j = await callAppsScript("supervisor_report", payload);
-    res.json(j);
+    return await handleSupervisorReport_(payload, res);
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e.message || e) });
   }
 });
 
-// Alias GET para que el frontend actual (GET) funcione sin cambiar app.js
 app.get("/api/supervisor/report", async (req, res) => {
   try {
-    const track = String(req.query.track || "CONVERSION").toUpperCase();
-
     const payload = {
       q:         String(req.query.q         || "").trim(),
       from:      String(req.query.from      || "").trim(),
       to:        String(req.query.to        || "").trim(),
       month:     String(req.query.month     || "").trim(),
       tipoRamal: String(req.query.tipoRamal || "").trim(),
-      track,   // ✅ esta línea faltaba — pasar track a Apps Script
+      track:     String(req.query.track     || "CONVERSION").toUpperCase(),
     };
-
-    const j = await callAppsScript("supervisor_report", payload);
-    if (!j.ok) return res.json(j);
-
-    // El filtro por track ahora lo hace Apps Script directamente,
-    // así que Node ya no necesita volver a filtrar
-    return res.json({ ok: true, items: j.items, count: j.count });
-
+    return await handleSupervisorReport_(payload, res);
   } catch (e) {
     return res.status(500).json({ ok: false, error: String(e.message || e) });
   }
 });
 
-// endpoint Node → Supabase (supervisor_conversion_detail) - LECTURA SOLO
+async function handleSupervisorReport_(payload, res) {
+  const t1 = Date.now();
+  const track = String(payload.track || "CONVERSION").toUpperCase();
+  const q = String(payload.q || "").trim().toLowerCase();
+  const from = String(payload.from || "").trim();
+  const to = String(payload.to || "").trim();
+  const month = String(payload.month || "").trim(); // YYYY-MM
+
+  const headers = supabaseHeaders_();
+  const SUPABASE_URL = process.env.SUPABASE_URL;
+
+  // Determinar tipo_ot según track
+  let tipoOtFilter = "";
+  if (track === "CONVERSION") tipoOtFilter = "tipo_ot=in.(CONVERSION)";
+  else if (track === "CALIDAD") tipoOtFilter = "tipo_ot=eq.CALIDAD";
+  else if (track === "RAMAL") tipoOtFilter = "tipo_ot=eq.RAMALERO";
+  else tipoOtFilter = "tipo_ot=in.(CONVERSION)";
+
+  // Query asignaciones con JOINs embebidos a usuarios y work_orders
+  let url = `${SUPABASE_URL}/rest/v1/asignaciones?`;
+  url += `select=id,work_order_id,user_id,tipo_ot,rol_trabajo,estado_actual,running_since,tiempo_trab_ms,fecha_asignacion,updated_at,last_nota,activo,`;
+  url += `usuarios(id,nombre,email),`;
+  url += `work_orders(id,vin,tipo_ot,tipo_ramal,fecha_creacion,estado_general)`;
+  url += `&${tipoOtFilter}`;
+  url += `&activo=eq.true`;
+
+  // Filtro por fecha
+  if (from) url += `&fecha_asignacion=gte.${from}T00:00:00`;
+  if (to) url += `&fecha_asignacion=lte.${to}T23:59:59`;
+  if (month && !from && !to) {
+    url += `&fecha_asignacion=gte.${month}-01T00:00:00`;
+    // Calcular fin del mes
+    const [y, m] = month.split("-").map(Number);
+    const lastDay = new Date(y, m, 0).getDate();
+    url += `&fecha_asignacion=lte.${month}-${String(lastDay).padStart(2, "0")}T23:59:59`;
+  }
+
+  url += `&order=updated_at.desc`;
+
+  const resp = await fetch(url, { method: "GET", headers });
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => "");
+    console.error("[SUPERVISOR_REPORT] Supabase error:", resp.status, text.slice(0, 300));
+    return res.status(500).json({ ok: false, error: `Supabase: ${resp.status}` });
+  }
+
+  const raw = await resp.json();
+
+  // Mapear a formato esperado por el frontend
+  let items = (raw || []).map(asg => {
+    const user = asg.usuarios || {};
+    const wo = asg.work_orders || {};
+    return {
+      // IDs
+      id: asg.id,
+      workId: asg.work_order_id,
+      conversionId: asg.work_order_id,
+      userId: asg.user_id,
+      // User info
+      userName: user.nombre || "",
+      userEmail: user.email || "",
+      // Work order info
+      vin: wo.vin || "",
+      tipoRamal: wo.tipo_ramal || "",
+      tipo_ot: asg.tipo_ot,
+      // Assignment info
+      rol: asg.rol_trabajo,
+      rolTrabajo: asg.rol_trabajo,
+      estado: asg.estado_actual,
+      tiempo_ms: asg.tiempo_trab_ms || 0,
+      running_since: asg.running_since,
+      fecha_inicio: asg.fecha_asignacion,
+      fecha_asignacion: asg.fecha_asignacion,
+      updated_at: asg.updated_at,
+      created_at: wo.fecha_creacion,
+      fecha_creacion: wo.fecha_creacion,
+      last_nota: asg.last_nota || "",
+      activo: asg.activo,
+    };
+  });
+
+  // Filtro por texto (nombre, email, vin)
+  if (q) {
+    items = items.filter(it => {
+      const haystack = [it.userName, it.userEmail, it.vin, it.tipoRamal]
+        .join(" ").toLowerCase();
+      return haystack.includes(q);
+    });
+  }
+
+  const duration = Date.now() - t1;
+  console.log(`[SUPERVISOR_REPORT] ${track}: ${items.length} items en ${duration}ms`);
+
+  return res.json({ ok: true, items, count: items.length, _timing: `${duration}ms`, _source: "supabase" });
+}
+
+// endpoint Node ? Supabase (supervisor_conversion_detail) - LECTURA SOLO
 app.get("/api/supervisor/conversion-detail", async (req, res) => {
   try {
     const vin = String(req.query.vin || "").trim().toUpperCase();
@@ -920,7 +1121,7 @@ app.get("/api/supervisor/conversion-detail", async (req, res) => {
       return res.status(400).json({ ok: false, error: "Falta ?vin=" });
     }
 
-    // 🔍 LECTURA DESDE SUPABASE
+    // ?? LECTURA DESDE SUPABASE
     const t1 = Date.now();
     const workOrders = await supabaseGet_("work_orders", { vin });
     timings.push({ label: "work_order_by_vin", duration: Date.now() - t1 });
@@ -965,7 +1166,7 @@ app.get("/api/supervisor/conversion-detail", async (req, res) => {
   }
 });
 
-// endpoint Node → Supabase (vin_suggest) - BÚSQUEDA CONTAINS CON ILIKE
+// endpoint Node ? Supabase (vin_suggest) - B�SQUEDA CONTAINS CON ILIKE
 app.get("/api/vin-suggest", async (req, res) => {
   try {
     const q = String(req.query.q || "").trim().toUpperCase();
@@ -977,7 +1178,7 @@ app.get("/api/vin-suggest", async (req, res) => {
 
     const t1 = Date.now();
 
-    // 🔍 BÚSQUEDA CONTAINS: busca cualquier VIN que contenga el patrón
+    // ?? B�SQUEDA CONTAINS: busca cualquier VIN que contenga el patr�n
     // Ejemplo: "213" encuentra "TH500213"
     const searchPattern = encodeURIComponent(`%${q}%`);
     let query = `${process.env.SUPABASE_URL}/rest/v1/vins?`;
@@ -1021,7 +1222,7 @@ function hay_(u) {
   return norm_([u.name, u.email, u.label].filter(Boolean).join(" "));
 }
 
-// REMOVED: ensureNameCache_() — Replaced with direct Supabase queries
+// REMOVED: ensureNameCache_() � Replaced with direct Supabase queries
 
 app.get("/api/name-suggest", async (req, res) => {
   try {
@@ -1030,7 +1231,7 @@ app.get("/api/name-suggest", async (req, res) => {
 
     const t1 = Date.now();
 
-    // 🔍 BÚSQUEDA DIRECTA EN SUPABASE (sin cache)
+    // ?? B�SQUEDA DIRECTA EN SUPABASE (sin cache)
     let query = `${process.env.SUPABASE_URL}/rest/v1/usuarios?`;
     query += `activo=eq.true`;
     
@@ -1072,7 +1273,7 @@ app.get("/api/name-suggest", async (req, res) => {
 });
 
 // =========================
-// 🚀 SYNC optimizado — Supabase directo (SIN AppScript = RÁPIDO)
+// ?? SYNC optimizado � Supabase directo (SIN AppScript = R�PIDO)
 // =========================
 app.post("/api/sync", async (req, res) => {
   try {
@@ -1083,10 +1284,10 @@ app.post("/api/sync", async (req, res) => {
     const t1 = Date.now();
 
     if (!email && !userId) {
-      return res.status(400).json({ ok: false, error: "Envía email o userId" });
+      return res.status(400).json({ ok: false, error: "Env�a email o userId" });
     }
 
-    // 1️⃣ Obtén user_id si viene email
+    // 1?? Obt�n user_id si viene email
     let finalUserId = userId;
     if (!finalUserId && email) {
       const usuarios = await supabaseGet_("usuarios", { email });
@@ -1096,7 +1297,7 @@ app.post("/api/sync", async (req, res) => {
       finalUserId = usuarios[0].id;
     }
 
-    // 2️⃣ Query asignaciones ACTIVAS + work_orders (paralelo)
+    // 2?? Query asignaciones ACTIVAS + work_orders (paralelo)
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const headers = supabaseHeaders_();
     
@@ -1107,7 +1308,7 @@ app.post("/api/sync", async (req, res) => {
       query += `&estado_actual=neq.FINALIZADO`;
     }
     
-    query += `&select=*,work_orders(*)&order=updated_at.desc&limit=50`;
+    query += `&select=*,work_orders(*,vins(reductor_asignado,tanque_asignado))&order=updated_at.desc&limit=50`;
 
     const res_data = await fetch(query, { method: "GET", headers });
     
@@ -1127,6 +1328,8 @@ app.post("/api/sync", async (req, res) => {
       estado_actual: asg.estado_actual,
       tiempo_ms: asg.tiempo_trab_ms || 0,
       running_since: asg.running_since,
+      created_at: asg.running_since || asg.work_orders?.fecha_creacion || "",
+      fecha_creacion: asg.work_orders?.fecha_creacion || "",
       last_nota: asg.last_nota || "",
       work_orders: asg.work_orders || {},
     }));
@@ -1150,7 +1353,7 @@ app.post("/api/sync", async (req, res) => {
 });
 
 
-// ✍️ DUAL-WRITE: Apps Script + Supabase en paralelo
+// ?? DUAL-WRITE: Apps Script + Supabase en paralelo
 app.post("/api/equipo-conformidad", async (req, res) => {
   try {
     const body = req.body || {};
@@ -1172,15 +1375,36 @@ app.post("/api/equipo-conformidad", async (req, res) => {
           }
         }
 
+        // Leer checks del payload (frontend envía ck1/ck2/ck3 o checks.ck1)
+        const checks = body.checks || {};
+        const ck1 = !!(body.ck1 ?? body.conf_ck1 ?? checks.ck1);
+        const ck2 = !!(body.ck2 ?? body.conf_ck2 ?? checks.ck2);
+        const ck3 = !!(body.ck3 ?? body.conf_ck3 ?? checks.ck3);
+
+        // Validar que los 3 checks estén marcados
+        if (!ck1 || !ck2 || !ck3) {
+          return res.json({ ok: false, error: "Debes marcar los 3 checks de conformidad." });
+        }
+
         // Actualizar asignación con estado de conformidad
         const conformidadData = {
-          conf_ck1: !!body.conf_ck1,
-          conf_ck2: !!body.conf_ck2,
-          conf_ck3: !!body.conf_ck3,
-          conf_ck4: !!body.conf_ck4,
+          conf_ck1: ck1,
+          conf_ck2: ck2,
+          conf_ck3: ck3,
           conf_ts: new Date().toISOString(),
           conf_by: body.email || userId,
         };
+
+        // Guardar tanque/reductor registrado según el tipo de equipo
+        const equipoTipo = String(body.equipoTipo || "").trim().toUpperCase();
+        const equipoCodigo = String(body.equipoCodigo || "").trim().toUpperCase();
+        if (equipoCodigo) {
+          if (equipoTipo === "TANQUE") {
+            conformidadData.tanque_registrado = equipoCodigo;
+          } else if (equipoTipo === "REDUCTOR") {
+            conformidadData.reductor_registrado = equipoCodigo;
+          }
+        }
 
         // Actualizar el work_order con datos de conformidad
         await supabasePatch_("work_orders", 
@@ -1208,7 +1432,7 @@ app.get("/api/tecnicos-list", async (req, res) => {
   try {
     const t1 = Date.now();
 
-    // 🔍 LECTURA DIRECTA DE SUPABASE: técnicos activos
+    // ?? LECTURA DIRECTA DE SUPABASE: t�cnicos activos
     let query = `${process.env.SUPABASE_URL}/rest/v1/usuarios?`;
     query += `rol=eq.TECNICO&activo=eq.true`;
     query += `&select=id,nombre,email,rol,especialidad,created_at`;
@@ -1234,105 +1458,86 @@ app.get("/api/tecnicos-list", async (req, res) => {
   }
 });
 
-// ✍️ DUAL-WRITE: Apps Script + Supabase en paralelo (con foto)
+// SUPABASE WRITE + Drive upload (foto async)
 app.post("/api/incidencia", async (req, res) => {
   try {
     console.log("[INCIDENCIA] body =", Object.keys(req.body || {}));
 
     const body = { ...(req.body || {}) };
-    let fotoResult = null;
+    const hasFoto = !!(body.foto && body.foto.b64);
 
-    // ✅ Si viene foto, la subimos primero a Drive (Apps Script)
-    if (body.foto && body.foto.b64) {
-      const up = await callAppsScript("uploadIncidencia", {
-        vin: body.vin,
-        conversionId: body.conversionId,
-        tipo: body.tipo,
-        nota: body.nota,
-        tecnico: body.tecnicoNombre || body.tecnicoEmail || body.tecnicoUserId || "",
-        file: {
-          b64: body.foto.b64,
-          mimeType: body.foto.mimeType || "image/jpeg",
-          name: body.foto.name || "incidencia.jpg",
-        },
-      });
+    // Guardar foto payload antes de borrarla
+    const fotoPayload = hasFoto ? { ...body.foto } : null;
+    delete body.foto;
 
-      fotoResult = up;
+    // 1) WRITE a Supabase INMEDIATAMENTE (sin esperar Drive)
+    let supabaseResult = null;
+    try {
+      const incidenciaData = {
+        fecha_hora: new Date().toISOString(),
+        mes: new Date().toISOString().substring(0, 7),
+        work_order_id: body.conversionId || null,
+        vin: body.vin || null,
+        tecnico: body.tecnicoNombre || body.tecnicoEmail || "",
+        tipo: body.tipo || "LEVE",
+        registrado_por: body.email || body.registrado_por || "",
+        nota: body.nota || "",
+        foto_file_id: "",
+        foto_folder_id: "",
+        foto_batch_id: "",
+      };
 
-      // ✅ adjuntamos metadata para guardar en sheet y Supabase
-      body.fotoFileId = String(up.photoId || "");
-      body.fotoUrl = String(up.photoUrl || "");
-      body.fotoThumbUrl = String(up.photoThumbUrl || "");
-      body.fotoImgUrl = String(up.photoImgUrl || "");
-      body.fotoFolderId = String(up.subFolderId || up.folderId || "");
-      body.fotoBatchId = String(up.batchId || "");
-
-      // ✅ quitamos base64 antes de guardar
-      delete body.foto;
+      supabaseResult = await supabasePost_("incidencias", incidenciaData);
+    } catch (err) {
+      console.error("[INCIDENCIA] Supabase write error:", err.message);
+      return res.status(500).json({ ok: false, error: "Error guardando incidencia: " + err.message });
     }
 
-    // PARALLEL WRITES: Apps Script + Supabase
-    const writeApsPromise = callAppsScript("incidencia_add", body).catch(err => {
-      console.warn("[INCIDENCIA] Apps Script error (continuando):", err.message);
-      return null;
-    });
+    // Responder al cliente INMEDIATAMENTE
+    res.json({ ok: true, saved: true });
 
-    const writeSupabasePromise = (async () => {
-      try {
-        // Obtener user_id si viene email
-        let userId = body.tecnicoUserId;
-        if (!userId && body.tecnicoEmail) {
-          const usuarios = await supabaseGet_("usuarios", { email: body.tecnicoEmail });
-          if (usuarios && usuarios.length) {
-            userId = usuarios[0].id;
+    // 2) Si hay foto, subir a Drive en BACKGROUND y actualizar Supabase
+    if (hasFoto && supabaseResult) {
+      const incId = Array.isArray(supabaseResult) ? supabaseResult[0]?.id : supabaseResult?.id;
+      (async () => {
+        try {
+          const up = await callAppsScript("uploadIncidencia", {
+            vin: body.vin,
+            conversionId: body.conversionId,
+            tipo: body.tipo,
+            nota: body.nota,
+            tecnico: body.tecnicoNombre || body.tecnicoEmail || body.tecnicoUserId || "",
+            file: {
+              b64: fotoPayload.b64,
+              mimeType: fotoPayload.mimeType || "image/jpeg",
+              name: fotoPayload.name || "incidencia.jpg",
+            },
+          });
+
+          // Actualizar registro en Supabase con metadata de la foto
+          if (incId && up?.photoId) {
+            await supabasePatch_("incidencias", { id: incId }, {
+              foto_file_id: String(up.photoId || ""),
+              foto_folder_id: String(up.subFolderId || up.folderId || ""),
+              foto_batch_id: String(up.batchId || ""),
+            });
+            console.log(`[INCIDENCIA] Foto subida y actualizada en Supabase: ${incId}`);
           }
+        } catch (err) {
+          console.error("[INCIDENCIA] Background Drive upload error:", err.message);
         }
-
-        const incidenciaData = {
-          fecha_hora: new Date().toISOString(),
-          mes: new Date().toISOString().substring(0, 7), // 'yyyy-MM'
-          work_order_id: body.conversionId || null,
-          vin: body.vin || null,
-          tecnico: body.tecnicoNombre || body.tecnicoEmail || "",
-          tipo: body.tipo || "LEVE",
-          registrado_por: body.email || body.registrado_por || "",
-          nota: body.nota || "",
-          foto_file_id: body.fotoFileId || "",
-          foto_folder_id: body.fotoFolderId || "",
-          foto_batch_id: body.fotoBatchId || "",
-        };
-
-        return await supabasePost_("incidencias", incidenciaData);
-      } catch (err) {
-        console.warn("[INCIDENCIA] Supabase error (continuando):", err.message);
-        return null;
-      }
-    })();
-
-    const [apsResult, supabaseResult] = await Promise.all([writeApsPromise, writeSupabasePromise]);
-
-    // devolvemos también info de foto si hubo
-    return res.json({
-      ...(apsResult || { ok: true }),
-      foto: fotoResult
-        ? {
-            photoId: fotoResult.photoId,
-            photoUrl: fotoResult.photoUrl,
-            photoThumbUrl: fotoResult.photoThumbUrl,
-            photoImgUrl: fotoResult.photoImgUrl,
-            folderId: fotoResult.subFolderId || fotoResult.folderId,
-            batchId: fotoResult.batchId,
-          }
-        : null,
-    });
+      })();
+    }
 
   } catch (e) {
     console.error("[INCIDENCIA] ERROR:", e);
-    res.status(500).json({ ok: false, error: String(e.message || e) });
+    if (!res.headersSent) {
+      res.status(500).json({ ok: false, error: String(e.message || e) });
+    }
   }
 });
 
-// endpoint Node → Supabase (incidencias list) - LECTURA SOLO + TIMING
+// endpoint Node ? Supabase (incidencias list) - LECTURA SOLO + TIMING
 app.get("/api/incidencias/list", async (req, res) => {
   try {
     const vin = String(req.query.vin || "").trim().toUpperCase();
@@ -1346,7 +1551,7 @@ app.get("/api/incidencias/list", async (req, res) => {
       return res.status(400).json({ ok:false, error:"Falta vin o conversionId" });
     }
 
-    // 🔍 LECTURA DESDE SUPABASE
+    // ?? LECTURA DESDE SUPABASE
     let incidencias = [];
     
     if (vin) {
@@ -1360,19 +1565,35 @@ app.get("/api/incidencias/list", async (req, res) => {
     }
 
     const t2 = Date.now();
+    const driveUrls = (fileId) => {
+      if (!fileId) return { url: "", thumbUrl: "", imgUrl: "" };
+      return {
+        url: "https://drive.google.com/file/d/" + fileId + "/view",
+        thumbUrl: "https://drive.google.com/thumbnail?id=" + fileId + "&sz=w400",
+        imgUrl: "https://drive.google.com/uc?export=view&id=" + fileId,
+      };
+    };
     const items = incidencias
       .slice(0, limit)
-      .map(inc => ({
-        id: inc.id,
-        fecha_hora: inc.fecha_hora,
-        vin: inc.vin,
-        type: inc.tipo,
-        nota: inc.nota,
-        registrado_por: inc.registrado_por,
-        foto_file_id: inc.foto_file_id,
-        foto_folder_id: inc.foto_folder_id,
-        foto_batch_id: inc.foto_batch_id,
-      }));
+      .map(inc => {
+        const urls = driveUrls(inc.foto_file_id);
+        return {
+          id: inc.id,
+          fecha: inc.fecha_hora,
+          fecha_hora: inc.fecha_hora,
+          vin: inc.vin,
+          tipo: inc.tipo,
+          tecnico: inc.tecnico || "",
+          nota: inc.nota || "",
+          registrado_por: inc.registrado_por || "",
+          fotoFileId: inc.foto_file_id || "",
+          fotoUrl: urls.url,
+          fotoThumbUrl: urls.thumbUrl,
+          fotoImgUrl: urls.imgUrl,
+          fotoFolderId: inc.foto_folder_id || "",
+          fotoBatchId: inc.foto_batch_id || "",
+        };
+      });
     timings.push({ label: "map_response", duration: Date.now() - t2 });
 
     addServerTiming_(res, timings);
@@ -1387,17 +1608,17 @@ app.get("/api/incidencias/list", async (req, res) => {
   }
 });
 
-// ═════════════════════════════════════════════════════════════════
-// ⚡ ENDPOINTS OPTIMIZADOS SUPABASE (queries ultra-rápidas)
-// ═════════════════════════════════════════════════════════════════
+// -----------------------------------------------------------------
+// ? ENDPOINTS OPTIMIZADOS SUPABASE (queries ultra-r�pidas)
+// -----------------------------------------------------------------
 
-// 1️⃣ GET /api/asignaciones-activas — Por rol (MOTOR, TANQUE, CALIDAD)
+// 1?? GET /api/asignaciones-activas � Por rol (MOTOR, TANQUE, CALIDAD)
 app.get("/api/asignaciones-activas", async (req, res) => {
   try {
     const rol = String(req.query.rol || "MOTOR").toUpperCase();
     const t1 = Date.now();
 
-    // Obtén asignaciones ACTIVAS por rol (ENUM = super rápido)
+    // Obt�n asignaciones ACTIVAS por rol (ENUM = super r�pido)
     let query = `${process.env.SUPABASE_URL}/rest/v1/asignaciones?`;
     query += `rol_trabajo=eq.${rol}&activo=eq.true`;
     query += `&estado_actual=neq.FINALIZADO`;
@@ -1424,7 +1645,7 @@ app.get("/api/asignaciones-activas", async (req, res) => {
   }
 });
 
-// 2️⃣ GET /api/work-orders — Por estado + tipo (ENUM filtering)
+// 2?? GET /api/work-orders � Por estado + tipo (ENUM filtering)
 app.get("/api/work-orders", async (req, res) => {
   try {
     const estado = String(req.query.estado || "EN PROCESO").trim();
@@ -1457,7 +1678,7 @@ app.get("/api/work-orders", async (req, res) => {
   }
 });
 
-// 3️⃣ GET /api/eventos — Timeline (últimas X horas)
+// 3?? GET /api/eventos � Timeline (�ltimas X horas)
 app.get("/api/eventos", async (req, res) => {
   try {
     const horasAtras = Math.min(parseInt(req.query.horas || "24"), 365 * 24);
@@ -1493,7 +1714,7 @@ app.get("/api/eventos", async (req, res) => {
   }
 });
 
-// 4️⃣ GET /api/usuarios-activos — Con módulos
+// 4?? GET /api/usuarios-activos � Con m�dulos
 app.get("/api/usuarios-activos", async (req, res) => {
   try {
     const t1 = Date.now();
@@ -1529,13 +1750,13 @@ app.get("/api/usuarios-activos", async (req, res) => {
   }
 });
 
-// 5️⃣ GET /api/search/incidencias — Búsqueda LIKE
+// 5?? GET /api/search/incidencias � B�squeda LIKE
 app.get("/api/search/incidencias", async (req, res) => {
   try {
     const q = String(req.query.q || "").trim();
 
     if (q.length < 2) {
-      return res.json({ ok: true, items: [], message: "Mínimo 2 caracteres" });
+      return res.json({ ok: true, items: [], message: "M�nimo 2 caracteres" });
     }
 
     const t1 = Date.now();
@@ -1566,11 +1787,11 @@ app.get("/api/search/incidencias", async (req, res) => {
   }
 });
 
-// ═════════════════════════════════════════════════════════════════
+// -----------------------------------------------------------------
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Servidor corriendo en puerto ${PORT}`);
-  console.log(`Ábrelo desde tu celular con: http://192.168.18.121:${PORT}`);
+  console.log(`�brelo desde tu celular con: http://192.168.18.121:${PORT}`);
 });
 
 app.get("/api/ping-aps", async (req, res) => {

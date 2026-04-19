@@ -18,13 +18,11 @@ export function fmtIncFecha_(x, { escapeHtml, fmtShort_ }) {
   try { return escapeHtml(fmtShort_(x)); } catch { return escapeHtml(String(x || "")); }
 }
 
-export async function fetchIncidencias_(vin, conversionId, { getJSON_user, withLock }) {
+export async function fetchIncidencias_(vin, conversionId, { getJSON_user }) {
   if (supabaseEnabled() && vin) {
     // 🚀 LECTURA DIRECTA DE SUPABASE (Sin Node proxy)
     try {
-      const items = await withLock(async () => {
-        return await getIncidencias(vin);
-      }, "Cargando incidencias...");
+      const items = await getIncidencias(vin);
       return { ok: true, items };
     } catch (err) {
       console.warn("[fetchIncidencias_] Supabase error:", err.message);

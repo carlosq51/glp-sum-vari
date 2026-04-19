@@ -9,6 +9,7 @@ import {
   requireEmailOrStop,
   setOut,
   keyOfItem_,
+  postJSON,
   postJSON_user,
 } from "../../../core/core.js";
 
@@ -86,7 +87,10 @@ export async function enviarEvento(accionOverride, opts = {}) {
     }
   }
 
-  const j = await postJSON_user("/api/evento", { email, vin, rolTrabajo, accion, nota }, accion === "NOTA" ? "Guardando nota..." : "Registrando...");
+  // Si ya estamos dentro de un withLock (skipLock), usar postJSON directo para evitar deadlock
+  const j = opts?.skipLock
+    ? await postJSON("/api/evento", { email, vin, rolTrabajo, accion, nota })
+    : await postJSON_user("/api/evento", { email, vin, rolTrabajo, accion, nota }, accion === "NOTA" ? "Guardando nota..." : "Registrando...");
   setOut(j);
   
   // 🔄 Retornar resultado para que autoStartFromScan_ pueda analizarlo
@@ -166,7 +170,7 @@ export async function autoStartFromScan_(vin, rolTrabajo) {
     
     // ✅ PASAR VIN/ROL explícitamente para evitar que se re-lean de UI
     const eventoStartTime = Date.now();
-    const result = await enviarEvento("INICIO", { vin: v, rolTrabajo: rol });
+    const result = await enviarEvento("INICIO", { vin: v, rolTrabajo: rol, skipLock: true });
     const eventoDuration = Date.now() - eventoStartTime;
     
     console.log(`[AUTO_START] enviarEvento completada en ${eventoDuration}ms`);

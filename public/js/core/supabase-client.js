@@ -4,9 +4,10 @@
 // Migración paralela: AppScript + Supabase
 // =========================
 
+const _env = (typeof window !== "undefined" && window.__ENV__) || {};
 export const SUPABASE_CONFIG = {
-  URL: import.meta.env.VITE_SUPABASE_URL || "",
-  ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY || "",
+  URL: import.meta.env?.VITE_SUPABASE_URL || _env.VITE_SUPABASE_URL || "",
+  ANON_KEY: import.meta.env?.VITE_SUPABASE_ANON_KEY || _env.VITE_SUPABASE_ANON_KEY || "",
 };
 
 /**
@@ -305,33 +306,45 @@ export async function getMisActivas(email) {
   
   const userId = usuarios[0].id;
   
-  // 🚀 FILTRO EN SUPABASE: solo asignaciones activas de este usuario
-  const asignaciones = await supabaseGet("asignaciones", {
-    user_id: userId,
-    activo: true, // Supabase interpreta como: activo=eq.true
-  });
+  // 🚀 Query REST con embedded resource (JOIN) a work_orders
+  const select = "id,work_order_id,tipo_ot,rol_trabajo,estado_actual,running_since,tiempo_trab_ms,updated_at,last_nota,work_orders(id,vin,tipo_ramal,estado_general,tanque_registrado,reductor_registrado,fecha_creacion,vins(reductor_asignado,tanque_asignado))";
+  const url = `${SUPABASE_CONFIG.URL}/rest/v1/asignaciones?user_id=eq.${userId}&activo=eq.true&estado_actual=neq.FINALIZADO&select=${encodeURIComponent(select)}&order=updated_at.desc`;
+
+  const res = await fetch(url, { method: "GET", headers: supabaseHeaders() });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Supabase GET asignaciones: ${res.status} ${text}`);
+  }
+
+  const data = await res.json();
+  if (!data || !data.length) return [];
   
-  if (!asignaciones || !asignaciones.length) return [];
-  
-  // Obtener work_orders (una sola query, luego filtrar local)
-  const workOrderIds = asignaciones.map(a => a.work_order_id).filter(Boolean);
-  const workOrders = workOrderIds.length > 0 
-    ? await supabaseGet("work_orders", {})
-    : [];
-  
-  const woMap = Object.fromEntries(
-    workOrders
-      .filter(wo => workOrderIds.includes(wo.id))
-      .map(wo => [wo.id, wo])
-  );
-  
-  // Enriquecer
-  return asignaciones
+  // Enriquecer: extraer work_order info del JOIN
+  return data
     .map(asg => {
-      const wo = woMap[asg.work_order_id] || {};
+      const wo = Array.isArray(asg.work_orders) 
+        ? asg.work_orders[0] 
+        : asg.work_orders;
       return {
-        ...asg,
-        ...wo,
+        id: asg.id,
+        work_order_id: asg.work_order_id,
+        tipo_ot: asg.tipo_ot,
+        rol_trabajo: asg.rol_trabajo,
+        estado_actual: asg.estado_actual,
+        running_since: asg.running_since,
+        created_at: asg.running_since || wo?.fecha_creacion || "",
+        fecha_creacion: wo?.fecha_creacion || "",
+        tiempo_trab_ms: asg.tiempo_trab_ms || 0,
+        updated_at: asg.updated_at,
+        last_nota: asg.last_nota || "",
+        vin: wo?.vin || "",
+        tipo_ramal: wo?.tipo_ramal || "",
+        tipoRamal: wo?.tipo_ramal || "",
+        estado_general: wo?.estado_general,
+        tanque_registrado: wo?.tanque_registrado,
+        reductor_registrado: wo?.reductor_registrado,
+        tanque_asignado: wo?.vins?.tanque_asignado || "",
+        reductor_asignado: wo?.vins?.reductor_asignado || "",
         tiempo_ms: Number(asg.tiempo_trab_ms || 0),
         estado: asg.estado_actual,
       };
@@ -352,33 +365,45 @@ export async function getMisFinalizadas(email) {
   
   const userId = usuarios[0].id;
   
-  // 🚀 FILTRO EN SUPABASE: solo asignaciones finalizadas de este usuario
-  const asignaciones = await supabaseGet("asignaciones", {
-    user_id: userId,
-    estado_actual: "FINALIZADO",
-  });
+  // 🚀 Query REST con embedded resource (JOIN) a work_orders
+  const select = "id,work_order_id,tipo_ot,rol_trabajo,estado_actual,running_since,tiempo_trab_ms,updated_at,last_nota,work_orders(id,vin,tipo_ramal,estado_general,tanque_registrado,reductor_registrado,fecha_creacion,vins(reductor_asignado,tanque_asignado))";
+  const url = `${SUPABASE_CONFIG.URL}/rest/v1/asignaciones?user_id=eq.${userId}&estado_actual=eq.FINALIZADO&select=${encodeURIComponent(select)}&order=updated_at.desc`;
+
+  const res = await fetch(url, { method: "GET", headers: supabaseHeaders() });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Supabase GET asignaciones finalizadas: ${res.status} ${text}`);
+  }
+
+  const data = await res.json();
+  if (!data || !data.length) return [];
   
-  if (!asignaciones || !asignaciones.length) return [];
-  
-  // Obtener work_orders (una sola query, luego filtrar local)
-  const workOrderIds = asignaciones.map(a => a.work_order_id).filter(Boolean);
-  const workOrders = workOrderIds.length > 0
-    ? await supabaseGet("work_orders", {})
-    : [];
-  
-  const woMap = Object.fromEntries(
-    workOrders
-      .filter(wo => workOrderIds.includes(wo.id))
-      .map(wo => [wo.id, wo])
-  );
-  
-  // Enriquecer
-  return asignaciones
+  // Enriquecer: extraer work_order info del JOIN
+  return data
     .map(asg => {
-      const wo = woMap[asg.work_order_id] || {};
+      const wo = Array.isArray(asg.work_orders) 
+        ? asg.work_orders[0] 
+        : asg.work_orders;
       return {
-        ...asg,
-        ...wo,
+        id: asg.id,
+        work_order_id: asg.work_order_id,
+        tipo_ot: asg.tipo_ot,
+        rol_trabajo: asg.rol_trabajo,
+        estado_actual: asg.estado_actual,
+        running_since: asg.running_since,
+        created_at: asg.running_since || wo?.fecha_creacion || "",
+        fecha_creacion: wo?.fecha_creacion || "",
+        tiempo_trab_ms: asg.tiempo_trab_ms || 0,
+        updated_at: asg.updated_at,
+        last_nota: asg.last_nota || "",
+        vin: wo?.vin || "",
+        tipo_ramal: wo?.tipo_ramal || "",
+        tipoRamal: wo?.tipo_ramal || "",
+        estado_general: wo?.estado_general,
+        tanque_registrado: wo?.tanque_registrado,
+        reductor_registrado: wo?.reductor_registrado,
+        tanque_asignado: wo?.vins?.tanque_asignado || "",
+        reductor_asignado: wo?.vins?.reductor_asignado || "",
         tiempo_ms: Number(asg.tiempo_trab_ms || 0),
         estado: asg.estado_actual,
       };
@@ -398,46 +423,84 @@ export async function getEstadoTrabajo(email, vin, rolTrabajo) {
   
   const userId = usuarios[0].id;
   
-  // Obtener work_order
+  // Resolver work_order a partir del VIN.
   const wos = await supabaseGet("work_orders", { vin });
   if (!wos || !wos.length) return null;
   
-  const workOrderId = wos[0].id;
+  const workOrder = wos[0];
   
-  // Obtener asignación
-  const asignaciones = await supabaseGet("asignaciones", {});
-  const asg = asignaciones.find(a => 
-    a.work_order_id === workOrderId &&
-    a.user_id === userId &&
-    a.rol_trabajo === rolTrabajo
-  );
+  // Query REST: asignación relevante
+  const select = "id,work_order_id,tipo_ot,rol_trabajo,estado_actual,running_since,tiempo_trab_ms,updated_at,last_nota,last_nota_ts,activo";
+  const url = `${SUPABASE_CONFIG.URL}/rest/v1/asignaciones?work_order_id=eq.${workOrder.id}&user_id=eq.${userId}&rol_trabajo=eq.${encodeURIComponent(rolTrabajo)}&select=${encodeURIComponent(select)}&limit=1`;
+
+  const res = await fetch(url, { method: "GET", headers: supabaseHeaders() });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Supabase GET estado: ${res.status} ${text}`);
+  }
+
+  const data = await res.json();
+  const asg = Array.isArray(data) && data.length ? data[0] : null;
   
   return {
-    vin,
+    id: asg?.id || null,
+    work_order_id: workOrder.id,
+    tipo_ot: asg?.tipo_ot || workOrder.tipo_ot || "CONVERSION",
+    rol_trabajo: rolTrabajo,
+    estado_actual: asg?.estado_actual || "SIN_INICIAR",
+    running_since: asg?.running_since || null,
+    tiempo_trab_ms: Number(asg?.tiempo_trab_ms || 0),
+    updated_at: asg?.updated_at || workOrder.updated_at || null,
+    last_nota: asg?.last_nota || "",
+    last_nota_ts: asg?.last_nota_ts || null,
+    activo: asg?.activo ?? false,
+    vin: String(workOrder.vin || vin || "").trim().toUpperCase(),
+    conversionId: workOrder.id,
     rolTrabajo,
-    estado: asg ? asg.estado_actual : "SIN_INICIAR",
-    tiempoMs: asg ? asg.tiempo_trab_ms : 0,
+    estado: asg?.estado_actual || "SIN_INICIAR",
+    tiempoMs: Number(asg?.tiempo_trab_ms || 0),
+    tiempo_ms: Number(asg?.tiempo_trab_ms || 0),
   };
 }
 
 /**
- * GET /api/incidencias/list — Obtener incidencias de un VIN
+ * GET incidencias de un VIN — lectura directa Supabase
  */
 export async function getIncidencias(vin) {
   if (!supabaseEnabled()) throw new Error("Supabase no configurado");
   
   const incidencias = await supabaseGet("incidencias", { vin });
-  
+
+  const driveUrls = (fileId) => {
+    if (!fileId) return { url: "", thumbUrl: "", imgUrl: "" };
+    return {
+      url: "https://drive.google.com/file/d/" + fileId + "/view",
+      thumbUrl: "https://drive.google.com/thumbnail?id=" + fileId + "&sz=w400",
+      imgUrl: "https://drive.google.com/uc?export=view&id=" + fileId,
+    };
+  };
+
   return incidencias
-    .map(inc => ({
-      id: inc.id,
-      fecha_hora: inc.fecha_hora,
-      vin: inc.vin,
-      type: inc.tipo,
-      nota: inc.nota,
-      registrado_por: inc.registrado_por,
-      foto_file_id: inc.foto_file_id,
-    }));
+    .map(inc => {
+      const urls = driveUrls(inc.foto_file_id);
+      return {
+        id: inc.id,
+        fecha: inc.fecha_hora,
+        fecha_hora: inc.fecha_hora,
+        vin: inc.vin,
+        tipo: inc.tipo,
+        tecnico: inc.tecnico || "",
+        nota: inc.nota || "",
+        registrado_por: inc.registrado_por || "",
+        fotoFileId: inc.foto_file_id || "",
+        fotoUrl: urls.url,
+        fotoThumbUrl: urls.thumbUrl,
+        fotoImgUrl: urls.imgUrl,
+        fotoFolderId: inc.foto_folder_id || "",
+        fotoBatchId: inc.foto_batch_id || "",
+      };
+    })
+    .sort((a, b) => new Date(b.fecha_hora) - new Date(a.fecha_hora));
 }
 
 /**

@@ -31,7 +31,7 @@ export function renderActivas_() {
     const vin = escapeHtml(it.vin || "");
     const tipo = escapeHtml(it.tipoRamal || "");
     const live = msToHMS_(computeLiveMs_(it, nowMs));
-    const cre = escapeHtml(fmtFechaCreacion_(it.created_at));
+    const cre = escapeHtml(fmtFechaCreacion_(it.running_since || it.created_at || it.fecha_creacion));
     const motorNombre = escapeHtml(it.motorNombre || "");
     const tanqueroNombre = escapeHtml(it.tanqueroNombre || "");
 
@@ -100,10 +100,8 @@ export function renderActivas_() {
 
 export function renderFinalizados_(avgTopHTML = "") {
   const c = ctx_();
-  const suffix = CORE.state.currentModule === "CALIDAD" ? "Q"
-               : CORE.state.currentModule === "RAMALERO" ? "R" : "";
-  const wrap = el_("finalizadosWrap" + suffix);
-  const box = el_("finalizadosBox" + suffix);
+  const wrap = el_("finalizadosWrap");
+  const box = el_("finalizadosBox");
   if (!wrap || !box) return;
 
   if (!c.showFinalizados) {
@@ -128,15 +126,21 @@ export function renderFinalizados_(avgTopHTML = "") {
 
     const vin = escapeHtml(String(it.vin || "").toUpperCase());
     const rol = escapeHtml(String(it.rolTrabajo || ""));
+    const tipo = escapeHtml(String(it.tipoRamal || ""));
     const estado = escapeHtml(String(it.estado || "FINALIZADO").toUpperCase());
     const live = msToHMS_(computeLiveMs_(it, nowMs));
-    const cre = escapeHtml(fmtFechaCreacion_(it.created_at));
+    const cre = escapeHtml(fmtFechaCreacion_(it.running_since || it.created_at || it.fecha_creacion));
     const motorNombre = escapeHtml(it.motorNombre || "");
     const tanqueroNombre = escapeHtml(it.tanqueroNombre || "");
 
+    const displayTitle =
+      CORE.state.currentModule === "RAMALERO"
+        ? `RAMAL: ${tipo || "-"}`
+        : vin || "(sin VIN)";
+
     out += `
       <div class="card" style="margin-top:10px;" data-key="${escapeHtml(k)}">
-        <div><b>${vin}</b> <span class="small">(${rol})</span></div>
+        <div><b>${displayTitle}</b> <span class="small">(${rol})</span></div>
         <div class="row space-between" style="margin-top:6px;">
           <div class="small"><b>Estado:</b> ${estado}</div>
           <div class="pill" style="font-size:18px; font-weight:800;">⏱ ${live}</div>

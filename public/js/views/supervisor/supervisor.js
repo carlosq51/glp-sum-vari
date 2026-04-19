@@ -20,6 +20,7 @@ import { renderAvgCard_, renderTable_ } from "./sup-render.js";
 import { bindSupIncidencias_ } from "./sup-incidencias.js";
 import { bindSupQR_ } from "./sup-qr.js";
 import { bindSupNameSuggest_ } from "./sup-name-suggest.js";
+import { bindSupVinSuggest_ } from "./sup-vin-suggest.js";
 import { bindSupQuickDates_ } from "./sup-quick-dates.js";
 
 let supTrack = "CONVERSION";
@@ -161,6 +162,9 @@ function renderSupervisor_(j) {
   let motorCount = 0;
   let tanqueCount = 0;
 
+  // Contar VINs únicos finalizados
+  const vinsFinalizados = new Set();
+
   for (const it of list) {
     if (!isFinalizado_(it.estado)) continue;
 
@@ -168,9 +172,15 @@ function renderSupervisor_(j) {
     if (rol === "TANQUE" || rol === "TANQUERO") tanqueCount++;
     else if (rol === "MOTOR") motorCount++;
     else if (rol === "TECNICO" || rol === "CONVERSION") motorCount++;
+
+    // Agregar VIN al set si está finalizado
+    const vin = String(it.vin || "").trim();
+    if (vin) vinsFinalizados.add(vin);
   }
 
-  renderAvgCard_(avgCard, { stats, techName, motorCount, tanqueCount, escapeHtml });
+  const finalizedCount = vinsFinalizados.size;
+
+  renderAvgCard_(avgCard, { stats, techName, motorCount, tanqueCount, finalizedCount, escapeHtml });
 
   if (!box) return;
 
@@ -181,7 +191,7 @@ function renderSupervisor_(j) {
     return;
   }
 
-  if (sum) sum.textContent = `Resultados: ${list.length}`;
+  if (sum) sum.textContent = `Resultados: ${uiList.length}`;
 
   renderTable_(box, { uiList, escapeHtml, fmtShort_ });
 }
@@ -211,6 +221,7 @@ export function init() {
   bindSupQuickDates_({ onApply: () => fetchSupervisorReport_().catch(() => {}) });
   bindSupQR_({ CORE, onApply: () => fetchSupervisorReport_().catch(() => {}) });
   bindSupNameSuggest_({ CORE, escapeHtml, onApply: () => fetchSupervisorReport_().catch(() => {}) });
+  bindSupVinSuggest_({ CORE, escapeHtml, onApply: () => fetchSupervisorReport_().catch(() => {}) });
 }
 
 export function enter() {

@@ -28,7 +28,8 @@ export function supervisorView() {
 
         <div class="supVinRow">
           <div class="supVinWrap">
-            <input id="supVin" type="text" placeholder="Buscar por VIN..." />
+            <input id="supVin" type="text" placeholder="Buscar por VIN..." autocomplete="off" />
+            <div id="supVinSuggest" class="vinSuggest hidden" role="listbox"></div>
           </div>
           <button id="btnSupQR" type="button" title="Escanear VIN con cámara">📷</button>
         </div>

@@ -4,13 +4,18 @@
 // =========================
 
 import { fmtDur_ } from "./sup-stats.js";
-import { durationMsFromItem_ } from "./sup-filters.js";
+import { durationMsFromItem_, isFinalizado_ } from "./sup-filters.js";
+
+function isFin_(estado) {
+  return isFinalizado_(estado);
+}
 
 export function renderAvgCard_(avgCardEl, {
   stats,
   techName,
   motorCount,
   tanqueCount,
+  finalizedCount,
   escapeHtml
 }) {
   if (!avgCardEl) return;
@@ -35,7 +40,7 @@ export function renderAvgCard_(avgCardEl, {
           </div>
 
           <div class="pill small" style="opacity:.95;">
-            FINALIZADOS: <b>${stats.used}</b>
+            FINALIZADOS: <b>${finalizedCount || 0}</b>
           </div>
         </div>
 
@@ -108,9 +113,9 @@ export function renderRowGroup_(row, { escapeHtml, fmtShort_ }) {
   const tanqueDur = tanque ? (durationMsFromItem_(tanque) ? fmtDur_(durationMsFromItem_(tanque)) : "-") : "-";
 
   const motorIni = motor ? fmtShort_(motor.fecha_inicio || motor.fecha_asignacion || "") : "";
-  const motorFin = motor ? fmtShort_(motor.updated_at || "") : "";
+  const motorFin = (motor && isFin_(motor.estado)) ? fmtShort_(motor.updated_at || "") : "";
   const tanqueIni = tanque ? fmtShort_(tanque.fecha_inicio || tanque.fecha_asignacion || "") : "";
-  const tanqueFin = tanque ? fmtShort_(tanque.updated_at || "") : "";
+  const tanqueFin = (tanque && isFin_(tanque.estado)) ? fmtShort_(tanque.updated_at || "") : "";
 
   const cidAny = String(motor?.workId || tanque?.workId || "").trim();
 
@@ -129,7 +134,7 @@ export function renderRowGroup_(row, { escapeHtml, fmtShort_ }) {
         <div class="small" style="font-weight:900;">MOTOR: ${escapeHtml(motorWho)}</div>
         <div class="small" style="margin-top:6px;"><b>Duración:</b> ${escapeHtml(motorDur)}</div>
         <div class="small" style="margin-top:6px;">
-          <b>Inicio:</b> ${escapeHtml(motorIni)} &nbsp;|&nbsp; <b>Fin:</b> ${escapeHtml(motorFin)}
+          <b>Inicio:</b> ${escapeHtml(motorIni)}${motorFin ? ` &nbsp;|&nbsp; <b>Fin:</b> ${escapeHtml(motorFin)}` : ""}
         </div>
       </div>
 
@@ -137,7 +142,7 @@ export function renderRowGroup_(row, { escapeHtml, fmtShort_ }) {
         <div class="small" style="font-weight:900;">TANQUE: ${escapeHtml(tanqueWho)}</div>
         <div class="small" style="margin-top:6px;"><b>Duración:</b> ${escapeHtml(tanqueDur)}</div>
         <div class="small" style="margin-top:6px;">
-          <b>Inicio:</b> ${escapeHtml(tanqueIni)} &nbsp;|&nbsp; <b>Fin:</b> ${escapeHtml(tanqueFin)}
+          <b>Inicio:</b> ${escapeHtml(tanqueIni)}${tanqueFin ? ` &nbsp;|&nbsp; <b>Fin:</b> ${escapeHtml(tanqueFin)}` : ""}
         </div>
       </div>
 
@@ -192,8 +197,7 @@ export function renderRowNormal_(it, { escapeHtml, fmtShort_ }) {
 
       <div class="small" style="margin-top:6px;">
         <b>Inicio:</b> ${escapeHtml(fmtShort_(it?.fecha_inicio || it?.fecha_asignacion || it?.created_at || it?.fecha_creacion))}
-        &nbsp;|&nbsp;
-        <b>Fin:</b> ${escapeHtml(fmtShort_(it?.updated_at))}
+        ${isFin_(it?.estado) ? `&nbsp;|&nbsp; <b>Fin:</b> ${escapeHtml(fmtShort_(it?.updated_at))}` : ""}
       </div>
 
       ${

@@ -117,7 +117,6 @@ export function initEstadoUI_() {
   $("btnEstado")?.addEventListener("click", async () => {
     if (CORE.state.currentModule !== "TECNICO") return;
     
-    // ✅ Validaciones rápidas (sin lock)
     const vin = getVin();
     if (!vin) {
       setEstadoText("❌ Ingresa un VIN primero");
@@ -129,23 +128,19 @@ export function initEstadoUI_() {
       return;
     }
     
-    // � LOCK VISUAL INMEDIATO y LANZAR EVENTO
     await withLock(async () => {
-      setEstadoText("🔄 Registrando evento...");
-      
-      // 🚀 Lanzar evento y esperar respuesta (rápido, solo POST)
+      setEstadoText("🔄 Inicializando OT...");
       await autoStartFromScan_(vin, rolTrabajo);
-      
     }, "Creando OT...");
     
-    // 🔄 Sync + Refresh en background (sin lock)
     setEstadoText("⏳ Sincronizando...");
-    syncNow({ forceFull: true, showOut: false })
+    setTimeout(() => {
+      syncNow({ forceFull: true, showOut: false })
       .then(() => {
         const c = ctx_();
         const it = [...c.itemsByKey.values()].find(x => 
-          String(x.vin || "").toUpperCase() === vin &&
-          String(x.rolTrabajo || "").toUpperCase() === rolTrabajo
+          String(x.vin || "").toUpperCase() === vin.toUpperCase() &&
+          String(x.rolTrabajo || "").toUpperCase() === rolTrabajo.toUpperCase()
         );
         
         if (it?.estado === "TRABAJANDO") {
@@ -155,49 +150,43 @@ export function initEstadoUI_() {
         }
       })
       .catch(() => {});
+    }, 100);
   });
 
   $("btnEstadoQ")?.addEventListener("click", async () => {
     if (CORE.state.currentModule !== "CALIDAD") return;
     
-    // ✅ Validaciones rápidas (sin lock)
     const vin = getVin();
     if (!vin) {
       setEstadoText("❌ Ingresa un VIN primero");
       return;
     }
-    const rolTrabajo = getRolTrabajoCurrent_();
-    if (!rolTrabajo) {
-      setEstadoText("❌ Selecciona rol CALIDAD");
-      return;
-    }
+    const rolTrabajo = "CALIDAD";
     
-    // � LOCK VISUAL INMEDIATO y LANZAR EVENTO
     await withLock(async () => {
-      setEstadoText("🔄 Registrando evento...");
-      
-      // 🚀 Lanzar evento y esperar respuesta (rápido, solo POST)
+      setEstadoText("🔄 Inicializando OT...");
       await autoStartFromScan_(vin, rolTrabajo);
-      
     }, "Creando OT...");
     
-    // 🔄 Sync + Refresh en background (sin lock)
     setEstadoText("⏳ Sincronizando...");
-    syncNow({ forceFull: true, showOut: false })
-      .then(() => {
-        const c = ctx_();
-        const it = [...c.itemsByKey.values()].find(x => 
-          String(x.vin || "").toUpperCase() === vin &&
-          String(x.rolTrabajo || "").toUpperCase() === rolTrabajo
-        );
-        
-        if (it?.estado === "TRABAJANDO") {
-          setEstadoText("✅ OT TRABAJANDO");
-        } else {
-          setEstadoText(`ℹ️ Estado: ${it?.estado || "SIN_INICIAR"}`);
-        }
-      })
-      .catch(() => {});
+    setTimeout(() => {
+      syncNow({ forceFull: true, showOut: false })
+        .then(() => {
+          const c = ctx_();
+          const it = [...c.itemsByKey.values()].find(x => 
+            String(x.vin || "").toUpperCase() === vin.toUpperCase() &&
+            String(x.rolTrabajo || "").toUpperCase() === rolTrabajo.toUpperCase()
+          );
+          
+          if (it?.estado === "TRABAJANDO") {
+            setEstadoText("✅ OT TRABAJANDO");
+          } else if (it) {
+            setEstadoText(`ℹ️ Estado: ${it.estado}`);
+          } else {
+            setEstadoText("ℹ️ OT creada");
+          }
+        })
+        .catch(() => {});
     }, 100);
   });
 

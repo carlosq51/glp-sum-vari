@@ -55,9 +55,18 @@ export function setLocked(on, msg = "Procesando...") {
 }
 
 export async function withLock(fn, msg) {
+  // 🔄 Si hay un lock activo, esperar a que se libere (cola en serie)
   if (CORE.state.uiLocked) {
-    console.warn(`[withLock] ⚠️ Ya hay un lock activo. Ignorando nueva operación: "${msg}"`);
-    return;
+    console.warn(`[withLock] ⏳ Lock activo. Esperando a que se libere: "${msg}"`);
+    // Esperar brevemente y reintentar (máximo 10 intentos)
+    let attempts = 0;
+    while (CORE.state.uiLocked && attempts < 100) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      attempts++;
+    }
+    if (CORE.state.uiLocked) {
+      console.error(`[withLock] ❌ Lock no se liberó después de 10s. Forzando.`);
+    }
   }
   
   setLocked(true, msg);

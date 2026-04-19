@@ -104,6 +104,7 @@ export function applySyncResultToStore_(syncData) {
 export function storeFullReplace_(allItems) {
   const c = ctx_();
   c.itemsByKey.clear();
+  c._finalizadosLoaded = false;
   const arr = Array.isArray(allItems) ? allItems : [];
   for (const raw of arr) {
     const it = normalizeItem_(raw);

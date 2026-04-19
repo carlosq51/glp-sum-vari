@@ -142,11 +142,20 @@ export function init() {
         try { email = requireEmailOrStop(); } catch { return; }
         const j = await fetchFinalizados_(email);
         if (j?.ok && Array.isArray(j.items)) {
-          const { normalizeItem_ } = await import("./state/conversion-store.js");
+          const { normalizeItem_, ensureNombresCache_ } = await import("./state/conversion-store.js");
           for (const raw of j.items) {
             const it = normalizeItem_(raw);
             const k = `${it.conversionId}|${it.rolTrabajo}`;
             c.itemsByKey.set(k, it);
+          }
+          // Enriquecer finalizados con nombres MOTOR/TANQUERO
+          const byVin = await ensureNombresCache_();
+          for (const [, it] of c.itemsByKey) {
+            if (it && it.vin && !it.motorNombre && !it.tanqueroNombre) {
+              const nombres = byVin.get(it.vin.toUpperCase().trim()) || {};
+              it.motorNombre = nombres.motorNombre || "";
+              it.tanqueroNombre = nombres.tanqueroNombre || "";
+            }
           }
           rebuildListsFromStore_();
           c._finalizadosLoaded = true;

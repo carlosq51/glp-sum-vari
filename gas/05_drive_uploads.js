@@ -356,6 +356,8 @@ function uploadIncidencia_(data) {
       photoName
     );
     const photoFile = subFolder.createFile(photoBlob);
+    // Hacer público para que los thumbnails se puedan ver desde la app
+    photoFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
     const photoId = photoFile.getId();
 
     // 2) meta.json (opcional, pero útil)

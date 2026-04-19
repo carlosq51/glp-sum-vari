@@ -4,10 +4,12 @@ import {
   el_,
   ctx_,
   withLock,
+  requireEmailOrStop,
 } from "../../core/core.js";
 
-import { renderFinalizados_ } from "../../work/index.js";
-import { syncNow } from "../conversion/conversion.js";
+import { renderFinalizados_, rebuildListsFromStore_ } from "../../work/index.js";
+import { syncNow, fetchFinalizados_ } from "../conversion/data/conversion-sync.js";
+import { normalizeItem_ } from "../conversion/state/conversion-store.js";
 import { crearNuevoRamal_ } from "./ramalero-eventos.js";
 
 let boundActions_ = false;
@@ -29,6 +31,21 @@ export function initRamaleroActions_() {
 
       const btn = el_("btnFinalizados");
       if (btn) btn.textContent = c.showFinalizados ? "Ocultar finalizados" : "Ver finalizados";
+
+      if (c.showFinalizados && !c._finalizadosLoaded) {
+        let email;
+        try { email = requireEmailOrStop(); } catch { return; }
+        const j = await fetchFinalizados_(email);
+        if (j?.ok && Array.isArray(j.items)) {
+          for (const raw of j.items) {
+            const it = normalizeItem_(raw);
+            const k = `${it.conversionId}|${it.rolTrabajo}`;
+            c.itemsByKey.set(k, it);
+          }
+          rebuildListsFromStore_();
+          c._finalizadosLoaded = true;
+        }
+      }
 
       renderFinalizados_();
     }, "Cargando finalizados...");
