@@ -71,7 +71,7 @@ function buildHTML_(inc) {
   const tipo    = String(inc.tipo || "").toUpperCase();
   const vin     = String(inc.vin  || "\u2014").toUpperCase();
   const nota    = String(inc.nota || "").trim();
-  const reg     = String(inc.registrado_por || inc.calidad_email || "Calidad").trim();
+  const reg     = String(inc._regDisplay || inc.registrado_por || inc.calidad_email || "Calidad").trim();
   const fileId  = String(inc.foto_file_id || inc.fotoFileId || "").trim();
   const meta    = tipoMeta_[tipo] || tipoMeta_.LEVE;
   const em      = emojiChar_[tipo] || emojiChar_.LEVE;
@@ -150,15 +150,30 @@ function showAlert_(inc) {
   popup_()?.remove();
   alertOpen_ = true;
 
-  document.body.insertAdjacentHTML("beforeend", buildHTML_(inc));
+  // Resolver nombre del registrador si lo guardado parece un email
+  const regRaw = String(inc.registrado_por || inc.calidad_email || "").trim();
+  const isEmail = regRaw.includes("@");
 
-  const el = popup_();
-  if (!el) { alertOpen_ = false; return; }
+  const render_ = (regDisplay) => {
+    const incWithNombre = { ...inc, _regDisplay: regDisplay };
+    document.body.insertAdjacentHTML("beforeend", buildHTML_(incWithNombre));
 
-  requestAnimationFrame(() => el.classList.add("incAlertVisible"));
+    const el = popup_();
+    if (!el) { alertOpen_ = false; return; }
 
-  el.querySelector("#btnCloseIncAlert")?.addEventListener("click",  () => closeAlert_(inc));
-  el.querySelector("#btnCloseIncAlert2")?.addEventListener("click", () => closeAlert_(inc));
+    requestAnimationFrame(() => el.classList.add("incAlertVisible"));
+
+    el.querySelector("#btnCloseIncAlert")?.addEventListener("click",  () => closeAlert_(inc));
+    el.querySelector("#btnCloseIncAlert2")?.addEventListener("click", () => closeAlert_(inc));
+  };
+
+  if (isEmail) {
+    getNombreByEmail(regRaw)
+      .then(nombre => render_(nombre || regRaw))
+      .catch(() => render_(regRaw));
+  } else {
+    render_(regRaw || "Calidad");
+  }
 }
 
 // --------------------------
