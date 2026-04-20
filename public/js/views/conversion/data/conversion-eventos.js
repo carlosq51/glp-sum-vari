@@ -37,7 +37,21 @@ const recentAutoStarts_ = new Map();  // {vin|rol: timestamp}
 const ANTI_LOOP_MS = 1500;  // Reducido de 2000ms para mejor UX
 const AUTO_START_TIMEOUT_MS = 15000;  // 15 segundos para limpiar
 
-// Limpiar entradas expiradas
+// --------------------------
+// AUTO-RESUME TRAS PAUSA (máx 8 min)
+// Se basa en it.updated_at del servidor → sobrevive recargas de página
+// --------------------------
+
+/** Tiempo máximo de pausa antes de reanudar automáticamente. */
+export const PAUSA_AUTO_RESUME_MS = 8 * 60 * 1000;
+
+/**
+ * Keys que ya tienen un REANUDAR en vuelo, para no disparar dos veces.
+ * El tick de conversión chequea esto antes de llamar enviarEvento.
+ */
+export const autoResumingKeys_ = new Set();
+
+// Limpiar entradas expiradas de recentAutoStarts_
 setInterval(() => {
   const now = Date.now();
   for (const [key, ts] of recentAutoStarts_.entries()) {
@@ -45,7 +59,7 @@ setInterval(() => {
       recentAutoStarts_.delete(key);
     }
   }
-}, 5000);  // Limpiar cada 5 segundos
+}, 5000);
 
 // --------------------------
 // EVENTO (TECNICO/CALIDAD)

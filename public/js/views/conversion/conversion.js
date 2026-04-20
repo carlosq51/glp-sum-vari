@@ -32,8 +32,10 @@ import {
   refreshEstadoForVinRole,
   initEstadoUI_,
 } from "./data/conversion-estado.js";
+import { PAUSA_AUTO_RESUME_MS, autoResumingKeys_, enviarEvento } from "./data/conversion-eventos.js";
 import { initConversionDelegation_ } from "./ui/conversion-delegation.js";
 import { initVinAutocomplete_ } from "./ui/conversion-vin-autocomplete.js";
+import { checkPendingAlerts_ } from "./modals/incidencia-alert.js";
 import { initConversionQR_ } from "./ui/conversion-qr.js";
 
 // --------------------------
@@ -56,6 +58,31 @@ export function tickClocksUI_() {
       if (!it) return;
 
       elTime.textContent = `⏱ ${msToHMS_(computeLiveMs_(it, nowMs))}`;
+
+      // Countdown de pausa automática basado en it.updated_at (servidor)
+      if (String(it.estado || "").toUpperCase() === "PAUSADO") {
+        const cdEl = card.querySelector(".js-pausa-countdown");
+        if (cdEl) {
+          const pausedAt = it.updated_at ? Date.parse(it.updated_at) : NaN;
+          if (!isNaN(pausedAt)) {
+            const remainMs = PAUSA_AUTO_RESUME_MS - (nowMs - pausedAt);
+            if (remainMs > 0) {
+              const mins = Math.floor(remainMs / 60000);
+              const secs = Math.floor((remainMs % 60000) / 1000);
+              cdEl.textContent = `⏳ Auto-reanuda en ${mins}:${String(secs).padStart(2, "0")}`;
+            } else if (!autoResumingKeys_.has(k)) {
+              cdEl.textContent = "⏳ Reanudando...";
+              autoResumingKeys_.add(k);
+              const mod = CORE.state.currentModule;
+              enviarEvento("REANUDAR", { vin: it.vin, rolTrabajo: it.rolTrabajo, clearKey: k })
+                .catch((e) => console.warn("[AUTO-PAUSA] Error al reanudar:", e))
+                .finally(() => autoResumingKeys_.delete(k));
+            }
+          } else {
+            cdEl.textContent = "";
+          }
+        }
+      }
     });
 
   if (CORE.state.currentModule === "RAMALERO") return;
@@ -174,6 +201,15 @@ export function enter(mod) {
   // 🚀 Inicializar Realtime subscriptions
   initializeRealtime_()
     .catch(e => console.warn("[enter] Realtime init error:", e.message));
+
+  // Verificar incidencias no vistas (offline -> online / primer login)
+  if (mod === "TECNICO") {
+    const emailEl = document.getElementById("email");
+    const email = String(emailEl?.value || "").trim().toLowerCase();
+    if (email) {
+      checkPendingAlerts_(email, 12).catch(() => {});
+    }
+  }
 
   startLoopsFor_(mod, {
     syncNow,

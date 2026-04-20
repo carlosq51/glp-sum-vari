@@ -72,6 +72,7 @@ import {
 
 import { autoStartFromScan_ } from "./conversion-eventos.js";
 import { isFinalizado_ } from "../../../work/work-status.js";
+import { showIncidenciaAlert } from "../modals/incidencia-alert.js";
 
 
 
@@ -164,7 +165,23 @@ function handleRealtimeChange_(tableName, payload) {
       scheduleSync_({ forceFull: false, showOut: false }, 400);
 
     }
-
+    // Popup de alerta: si el INSERT es para el técnico que está logueado
+    const row = payload?.new;
+    // Incidencias solo se crean (INSERT), nunca se actualizan.
+    // Cualquier evento con `new` + `tecnico_email` es suficiente.
+    if (row && row.tecnico_email) {
+      try {
+        const myEmail = String(
+          document.getElementById("email")?.value || ""
+        ).trim().toLowerCase();
+        const targetEmail = String(row.tecnico_email || "").trim().toLowerCase();
+        if (myEmail && targetEmail && myEmail === targetEmail) {
+          showIncidenciaAlert(row);
+        }
+      } catch (e) {
+        console.warn("[incidencia-alert] Error al evaluar popup:", e);
+      }
+    }
   }
 
 }

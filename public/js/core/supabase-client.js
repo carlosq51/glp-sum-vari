@@ -504,6 +504,20 @@ export async function getIncidencias(vin) {
 }
 
 /**
+ * GET incidencias recientes para un técnico por email.
+ * Útil para mostrar alertas de incidencias registradas mientras estaba desconectado.
+ * @param {string} tecnicoEmail
+ * @param {string} sinceIso — ISO date string (ej. hace 12h)
+ */
+export async function getIncidenciasByEmail(tecnicoEmail, sinceIso) {
+  if (!supabaseEnabled()) throw new Error("Supabase no configurado");
+  return supabaseGet("incidencias", {
+    tecnico_email: tecnicoEmail,
+    fecha_hora: { op: "gte", val: sinceIso },
+  });
+}
+
+/**
  * GET /api/vin-suggest — Sugerir VINs por búsqueda
  * ✅ Enrutado a través del backend para evitar CORS
  */

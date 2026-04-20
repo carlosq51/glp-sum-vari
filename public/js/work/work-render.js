@@ -76,6 +76,8 @@ export function renderActivas_() {
 
           <div class="jobActionsSlot">${buildBotonesByEstado_(estado)}</div>
 
+          ${estado === "PAUSADO" ? `<div class="js-pausa-countdown small" style="text-align:center; opacity:.85; margin-top:4px; color:#f59e0b;">⏳ Calculando...</div>` : ""}
+
           ${
             CORE.state.currentModule === "TECNICO"
               ? `<button class="btnRF" type="button" data-go="RF">📸 Registrar fotos / fallas</button>`
