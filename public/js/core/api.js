@@ -112,16 +112,23 @@ export async function postJSON(url, body) {
     throw new Error(`Fallo de conexión: ${err?.message || err}`);
   }
 
-  // ✅ Chequea HTTP status
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(`HTTP ${response.status}: ${text.slice(0, 200) || response.statusText}`);
-  }
-
+  // ✅ Intentar parsear JSON siempre (incluso en errores HTTP)
+  // Esto permite que errores como 404 (VIN_NOT_FOUND) y 409 (ALREADY_ASSIGNED)
+  // retornen el body JSON con errorType, vin, assignedTo, etc.
   try {
     jsonData = await response.json();
-  } catch (err) {
-    throw new Error(`Respuesta no-JSON desde servidor: ${err?.message || err}`);
+  } catch {
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(`HTTP ${response.status}: ${text.slice(0, 200) || response.statusText}`);
+    }
+    throw new Error(`Respuesta no-JSON desde servidor`);
+  }
+
+  // Si el servidor retornó JSON con error HTTP, incluir el statusCode para el frontend
+  if (!response.ok && jsonData) {
+    jsonData._statusCode = response.status;
+    return jsonData;  // Retornar el objeto JSON (con ok:false) en vez de lanzar error
   }
 
   return jsonData;

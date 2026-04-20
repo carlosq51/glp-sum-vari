@@ -4,6 +4,7 @@ import { initIncidenciasUI_ } from "./modals/incidencias.js";
 import { initRFModalUI_ } from "./modals/rf-modal.js";
 import { initRFTecModalUI_ } from "./modals/rf-tecnico-modal.js";
 import { initConfirmFinishUI_ } from "./modals/confirm-finish.js";
+import { initErrorModal } from "./modals/error-modal.js";
 import {
   initConformidadUI_,
   setConformidadAfterSaveRefresh_,
@@ -86,6 +87,7 @@ export function init() {
   initIncidenciasUI_();
   initConformidadUI_();
   initConfirmFinishUI_();
+  initErrorModal();
 
   setConformidadAfterSaveRefresh_(async () => {
     await syncNow({ forceFull: true, showOut: false });

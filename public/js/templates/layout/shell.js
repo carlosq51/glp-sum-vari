@@ -18,6 +18,7 @@ import { rfModal } from "../modals/rf-calidad-modal.js";
 import { rfTecnicoModal } from "../modals/rf-tecnico-modal.js";
 
 import { confirmFinishModal } from "../modals/confirm-finish-modal.js";
+import { errorModal } from "../modals/error-modal.js";
 
 export function appShell() {
   return `
@@ -49,6 +50,7 @@ export function appShell() {
     ${rfModal()}
     ${rfTecnicoModal()}
     ${confirmFinishModal()}
+    ${errorModal()}
     ${supIncModal()}
   `;
 }

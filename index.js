@@ -610,41 +610,39 @@ app.post("/api/evento", async (req, res) => {
     let workOrderId, tipoOt;
     
     if (!workOrders || !workOrders.length) {
-      // VIN puede no existir en tabla vins → CREAR PRIMERO (OBLIGATORIO por FK)
+      // Verificar si el VIN existe en la lista de VINs válidos
       let vins = await supabaseGet_("vins", { vin });
       
       if (!vins || !vins.length) {
-        // ⚠ VIN NO EXISTE → CREAR primero (NECESARIO para FK en work_orders)
-        let createdVin = null;
-        try {
-          const vinData = {
-            vin: vin,
-            modelo: "DESCONOCIDO",
-          };
-          createdVin = await supabasePost_("vins", vinData);
-          console.log(`[EVENTO] VIN creado automáticamente: ${vin}`, createdVin);
-          
-          // Verificar que se creó realmente
-          if (!createdVin || !createdVin.vin) {
-            throw new Error(`VIN creado pero respuesta vacía: ${JSON.stringify(createdVin)}`);
-          }
-        } catch (vinErr) {
-          const errMsg = String(vinErr.message || vinErr);
-          
-          // ✅ Manejar duplicate key (ya existe)
-          if (errMsg.includes("23505") || errMsg.includes("duplicate") || errMsg.includes("already exists")) {
-            console.warn(`[EVENTO] VIN ${vin} ya existe (pero no aparecía en lectura). Reintentando...`);
-            // Reintenta la lectura
-            vins = await supabaseGet_("vins", { vin });
-            if (!vins || !vins.length) {
-              throw new Error(`VIN ${vin} reportó duplicate pero no aparece en lectura. DB inconsistente.`);
+        // ⚠️ VIN NO EXISTE EN LA LISTA
+        // Para RAMALERO: crear pseudo-VIN automáticamente (ya generado arriba)
+        // Para otros roles: ERROR - VIN debe existir en la lista
+        if (isRamalero) {
+          // RAMALERO puede crear VINs automáticamente (pseudo-VINs)
+          try {
+            const vinData = {
+              vin: vin,
+              modelo: "RAMAL",
+            };
+            await supabasePost_("vins", vinData);
+            console.log(`[EVENTO] Pseudo-VIN RAMALERO creado: ${vin}`);
+          } catch (vinErr) {
+            const errMsg = String(vinErr.message || vinErr);
+            // Si ya existe (duplicate), está bien
+            if (!errMsg.includes("23505") && !errMsg.includes("duplicate") && !errMsg.includes("already exists")) {
+              console.error(`[EVENTO] Error creando pseudo-VIN RAMALERO:`, errMsg);
+              throw new Error(`No se pudo crear pseudo-VIN RAMALERO: ${errMsg}`);
             }
-            console.log(`[EVENTO] VIN ${vin} confirma después de retry`);
-          } else {
-            // ❌ CRÍTICO: Otro tipo de error
-            console.error(`[EVENTO] CRÍTICO - No se pudo crear VIN ${vin}:`, errMsg);
-            throw new Error(`No se pudo crear VIN ${vin} (requerido por FK): ${errMsg}`);
           }
+        } else {
+          // ❌ ERROR: VIN no existe en la lista - NO se debe crear automáticamente
+          console.warn(`[EVENTO] VIN inválido: ${vin} no existe en la lista de VINs`);
+          return res.status(404).json({
+            ok: false,
+            error: `El VIN "${vin}" no existe en la lista de vehículos registrados. Verifica que el VIN sea correcto.`,
+            errorType: "VIN_NOT_FOUND",
+            vin: vin,
+          });
         }
       }
       

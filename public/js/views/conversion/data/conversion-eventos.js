@@ -24,6 +24,11 @@ import {
 
 import { normalizeItem_, mergePrevAndCache_ } from "../state/conversion-store.js";
 import { syncNow } from "./conversion-sync.js";
+import { 
+  showVinNotFoundError, 
+  showAlreadyAssignedError,
+  showErrorModal,
+} from "../modals/error-modal.js";
 
 let lastAutoStart_ = { k: "", t: 0 };
 
@@ -185,22 +190,33 @@ export async function autoStartFromScan_(vin, rolTrabajo) {
       
       // CASO 1: OT ya asignada a otro usuario (409)
       if (errorType === "ALREADY_ASSIGNED" || error.includes("ya está asignada")) {
-        const titulo = "⚠️ Orden ya asignada";
         const assignedTo = result.assignedTo || "otro usuario";
-        const msg = `${error}\n\nAsignado a: ${assignedTo}`;
         
         setOut({ 
           ok: false, 
-          error: msg, 
+          error: `OT ya asignada a: ${assignedTo}`, 
           severity: "warning",
           errorType: "ALREADY_ASSIGNED",
         });
         
-        if (typeof confirm !== "undefined") {
-          confirm(`${titulo}\n\n${msg}`);
-        }
+        // Mostrar popup modal
+        showAlreadyAssignedError(v, assignedTo);
       }
-      // CASO 2: Validación de transición de estado fallida (400)
+      // CASO 2: VIN no existe en la lista
+      else if (errorType === "VIN_NOT_FOUND" || error.includes("no existe en la lista")) {
+        const vinFromError = result.vin || v;
+        
+        setOut({ 
+          ok: false, 
+          error: `VIN "${vinFromError}" no encontrado`, 
+          severity: "error",
+          errorType: "VIN_NOT_FOUND",
+        });
+        
+        // Mostrar popup modal
+        showVinNotFoundError(vinFromError);
+      }
+      // CASO 3: Validación de transición de estado fallida (400)
       else if (statusCode === 400 && error.includes("Acción")) {
         const msg = `${error}\n\nIntenta nuevamente con la acción correcta.`;
         setOut({ 
@@ -209,14 +225,12 @@ export async function autoStartFromScan_(vin, rolTrabajo) {
           severity: "warning",
           errorType: "INVALID_ACTION",
         });
-      }
-      // CASO 3: VIN no existe (pero ya se crea automáticamente)
-      else if (error.includes("VIN") || error.includes("no encontrado")) {
-        setOut({ 
-          ok: false, 
-          error: `No se pudo crear OT: ${error}`, 
-          severity: "error",
-          errorType: "VIN_NOT_FOUND",
+        
+        showErrorModal({
+          title: "Acción No Permitida",
+          message: error,
+          details: "Intenta nuevamente con la acción correcta.",
+          type: "warning",
         });
       }
       // CASO 4: Timeout
@@ -227,6 +241,13 @@ export async function autoStartFromScan_(vin, rolTrabajo) {
           severity: "error",
           errorType: "TIMEOUT",
         });
+        
+        showErrorModal({
+          title: "Tiempo Agotado",
+          message: "La operación tardó demasiado.",
+          details: "Por favor, intenta nuevamente.",
+          type: "warning",
+        });
       }
       // CASO 5: Otros errores
       else {
@@ -235,6 +256,12 @@ export async function autoStartFromScan_(vin, rolTrabajo) {
           error: `Error al iniciar: ${error}`, 
           severity: "error",
           errorType: "GENERIC_ERROR",
+        });
+        
+        showErrorModal({
+          title: "Error",
+          message: error || "Ha ocurrido un error inesperado.",
+          type: "error",
         });
       }
     } else if (result?.ok) {

@@ -8,3 +8,4 @@ export { initConformidadUI_, setConformidadAfterSaveRefresh_, openConformidadMod
 export { initIncidenciasUI_, openIncidenciaModalForKey_ } from "./incidencias.js";
 export { initRFModalUI_, openRFModalForVin_ } from "./rf-modal.js";
 export { initRFTecModalUI_, openRFTecModalForVin_ } from "./rf-tecnico-modal.js";
+export { initErrorModal, showErrorModal, showVinNotFoundError, showAlreadyAssignedError } from "./error-modal.js";
