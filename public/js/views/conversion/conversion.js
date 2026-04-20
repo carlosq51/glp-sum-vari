@@ -32,7 +32,7 @@ import {
   refreshEstadoForVinRole,
   initEstadoUI_,
 } from "./data/conversion-estado.js";
-import { PAUSA_AUTO_RESUME_MS, autoResumingKeys_, enviarEvento } from "./data/conversion-eventos.js";
+import { PAUSA_AUTO_RESUME_MS, autoResumingKeys_, enviarEvento, SCHEDULED_PAUSES, isInfinitePauseWindow_ } from "./data/conversion-eventos.js";
 import { initConversionDelegation_ } from "./ui/conversion-delegation.js";
 import { initVinAutocomplete_ } from "./ui/conversion-vin-autocomplete.js";
 import { checkPendingAlerts_ } from "./modals/incidencia-alert.js";
@@ -41,11 +41,34 @@ import { initConversionQR_ } from "./ui/conversion-qr.js";
 // --------------------------
 // TICK CLOCK
 // --------------------------
+
+// Rastrea qué pausas programadas ya se dispararon hoy ("YYYY-MM-DD_HH:MM")
+const scheduledPauseFired_ = new Set();
+
 export function tickClocksUI_() {
   if (!isWorkModule_()) return;
 
   const c = ctx_();
   const nowMs = Date.now();
+
+  // ── Pausas programadas (almuerzo 13:00, fin tarde 16:30) ────────────────
+  {
+    const now = new Date(nowMs);
+    for (const [ph, pm] of SCHEDULED_PAUSES) {
+      if (now.getHours() === ph && now.getMinutes() === pm) {
+        const fireKey = `${now.toDateString()}_${ph}:${String(pm).padStart(2, "0")}`;
+        if (!scheduledPauseFired_.has(fireKey)) {
+          scheduledPauseFired_.add(fireKey);
+          for (const it of c.itemsByKey.values()) {
+            if (String(it.estado || "").toUpperCase() === "TRABAJANDO") {
+              enviarEvento("PAUSA", { vin: it.vin, rolTrabajo: it.rolTrabajo })
+                .catch(e => console.warn("[PAUSA-PROGRAMADA] Error:", e));
+            }
+          }
+        }
+      }
+    }
+  }
 
   el_("activasBox")
     ?.querySelectorAll(".jobCard[data-key] .js-tiempo")
@@ -63,6 +86,11 @@ export function tickClocksUI_() {
       if (String(it.estado || "").toUpperCase() === "PAUSADO") {
         const cdEl = card.querySelector(".js-pausa-countdown");
         if (cdEl) {
+          // En ventana de pausa infinita: no mostrar countdown ni auto-reanudar
+          if (isInfinitePauseWindow_()) {
+            cdEl.textContent = "";
+            return;
+          }
           const pausedAt = it.updated_at ? Date.parse(it.updated_at) : NaN;
           if (!isNaN(pausedAt)) {
             const remainMs = PAUSA_AUTO_RESUME_MS - (nowMs - pausedAt);
