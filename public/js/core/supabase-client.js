@@ -504,15 +504,25 @@ export async function getIncidencias(vin) {
 }
 
 /**
- * GET incidencias recientes para un técnico por email.
- * Útil para mostrar alertas de incidencias registradas mientras estaba desconectado.
- * @param {string} tecnicoEmail
- * @param {string} sinceIso — ISO date string (ej. hace 12h)
+ * GET nombre del técnico a partir de su email (tabla usuarios).
+ * @param {string} email
+ * @returns {Promise<string|null>}
  */
-export async function getIncidenciasByEmail(tecnicoEmail, sinceIso) {
+export async function getNombreByEmail(email) {
+  if (!supabaseEnabled()) return null;
+  const rows = await supabaseGet("usuarios", { email: email.trim().toLowerCase() });
+  return rows?.[0]?.nombre?.trim() || null;
+}
+
+/**
+ * GET incidencias recientes para un técnico por nombre (columna `tecnico`).
+ * @param {string} nombre    - nombre del técnico tal como está en usuarios.nombre
+ * @param {string} sinceIso  - ISO date string (ej. hace 12h)
+ */
+export async function getIncidenciasByTecnico(nombre, sinceIso) {
   if (!supabaseEnabled()) throw new Error("Supabase no configurado");
   return supabaseGet("incidencias", {
-    tecnico_email: tecnicoEmail,
+    tecnico: nombre,
     fecha_hora: { op: "gte", val: sinceIso },
   });
 }

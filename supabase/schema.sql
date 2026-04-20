@@ -171,6 +171,7 @@ CREATE INDEX idx_inc_vin  ON incidencias (vin) WHERE vin IS NOT NULL;
 CREATE INDEX idx_inc_wo   ON incidencias (work_order_id) WHERE work_order_id IS NOT NULL;
 CREATE INDEX idx_inc_mes  ON incidencias (mes);
 CREATE INDEX idx_inc_tipo ON incidencias (tipo);
+CREATE INDEX idx_inc_tecnico_email ON incidencias (tecnico_email) WHERE tecnico_email IS NOT NULL AND tecnico_email <> '';
 
 -- ────────────────────────────────────────────
 --  7. REVISION (sync counter, reemplaza Script Properties REV/REV_TS)

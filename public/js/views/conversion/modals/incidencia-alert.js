@@ -7,7 +7,7 @@
 // =========================
 
 import { escapeHtml } from "../../../core/format.js";
-import { getIncidenciasByEmail, supabaseEnabled } from "../../../core/supabase-client.js";
+import { getNombreByEmail, getIncidenciasByTecnico, supabaseEnabled } from "../../../core/supabase-client.js";
 
 // --------------------------
 // Cola y estado
@@ -16,6 +16,9 @@ const alertQueue_ = [];
 let alertOpen_ = false;
 
 const POPUP_ID = "incAlertPopup";
+
+// Nombre del técnico logueado (se cachea tras el primer lookup)
+let cachedNombre_ = null;
 
 // --------------------------
 // localStorage "ya vistas"
@@ -59,13 +62,20 @@ const emojiChar_ = {
 // --------------------------
 // HTML del popup
 // --------------------------
+function driveThumb_(fileId) {
+  if (!fileId) return "";
+  return `https://drive.google.com/thumbnail?id=${fileId}&sz=w600`;
+}
+
 function buildHTML_(inc) {
-  const tipo = String(inc.tipo || "").toUpperCase();
-  const vin  = String(inc.vin  || "\u2014").toUpperCase();
-  const nota = String(inc.nota || "").trim();
-  const reg  = String(inc.registrado_por || inc.calidad_email || "Calidad").trim();
-  const meta = tipoMeta_[tipo] || tipoMeta_.LEVE;
-  const em   = emojiChar_[tipo] || emojiChar_.LEVE;
+  const tipo    = String(inc.tipo || "").toUpperCase();
+  const vin     = String(inc.vin  || "\u2014").toUpperCase();
+  const nota    = String(inc.nota || "").trim();
+  const reg     = String(inc.registrado_por || inc.calidad_email || "Calidad").trim();
+  const fileId  = String(inc.foto_file_id || inc.fotoFileId || "").trim();
+  const meta    = tipoMeta_[tipo] || tipoMeta_.LEVE;
+  const em      = emojiChar_[tipo] || emojiChar_.LEVE;
+  const thumbUrl = driveThumb_(fileId);
 
   return `
     <div id="${POPUP_ID}" class="incAlertOverlay" role="alertdialog" aria-modal="true"
@@ -88,6 +98,12 @@ function buildHTML_(inc) {
           <div class="incAlertRow">
             <span class="incAlertLbl">Nota</span>
             <span class="incAlertVal">${escapeHtml(nota)}</span>
+          </div>` : ""}
+          ${thumbUrl ? `
+          <div class="incAlertPhoto">
+            <img src="${thumbUrl}" alt="Foto de la incidencia"
+                 loading="lazy"
+                 onerror="this.closest('.incAlertPhoto').style.display='none'" />
           </div>` : ""}
         </div>
         <div class="incAlertFooter">
@@ -174,8 +190,12 @@ export async function checkPendingAlerts_(email, lookbackHours = 12) {
   if (!em || !supabaseEnabled()) return;
 
   try {
+    // Obtener nombre del técnico (con cache para no repetir el lookup)
+    if (!cachedNombre_) cachedNombre_ = await getNombreByEmail(em);
+    if (!cachedNombre_) return;
+
     const sinceIso = new Date(Date.now() - lookbackHours * 3600 * 1000).toISOString();
-    const rows = await getIncidenciasByEmail(em, sinceIso);
+    const rows = await getIncidenciasByTecnico(cachedNombre_, sinceIso);
     if (!Array.isArray(rows) || !rows.length) return;
 
     const seen = getSeenIds_();
@@ -190,4 +210,15 @@ export async function checkPendingAlerts_(email, lookbackHours = 12) {
   } catch (e) {
     console.warn("[incidencia-alert] checkPendingAlerts_ error:", e);
   }
+}
+
+/**
+ * Devuelve el nombre cacheado del técnico logueado.
+ * Útil para que otros módulos comparen sin hacer otro lookup.
+ */
+export async function getMyNombre_(email) {
+  const em = String(email || "").trim().toLowerCase();
+  if (!em || !supabaseEnabled()) return null;
+  if (!cachedNombre_) cachedNombre_ = await getNombreByEmail(em);
+  return cachedNombre_;
 }
