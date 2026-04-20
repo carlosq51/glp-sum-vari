@@ -77,104 +77,90 @@ function clearIncFoto_() {
   incFotoPreviewWrap()?.classList.add("hidden");
 }
 
-function fileToDataUrl_(file) {
-  return new Promise((resolve, reject) => {
-    const fr = new FileReader();
-    fr.onload = () => resolve(String(fr.result || ""));
-    fr.onerror = reject;
-    fr.readAsDataURL(file);
-  });
-}
-
-function loadImage_(src) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    
-    // ✅ Timeout para evitar cuelgue en iOS
-    const timeout = setTimeout(() => {
-      reject(new Error("Timeout cargando imagen (iPhone?)"));
-    }, 8000);
-
-    img.onload = () => {
-      clearTimeout(timeout);
-      resolve(img);
-    };
-    
-    img.onerror = () => {
-      clearTimeout(timeout);
-      reject(new Error("No se pudo cargar la imagen"));
-    };
-    
-    // ✅ Evita CORS en data URLs
-    img.crossOrigin = "anonymous";
-    img.src = src;
-  });
-}
-
-// ✅ comprime y redimensiona para que no reviente el body (base64 crece bastante)
-// iOS fix: mejor manejo de canvas y contexto 2D
+// iOS fix: usa createObjectURL en vez de FileReader+data URL para evitar
+// el bug de crossOrigin en Safari iOS que taintea el canvas
 async function imageFileToUploadPayload_(file) {
-  const dataUrl = await fileToDataUrl_(file);
-  const img = await loadImage_(dataUrl);
-
-  // ✅ Dimensiones más pequeñas + compresión agresiva para evitar payload gigante
-  const maxW = 960;   // ← Reducido de 1600
-  const maxH = 960;   // ← Reducido de 1600
-
-  // ✅ iOS: usa naturalWidth/height como fallback
-  let width = img.naturalWidth || img.width || 0;
-  let height = img.naturalHeight || img.height || 0;
-
-  if (!width || !height) {
-    throw new Error("No se pudo obtener dimensiones de la imagen (iPhone?)");
-  }
-
-  const ratio = Math.min(maxW / width, maxH / height, 1);
-  const w = Math.round(width * ratio);
-  const h = Math.round(height * ratio);
-
-  const canvas = document.createElement("canvas");
-  canvas.width = w;
-  canvas.height = h;
-
-  // ✅ iOS: chequea que ctx no sea null
-  const ctx = canvas.getContext("2d");
-  if (!ctx) {
-    throw new Error("Canvas 2D no disponible en este navegador (iPhone?)");
-  }
+  const objectUrl = URL.createObjectURL(file);
 
   try {
-    ctx.drawImage(img, 0, 0, w, h);
-  } catch (err) {
-    throw new Error(`Error dibujando en canvas: ${err?.message || err}`);
-  }
+    const img = await new Promise((resolve, reject) => {
+      const im = new Image();
 
-  // ✅ iOS: try-catch para toDataURL, con calidad más baja para payload más pequeño
-  let outDataUrl;
-  try {
-    outDataUrl = canvas.toDataURL("image/jpeg", 0.65);  // ← Reducido de 0.82
-  } catch (err) {
-    throw new Error(`Canvas.toDataURL falló: ${err?.message || err}`);
-  }
+      const timeout = setTimeout(() => {
+        reject(new Error("Timeout cargando imagen. Intenta de nuevo."));
+      }, 15000);
 
-  const m = outDataUrl.match(/^data:(.*?);base64,(.*)$/);
-  if (!m || !m[2]) {
-    throw new Error("No se pudo procesar la imagen (base64 vacío?)");
-  }
+      im.onload = () => {
+        clearTimeout(timeout);
+        resolve(im);
+      };
 
-  const b64 = m[2];
-  // ✅ Valida que el base64 no sea demasiado grande (>3.5MB = problema de payload)
-  const b64SizeMB = (b64.length * 0.75) / (1024 * 1024);
-  if (b64SizeMB > 3.5) {
-    throw new Error(`Imagen muy grande (${b64SizeMB.toFixed(1)}MB). Intenta otra.`);
-  }
+      im.onerror = () => {
+        clearTimeout(timeout);
+        reject(new Error("No se pudo cargar la imagen."));
+      };
 
-  return {
-    mimeType: "image/jpeg",
-    b64: b64,
-    previewUrl: outDataUrl,
-    name: (file.name || "incidencia.jpg").replace(/\.[^.]+$/, "") + ".jpg",
-  };
+      // NO crossOrigin aquí: los object URLs son same-origin, no necesitan CORS
+      // y ponerlo causaba que iOS Safari fallara o taintara el canvas
+      im.src = objectUrl;
+    });
+
+    const maxW = 960;
+    const maxH = 960;
+
+    let width = img.naturalWidth || img.width || 0;
+    let height = img.naturalHeight || img.height || 0;
+
+    if (!width || !height) {
+      throw new Error("No se pudo obtener dimensiones de la imagen.");
+    }
+
+    const ratio = Math.min(maxW / width, maxH / height, 1);
+    const w = Math.round(width * ratio);
+    const h = Math.round(height * ratio);
+
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      throw new Error("Canvas 2D no disponible en este navegador.");
+    }
+
+    try {
+      ctx.drawImage(img, 0, 0, w, h);
+    } catch (err) {
+      throw new Error(`Error dibujando en canvas: ${err?.message || err}`);
+    }
+
+    let outDataUrl;
+    try {
+      outDataUrl = canvas.toDataURL("image/jpeg", 0.65);
+    } catch (err) {
+      throw new Error(`Error generando imagen comprimida: ${err?.message || err}`);
+    }
+
+    const m = outDataUrl.match(/^data:(.*?);base64,(.*)$/);
+    if (!m || !m[2]) {
+      throw new Error("No se pudo procesar la imagen (base64 vacío).");
+    }
+
+    const b64 = m[2];
+    const b64SizeMB = (b64.length * 0.75) / (1024 * 1024);
+    if (b64SizeMB > 3.5) {
+      throw new Error(`Imagen muy grande (${b64SizeMB.toFixed(1)}MB). Intenta con otra foto.`);
+    }
+
+    return {
+      mimeType: "image/jpeg",
+      b64,
+      previewUrl: outDataUrl,
+      name: (file.name || "incidencia.jpg").replace(/\.[^.]+$/, "") + ".jpg",
+    };
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
 }
 
 async function onIncFotoChange_(e) {

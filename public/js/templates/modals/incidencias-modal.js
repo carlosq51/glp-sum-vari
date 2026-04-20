@@ -48,8 +48,8 @@ export function incidenciasModal() {
 
             <div class="incFotoWrap" style="margin-top:8px;">
               <!-- inputs ocultos -->
-              <!-- ✅ iOS fix: capture sin valor permite que el OS elija la mejor opción -->
-              <input id="incFotoCam" type="file" accept="image/*" capture style="display:none;" />
+              <!-- capture="environment" = cámara trasera en iOS/Android -->
+              <input id="incFotoCam" type="file" accept="image/*" capture="environment" style="display:none;" />
               <input id="incFotoFile" type="file" accept="image/*" style="display:none;" />
 
               <!-- 3 botones en una fila -->
