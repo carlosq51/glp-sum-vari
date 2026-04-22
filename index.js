@@ -1858,12 +1858,16 @@ app.post("/api/solicitud-ramal", async (req, res) => {
   }
 });
 
-// GET /api/solicitud-ramal/pendientes  — el ramalero lista las pendientes
+// GET /api/solicitud-ramal/pendientes  — el ramalero lista todas (PENDIENTE + ENTREGADO recientes)
 app.get("/api/solicitud-ramal/pendientes", async (req, res) => {
   try {
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const headers = supabaseHeaders_();
-    const url = `${SUPABASE_URL}/rest/v1/solicitudes_ramal?estado=eq.PENDIENTE&order=created_at.asc&limit=50`;
+    // Traer PENDIENTES (todas) + ENTREGADOS del día de hoy
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const sinceIso = today.toISOString();
+    const url = `${SUPABASE_URL}/rest/v1/solicitudes_ramal?order=created_at.asc&limit=100&created_at=gte.${encodeURIComponent(sinceIso)}`;
     const r = await fetch(url, { method: "GET", headers });
     if (!r.ok) throw new Error(`Supabase ${r.status}`);
     const items = await r.json();
