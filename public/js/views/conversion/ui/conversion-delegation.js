@@ -157,6 +157,9 @@ function attachWorkDelegationOnce_(mod) {
         if (res?.ok) {
           btn.textContent = "✓ Solicitado";
           showSolRamalToast_(vin);
+        } else if (res?.errorType === "DUPLICATE_VIN") {
+          btn.textContent = "⚠ Ya solicitado";
+          btn.disabled = true;
         } else {
           btn.textContent = "🔩 Solicitar Ramal";
           btn.disabled = false;

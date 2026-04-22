@@ -1823,6 +1823,20 @@ app.post("/api/solicitud-ramal", async (req, res) => {
 
     if (!email) return res.status(400).json({ ok: false, error: "Falta email" });
 
+    // Validar: solo 1 solicitud PENDIENTE por VIN
+    if (vin) {
+      const SUPABASE_URL = process.env.SUPABASE_URL;
+      const headers = supabaseHeaders_();
+      const checkUrl = `${SUPABASE_URL}/rest/v1/solicitudes_ramal?vin=eq.${encodeURIComponent(vin)}&estado=eq.PENDIENTE&limit=1`;
+      const checkRes = await fetch(checkUrl, { method: "GET", headers });
+      if (checkRes.ok) {
+        const existing = await checkRes.json();
+        if (Array.isArray(existing) && existing.length > 0) {
+          return res.status(409).json({ ok: false, error: "Ya existe una solicitud pendiente para este VIN", errorType: "DUPLICATE_VIN" });
+        }
+      }
+    }
+
     // Obtener nombre del técnico
     const usuarios = await supabaseGet_("usuarios", { email });
     const tecnicoNombre = usuarios?.[0]?.nombre || email;
