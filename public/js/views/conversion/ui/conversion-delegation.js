@@ -5,6 +5,11 @@ import {
   el_,
   ctx_,
   enforceRolLock_,
+  requireEmailOrStop,
+  getJSON,
+  postJSON,
+  escapeHtml,
+  fmtShort_,
 } from "../../../core/core.js";
 
 import { enviarEvento } from "../data/conversion-eventos.js";
@@ -15,9 +20,6 @@ import { openConformidadModalForKey_ } from "../modals/conformidad.js";
 import { askConfirmFinish_ } from "../modals/confirm-finish.js";
 
 import { openSupIncModal_, fetchIncidencias_, renderIncidencias_ } from "../../supervisor/sup-incidencias.js";
-import { escapeHtml, fmtShort_ } from "../../../core/format.js";
-import { getJSON } from "../../../core/core.js";
-import { postJSON } from "../../../core/core.js";
 
 function attachWorkDelegationOnce_(mod) {
   const prev = CORE.state.currentModule;
@@ -143,10 +145,9 @@ function attachWorkDelegationOnce_(mod) {
 
       const vin = String(btn.dataset.vin || "").trim().toUpperCase();
       const cid = String(btn.dataset.cid || "").trim();
-      if (!vin || !cid) return;
 
-      const email = CORE.state.email || "";
-      if (!email) return;
+      let email;
+      try { email = requireEmailOrStop(); } catch { return; }
 
       btn.disabled = true;
       btn.textContent = "Enviando...";
@@ -155,6 +156,7 @@ function attachWorkDelegationOnce_(mod) {
         const res = await postJSON("/api/solicitud-ramal", { email, vin, conversionId: cid, nota: "" });
         if (res?.ok) {
           btn.textContent = "✓ Solicitado";
+          showSolRamalToast_(vin);
         } else {
           btn.textContent = "🔩 Solicitar Ramal";
           btn.disabled = false;
@@ -168,6 +170,39 @@ function attachWorkDelegationOnce_(mod) {
   } finally {
     CORE.state.currentModule = prev;
   }
+}
+
+function showSolRamalToast_(vin) {
+  const now = new Date();
+  const hhmm = now.toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" });
+
+  const toast = document.createElement("div");
+  toast.style.cssText = [
+    "position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:9999;",
+    "background:#1e1e2e;color:#cdd6f4;border:1px solid #a6e3a1;",
+    "border-radius:12px;padding:16px 20px;max-width:340px;width:90%;display:flex;",
+    "flex-direction:column;gap:8px;box-shadow:0 8px 24px rgba(0,0,0,.5);",
+  ].join("");
+
+  toast.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+      <strong style="color:#a6e3a1;font-size:1rem;">🔩 Solicitud creada con éxito</strong>
+      <button id="solRamalToastClose" style="
+        background:none;border:none;cursor:pointer;
+        font-size:1.3rem;color:#cdd6f4;line-height:1;padding:0 4px;
+      ">×</button>
+    </div>
+    <div style="font-size:.85rem;opacity:.8;">
+      ${vin ? `VIN: <code style="color:#89b4fa;">${vin}</code><br>` : ""}
+      Enviado a las <strong>${hhmm}</strong>
+    </div>
+  `;
+
+  document.body.appendChild(toast);
+
+  const close = () => toast.remove();
+  toast.querySelector("#solRamalToastClose")?.addEventListener("click", close);
+  setTimeout(close, 8000);
 }
 
 function attachFinalizadosDelegationOnce_(mod) {

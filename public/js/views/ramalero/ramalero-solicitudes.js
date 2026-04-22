@@ -3,7 +3,7 @@
 // Panel de solicitudes de ramal para el ramalero
 // =========================
 
-import { CORE, getJSON, postJSON, escapeHtml, fmtShort_ } from "../../core/core.js";
+import { CORE, getJSON, postJSON, escapeHtml, fmtShort_, requireEmailOrStop } from "../../core/core.js";
 
 const OVERLAY_ID = "solRamalOverlay";
 
@@ -117,12 +117,8 @@ async function loadAndRender_() {
       if (!btn) return;
       e.stopPropagation();
       const id = btn.dataset.entregar;
-      const email = CORE.state.email || "";
-      if (!email) return;
-
-      btn.disabled = true;
-      btn.textContent = "...";
-
+          let email;
+          try { email = requireEmailOrStop(); } catch { return; }
       try {
         const r = await postJSON(`/api/solicitud-ramal/${id}/entregar`, { email });
         if (r?.ok) {
