@@ -86,14 +86,19 @@ export function tickClocksUI_() {
       if (String(it.estado || "").toUpperCase() === "PAUSADO") {
         const cdEl = card.querySelector(".js-pausa-countdown");
         if (cdEl) {
-          // En ventana de pausa infinita: no mostrar countdown ni auto-reanudar
-          if (isInfinitePauseWindow_()) {
-            cdEl.textContent = "";
+          const pausedAt = it.updated_at ? Date.parse(it.updated_at) : NaN;
+          const pausedMs = isNaN(pausedAt) ? Infinity : nowMs - pausedAt;
+
+          // En ventana de pausa infinita, pausa muy larga, o pausa impuesta por supervisor
+          // → no mostrar countdown ni auto-reanudar
+          const esSupervisor = String(it.last_nota || "").startsWith("__SUP");
+          if (isInfinitePauseWindow_() || pausedMs > PAUSA_AUTO_RESUME_MS * 2 || esSupervisor) {
+            cdEl.textContent = esSupervisor ? "⏸ Pausado por supervisor" : "";
             return;
           }
-          const pausedAt = it.updated_at ? Date.parse(it.updated_at) : NaN;
+
           if (!isNaN(pausedAt)) {
-            const remainMs = PAUSA_AUTO_RESUME_MS - (nowMs - pausedAt);
+            const remainMs = PAUSA_AUTO_RESUME_MS - pausedMs;
             if (remainMs > 0) {
               const mins = Math.floor(remainMs / 60000);
               const secs = Math.floor((remainMs % 60000) / 1000);
@@ -101,7 +106,6 @@ export function tickClocksUI_() {
             } else if (!autoResumingKeys_.has(k)) {
               cdEl.textContent = "⏳ Reanudando...";
               autoResumingKeys_.add(k);
-              const mod = CORE.state.currentModule;
               enviarEvento("REANUDAR", { vin: it.vin, rolTrabajo: it.rolTrabajo, clearKey: k })
                 .catch((e) => console.warn("[AUTO-PAUSA] Error al reanudar:", e))
                 .finally(() => autoResumingKeys_.delete(k));

@@ -136,6 +136,16 @@ export function renderRowGroup_(row, { escapeHtml, fmtShort_ }) {
         <div class="small" style="margin-top:6px;">
           <b>Inicio:</b> ${escapeHtml(motorIni)}${motorFin ? ` &nbsp;|&nbsp; <b>Fin:</b> ${escapeHtml(motorFin)}` : ""}
         </div>
+        ${motor && String(motor.estado||'').toUpperCase() === 'TRABAJANDO' ? `
+        <button type="button" class="btn3" style="margin-top:8px;width:100%;"
+          data-sup-pausa="1"
+          data-email="${escapeHtml(motor.userEmail||'')}"
+          data-vin="${escapeHtml(vin)}"
+          data-rol="MOTOR"
+          data-cid="${escapeHtml(String(motor.workId||motor.conversionId||''))}"
+          data-who="${escapeHtml(motorWho)}"
+          data-estado="${escapeHtml(motor.estado||'')}"
+        >⏸ Pausar ${escapeHtml(motorWho)}</button>` : ''}
       </div>
 
       <div class="card" style="margin-top:10px; border:1px solid rgba(255,255,255,.14);">
@@ -144,6 +154,16 @@ export function renderRowGroup_(row, { escapeHtml, fmtShort_ }) {
         <div class="small" style="margin-top:6px;">
           <b>Inicio:</b> ${escapeHtml(tanqueIni)}${tanqueFin ? ` &nbsp;|&nbsp; <b>Fin:</b> ${escapeHtml(tanqueFin)}` : ""}
         </div>
+        ${tanque && String(tanque.estado||'').toUpperCase() === 'TRABAJANDO' ? `
+        <button type="button" class="btn3" style="margin-top:8px;width:100%;"
+          data-sup-pausa="1"
+          data-email="${escapeHtml(tanque.userEmail||'')}"
+          data-vin="${escapeHtml(vin)}"
+          data-rol="TANQUE"
+          data-cid="${escapeHtml(String(tanque.workId||tanque.conversionId||''))}"
+          data-who="${escapeHtml(tanqueWho)}"
+          data-estado="${escapeHtml(tanque.estado||'')}"
+        >⏸ Pausar ${escapeHtml(tanqueWho)}</button>` : ''}
       </div>
 
       ${
@@ -214,9 +234,31 @@ export function renderRowNormal_(it, { escapeHtml, fmtShort_ }) {
               >
                 📋 Incidencias
               </button>
+              ${String(it?.estado||'').toUpperCase() === 'TRABAJANDO' ? `
+              <button type="button" class="btn3"
+                data-sup-pausa="1"
+                data-email="${escapeHtml(it?.userEmail||'')}"
+                data-vin="${escapeHtml(vinCard)}"
+                data-rol="${escapeHtml(rol)}"
+                data-cid="${escapeHtml(conversionIdCard)}"
+                data-who="${escapeHtml(who)}"
+                data-estado="${escapeHtml(it?.estado||'')}"
+              >⏸ Pausa indefinida</button>` : ''}
             </div>
           `
-          : ""
+          : (isRamal && String(it?.estado||'').toUpperCase() === 'TRABAJANDO' ? `
+            <div class="row" style="margin-top:10px;">
+              <button type="button" class="btn3"
+                data-sup-pausa="1"
+                data-email="${escapeHtml(it?.userEmail||'')}"
+                data-vin=""
+                data-rol="RAMALERO"
+                data-cid="${escapeHtml(conversionIdCard)}"
+                data-who="${escapeHtml(who)}"
+                data-estado="${escapeHtml(it?.estado||'')}"
+              >⏸ Pausa indefinida</button>
+            </div>
+          ` : '')
       }
     </div>
   `;

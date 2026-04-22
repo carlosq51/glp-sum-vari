@@ -51,27 +51,24 @@ export const PAUSA_AUTO_RESUME_MS = 8 * 60 * 1000;
  */
 export const SCHEDULED_PAUSES = [
   [13,  0],  // almuerzo
-  [16, 30],  // fin de tarde
+  [16, 40],  // fin de tarde
 ];
 
 /**
  * Devuelve true si la hora actual cae en una ventana de pausa infinita
  * (sin auto-resume de 8 min):
  *   - 13:00 → 14:00  (almuerzo)
- *   - 16:30 → 07:00  (tarde/noche, cruza medianoche)
+ *   - 16:20 → 07:00  (tarde/noche, cruza medianoche)
  */
 export function isInfinitePauseWindow_() {
   const now = new Date();
   const t = now.getHours() * 60 + now.getMinutes();
   if (t >= 13 * 60 && t < 14 * 60) return true;          // 13:00–14:00
-  if (t >= 16 * 60 + 30 || t < 7 * 60) return true;      // 16:30–07:00
+  if (t >= 16 * 60 + 20 || t < 7 * 60) return true;      // 16:20–07:00
   return false;
 }
 
-/**
- * Keys que ya tienen un REANUDAR en vuelo, para no disparar dos veces.
- * El tick de conversión chequea esto antes de llamar enviarEvento.
- */
+/** Keys que ya tienen un REANUDAR en vuelo, para no disparar dos veces. */
 export const autoResumingKeys_ = new Set();
 
 // Limpiar entradas expiradas de recentAutoStarts_

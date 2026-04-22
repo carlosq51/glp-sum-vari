@@ -171,6 +171,29 @@ CREATE INDEX idx_inc_vin  ON incidencias (vin) WHERE vin IS NOT NULL;
 CREATE INDEX idx_inc_wo   ON incidencias (work_order_id) WHERE work_order_id IS NOT NULL;
 CREATE INDEX idx_inc_mes  ON incidencias (mes);
 CREATE INDEX idx_inc_tipo ON incidencias (tipo);
+
+-- ────────────────────────────────────────────
+--  7. SOLICITUDES_RAMAL
+--     Técnico MOTOR solicita un ramal al RAMALERO.
+-- ────────────────────────────────────────────
+CREATE TYPE estado_solicitud_ramal AS ENUM ('PENDIENTE', 'ENTREGADO');
+
+CREATE TABLE solicitudes_ramal (
+  id               UUID             PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at       TIMESTAMPTZ      NOT NULL DEFAULT now(),
+  vin              TEXT             REFERENCES vins(vin),
+  work_order_id    UUID             REFERENCES work_orders(id),
+  tecnico_nombre   TEXT             NOT NULL DEFAULT '',
+  tecnico_email    TEXT             NOT NULL DEFAULT '',
+  nota             TEXT             DEFAULT '',
+  estado           estado_solicitud_ramal NOT NULL DEFAULT 'PENDIENTE',
+  entregado_at     TIMESTAMPTZ,
+  entregado_por    TEXT             DEFAULT ''
+);
+
+CREATE INDEX idx_sol_ramal_estado ON solicitudes_ramal (estado);
+CREATE INDEX idx_sol_ramal_vin    ON solicitudes_ramal (vin) WHERE vin IS NOT NULL;
+CREATE INDEX idx_sol_ramal_ts     ON solicitudes_ramal (created_at DESC);
 CREATE INDEX idx_inc_tecnico_email ON incidencias (tecnico_email) WHERE tecnico_email IS NOT NULL AND tecnico_email <> '';
 
 -- ────────────────────────────────────────────
@@ -194,6 +217,7 @@ ALTER TABLE work_orders      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE asignaciones     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE eventos          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE incidencias      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE solicitudes_ramal ENABLE ROW LEVEL SECURITY;
 
 -- Políticas permisivas para el service_role (backend)
 -- Tu API de Apps Script o backend usará la service_role key
@@ -204,6 +228,7 @@ CREATE POLICY "service_full_access" ON work_orders      FOR ALL USING (true) WIT
 CREATE POLICY "service_full_access" ON asignaciones     FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "service_full_access" ON eventos          FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "service_full_access" ON incidencias      FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "service_full_access" ON solicitudes_ramal FOR ALL USING (true) WITH CHECK (true);
 
 -- ────────────────────────────────────────────
 --  MAPEO SHEET → DB (referencia)

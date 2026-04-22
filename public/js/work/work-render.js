@@ -72,6 +72,18 @@ export function renderActivas_() {
                 </button>`
               : ""}
 
+          ${String(it?.rolTrabajo || "").toUpperCase() === "MOTOR" &&
+            String(it?.estado || "").toUpperCase() === "TRABAJANDO" &&
+            CORE.state.currentModule === "TECNICO"
+              ? `<button class="btn btnSolicitarRamal" type="button"
+                  data-solicitar-ramal="1"
+                  data-vin="${escapeHtml(it.vin || "")}"
+                  data-cid="${escapeHtml(it.conversionId || "")}"
+                  style="margin-bottom:10px; width:100%; background:#7c3aed; color:#fff; font-weight:800;">
+                  🔩 Solicitar Ramal
+                </button>`
+              : ""}
+
           ${buildIncidenciasBtnHTML_(it, k)}
 
           <div class="jobActionsSlot">${buildBotonesByEstado_(estado)}</div>

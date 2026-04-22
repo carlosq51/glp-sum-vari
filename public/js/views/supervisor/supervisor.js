@@ -25,6 +25,7 @@ import { bindSupQR_ } from "./sup-qr.js";
 import { bindSupNameSuggest_ } from "./sup-name-suggest.js";
 import { bindSupVinSuggest_ } from "./sup-vin-suggest.js";
 import { bindSupQuickDates_ } from "./sup-quick-dates.js";
+import { bindSupPausaIndefinida_ } from "./sup-pausa-indefinida.js";
 
 let supTrack = "CONVERSION";
 let supTimer = null;
@@ -240,6 +241,7 @@ export function init() {
   bindSupQR_({ CORE, onApply: () => fetchSupervisorReport_().catch(() => {}) });
   bindSupNameSuggest_({ CORE, escapeHtml, onApply: () => fetchSupervisorReport_().catch(() => {}) });
   bindSupVinSuggest_({ CORE, escapeHtml, onApply: () => fetchSupervisorReport_().catch(() => {}) });
+  bindSupPausaIndefinida_({ getJSON_user });
 }
 
 export function enter() {

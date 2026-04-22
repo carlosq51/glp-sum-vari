@@ -42,6 +42,19 @@ export function ramaleroView() {
             <button id="btnFinalizadosR">Ver finalizados</button>
             <button id="btnActivasR">🔄 <span>Refrescar</span></button>
           </div>
+          <div style="margin-top:8px;">
+            <button id="btnVerSolicitudesR" style="width:100%;position:relative;">
+              🔩 Ver Solicitudes de Ramal
+              <span id="solRamalBadge" style="
+                display:none;
+                position:absolute;top:-6px;right:-6px;
+                background:#f38ba8;color:#1e1e2e;
+                border-radius:50%;width:18px;height:18px;
+                font-size:.7rem;font-weight:700;
+                align-items:center;justify-content:center;
+              "></span>
+            </button>
+          </div>
         </div>
 
         <div style="margin-top:14px;">

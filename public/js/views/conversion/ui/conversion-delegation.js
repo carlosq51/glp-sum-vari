@@ -17,6 +17,7 @@ import { askConfirmFinish_ } from "../modals/confirm-finish.js";
 import { openSupIncModal_, fetchIncidencias_, renderIncidencias_ } from "../../supervisor/sup-incidencias.js";
 import { escapeHtml, fmtShort_ } from "../../../core/format.js";
 import { getJSON } from "../../../core/core.js";
+import { postJSON } from "../../../core/core.js";
 
 function attachWorkDelegationOnce_(mod) {
   const prev = CORE.state.currentModule;
@@ -131,6 +132,37 @@ function attachWorkDelegationOnce_(mod) {
         e.stopPropagation();
         await openConformidadModalForKey_(k);
         return;
+      }
+    });
+
+    // ✅ 3) SOLICITAR RAMAL
+    box.addEventListener("click", async (e) => {
+      const btn = e.target.closest('[data-solicitar-ramal]');
+      if (!btn) return;
+      e.stopPropagation();
+
+      const vin = String(btn.dataset.vin || "").trim().toUpperCase();
+      const cid = String(btn.dataset.cid || "").trim();
+      if (!vin || !cid) return;
+
+      const email = CORE.state.email || "";
+      if (!email) return;
+
+      btn.disabled = true;
+      btn.textContent = "Enviando...";
+
+      try {
+        const res = await postJSON("/api/solicitud-ramal", { email, vin, conversionId: cid, nota: "" });
+        if (res?.ok) {
+          btn.textContent = "✓ Solicitado";
+        } else {
+          btn.textContent = "🔩 Solicitar Ramal";
+          btn.disabled = false;
+          alert(res?.error || "Error al solicitar ramal");
+        }
+      } catch (err) {
+        btn.textContent = "🔩 Solicitar Ramal";
+        btn.disabled = false;
       }
     });
   } finally {

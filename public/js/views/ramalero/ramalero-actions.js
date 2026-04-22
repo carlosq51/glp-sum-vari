@@ -11,6 +11,7 @@ import { renderFinalizados_, rebuildListsFromStore_ } from "../../work/index.js"
 import { syncNow, fetchFinalizados_ } from "../conversion/data/conversion-sync.js";
 import { normalizeItem_ } from "../conversion/state/conversion-store.js";
 import { crearNuevoRamal_ } from "./ramalero-eventos.js";
+import { initRamaleroSolicitudes_ } from "./ramalero-solicitudes.js";
 
 let boundActions_ = false;
 
@@ -55,4 +56,6 @@ export function initRamaleroActions_() {
     if (CORE.state.currentModule !== "RAMALERO") return;
     await crearNuevoRamal_();
   });
+
+  initRamaleroSolicitudes_();
 }

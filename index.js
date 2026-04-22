@@ -1809,6 +1809,80 @@ app.get("/api/search/incidencias", async (req, res) => {
 });
 
 // -----------------------------------------------------------------
+// SOLICITUDES RAMAL
+// -----------------------------------------------------------------
+
+// POST /api/solicitud-ramal  — el técnico MOTOR crea una solicitud
+app.post("/api/solicitud-ramal", async (req, res) => {
+  try {
+    const body = req.body || {};
+    const email = String(body.email || "").trim().toLowerCase();
+    const vin   = String(body.vin   || "").trim().toUpperCase();
+    const conversionId = String(body.conversionId || "").trim();
+    const nota  = String(body.nota  || "").trim();
+
+    if (!email) return res.status(400).json({ ok: false, error: "Falta email" });
+
+    // Obtener nombre del técnico
+    const usuarios = await supabaseGet_("usuarios", { email });
+    const tecnicoNombre = usuarios?.[0]?.nombre || email;
+
+    const data = {
+      vin:            vin || null,
+      work_order_id:  conversionId || null,
+      tecnico_nombre: tecnicoNombre,
+      tecnico_email:  email,
+      nota,
+      estado:         "PENDIENTE",
+    };
+
+    const result = await supabasePost_("solicitudes_ramal", data);
+    return res.json({ ok: true, item: Array.isArray(result) ? result[0] : result });
+  } catch (e) {
+    console.error("[POST /api/solicitud-ramal]", e.message);
+    return res.status(500).json({ ok: false, error: String(e.message) });
+  }
+});
+
+// GET /api/solicitud-ramal/pendientes  — el ramalero lista las pendientes
+app.get("/api/solicitud-ramal/pendientes", async (req, res) => {
+  try {
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const headers = supabaseHeaders_();
+    const url = `${SUPABASE_URL}/rest/v1/solicitudes_ramal?estado=eq.PENDIENTE&order=created_at.asc&limit=50`;
+    const r = await fetch(url, { method: "GET", headers });
+    if (!r.ok) throw new Error(`Supabase ${r.status}`);
+    const items = await r.json();
+    return res.json({ ok: true, items });
+  } catch (e) {
+    console.error("[GET /api/solicitud-ramal/pendientes]", e.message);
+    return res.status(500).json({ ok: false, error: String(e.message) });
+  }
+});
+
+// PATCH /api/solicitud-ramal/:id/entregar  — el ramalero marca como entregado
+app.patch("/api/solicitud-ramal/:id/entregar", async (req, res) => {
+  try {
+    const id    = String(req.params.id || "").trim();
+    const email = String(req.body?.email || "").trim().toLowerCase();
+    if (!id) return res.status(400).json({ ok: false, error: "Falta id" });
+
+    const usuarios = await supabaseGet_("usuarios", { email });
+    const nombre = usuarios?.[0]?.nombre || email;
+
+    await supabasePatch_("solicitudes_ramal", { id }, {
+      estado:        "ENTREGADO",
+      entregado_at:  new Date().toISOString(),
+      entregado_por: nombre,
+    });
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error("[PATCH /api/solicitud-ramal/:id/entregar]", e.message);
+    return res.status(500).json({ ok: false, error: String(e.message) });
+  }
+});
+
+// -----------------------------------------------------------------
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Servidor corriendo en puerto ${PORT}`);
