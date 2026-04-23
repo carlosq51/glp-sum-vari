@@ -106,6 +106,11 @@ const SLOT_NAMES = {
   corr_post:  "corr_post.jpg",
   voltaje:    "voltaje.jpg",
   scan_carro: "scan_carro.jpg",
+  // Soldadura
+  sold_sensor_antes: "sold_sensor_antes.jpg",
+  sold_sensor_post:  "sold_sensor_post.jpg",
+  sold_cabina_antes: "sold_cabina_antes.jpg",
+  sold_cabina_post:  "sold_cabina_post.jpg",
 };
 
 const CALIDAD_SLOT_NAMES = {

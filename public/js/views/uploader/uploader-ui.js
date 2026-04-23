@@ -34,6 +34,7 @@ export function initUploaderUI(root, options = {}) {
   const scannerFalla  = createScanner("up_qrReader_falla");
   const scannerQc     = createScanner("up_qrReader_qc");
   const scannerConf   = createScanner("up_qrReader_conf");
+  const scannerSold   = createScanner("up_qrReader_sold");
 
   const slotLabels = {
     vin: "Foto del VIN",
@@ -45,6 +46,10 @@ export function initUploaderUI(root, options = {}) {
     corr_post: "Corriente después",
     voltaje: "Voltaje",
     scan_carro: "Scan del carro",
+    sold_sensor_antes: "Sensor nivel ANTES",
+    sold_sensor_post:  "Sensor nivel DESPUÉS",
+    sold_cabina_antes: "Cabina ANTES",
+    sold_cabina_post:  "Cabina DESPUÉS",
   };
 
   const screens = {
@@ -53,6 +58,7 @@ export function initUploaderUI(root, options = {}) {
     falla: $("screenFalla"),
     calidad: $("screenCalidad"),
     conformidad: $("screenConformidad"),
+    soldadura: $("screenSoldadura"),
   };
 
   // =========================
@@ -579,6 +585,15 @@ export function initUploaderUI(root, options = {}) {
       msg: "scanMsg_conf", mode: "scanMode_conf",
       setVin: (v) => { if ($("confVin")) $("confVin").value = v; },
     },
+    sold: {
+      scanner: scannerSold,
+      box: "qrBox_sold", stop: "btnStop_sold",
+      msg: "scanMsg_sold", mode: "scanMode_sold",
+      setVin: (v) => {
+        if ($("soldVin")) $("soldVin").value = v;
+        refreshSoldStatus().catch(() => {});
+      },
+    },
   };
 
   async function stopScanner(which) {
@@ -601,6 +616,7 @@ export function initUploaderUI(root, options = {}) {
     await stopScanner("falla");
     await stopScanner("qc");
     await stopScanner("conf");
+    await stopScanner("sold");
   }
 
   async function startScanner(which, mode) {
@@ -646,6 +662,7 @@ export function initUploaderUI(root, options = {}) {
       if ($("fallaVin")) $("fallaVin").value = vin;
       if ($("qcVin")) $("qcVin").value = vin;
       if ($("confVin")) $("confVin").value = vin;
+      if ($("soldVin")) $("soldVin").value = vin;
     }
 
     const dateStr = (getQueryParam("date") || getQueryParam("fecha") || "").trim();
@@ -654,6 +671,7 @@ export function initUploaderUI(root, options = {}) {
       if ($("fallaDate")) $("fallaDate").value = dateStr;
       if ($("qcDate")) $("qcDate").value = dateStr;
       if ($("confDate")) $("confDate").value = dateStr;
+      if ($("soldDate")) $("soldDate").value = dateStr;
     }
 
     const pantalla = (getQueryParam("pantalla") || getQueryParam("screen") || "").toLowerCase();
@@ -673,6 +691,32 @@ export function initUploaderUI(root, options = {}) {
     if ($("fallaDate") && !$("fallaDate").value) $("fallaDate").value = t;
     if ($("qcDate") && !$("qcDate").value) $("qcDate").value = t;
     if ($("confDate") && !$("confDate").value) $("confDate").value = t;
+    if ($("soldDate") && !$("soldDate").value) $("soldDate").value = t;
+  }
+
+  // =========================
+  // Soldadura status
+  // =========================
+  async function refreshSoldStatus() {
+    const vin     = ($("soldVin")?.value || "").trim();
+    const dateStr = $("soldDate")?.value || todayYYYYMMDD();
+    if (!vin) return;
+
+    try {
+      const j = await getStatus({ vin, dateStr, apsUrl: options.apsUrl });
+      if (!j.ok) return;
+
+      const soldSlots = ["sold_sensor_antes", "sold_sensor_post", "sold_cabina_antes", "sold_cabina_post"];
+      soldSlots.forEach((slot) => {
+        const p = j.previews && j.previews[slot];
+        if (p) setRemotePreview(slot, p);
+      });
+
+      const done = soldSlots.filter((s) => j.status && j.status[s]).length;
+      setText("outSold", done === 4 ? "✅ 4/4 fotos registradas." : `📷 ${done}/4 fotos registradas.`);
+    } catch (e) {
+      setText("outSold", `❌ Error: ${e}`);
+    }
   }
 
   // =========================
@@ -698,6 +742,14 @@ export function initUploaderUI(root, options = {}) {
 
     $("goConfTanque")?.addEventListener("click", () => openConformidad("TANQUE"));
     $("goConfReductor")?.addEventListener("click", () => openConformidad("REDUCTOR"));
+
+    $("goSoldadura")?.addEventListener("click", () => {
+      const vin = ($("vinText")?.value || "").trim();
+      if (vin && $("soldVin")) $("soldVin").value = vin;
+      if ($("soldDate")) $("soldDate").value = $("dateStr")?.value || todayYYYYMMDD();
+      showScreen("soldadura");
+      refreshSoldStatus().catch(() => {});
+    });
 
     $("btnBackControl")?.addEventListener("click", openBackControl);
 
@@ -797,6 +849,44 @@ export function initUploaderUI(root, options = {}) {
       if (fil) fil.addEventListener("change", onPick);
       setPreview(slot, null);
     });
+
+    // Soldadura slots (suben al toque, VIN desde #up_soldVin)
+    const soldSlots = ["sold_sensor_antes", "sold_sensor_post", "sold_cabina_antes", "sold_cabina_post"];
+    soldSlots.forEach((slot) => {
+      const cam = $(`${slot}_cam`);
+      const fil = $(`${slot}_file`);
+
+      const onPick = async (e) => {
+        const f = e.target?.files?.[0];
+        if (!f) return;
+
+        setPreview(slot, f);
+
+        const vin = ($("soldVin")?.value || "").trim();
+        const dateStr = $("soldDate")?.value || todayYYYYMMDD();
+        const j = await uploadOneClient(slot, f, "outSold", vin, dateStr);
+        if (j && j.ok) {
+          if (cam) cam.value = "";
+          if (fil) fil.value = "";
+          delete selectedFilesBySlot[slot];
+          try { await refreshSoldStatus(); } catch {}
+        } else {
+          selectedFilesBySlot[slot] = f;
+        }
+      };
+
+      if (cam) cam.addEventListener("change", onPick);
+      if (fil) fil.addEventListener("change", onPick);
+      setPreview(slot, null);
+    });
+
+    $("soldVin")?.addEventListener("change", () => refreshSoldStatus().catch(() => {}));
+    $("soldDate")?.addEventListener("change", () => refreshSoldStatus().catch(() => {}));
+
+    // Scanner soldadura
+    $("btnScanQR_sold")?.addEventListener("click", () => startScanner("sold", "QR"));
+    $("btnScanBAR_sold")?.addEventListener("click", () => startScanner("sold", "BAR"));
+    $("btnStop_sold")?.addEventListener("click", () => stopScanner("sold"));
 
     // Compresión (4)
     $("comp_cam")?.addEventListener("change", (e) => onPickCompCam(e.target.files));

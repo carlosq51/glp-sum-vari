@@ -50,6 +50,12 @@ export function uploaderView() {
               <p class="menuDesc">Checklist + foto del equipo + nombre del técnico.</p>
               <button class="btn" id="up_goConfReductor">Entrar</button>
             </div>
+
+            <div class="menuCard">
+              <p class="menuTitle">Fotos de soldadura</p>
+              <p class="menuDesc">4 fotos: sensor de nivel y cabina (antes/después de soldar).</p>
+              <button class="btn" id="up_goSoldadura">Entrar</button>
+            </div>
           </div>
 
           <div class="box" style="margin-top:14px;">
@@ -510,6 +516,148 @@ export function uploaderView() {
           </div>
 
           <div id="up_outConf" class="status">Listo.</div>
+        </section>
+
+        <!-- =========================
+            PANTALLA 5: FOTOS DE SOLDADURA
+            ========================= -->
+        <section id="up_screenSoldadura" class="screen">
+          <div class="topbar">
+            <h2>Fotos de soldadura</h2>
+            <button class="btn3" type="button" data-nav="menu">⬅ Volver</button>
+          </div>
+
+          <div class="box">
+            <div class="row">
+              <button class="btn" id="up_btnScanQR_sold">Escanear QR</button>
+              <button class="btn" id="up_btnScanBAR_sold">Escanear CÓDIGO BARRAS</button>
+              <button class="btn3" id="up_btnStop_sold" style="display:none;">Detener</button>
+              <div class="small" id="up_scanMsg_sold"></div>
+            </div>
+
+            <div id="up_qrBox_sold" style="display:none; margin-top:10px;">
+              <div class="small" id="up_scanMode_sold" style="margin-bottom:8px;"></div>
+              <div id="up_qrReader_sold" class="qrReader"></div>
+            </div>
+
+            <div class="row">
+              <label>VIN</label>
+              <input id="up_soldVin" type="text" placeholder="Escanea o escribe VIN..." />
+            </div>
+
+            <div class="row">
+              <label>Fecha</label>
+              <input id="up_soldDate" type="date" />
+            </div>
+          </div>
+
+          <h3>Fotos de soldadura (4)</h3>
+
+          <div class="box grid">
+
+            <!-- 1) Sensor de nivel ANTES -->
+            <div class="slotCard" data-slot="sold_sensor_antes">
+              <label>1) Sensor de nivel <span class="small">ANTES (ver soldadura)</span></label>
+
+              <input class="hiddenInput" type="file" accept="image/*;capture=camera" capture="environment" id="up_sold_sensor_antes_cam">
+              <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" id="up_sold_sensor_antes_file">
+
+              <div class="slotActions upActions">
+                <button class="btnUp" type="button" data-pick="cam" data-slot="sold_sensor_antes">
+                  <span class="ico">📷</span><span>Foto</span>
+                </button>
+                <button class="btnUp" type="button" data-pick="file" data-slot="sold_sensor_antes">
+                  <span class="ico">📁</span><span>Cargar</span>
+                </button>
+                <button class="btnUp btnUp-danger" type="button" data-clear="1" data-slot="sold_sensor_antes">
+                  <span class="ico">🗑️</span><span>Borrar</span>
+                </button>
+              </div>
+
+              <div class="mini">
+                <div class="thumb" id="up_sold_sensor_antes_previewBox"><span class="small">Sin foto</span></div>
+                <div class="miniInfo" id="up_sold_sensor_antes_meta">Ningún archivo seleccionado.</div>
+              </div>
+            </div>
+
+            <!-- 2) Sensor de nivel DESPUÉS -->
+            <div class="slotCard" data-slot="sold_sensor_post">
+              <label>2) Sensor de nivel <span class="small">DESPUÉS (con termocontraíble)</span></label>
+
+              <input class="hiddenInput" type="file" accept="image/*;capture=camera" capture="environment" id="up_sold_sensor_post_cam">
+              <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" id="up_sold_sensor_post_file">
+
+              <div class="slotActions upActions">
+                <button class="btnUp" type="button" data-pick="cam" data-slot="sold_sensor_post">
+                  <span class="ico">📷</span><span>Foto</span>
+                </button>
+                <button class="btnUp" type="button" data-pick="file" data-slot="sold_sensor_post">
+                  <span class="ico">📁</span><span>Cargar</span>
+                </button>
+                <button class="btnUp btnUp-danger" type="button" data-clear="1" data-slot="sold_sensor_post">
+                  <span class="ico">🗑️</span><span>Borrar</span>
+                </button>
+              </div>
+
+              <div class="mini">
+                <div class="thumb" id="up_sold_sensor_post_previewBox"><span class="small">Sin foto</span></div>
+                <div class="miniInfo" id="up_sold_sensor_post_meta">Ningún archivo seleccionado.</div>
+              </div>
+            </div>
+
+            <!-- 3) Cabina ANTES -->
+            <div class="slotCard" data-slot="sold_cabina_antes">
+              <label>3) Cabina <span class="small">ANTES</span></label>
+
+              <input class="hiddenInput" type="file" accept="image/*;capture=camera" capture="environment" id="up_sold_cabina_antes_cam">
+              <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" id="up_sold_cabina_antes_file">
+
+              <div class="slotActions upActions">
+                <button class="btnUp" type="button" data-pick="cam" data-slot="sold_cabina_antes">
+                  <span class="ico">📷</span><span>Foto</span>
+                </button>
+                <button class="btnUp" type="button" data-pick="file" data-slot="sold_cabina_antes">
+                  <span class="ico">📁</span><span>Cargar</span>
+                </button>
+                <button class="btnUp btnUp-danger" type="button" data-clear="1" data-slot="sold_cabina_antes">
+                  <span class="ico">🗑️</span><span>Borrar</span>
+                </button>
+              </div>
+
+              <div class="mini">
+                <div class="thumb" id="up_sold_cabina_antes_previewBox"><span class="small">Sin foto</span></div>
+                <div class="miniInfo" id="up_sold_cabina_antes_meta">Ningún archivo seleccionado.</div>
+              </div>
+            </div>
+
+            <!-- 4) Cabina DESPUÉS -->
+            <div class="slotCard" data-slot="sold_cabina_post">
+              <label>4) Cabina <span class="small">DESPUÉS</span></label>
+
+              <input class="hiddenInput" type="file" accept="image/*;capture=camera" capture="environment" id="up_sold_cabina_post_cam">
+              <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" id="up_sold_cabina_post_file">
+
+              <div class="slotActions upActions">
+                <button class="btnUp" type="button" data-pick="cam" data-slot="sold_cabina_post">
+                  <span class="ico">📷</span><span>Foto</span>
+                </button>
+                <button class="btnUp" type="button" data-pick="file" data-slot="sold_cabina_post">
+                  <span class="ico">📁</span><span>Cargar</span>
+                </button>
+                <button class="btnUp btnUp-danger" type="button" data-clear="1" data-slot="sold_cabina_post">
+                  <span class="ico">🗑️</span><span>Borrar</span>
+                </button>
+              </div>
+
+              <div class="mini">
+                <div class="thumb" id="up_sold_cabina_post_previewBox"><span class="small">Sin foto</span></div>
+                <div class="miniInfo" id="up_sold_cabina_post_meta">Ningún archivo seleccionado.</div>
+              </div>
+            </div>
+
+          </div>
+
+          <div id="up_outSold" class="status">Listo.</div>
         </section>
 
         <!-- ✅ VISOR FULLSCREEN -->
