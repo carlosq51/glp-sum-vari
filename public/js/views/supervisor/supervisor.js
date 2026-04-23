@@ -187,11 +187,24 @@ function renderSupervisor_(j) {
   renderAvgCard_(avgCard, { stats, techName, motorCount, tanqueCount, finalizedCount, escapeHtml });
 
   // Calcular y renderizar KPIs
-  const kpisContainer = document.getElementById("supKPIsPanel");
-  if (kpisContainer) {
+  const kpisPanel = document.getElementById("supKPIsPanel");
+  const btnVerKPIs = document.getElementById("btnVerKPIs");
+  if (kpisPanel) {
     const kpis = calculateKPIs_(list, supTrack, hasTechFilter);
-    const kpisHTML = renderKPIsPanel_(kpis, hasTechFilter ? techName : "", supTrack);
-    kpisContainer.outerHTML = kpisHTML;
+    const kpisInner = renderKPIsPanel_(kpis, hasTechFilter ? techName : "", supTrack);
+    kpisPanel.innerHTML = kpisInner;
+    if (kpisInner) {
+      kpisPanel.className = "sup-kpis-panel";
+      kpisPanel.style.display = "none"; // colapsado por defecto
+      if (btnVerKPIs) {
+        btnVerKPIs.style.display = "";
+        btnVerKPIs.textContent = "📊 VER KPIS";
+      }
+    } else {
+      kpisPanel.className = "";
+      kpisPanel.style.display = "none";
+      if (btnVerKPIs) btnVerKPIs.style.display = "none";
+    }
   }
 
   // Renderizar gráfico de tendencias (solo si hay técnico seleccionado)
@@ -220,6 +233,15 @@ export function init() {
   );
 
   document.getElementById("btnSupApply")?.addEventListener("click", () => fetchSupervisorReport_().catch(() => {}));
+
+  document.getElementById("btnVerKPIs")?.addEventListener("click", () => {
+    const panel = document.getElementById("supKPIsPanel");
+    const btn = document.getElementById("btnVerKPIs");
+    if (!panel || !btn) return;
+    const isHidden = panel.style.display === "none";
+    panel.style.display = isHidden ? "block" : "none";
+    btn.textContent = isHidden ? "📉 OCULTAR KPIS" : "📊 VER KPIS";
+  });
 
   document.getElementById("supMarca")?.addEventListener("change", () => {
     if (CORE.state.currentModule !== "SUPERVISOR") return;

@@ -10,7 +10,7 @@ import { formatHours_, formatPct_ } from "./sup-kpis.js";
  */
 export function renderKPIsPanel_(kpis, techName = "", track = "CONVERSION") {
   if (!kpis || kpis.totalVins === 0) {
-    return `<div id="supKPIsPanel" style="display:none;"></div>`;
+    return "";
   }
 
   const trackLabel = track === "RAMAL" ? "Ramal" : 
@@ -23,19 +23,17 @@ export function renderKPIsPanel_(kpis, techName = "", track = "CONVERSION") {
   const isConversion = track === "CONVERSION";
   const isIndividual = !!techName; // Si hay nombre, es búsqueda individual
 
+  // Devuelve solo el contenido interno — el wrapper #supKPIsPanel vive en el DOM
   return `
-    <div id="supKPIsPanel" class="sup-kpis-panel">
-      <h4 class="sup-kpis-title">${title}</h4>
-      
-      <div class="sup-kpis-grid">
-        ${isIndividual 
-          ? renderIndividualKPIs_(kpis, track, techName) 
-          : (isConversion ? renderConversionKPIs_(kpis) : renderGeneralKPIs_(kpis, track))
-        }
-        ${renderCarrosPorDiaKPI_(kpis)}
-        ${renderModelKPIs_(kpis)}
-        ${renderOutliersKPI_(kpis, track)}
-      </div>
+    <h4 class="sup-kpis-title">${title}</h4>
+    <div class="sup-kpis-grid">
+      ${isIndividual 
+        ? renderIndividualKPIs_(kpis, track, techName) 
+        : (isConversion ? renderConversionKPIs_(kpis) : renderGeneralKPIs_(kpis, track))
+      }
+      ${renderCarrosPorDiaKPI_(kpis)}
+      ${renderModelKPIs_(kpis)}
+      ${renderOutliersKPI_(kpis, track)}
     </div>
   `;
 }

@@ -55,7 +55,10 @@ export function supervisorView() {
       <div id="supAvgCard" style="margin-top:10px;"></div>
 
       <!-- Panel de KPIs -->
-      <div id="supKPIsPanel"></div>
+      <div id="supKPIsWrap">
+        <button id="btnVerKPIs" type="button" class="btn-ver-kpis" style="display:none;">📊 VER KPIS</button>
+        <div id="supKPIsPanel" style="display:none;"></div>
+      </div>
 
       <!-- Gráfico de tendencias (solo cuando hay técnico seleccionado) -->
       <div id="supTrendContainer" style="display:none; margin-top:20px; background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(0,0,0,.08)); border:1px solid rgba(255,255,255,.18); border-radius:18px; padding:20px;">
