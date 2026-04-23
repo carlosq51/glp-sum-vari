@@ -1660,10 +1660,20 @@ app.get("/api/incidencias/by-tecnico", async (req, res) => {
 
     // 2) Incidencias de los últimos `days` días
     const since = new Date(Date.now() - days * 86400 * 1000).toISOString();
-    const rows  = await supabaseGet_("incidencias", {
-      tecnico:   nombre,
-      fecha_hora: { op: "gte", val: since },
-    });
+
+    // supabaseGet_ solo soporta eq., construimos la URL directamente para gte
+    const headers = supabaseHeaders_();
+    if (!headers) throw new Error("Supabase no configurado (.env)");
+    const qUrl = `${process.env.SUPABASE_URL}/rest/v1/incidencias`
+      + `?tecnico=eq.${encodeURIComponent(nombre)}`
+      + `&fecha_hora=gte.${encodeURIComponent(since)}`
+      + `&order=fecha_hora.desc&limit=500`;
+    const qRes = await fetch(qUrl, { method: "GET", headers });
+    if (!qRes.ok) {
+      const t = await qRes.text().catch(() => "");
+      throw new Error(`Supabase incidencias: ${qRes.status} ${t.slice(0, 200)}`);
+    }
+    const rows = await qRes.json();
 
     const items = rows
       .sort((a, b) => new Date(b.fecha_hora) - new Date(a.fecha_hora))
