@@ -72,7 +72,7 @@ async function rfOpenSoldadura_() {
 
   try {
     const today = new Date().toISOString().slice(0, 10);
-    const res = await postJSON("/api/r2-uploader", { action: "getStatus", vin: RF.vin, dateStr: today });
+    const res = await postJSON("/api/uploader/proxy", { action: "getStatus", vin: RF.vin, dateStr: today });
     const previews = res?.previews || {};
     const status   = res?.status   || {};
 
@@ -134,6 +134,27 @@ export function openRFModalForVin_(vin) {
   }
 
   rfShowMenu_(); // ✅ siempre abre mostrando menú
+}
+
+// Abre el modal directamente en el stage de soldadura (sin pasar por menú)
+export function openRFSoldaduraForVin_(vin) {
+  const v = String(vin || "").trim().toUpperCase();
+  if (!v) return;
+
+  RF.vin = v;
+  RF.open = true;
+
+  rfSetInfo(`VIN: ${v}`);
+  rfSetMsg("");
+
+  const modal = rfModal();
+  if (modal) {
+    modal.classList.add("show");
+    modal.setAttribute("aria-hidden", "false");
+    document.body.classList.add("modal-open");
+  }
+
+  rfOpenSoldadura_();
 }
 
 export function closeRFModal_() {

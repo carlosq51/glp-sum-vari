@@ -86,6 +86,16 @@ export function renderActivas_() {
 
           ${buildIncidenciasBtnHTML_(it, k)}
 
+          ${CORE.state.currentModule === "CALIDAD" &&
+            (String(it?.rolTrabajo || "").toUpperCase() === "MOTOR" ||
+             String(it?.rolTrabajo || "").toUpperCase() === "TANQUE")
+              ? `<button class="btnRF" type="button" data-go="SOLD"
+                  data-vin="${escapeHtml(it.vin || "")}"
+                  style="margin-top:6px; margin-bottom:6px;">
+                  🔩 Ver fotos de soldadura
+                </button>`
+              : ""}
+
           <div class="jobActionsSlot">${buildBotonesByEstado_(estado)}</div>
 
           ${estado === "PAUSADO" ? `<div class="js-pausa-countdown small" style="text-align:center; opacity:.85; margin-top:4px; color:#f59e0b;">⏳ Calculando...</div>` : ""}

@@ -14,7 +14,7 @@ import {
 
 import { enviarEvento } from "../data/conversion-eventos.js";
 import { openIncidenciaModalForKey_ } from "../modals/incidencias.js";
-import { openRFModalForVin_ } from "../modals/rf-modal.js";
+import { openRFModalForVin_, openRFSoldaduraForVin_ } from "../modals/rf-modal.js";
 import { openRFTecModalForVin_ } from "../modals/rf-tecnico-modal.js";
 import { openConformidadModalForKey_ } from "../modals/conformidad.js";
 import { askConfirmFinish_ } from "../modals/confirm-finish.js";
@@ -166,6 +166,14 @@ function attachWorkDelegationOnce_(mod) {
         fetchIncidencias_(vin, cid, { getJSON_user: getJSON })
           .then(j => renderIncidencias_(j, { vin, conversionId: cid, who: vin }, { escapeHtml, fmtShort_ }))
           .catch(err => renderIncidencias_({ ok: false, error: String(err?.message || err) }, { vin }, { escapeHtml, fmtShort_ }));
+        return;
+      }
+
+      if (go === "SOLD") {
+        e.stopPropagation();
+        const vin = String(goBtn.dataset.vin || it.vin || "").trim().toUpperCase();
+        if (!vin) return;
+        openRFSoldaduraForVin_(vin);
         return;
       }
 
