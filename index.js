@@ -1471,6 +1471,75 @@ app.post("/api/equipo-conformidad", async (req, res) => {
   }
 });
 
+// =========================
+// FIN PREREQUISITES — valida antes de finalizar OT
+// POST /api/fin-prerequisites
+// Body: { vin, rol, workOrderId, dateStr }
+// Returns: { ok, canFin, blockers: string[] }
+// =========================
+app.post("/api/fin-prerequisites", async (req, res) => {
+  try {
+    const { vin, rol, workOrderId, dateStr } = req.body || {};
+    const rolUp = String(rol || "").trim().toUpperCase();
+    const blockers = [];
+
+    // Solo aplica a MOTOR y TANQUE
+    if (rolUp !== "MOTOR" && rolUp !== "TANQUE") {
+      return res.json({ ok: true, canFin: true, blockers: [] });
+    }
+
+    // 1) Conformidad de equipos (TANQUE rol)
+    if (rolUp === "TANQUE" && workOrderId) {
+      try {
+        const wos = await supabaseGet_("work_orders", { id: workOrderId });
+        const wo = wos?.[0] || {};
+        if (!wo.tanque_registrado) {
+          blockers.push("Falta registrar la serie del TANQUE (Conformidad equipo → TANQUE).");
+        }
+        if (!wo.reductor_registrado) {
+          blockers.push("Falta registrar la serie del REDUCTOR (Conformidad equipo → REDUCTOR).");
+        }
+      } catch (e) {
+        console.warn("[FIN-PREREQ] Error consultando work_order:", e.message);
+      }
+    }
+
+    // 2) Fotos de soldadura en R2
+    if (vin) {
+      const today = dateStr || new Date().toISOString().slice(0, 10);
+      try {
+        const r2 = await r2GetStatus({ vin, dateStr: today });
+        const s = r2.status || {};
+
+        if (rolUp === "MOTOR") {
+          // Motor: soldadura de cabina (carrocería)
+          if (!s.sold_cabina_antes || !s.sold_cabina_post) {
+            blockers.push("Falta registrar fotos de soldadura de CABINA (antes y después).");
+          }
+        }
+
+        if (rolUp === "TANQUE") {
+          // Tanque: soldadura del sensor de nivel
+          if (!s.sold_sensor_antes || !s.sold_sensor_post) {
+            blockers.push("Falta registrar fotos de soldadura del SENSOR DE NIVEL (antes y después).");
+          }
+        }
+      } catch (e) {
+        console.warn("[FIN-PREREQ] Error consultando R2 status:", e.message);
+      }
+    }
+
+    return res.json({
+      ok: true,
+      canFin: blockers.length === 0,
+      blockers,
+    });
+  } catch (e) {
+    console.error("[POST /api/fin-prerequisites]", e.message);
+    res.status(500).json({ ok: false, canFin: true, blockers: [], error: String(e.message || e) });
+  }
+});
+
 app.get("/api/tecnicos-list", async (req, res) => {
   try {
     const t1 = Date.now();

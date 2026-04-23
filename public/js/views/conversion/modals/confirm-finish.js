@@ -68,25 +68,44 @@ export function askConfirmFinish_({
   message = "¿Seguro que quieres finalizar este trabajo?",
   acceptText = "Sí, finalizar",
   cancelText = "Cancelar",
+  blockMode = false,   // si true: solo muestra cerrar, sin aceptar
 } = {}) {
   bindOnce_();
 
   const { modal, title: titleEl, text, btnAccept, btnCancel } = els_();
 
   if (!modal) {
+    if (blockMode) { window.alert(message); return Promise.resolve(false); }
     return Promise.resolve(window.confirm(message));
   }
 
   if (titleEl) titleEl.textContent = title;
-  if (text) text.textContent = message;
-  if (btnAccept) btnAccept.textContent = acceptText;
-  if (btnCancel) btnCancel.textContent = cancelText;
+  if (text) text.innerHTML = message;   // innerHTML para saltos de línea en bloqueos
+  if (btnAccept) {
+    btnAccept.textContent = acceptText;
+    btnAccept.style.display = blockMode ? "none" : "";
+  }
+  if (btnCancel) {
+    btnCancel.textContent = blockMode ? "Cerrar" : cancelText;
+    btnCancel.style.flex = blockMode ? "1 1 100%" : "";
+  }
+
+  if (titleEl) {
+    titleEl.style.color = blockMode ? "var(--danger, #e33)" : "";
+  }
 
   modal.setAttribute("aria-hidden", "false");
   modal.classList.add("show");
   document.body.classList.add("modal-open");
 
   setTimeout(() => btnCancel?.focus(), 0);
+
+  if (blockMode) {
+    // En modo bloqueo siempre resuelve false al cerrar
+    return new Promise((resolve) => {
+      CONFIRM_FIN.resolver = () => resolve(false);
+    });
+  }
 
   return new Promise((resolve) => {
     CONFIRM_FIN.resolver = resolve;

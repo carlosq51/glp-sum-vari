@@ -68,6 +68,33 @@ function attachWorkDelegationOnce_(mod) {
 
         // ✅ Confirmación de seguridad antes de finalizar
         if (accion === "FIN") {
+
+          // ── Pre-requisitos de cierre (MOTOR y TANQUE) ──────────────────
+          const rolUp = String(it.rolTrabajo || "").toUpperCase();
+          if (rolUp === "MOTOR" || rolUp === "TANQUE") {
+            const today = new Date().toISOString().slice(0, 10);
+            try {
+              const check = await postJSON("/api/fin-prerequisites", {
+                vin: it.vin,
+                rol: it.rolTrabajo,
+                workOrderId: it.work_order_id,
+                dateStr: today,
+              });
+              if (check.ok && !check.canFin && check.blockers?.length) {
+                const lista = check.blockers.map(b => `• ${b}`).join("<br>");
+                await askConfirmFinish_({
+                  title: "⛔ No puedes finalizar aún",
+                  message: `Completa los siguientes requisitos antes de cerrar:<br><br>${lista}`,
+                  blockMode: true,
+                });
+                return;   // bloquear FIN
+              }
+            } catch (e) {
+              console.warn("[FIN] No se pudo verificar requisitos previos:", e);
+              // soft fail: si la red falla, dejamos pasar con el confirm normal
+            }
+          }
+
         const ok = await askConfirmFinish_({
             title: "Confirmar finalización",
             message: "¿Seguro que quieres finalizar este trabajo? Esta acción puede cerrar la tarea actual.",
