@@ -86,9 +86,7 @@ export function renderActivas_() {
 
           ${buildIncidenciasBtnHTML_(it, k)}
 
-          ${CORE.state.currentModule === "CALIDAD" &&
-            (String(it?.rolTrabajo || "").toUpperCase() === "MOTOR" ||
-             String(it?.rolTrabajo || "").toUpperCase() === "TANQUE")
+          ${CORE.state.currentModule === "CALIDAD"
               ? `<button class="btnRF" type="button" data-go="SOLD"
                   data-vin="${escapeHtml(it.vin || "")}"
                   style="margin-top:6px; margin-bottom:6px;">
