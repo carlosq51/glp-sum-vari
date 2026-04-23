@@ -30,6 +30,10 @@ export function tecnicoView() {
             <button id="btnFinalizados">Ver finalizados</button>
             <button id="btnActivas" title="Refrescar conversiones">🔄 <span>Refrescar</span></button>
           </div>
+
+          <button id="btnVerMisInc" type="button" class="btn3" style="width:100%; margin-top:4px;">
+            📋 Ver mis incidencias
+          </button>
         </div>
 
         <div id="estadoBox" class="small"></div>

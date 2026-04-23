@@ -1646,7 +1646,53 @@ app.post("/api/incidencia", async (req, res) => {
   }
 });
 
-// endpoint Node ? Supabase (incidencias list) - LECTURA SOLO + TIMING
+// endpoint: mis incidencias por email (vista TECNICO)
+app.get("/api/incidencias/by-tecnico", async (req, res) => {
+  try {
+    const email = String(req.query.email || "").trim().toLowerCase();
+    const days  = Math.min(Number(req.query.days || 90), 365);
+    if (!email) return res.status(400).json({ ok: false, error: "Falta email" });
+
+    // 1) Obtener nombre del técnico desde tabla usuarios
+    const usuarios = await supabaseGet_("usuarios", { email });
+    const nombre = String(usuarios?.[0]?.nombre || "").trim();
+    if (!nombre) return res.json({ ok: true, items: [], nombre: "" });
+
+    // 2) Incidencias de los últimos `days` días
+    const since = new Date(Date.now() - days * 86400 * 1000).toISOString();
+    const rows  = await supabaseGet_("incidencias", {
+      tecnico:   nombre,
+      fecha_hora: { op: "gte", val: since },
+    });
+
+    const items = rows
+      .sort((a, b) => new Date(b.fecha_hora) - new Date(a.fecha_hora))
+      .map(inc => {
+        const urls = photoUrls(inc.foto_file_id);
+        return {
+          id:            inc.id,
+          fecha:         inc.fecha_hora,
+          fecha_hora:    inc.fecha_hora,
+          vin:           inc.vin,
+          tipo:          inc.tipo,
+          tecnico:       inc.tecnico || "",
+          nota:          inc.nota || "",
+          registrado_por: inc.registrado_por || "",
+          fotoFileId:    inc.foto_file_id || "",
+          fotoUrl:       urls.url,
+          fotoThumbUrl:  urls.thumbUrl,
+          fotoImgUrl:    urls.imgUrl,
+        };
+      });
+
+    return res.json({ ok: true, items, nombre });
+  } catch (e) {
+    console.error("[GET /api/incidencias/by-tecnico]", e.message);
+    return res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
+// endpoint Node → Supabase (incidencias list) - LECTURA SOLO + TIMING
 app.get("/api/incidencias/list", async (req, res) => {
   try {
     const vin = String(req.query.vin || "").trim().toUpperCase();

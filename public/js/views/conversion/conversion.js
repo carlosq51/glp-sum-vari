@@ -22,6 +22,7 @@ import {
   setEstadoText,
   msToHMS_,
   withLock,
+  getJSON,
 } from "../../core/core.js";
 
 import { computeLiveMs_, renderFinalizados_, rebuildListsFromStore_ } from "../../work/index.js";
@@ -35,7 +36,7 @@ import {
 import { PAUSA_AUTO_RESUME_MS, autoResumingKeys_, enviarEvento, SCHEDULED_PAUSES, isInfinitePauseWindow_ } from "./data/conversion-eventos.js";
 import { initConversionDelegation_ } from "./ui/conversion-delegation.js";
 import { initVinAutocomplete_ } from "./ui/conversion-vin-autocomplete.js";
-import { checkPendingAlerts_ } from "./modals/incidencia-alert.js";
+import { checkPendingAlerts_, getMyNombre_ } from "./modals/incidencia-alert.js";
 import { initConversionQR_ } from "./ui/conversion-qr.js";
 
 // --------------------------
@@ -161,7 +162,41 @@ export function init() {
     if (CORE.state.currentModule !== "TECNICO") return;
     await withLock(async () => syncNow({ forceFull: true, showOut: true, _fromLock: true }), "Refrescando...");
   });
+  $('btnVerMisInc')?.addEventListener('click', async () => {
+    if (CORE.state.currentModule !== 'TECNICO') return;
+    const emailEl = document.getElementById('email');
+    const email   = String(emailEl?.value || '').trim().toLowerCase();
+    if (!email) return;
 
+    // Abrir modal y mostrar loading
+    const modal = document.getElementById('supIncModal');
+    if (modal) { modal.classList.add('show'); }
+    const infoEl = document.getElementById('supIncInfo');
+    const listEl = document.getElementById('supIncList');
+    const msgEl  = document.getElementById('supIncMsg');
+    if (infoEl) infoEl.textContent = 'Cargando...';
+    if (listEl) listEl.innerHTML  = '';
+    if (msgEl)  msgEl.textContent  = '';
+
+    try {
+      const r = await getJSON(`/api/incidencias/by-tecnico?email=${encodeURIComponent(email)}&days=90`);
+      if (!r?.ok) throw new Error(r?.error || 'Error al cargar incidencias');
+
+      const nombre = r.nombre || email;
+      if (infoEl) infoEl.textContent = `${nombre} — últimos 90 días`;
+
+      const { renderIncidencias_ } = await import('../supervisor/sup-incidencias.js');
+      const { escapeHtml: esc, fmtShort_: fmt } = await import('../../core/format.js');
+      renderIncidencias_(
+        { ok: true, items: r.items },
+        { who: nombre, vin: '', conversionId: '' },
+        { escapeHtml: esc, fmtShort_: fmt },
+      );
+    } catch (err) {
+      if (infoEl) infoEl.textContent = '';
+      if (msgEl)  msgEl.textContent  = `Error: ${err.message}`;
+    }
+  });
   $("btnFinalizados")?.addEventListener("click", async () => {
     if (CORE.state.currentModule !== "TECNICO") return;
     await withLock(async () => {
