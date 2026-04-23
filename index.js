@@ -1488,15 +1488,17 @@ app.post("/api/fin-prerequisites", async (req, res) => {
       return res.json({ ok: true, canFin: true, blockers: [] });
     }
 
-    // 1) Conformidad de equipos (TANQUE rol)
-    if (rolUp === "TANQUE" && workOrderId) {
+    // 1) Conformidad de equipos
+    if (workOrderId) {
       try {
         const wos = await supabaseGet_("work_orders", { id: workOrderId });
         const wo = wos?.[0] || {};
-        if (!wo.tanque_registrado) {
+
+        if (rolUp === "TANQUE" && !wo.tanque_registrado) {
           blockers.push("Falta registrar la serie del TANQUE (Conformidad equipo → TANQUE).");
         }
-        if (!wo.reductor_registrado) {
+
+        if (rolUp === "MOTOR" && !wo.reductor_registrado) {
           blockers.push("Falta registrar la serie del REDUCTOR (Conformidad equipo → REDUCTOR).");
         }
       } catch (e) {
@@ -1512,7 +1514,7 @@ app.post("/api/fin-prerequisites", async (req, res) => {
         const s = r2.status || {};
 
         if (rolUp === "MOTOR") {
-          // Motor: soldadura de cabina (carrocería)
+          // Motor (delantero): soldadura de cabina
           if (!s.sold_cabina_antes || !s.sold_cabina_post) {
             blockers.push("Falta registrar fotos de soldadura de CABINA (antes y después).");
           }
