@@ -73,11 +73,12 @@ function attachWorkDelegationOnce_(mod) {
           const rolUp = String(it.rolTrabajo || "").toUpperCase();
           if (rolUp === "MOTOR" || rolUp === "TANQUE") {
             const today = new Date().toISOString().slice(0, 10);
+            let checkFailed = false;
             try {
               const check = await postJSON("/api/fin-prerequisites", {
                 vin: it.vin,
                 rol: it.rolTrabajo,
-                workOrderId: it.work_order_id,
+                workOrderId: it.conversionId,   // ← campo correcto en el store
                 dateStr: today,
               });
               if (check.ok && !check.canFin && check.blockers?.length) {
@@ -91,7 +92,18 @@ function attachWorkDelegationOnce_(mod) {
               }
             } catch (e) {
               console.warn("[FIN] No se pudo verificar requisitos previos:", e);
-              // soft fail: si la red falla, dejamos pasar con el confirm normal
+              checkFailed = true;
+            }
+
+            // Si el servidor no respondió, mostrar advertencia pero no bloquear
+            if (checkFailed) {
+              const okAnyway = await askConfirmFinish_({
+                title: "⚠️ No se pudo verificar requisitos",
+                message: "No se pudo conectar al servidor para verificar si cumples todos los requisitos de cierre.<br><br>¿Seguro que quieres finalizar de todas formas?",
+                acceptText: "Sí, finalizar igual",
+                cancelText: "Cancelar",
+              });
+              if (!okAnyway) return;
             }
           }
 
