@@ -106,6 +106,12 @@ export function renderIncidencias_(j, ctx, { escapeHtml, fmtShort_ }) {
           <b>Técnico:</b> ${escapeHtml(tecnico)}
         </div>
 
+        ${it.vin ? `
+          <div class="small" style="margin-top:4px;">
+            <b>VIN:</b> <span class="mono">${escapeHtml(it.vin)}</span>
+          </div>
+        ` : ""}
+
         ${nota ? `
           <div class="small" style="margin-top:8px; white-space:pre-wrap;">
             <b>Nota:</b> ${escapeHtml(nota)}

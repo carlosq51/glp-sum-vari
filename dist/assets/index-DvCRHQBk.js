@@ -1601,6 +1601,12 @@ Intenta nuevamente con la acción correcta.`;lt({ok:!1,error:_,severity:"warning
           <b>Técnico:</b> ${n(h)}
         </div>
 
+        ${u.vin?`
+          <div class="small" style="margin-top:4px;">
+            <b>VIN:</b> <span class="mono">${n(u.vin)}</span>
+          </div>
+        `:""}
+
         ${p?`
           <div class="small" style="margin-top:8px; white-space:pre-wrap;">
             <b>Nota:</b> ${n(p)}
