@@ -1,6 +1,15 @@
 import express from "express";
 import dotenv from "dotenv";
 import { existsSync } from "fs";
+import {
+  r2UploadOne,
+  r2UploadFalla,
+  r2UploadCalidad,
+  r2UploadConformidad,
+  r2UploadIncidencia,
+  r2GetStatus,
+  photoUrls,
+} from "./r2-uploads.js";
 
 dotenv.config();
 
@@ -237,34 +246,47 @@ async function supabasePatch_(table, filter = {}, data) {
 }
 
 // =========================
-// UPLOADER PROXY (frontend -> Node -> Apps Script)
 // =========================
-const UPLOADER_ACTIONS = new Set([
-  "getStatus",
-  "uploadOne",
-  "uploadFalla",
-  "uploadCalidad",
-  "uploadConformidad",
-]);
+// UPLOADER → Cloudflare R2  (reemplaza Apps Script / Google Drive)
+// =========================
+const R2_ACTIONS = new Set(["getStatus", "uploadOne", "uploadFalla", "uploadCalidad", "uploadConformidad"]);
 
 app.post("/api/uploader/proxy", async (req, res) => {
   try {
-    const body = req.body || {};
+    const body   = req.body || {};
     const action = String(body.action || "").trim();
+    const { action: _omit, ...payload } = body;
 
-    console.log("[UPLOADER_PROXY] action:", action);
-    console.log("[UPLOADER_PROXY] keys:", Object.keys(body || {}));
+    console.log("[R2_UPLOADER] action:", action);
 
-    if (!UPLOADER_ACTIONS.has(action)) {
-      return res.status(400).json({ ok: false, error: "Acci�n uploader no permitida" });
+    if (!R2_ACTIONS.has(action)) {
+      return res.status(400).json({ ok: false, error: "Acción no permitida" });
     }
 
-    const { action: _omit, ...payload } = body;
-    const j = await callAppsScript(action, payload);
+    let result;
+    switch (action) {
+      case "getStatus":
+        result = await r2GetStatus(payload);
+        break;
+      case "uploadOne":
+        result = await r2UploadOne(payload);
+        break;
+      case "uploadFalla":
+        result = await r2UploadFalla(payload);
+        break;
+      case "uploadCalidad":
+        result = await r2UploadCalidad(payload);
+        break;
+      case "uploadConformidad":
+        result = await r2UploadConformidad(payload);
+        break;
+      default:
+        return res.status(400).json({ ok: false, error: "Acción desconocida" });
+    }
 
-    return res.json(j);
+    return res.json(result);
   } catch (e) {
-    console.error("[UPLOADER_PROXY] ERROR:", e);
+    console.error("[R2_UPLOADER] ERROR:", e.message);
     return res.status(500).json({ ok: false, error: String(e.message || e) });
   }
 });
@@ -1517,35 +1539,30 @@ app.post("/api/incidencia", async (req, res) => {
     // Responder al cliente INMEDIATAMENTE
     res.json({ ok: true, saved: true });
 
-    // 2) Si hay foto, subir a Drive en BACKGROUND y actualizar Supabase
+    // 2) Si hay foto, subir a R2 en BACKGROUND y actualizar Supabase
     if (hasFoto && supabaseResult) {
       const incId = Array.isArray(supabaseResult) ? supabaseResult[0]?.id : supabaseResult?.id;
       (async () => {
         try {
-          const up = await callAppsScript("uploadIncidencia", {
-            vin: body.vin,
-            conversionId: body.conversionId,
+          const up = await r2UploadIncidencia({
+            vin:  body.vin,
             tipo: body.tipo,
-            nota: body.nota,
-            tecnico: body.tecnicoNombre || body.tecnicoEmail || body.tecnicoUserId || "",
             file: {
-              b64: fotoPayload.b64,
+              b64:      fotoPayload.b64,
               mimeType: fotoPayload.mimeType || "image/jpeg",
-              name: fotoPayload.name || "incidencia.jpg",
             },
           });
 
-          // Actualizar registro en Supabase con metadata de la foto
           if (incId && up?.photoId) {
             await supabasePatch_("incidencias", { id: incId }, {
-              foto_file_id: String(up.photoId || ""),
-              foto_folder_id: String(up.subFolderId || up.folderId || ""),
-              foto_batch_id: String(up.batchId || ""),
+              foto_file_id:   String(up.photoId || ""),  // clave R2
+              foto_folder_id: "",
+              foto_batch_id:  String(up.batchId || ""),
             });
-            console.log(`[INCIDENCIA] Foto subida y actualizada en Supabase: ${incId}`);
+            console.log(`[INCIDENCIA] Foto subida a R2 y actualizada: ${incId}`);
           }
         } catch (err) {
-          console.error("[INCIDENCIA] Background Drive upload error:", err.message);
+          console.error("[INCIDENCIA] R2 upload error:", err.message);
         }
       })();
     }
@@ -1586,18 +1603,10 @@ app.get("/api/incidencias/list", async (req, res) => {
     }
 
     const t2 = Date.now();
-    const driveUrls = (fileId) => {
-      if (!fileId) return { url: "", thumbUrl: "", imgUrl: "" };
-      return {
-        url: "https://drive.google.com/file/d/" + fileId + "/view",
-        thumbUrl: "https://drive.google.com/thumbnail?id=" + fileId + "&sz=w400",
-        imgUrl: "https://drive.google.com/uc?export=view&id=" + fileId,
-      };
-    };
     const items = incidencias
       .slice(0, limit)
       .map(inc => {
-        const urls = driveUrls(inc.foto_file_id);
+        const urls = photoUrls(inc.foto_file_id);  // R2 si key tiene "/", Drive si no
         return {
           id: inc.id,
           fecha: inc.fecha_hora,
@@ -1607,12 +1616,12 @@ app.get("/api/incidencias/list", async (req, res) => {
           tecnico: inc.tecnico || "",
           nota: inc.nota || "",
           registrado_por: inc.registrado_por || "",
-          fotoFileId: inc.foto_file_id || "",
-          fotoUrl: urls.url,
+          fotoFileId:   inc.foto_file_id || "",
+          fotoUrl:      urls.url,
           fotoThumbUrl: urls.thumbUrl,
-          fotoImgUrl: urls.imgUrl,
+          fotoImgUrl:   urls.imgUrl,
           fotoFolderId: inc.foto_folder_id || "",
-          fotoBatchId: inc.foto_batch_id || "",
+          fotoBatchId:  inc.foto_batch_id  || "",
         };
       });
     timings.push({ label: "map_response", duration: Date.now() - t2 });
