@@ -1863,14 +1863,22 @@ app.get("/api/solicitud-ramal/pendientes", async (req, res) => {
   try {
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const headers = supabaseHeaders_();
-    // Traer PENDIENTES (todas) + ENTREGADOS del día de hoy
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const sinceIso = today.toISOString();
-    const url = `${SUPABASE_URL}/rest/v1/solicitudes_ramal?order=created_at.asc&limit=100&created_at=gte.${encodeURIComponent(sinceIso)}`;
+    // PENDIENTES (todas) + ENTREGADOS de hoy — últimos 100 ordenados por fecha
+    const url = `${SUPABASE_URL}/rest/v1/solicitudes_ramal?order=created_at.desc&limit=100`;
     const r = await fetch(url, { method: "GET", headers });
     if (!r.ok) throw new Error(`Supabase ${r.status}`);
-    const items = await r.json();
+    const all = await r.json();
+    // Filtrar: pendientes siempre + entregados solo del día de hoy (local)
+    const todayStr = new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD
+    const items = all.filter(s =>
+      s.estado === "PENDIENTE" ||
+      (s.estado === "ENTREGADO" && (s.entregado_at || s.created_at || "").startsWith(todayStr))
+    );
+    // Ordenar: pendientes primero, luego entregados; dentro de cada grupo por created_at asc
+    items.sort((a, b) => {
+      if (a.estado !== b.estado) return a.estado === "PENDIENTE" ? -1 : 1;
+      return a.created_at < b.created_at ? -1 : 1;
+    });
     return res.json({ ok: true, items });
   } catch (e) {
     console.error("[GET /api/solicitud-ramal/pendientes]", e.message);
@@ -1878,8 +1886,8 @@ app.get("/api/solicitud-ramal/pendientes", async (req, res) => {
   }
 });
 
-// PATCH /api/solicitud-ramal/:id/entregar  — el ramalero marca como entregado
-app.patch("/api/solicitud-ramal/:id/entregar", async (req, res) => {
+// POST /api/solicitud-ramal/:id/entregar  — el ramalero marca como entregado
+app.post("/api/solicitud-ramal/:id/entregar", async (req, res) => {
   try {
     const id    = String(req.params.id || "").trim();
     const email = String(req.body?.email || "").trim().toLowerCase();
