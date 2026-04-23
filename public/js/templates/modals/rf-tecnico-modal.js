@@ -27,11 +27,21 @@ export function rfTecnicoModal() {
               </button>
             </div>
 
-            <div class="card" style="border:1px solid rgba(255,255,255,.16);">
+            <div class="card" style="border:1px solid rgba(255,255,255,.16); margin-bottom:12px;">
               <div style="font-weight:900; margin-bottom:8px;">Registrar falla</div>
               <div class="small" style="opacity:.9;">Registra una falla con nota y fotos.</div>
 
               <button id="btnRFTecFalla" class="btnInicio"
+                style="margin-top:12px; width:100%; height:64px; font-weight:1000;">
+                Entrar
+              </button>
+            </div>
+
+            <div class="card" style="border:1px solid rgba(255,255,255,.16);">
+              <div style="font-weight:900; margin-bottom:8px;">Fotos de soldadura</div>
+              <div class="small" style="opacity:.9;">4 fotos: sensor de nivel y cabina (antes/después).</div>
+
+              <button id="btnRFTecSoldadura" class="btnInicio"
                 style="margin-top:12px; width:100%; height:64px; font-weight:1000;">
                 Entrar
               </button>

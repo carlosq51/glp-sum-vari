@@ -1144,6 +1144,7 @@ export function initUploaderUI(root, options = {}) {
       if ($("fallaVin")) $("fallaVin").value = vin;
       if ($("qcVin")) $("qcVin").value = vin;
       if ($("confVin")) $("confVin").value = vin;
+      if ($("soldVin")) $("soldVin").value = vin;
     }
 
     if (dateStr) {
@@ -1151,6 +1152,7 @@ export function initUploaderUI(root, options = {}) {
       if ($("fallaDate")) $("fallaDate").value = dateStr;
       if ($("qcDate")) $("qcDate").value = dateStr;
       if ($("confDate")) $("confDate").value = dateStr;
+      if ($("soldDate")) $("soldDate").value = dateStr;
     }
 
     if (root) root.style.display = "block";
@@ -1159,6 +1161,10 @@ export function initUploaderUI(root, options = {}) {
     else if (screen === "falla") showScreen("falla");
     else if (screen === "calidad" || screen === "qc") showScreen("calidad");
     else if (screen === "conformidad" || screen === "conf") showScreen("conformidad");
+    else if (screen === "soldadura") {
+      showScreen("soldadura");
+      if (vin) refreshSoldStatus().catch(() => {});
+    }
     else showScreen("menu");
 
     if (($("vinText")?.value || "").trim()) {

@@ -31,7 +31,7 @@ function openStage_(screen){
         ← Volver
       </button>
       <div class="pill small" style="opacity:.95;">
-        ${screen === "params" ? "REGISTRAR PARÁMETROS" : "REGISTRAR FALLA"}
+        ${screen === "params" ? "REGISTRAR PARÁMETROS" : screen === "soldadura" ? "FOTOS DE SOLDADURA" : "REGISTRAR FALLA"}
       </div>
     </div>
 
@@ -43,7 +43,7 @@ function openStage_(screen){
   // ✅ Embebido en modal
   showUploaderView({
     vin: RFT.vin,
-    screen: screen === "params" ? "params" : "falla",
+    screen: screen === "params" ? "params" : screen === "soldadura" ? "soldadura" : "falla",
     mountId: "rfTecUploaderMount",
     onBackControl: showMenu_, // por si el uploader muestra su volver interno
   });
@@ -99,6 +99,7 @@ export function initRFTecModalUI_(){
 
   el("btnRFTecParams")?.addEventListener("click", ()=>{ if (RFT.vin) openStage_("params"); });
   el("btnRFTecFalla")?.addEventListener("click", ()=>{ if (RFT.vin) openStage_("falla"); });
+  el("btnRFTecSoldadura")?.addEventListener("click", ()=>{ if (RFT.vin) openStage_("soldadura"); });
 
   document.addEventListener("keydown",(e)=>{
     if (!RFT.open) return;
