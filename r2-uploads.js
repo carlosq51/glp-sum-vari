@@ -13,35 +13,36 @@
 
 import { S3Client, PutObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 
-const R2_ACCOUNT_ID     = process.env.R2_ACCOUNT_ID;
-const R2_ACCESS_KEY_ID  = process.env.R2_ACCESS_KEY_ID;
-const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY;
-const R2_BUCKET         = process.env.R2_BUCKET || "glp-fotos";
-const R2_PUBLIC_URL     = (process.env.R2_PUBLIC_URL || "").replace(/\/$/, "");
-
 let _client = null;
 
 function getClient() {
   if (_client) return _client;
-  if (!R2_ACCOUNT_ID || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY) {
+  const accountId  = process.env.R2_ACCOUNT_ID;
+  const accessKey  = process.env.R2_ACCESS_KEY_ID;
+  const secretKey  = process.env.R2_SECRET_ACCESS_KEY;
+  if (!accountId || !accessKey || !secretKey) {
     throw new Error("R2 no configurado. Agrega R2_ACCOUNT_ID, R2_ACCESS_KEY_ID y R2_SECRET_ACCESS_KEY al .env");
   }
   _client = new S3Client({
     region: "auto",
-    endpoint: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+    endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
     credentials: {
-      accessKeyId: R2_ACCESS_KEY_ID,
-      secretAccessKey: R2_SECRET_ACCESS_KEY,
+      accessKeyId: accessKey,
+      secretAccessKey: secretKey,
     },
   });
   return _client;
 }
 
+function R2_BUCKET()     { return process.env.R2_BUCKET || "glp-fotos"; }
+function R2_PUBLIC_URL() { return (process.env.R2_PUBLIC_URL || "").replace(/\/$/, ""); }
+
 // ─── helpers ────────────────────────────────────────────────────────────────
 
 export function r2Url(key) {
-  if (!R2_PUBLIC_URL) throw new Error("R2_PUBLIC_URL no configurado");
-  return `${R2_PUBLIC_URL}/${key}`;
+  const pub = R2_PUBLIC_URL();
+  if (!pub) throw new Error("R2_PUBLIC_URL no configurado");
+  return `${pub}/${key}`;
 }
 
 /** Si foto_file_id contiene "/" es una clave R2, sino es un Drive file ID (legacy) */
@@ -85,7 +86,7 @@ async function put(key, b64OrBuffer, contentType = "image/jpeg") {
     : Buffer.from(b64OrBuffer, "base64");
 
   await client.send(new PutObjectCommand({
-    Bucket: R2_BUCKET,
+    Bucket: R2_BUCKET(),
     Key: key,
     Body: body,
     ContentType: contentType,
@@ -169,7 +170,7 @@ export async function r2UploadFalla({ vin, dateStr, note, files = [] }) {
   if (note) {
     const key = `fallas/${month}/${vin}/${bid}/nota.txt`;
     await getClient().send(new PutObjectCommand({
-      Bucket: R2_BUCKET,
+      Bucket: R2_BUCKET(),
       Key: key,
       Body: note,
       ContentType: "text/plain; charset=utf-8",
@@ -239,7 +240,7 @@ export async function r2UploadConformidad({ tipo, vin, dateStr, tecnico, checkli
   // Save acta JSON
   const keyAct = `conformidad/${month}/${vin}/${tipoKey}/${bid}_acta.json`;
   await getClient().send(new PutObjectCommand({
-    Bucket: R2_BUCKET,
+    Bucket: R2_BUCKET(),
     Key: keyAct,
     Body: JSON.stringify({ vin, tipo: tipoKey, tecnico, checklist: checklist_, dateStr, batchId: bid, createdAt: new Date().toISOString() }, null, 2),
     ContentType: "application/json",
@@ -298,11 +299,11 @@ export async function r2GetStatus({ vin, dateStr }) {
   const client = getClient();
 
   const [regRes, calRes, falRes] = await Promise.all([
-    client.send(new ListObjectsV2Command({ Bucket: R2_BUCKET, Prefix: `registro/${month}/${vin}/` }))
+    client.send(new ListObjectsV2Command({ Bucket: R2_BUCKET(), Prefix: `registro/${month}/${vin}/` }))
       .catch(() => ({ Contents: [] })),
-    client.send(new ListObjectsV2Command({ Bucket: R2_BUCKET, Prefix: `calidad/${month}/${vin}/` }))
+    client.send(new ListObjectsV2Command({ Bucket: R2_BUCKET(), Prefix: `calidad/${month}/${vin}/` }))
       .catch(() => ({ Contents: [] })),
-    client.send(new ListObjectsV2Command({ Bucket: R2_BUCKET, Prefix: `fallas/${month}/${vin}/` }))
+    client.send(new ListObjectsV2Command({ Bucket: R2_BUCKET(), Prefix: `fallas/${month}/${vin}/` }))
       .catch(() => ({ Contents: [] })),
   ]);
 
