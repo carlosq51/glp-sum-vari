@@ -1,7 +1,7 @@
 // public/js/views/conversion/modals/rf-modal.js
-import { CORE, setOut } from "../../../core/core.js";
+import { CORE, setOut, postJSON } from "../../../core/core.js";
 import { showUploaderView } from "../../uploader/uploader.js";
-import { hideUploaderView } from "../../uploader/uploader.js"; // ✅ añade
+import { hideUploaderView } from "../../uploader/uploader.js";
 
 const RF = { open: false, vin: "" };
 
@@ -27,7 +27,6 @@ function rfOpenStage_(screen) {
   if (menu) menu.style.display = "none";
   stage.style.display = "block";
 
-  // Barra superior dentro del modal, mismo look (btnInicio/pill)
   stage.innerHTML = `
     <div class="row" style="display:flex; gap:10px; align-items:center; justify-content:space-between; margin-bottom:10px;">
       <button type="button" id="btnRfBack" class="btn" style="height:44px; padding:0 14px; font-weight:900;">
@@ -43,9 +42,73 @@ function rfOpenStage_(screen) {
 
   stage.querySelector("#btnRfBack")?.addEventListener("click", rfShowMenu_);
 
-  // ✅ Renderiza uploader DENTRO del modal
-  // Necesitas que showUploaderView soporte mountId (ver punto 3)
   showUploaderView({ vin: RF.vin, screen, mountId: "rfUploaderMount" });
+}
+
+async function rfOpenSoldadura_() {
+  const menu = rfEl("rfMenu");
+  const stage = rfEl("rfStage");
+  if (!stage) return;
+
+  if (menu) menu.style.display = "none";
+  stage.style.display = "block";
+  stage.innerHTML = `
+    <div style="display:flex; gap:10px; align-items:center; justify-content:space-between; margin-bottom:12px;">
+      <button type="button" id="btnRfBackSold" class="btn" style="height:44px; padding:0 14px; font-weight:900;">← Volver</button>
+      <div class="pill small" style="opacity:.95;">FOTOS DE SOLDADURA</div>
+    </div>
+    <div id="rfSoldLoadMsg" class="small" style="text-align:center; opacity:.7; padding:16px 0;">Cargando fotos...</div>
+    <div id="rfSoldGrid" style="display:none;"></div>
+  `;
+
+  stage.querySelector("#btnRfBackSold")?.addEventListener("click", rfShowMenu_);
+
+  const LABELS = {
+    sold_sensor_antes: "🛢️ Sensor nivel — ANTES",
+    sold_sensor_post:  "🛢️ Sensor nivel — DESPUÉS",
+    sold_cabina_antes: "🚗 Cabina — ANTES",
+    sold_cabina_post:  "🚗 Cabina — DESPUÉS",
+  };
+
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const res = await postJSON("/api/r2-uploader", { action: "getStatus", vin: RF.vin, dateStr: today });
+    const previews = res?.previews || {};
+    const status   = res?.status   || {};
+
+    const msgEl  = rfEl("rfSoldLoadMsg");
+    const gridEl = rfEl("rfSoldGrid");
+    if (!msgEl || !gridEl) return;
+
+    msgEl.style.display = "none";
+    gridEl.style.display = "grid";
+    gridEl.style.gridTemplateColumns = "1fr 1fr";
+    gridEl.style.gap = "10px";
+
+    let html = "";
+    for (const slot of Object.keys(LABELS)) {
+      const label = LABELS[slot];
+      const has   = status[slot];
+      const url   = previews[slot]?.imgUrl || "";
+      html += `
+        <div style="background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.15); border-radius:10px; padding:10px; text-align:center;">
+          <div class="small" style="font-weight:700; margin-bottom:6px;">${label}</div>
+          ${has && url
+            ? `<a href="${url}" target="_blank" rel="noopener noreferrer">
+                 <img src="${url}" alt="${label}" loading="lazy"
+                   style="width:100%; max-height:160px; object-fit:cover; border-radius:8px; cursor:zoom-in;">
+               </a>`
+            : `<div style="width:100%; height:100px; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.2); border-radius:8px; color:rgba(255,255,255,.4); font-size:12px;">Sin foto</div>`
+          }
+        </div>
+      `;
+    }
+    gridEl.innerHTML = html;
+  } catch (err) {
+    const msgEl = rfEl("rfSoldLoadMsg");
+    if (msgEl) msgEl.textContent = "No se pudieron cargar las fotos.";
+    console.warn("[rfSoldadura] Error:", err);
+  }
 }
 
 export function openRFModalForVin_(vin) {
@@ -117,6 +180,11 @@ export function initRFModalUI_() {
   rfEl("btnRfFalla")?.addEventListener("click", () => {
     if (!RF.vin) return;
     rfOpenStage_("falla");
+  });
+
+  rfEl("btnRfSoldadura")?.addEventListener("click", () => {
+    if (!RF.vin) return;
+    rfOpenSoldadura_();
   });
 
   document.addEventListener("keydown", (e) => {

@@ -39,6 +39,16 @@ export function rfModal() {
                 Entrar
               </button>
             </div>
+
+            <div class="card" style="border:1px solid rgba(255,255,255,.16); margin-top:12px;">
+              <div style="font-weight:900; margin-bottom:8px;">🔩 Ver fotos de soldadura</div>
+              <div class="small" style="opacity:.9;">Visualiza las 4 fotos de soldadura registradas por el técnico.</div>
+
+              <button id="btnRfSoldadura" class="btnInicio"
+                style="margin-top:12px; width:100%; height:64px; font-weight:1000;">
+                Ver fotos
+              </button>
+            </div>
           </div>
 
           <!-- ✅ AQUI se renderiza el uploader (dentro del modal) -->
