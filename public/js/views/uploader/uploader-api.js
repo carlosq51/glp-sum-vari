@@ -53,12 +53,23 @@ export async function callAPS(payload, apsUrl = APS_URL) {
 export async function fileToB64Compressed(file) {
   if (!file) return "";
 
-  // Si no es imagen, sube tal cual
+  // Si no es imagen, sube tal cual en base64
   if (!/^image\//i.test(file.type || "")) {
     return await new Promise((resolve, reject) => {
       const r = new FileReader();
       r.onload = () => resolve(String(r.result).split(",")[1] || "");
       r.onerror = () => reject(new Error("No se pudo leer el archivo."));
+      r.readAsDataURL(file);
+    });
+  }
+
+  // HEIC / HEIF: el navegador no puede decodificarlos en canvas → subir sin compresión
+  const isHeic = /heic|heif/i.test(file.type || "") || /\.heic$|\.heif$/i.test(file.name || "");
+  if (isHeic) {
+    return await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result).split(",")[1] || "");
+      r.onerror = () => reject(new Error("No se pudo leer el archivo HEIC."));
       r.readAsDataURL(file);
     });
   }
@@ -80,7 +91,7 @@ export async function fileToB64Compressed(file) {
 
       im.onerror = () => {
         clearTimeout(timer);
-        reject(new Error("No se pudo abrir la imagen para compresión."));
+        reject(new Error("NO_SE_PUDO_ABRIR"));
       };
 
       im.src = imgURL;
@@ -122,6 +133,17 @@ export async function fileToB64Compressed(file) {
 
     return b64;
   } catch (err) {
+    // Si el navegador no pudo decodificar la imagen (ej: formato exótico),
+    // subir el archivo original sin comprimir en lugar de abortar.
+    if (String(err?.message).includes("NO_SE_PUDO_ABRIR") || String(err?.message).includes("tardó demasiado")) {
+      URL.revokeObjectURL(imgURL);
+      return await new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result).split(",")[1] || "");
+        r.onerror = () => reject(new Error("No se pudo leer el archivo."));
+        r.readAsDataURL(file);
+      });
+    }
     throw new Error(`Error comprimiendo imagen: ${err?.message || err}`);
   } finally {
     URL.revokeObjectURL(imgURL);
