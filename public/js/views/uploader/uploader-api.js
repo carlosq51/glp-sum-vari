@@ -156,8 +156,11 @@ export async function getStatus({ vin, dateStr, apsUrl = APS_URL }) {
 
 export async function uploadOne({ vin, dateStr, slot, file, apsUrl = APS_URL }) {
   const b64 = await fileToB64Compressed(file);
+  // Detectar HEIC/HEIF para enviar el mimeType correcto al backend
+  const isHeic = /heic|heif/i.test(file?.type || "") || /\.heic$|\.heif$/i.test(file?.name || "");
+  const mimeType = isHeic ? (file.type || "image/heic") : "image/jpeg";
   return callAPS(
-    { action: "uploadOne", vin, dateStr, slot, mimeType: "image/jpeg", b64 },
+    { action: "uploadOne", vin, dateStr, slot, mimeType, b64 },
     apsUrl
   );
 }
@@ -241,4 +244,8 @@ export async function uploadConformidad({
     },
     apsUrl
   );
+}
+
+export async function deleteSlot({ vin, dateStr, slot, apsUrl = APS_URL }) {
+  return callAPS({ action: "deleteSlot", vin, dateStr, slot }, apsUrl);
 }

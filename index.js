@@ -8,6 +8,7 @@ import {
   r2UploadConformidad,
   r2UploadIncidencia,
   r2GetStatus,
+  r2DeleteSlot,
   photoUrls,
 } from "./r2-uploads.js";
 
@@ -249,7 +250,7 @@ async function supabasePatch_(table, filter = {}, data) {
 // =========================
 // UPLOADER → Cloudflare R2  (reemplaza Apps Script / Google Drive)
 // =========================
-const R2_ACTIONS = new Set(["getStatus", "uploadOne", "uploadFalla", "uploadCalidad", "uploadConformidad"]);
+const R2_ACTIONS = new Set(["getStatus", "uploadOne", "uploadFalla", "uploadCalidad", "uploadConformidad", "deleteSlot"]);
 
 app.post("/api/uploader/proxy", async (req, res) => {
   try {
@@ -279,6 +280,9 @@ app.post("/api/uploader/proxy", async (req, res) => {
         break;
       case "uploadConformidad":
         result = await r2UploadConformidad(payload);
+        break;
+      case "deleteSlot":
+        result = await r2DeleteSlot(payload);
         break;
       default:
         return res.status(400).json({ ok: false, error: "Acción desconocida" });

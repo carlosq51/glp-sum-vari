@@ -11,7 +11,7 @@
 //   R2_PUBLIC_URL=https://pub-c7d6e000a03d4913b0694c761ea901d2.r2.dev
 // =========================
 
-import { S3Client, PutObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectCommand } from "@aws-sdk/client-s3";
 
 let _client = null;
 
@@ -375,4 +375,27 @@ export async function r2GetStatus({ vin, dateStr }) {
       count:  fallaCount,
     },
   };
+}
+
+/**
+ * deleteSlot — elimina una foto de R2 para un VIN/slot dado
+ */
+export async function r2DeleteSlot({ vin, dateStr, slot }) {
+  if (!vin || !slot) throw new Error("Faltan parámetros: vin, slot");
+
+  const isCalidad  = !!CALIDAD_SLOT_NAMES[slot];
+  const isRegistro = !!SLOT_NAMES[slot];
+  if (!isCalidad && !isRegistro) throw new Error(`Slot desconocido: ${slot}`);
+
+  const month    = currentYYYYMM(dateStr);
+  const fileName = isCalidad ? CALIDAD_SLOT_NAMES[slot] : SLOT_NAMES[slot];
+  const category = isCalidad ? "calidad" : "registro";
+  const key      = `${category}/${month}/${vin}/${fileName}`;
+
+  await getClient().send(new DeleteObjectCommand({
+    Bucket: R2_BUCKET(),
+    Key:    key,
+  }));
+
+  return { ok: true, vin, slot, deleted: key };
 }

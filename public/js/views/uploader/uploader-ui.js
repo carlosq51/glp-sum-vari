@@ -13,6 +13,7 @@ import {
   uploadFalla,
   uploadCalidadBatch,
   uploadConformidad,
+  deleteSlot,
 } from "./uploader-api.js";
 
 import { createScanner, getScanConfig } from "../../core/qr-scanner.js";
@@ -131,9 +132,30 @@ export function initUploaderUI(root, options = {}) {
     }
 
     meta.textContent = `${file.name || "(foto)"} • ${humanBytes(file.size || 0)}`;
+
+    const isHeic = /heic|heif/i.test(file.type || "") || /\.heic$|\.heif$/i.test(file.name || "");
+    if (isHeic) {
+      box.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:4px;padding:8px;">
+        <span style="font-size:2rem;">&#128247;</span>
+        <span style="font-size:.7rem;word-break:break-all;text-align:center;opacity:.7;">${file.name || "HEIC"}</span>
+      </div>`;
+      return;
+    }
+
     const url = URL.createObjectURL(file);
-    box.innerHTML = `<img alt="preview" src="${url}">`;
-    setTimeout(() => URL.revokeObjectURL(url), 15000);
+    const previewImg = document.createElement("img");
+    previewImg.alt = "preview";
+    previewImg.onerror = () => {
+      box.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:4px;padding:8px;">
+        <span style="font-size:2rem;">&#128247;</span>
+        <span style="font-size:.7rem;word-break:break-all;text-align:center;opacity:.7;">${file.name || "foto"}</span>
+      </div>`;
+      URL.revokeObjectURL(url);
+    };
+    previewImg.src = url;
+    box.innerHTML = "";
+    box.appendChild(previewImg);
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
   }
 
   function setRemotePreview(slot, p) {
@@ -810,6 +832,18 @@ export function initUploaderUI(root, options = {}) {
         if (slot === "comp") {
           clearComp();
         } else {
+          // Borrar del backend (R2) si hay VIN disponible
+          const isSold = slot.startsWith("sold_");
+          const vinToDel = isSold
+            ? ($(`soldVin`)?.value || "").trim()
+            : ($(`vinText`)?.value || "").trim();
+          const dateToDel = isSold
+            ? ($(`soldDate`)?.value || todayYYYYMMDD())
+            : ($(`dateStr`)?.value || todayYYYYMMDD());
+          if (vinToDel) {
+            deleteSlot({ vin: vinToDel, dateStr: dateToDel, slot, apsUrl: options.apsUrl })
+              .catch(() => {}); // no bloquear UI si falla (ya borrado localmente)
+          }
           delete selectedFilesBySlot[slot];
           setPreview(slot, null);
           const cam = $(`${slot}_cam`);
