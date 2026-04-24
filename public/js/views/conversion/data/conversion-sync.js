@@ -73,6 +73,7 @@ import {
 import { autoStartFromScan_ } from "./conversion-eventos.js";
 import { isFinalizado_ } from "../../../work/work-status.js";
 import { showIncidenciaAlert, getMyNombre_ } from "../modals/incidencia-alert.js";
+import { showRamalEntregadoAlert } from "../modals/ramal-alert.js";
 
 
 
@@ -183,6 +184,21 @@ function handleRealtimeChange_(tableName, payload) {
         console.warn("[incidencia-alert] Error al evaluar popup:", e);
       }
     }
+  } else if (tableName === "solicitudes_ramal") {
+    // UPDATE con estado ENTREGADO → notificar al técnico si es su solicitud
+    const row = payload?.new;
+    if (row?.estado === "ENTREGADO" && row?.tecnico_email) {
+      try {
+        const myEmail = String(
+          document.getElementById("email")?.value || ""
+        ).trim().toLowerCase();
+        if (myEmail && row.tecnico_email.trim().toLowerCase() === myEmail) {
+          showRamalEntregadoAlert({ vin: row.vin || "" });
+        }
+      } catch (e) {
+        console.warn("[ramal-alert] Error:", e);
+      }
+    }
   }
 
 }
@@ -224,15 +240,17 @@ export async function initializeRealtime_() {
   
 
   // Tabla incidencias
-
   realtimeUnsubscribers.push(
-
     await subscribeToChanges("incidencias", (payload) => {
-
       handleRealtimeChange_("incidencias", payload);
-
     })
+  );
 
+  // Tabla solicitudes_ramal (notificar al técnico cuando su ramal es entregado)
+  realtimeUnsubscribers.push(
+    await subscribeToChanges("solicitudes_ramal", (payload) => {
+      handleRealtimeChange_("solicitudes_ramal", payload);
+    })
   );
 
 }

@@ -37,6 +37,7 @@ import { PAUSA_AUTO_RESUME_MS, autoResumingKeys_, enviarEvento, SCHEDULED_PAUSES
 import { initConversionDelegation_ } from "./ui/conversion-delegation.js";
 import { initVinAutocomplete_ } from "./ui/conversion-vin-autocomplete.js";
 import { checkPendingAlerts_, getMyNombre_ } from "./modals/incidencia-alert.js";
+import { requestNotifPermission } from "./modals/ramal-alert.js";
 import { initConversionQR_ } from "./ui/conversion-qr.js";
 
 // --------------------------
@@ -276,6 +277,7 @@ export function enter(mod) {
     if (email) {
       checkPendingAlerts_(email, 12).catch(() => {});
     }
+    requestNotifPermission();
   }
 
   startLoopsFor_(mod, {
