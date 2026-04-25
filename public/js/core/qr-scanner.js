@@ -23,7 +23,7 @@ export function getScanConfig(mode) {
   const isBar = mode === "BAR";
   return {
     fps: isBar ? 8 : 10,
-    qrbox: isBar ? { width: 160, height: 320 } : { width: 250, height: 250 },
+    qrbox: isBar ? { width: 160, height: 320 } : { width: 300, height: 300 },
     formatsToSupport: isBar
       ? [
           Html5QrcodeSupportedFormats.CODE_128,
@@ -36,7 +36,9 @@ export function getScanConfig(mode) {
           Html5QrcodeSupportedFormats.CODABAR,
         ]
       : [Html5QrcodeSupportedFormats.QR_CODE],
-    experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+    // experimentalFeatures desactivado: useBarCodeDetectorIfSupported
+    // causa fallos en Android Chrome e iOS Safari con ciertos QR codes.
+    // Se usa el motor ZXing de html5-qrcode que es más confiable.
   };
 }
 

@@ -471,8 +471,16 @@ export async function getIncidencias(vin) {
   
   const incidencias = await supabaseGet("incidencias", { vin });
 
-  const driveUrls = (fileId) => {
+  // R2 keys contienen "/" (ej: incidencias/2026-04/VIN/archivo.jpg)
+  // Drive legacy IDs NO contienen "/"
+  const R2_BASE = "https://pub-c7d6e000a03d4913b0694c761ea901d2.r2.dev";
+  const photoUrls = (fileId) => {
     if (!fileId) return { url: "", thumbUrl: "", imgUrl: "" };
+    if (fileId.includes("/")) {
+      const url = `${R2_BASE}/${fileId}`;
+      return { url, thumbUrl: url, imgUrl: url };
+    }
+    // Legacy Drive
     return {
       url: "https://drive.google.com/file/d/" + fileId + "/view",
       thumbUrl: "https://drive.google.com/thumbnail?id=" + fileId + "&sz=w400",
@@ -482,7 +490,7 @@ export async function getIncidencias(vin) {
 
   return incidencias
     .map(inc => {
-      const urls = driveUrls(inc.foto_file_id);
+      const urls = photoUrls(inc.foto_file_id);
       return {
         id: inc.id,
         fecha: inc.fecha_hora,
