@@ -32,6 +32,8 @@
   "homepage": "https://github.com/carlosq51/glp-sum-vari#readme",
   "devDependencies": {
     "autoprefixer": "^10.4.27",
-    "vite": "^6.4.1"
+    "sharp": "^0.34.5",
+    "vite": "^6.4.1",
+    "vite-plugin-pwa": "^1.2.0"
   }
 }

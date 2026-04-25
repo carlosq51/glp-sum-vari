@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Fondo -->
+  <rect width="512" height="512" rx="96" fill="#0f172a"/>
+
+  <!-- Cuerpo del carro -->
+  <rect x="80" y="270" width="352" height="110" rx="22" fill="#1e40af"/>
+
+  <!-- Cabina (techo) -->
+  <path d="M148 270 L178 190 Q186 174 204 174 L308 174 Q326 174 334 190 L364 270 Z" fill="#2563eb"/>
+
+  <!-- Ventana delantera -->
+  <path d="M306 182 L328 258 L260 258 L260 182 Z" rx="6" fill="#bfdbfe" opacity="0.9"/>
+
+  <!-- Ventana trasera -->
+  <path d="M206 182 L184 258 L252 258 L252 182 Z" rx="6" fill="#bfdbfe" opacity="0.9"/>
+
+  <!-- División central ventanas -->
+  <rect x="253" y="182" width="8" height="76" fill="#1e3a8a"/>
+
+  <!-- Rueda trasera -->
+  <circle cx="160" cy="380" r="46" fill="#0f172a"/>
+  <circle cx="160" cy="380" r="32" fill="#334155"/>
+  <circle cx="160" cy="380" r="14" fill="#94a3b8"/>
+
+  <!-- Rueda delantera -->
+  <circle cx="352" cy="380" r="46" fill="#0f172a"/>
+  <circle cx="352" cy="380" r="32" fill="#334155"/>
+  <circle cx="352" cy="380" r="14" fill="#94a3b8"/>
+
+  <!-- Faros delanteros -->
+  <rect x="408" y="295" width="30" height="14" rx="7" fill="#fde68a"/>
+
+  <!-- Faros traseros -->
+  <rect x="74" y="295" width="24" height="14" rx="7" fill="#f87171"/>
+
+  <!-- Texto GLP -->
+  <text x="256" y="468" font-family="Arial, sans-serif" font-weight="900" font-size="52" fill="#60a5fa" text-anchor="middle" letter-spacing="6">GLP</text>
+</svg>
