@@ -80,6 +80,23 @@ function clearIncFoto_() {
 // iOS fix: usa createObjectURL en vez de FileReader+data URL para evitar
 // el bug de crossOrigin en Safari iOS que taintea el canvas
 async function imageFileToUploadPayload_(file) {
+  // HEIC/HEIF (iPhone): Safari no puede dibujarlo en canvas → subir sin comprimir
+  const isHeic = /heic|heif/i.test(file.type || "") || /\.heic$|\.heif$/i.test(file.name || "");
+  if (isHeic) {
+    const b64 = await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result).split(",")[1] || "");
+      r.onerror = () => reject(new Error("No se pudo leer el archivo HEIC."));
+      r.readAsDataURL(file);
+    });
+    return {
+      mimeType: file.type || "image/heic",
+      b64,
+      previewUrl: null,
+      name: file.name || "incidencia.heic",
+    };
+  }
+
   const objectUrl = URL.createObjectURL(file);
 
   try {
@@ -97,7 +114,7 @@ async function imageFileToUploadPayload_(file) {
 
       im.onerror = () => {
         clearTimeout(timeout);
-        reject(new Error("No se pudo cargar la imagen."));
+        reject(new Error("NO_SE_PUDO_ABRIR"));
       };
 
       // NO crossOrigin aquí: los object URLs son same-origin, no necesitan CORS
@@ -158,8 +175,24 @@ async function imageFileToUploadPayload_(file) {
       previewUrl: outDataUrl,
       name: (file.name || "incidencia.jpg").replace(/\.[^.]+$/, "") + ".jpg",
     };
+  } catch (err) {
+    // Cualquier fallo de canvas → subir original sin comprimir
+    try { URL.revokeObjectURL(objectUrl); } catch {}
+    const b64 = await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result).split(",")[1] || "");
+      r.onerror = () => reject(new Error("No se pudo leer el archivo."));
+      r.readAsDataURL(file);
+    });
+    const dataUrl = `data:${file.type || "image/jpeg"};base64,${b64}`;
+    return {
+      mimeType: file.type || "image/jpeg",
+      b64,
+      previewUrl: dataUrl,
+      name: file.name || "incidencia.jpg",
+    };
   } finally {
-    URL.revokeObjectURL(objectUrl);
+    try { URL.revokeObjectURL(objectUrl); } catch {}
   }
 }
 
@@ -197,9 +230,20 @@ async function onIncFotoChange_(e) {
     };
 
     const img = incFotoPreview();
-    if (img) img.src = payload.previewUrl;
-
-    incFotoPreviewWrap()?.classList.remove("hidden");
+    const wrap = incFotoPreviewWrap();
+    if (payload.previewUrl) {
+      if (img) img.src = payload.previewUrl;
+      wrap?.classList.remove("hidden");
+    } else {
+      // HEIC u otro sin preview: mostrar placeholder
+      if (wrap) {
+        wrap.classList.remove("hidden");
+        wrap.innerHTML = `<div style="padding:12px;text-align:center;opacity:.7;">
+          &#128247; ${escapeHtml(payload.name || "foto")}<br>
+          <small>Vista previa no disponible en este dispositivo</small>
+        </div>`;
+      }
+    }
     incSetMsg("");
   } catch (err) {
     console.error("[INC foto] ERROR:", err);

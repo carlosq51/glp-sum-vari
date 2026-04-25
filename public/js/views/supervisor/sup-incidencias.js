@@ -76,18 +76,30 @@ export function renderIncidencias_(j, ctx, { escapeHtml, fmtShort_ }) {
 
     const hasFoto = !!(it.fotoThumbUrl || it.fotoUrl || it.fotoImgUrl);
 
+    // R2: URLs contienen el dominio r2.dev; Drive legacy no
+    const isR2Photo = !!(it.fotoThumbUrl && !it.fotoThumbUrl.includes("drive.google"));
     const fotoHtml = hasFoto ? `
       <div style="margin-top:10px;">
-        <a href="${escapeHtml(it.fotoUrl || it.fotoImgUrl)}" target="_blank" rel="noopener">
+        ${isR2Photo ? `
           <img
             src="${escapeHtml(it.fotoThumbUrl || it.fotoImgUrl)}"
             alt="Foto incidencia"
-            style="width:140px; height:auto; border-radius:10px; border:1px solid rgba(255,255,255,.18);"
+            style="width:100%; max-width:280px; height:auto; border-radius:10px;
+                   border:1px solid rgba(255,255,255,.18); display:block;"
+            loading="lazy"
           />
-        </a>
-        <div class="small" style="opacity:.85; margin-top:6px;">
-          (clic para abrir)
-        </div>
+        ` : `
+          <a href="${escapeHtml(it.fotoUrl || it.fotoImgUrl)}" target="_blank" rel="noopener">
+            <img
+              src="${escapeHtml(it.fotoThumbUrl || it.fotoImgUrl)}"
+              alt="Foto incidencia"
+              style="width:140px; height:auto; border-radius:10px;
+                     border:1px solid rgba(255,255,255,.18);"
+              loading="lazy"
+            />
+          </a>
+          <div class="small" style="opacity:.85; margin-top:6px;">(clic para abrir en Drive)</div>
+        `}
       </div>
     ` : "";
 

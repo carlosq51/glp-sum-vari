@@ -65,7 +65,7 @@ export async function startCameraWithFallback(instance, config, onDecoded) {
     /* fallback */
   }
 
-  // Intento 2: environment sin exact
+  // Intento 2: environment sin exact (iOS Safari acepta esto)
   try {
     await instance.start(
       { facingMode: "environment" },
@@ -79,15 +79,22 @@ export async function startCameraWithFallback(instance, config, onDecoded) {
   }
 
   // Intento 3: lista de cámaras → elegir trasera
-  const devices = await Html5Qrcode.getCameras();
-  let cameraId = devices?.[0]?.id || null;
-  const env = devices?.find((d) =>
-    /back|rear|environment/i.test(d.label || "")
-  );
-  if (env?.id) cameraId = env.id;
+  try {
+    const devices = await Html5Qrcode.getCameras();
+    if (devices && devices.length > 0) {
+      let cameraId = devices[0].id;
+      const env = devices.find((d) => /back|rear|environment/i.test(d.label || ""));
+      if (env?.id) cameraId = env.id;
+      await instance.start(cameraId, config, onDecoded, () => {});
+      return;
+    }
+  } catch {
+    /* fallback */
+  }
 
+  // Intento 4: cámara frontal como último recurso (al menos funciona en iOS)
   await instance.start(
-    cameraId ?? { facingMode: "environment" },
+    { facingMode: "user" },
     config,
     onDecoded,
     () => {}
@@ -149,9 +156,12 @@ export function createScanner(readerId) {
 
       await startCameraWithFallback(inst, cfg, wrappedOnDecoded);
     } catch (err) {
+      const msg = String(err?.message || err || "");
+      const isPermission = /permission|denied|notallowed|not allowed/i.test(msg);
       if (msgEl) {
-        msgEl.textContent =
-          "No se pudo abrir la cámara. Revisa permisos (HTTPS o localhost).";
+        msgEl.textContent = isPermission
+          ? "Permiso de cámara denegado. Ve a Configuración > Safari > Cámara y permite el acceso."
+          : "No se pudo abrir la cámara. Revisa permisos en tu navegador.";
       }
       throw err;
     }
