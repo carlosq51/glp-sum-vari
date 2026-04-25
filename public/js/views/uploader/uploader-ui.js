@@ -842,7 +842,12 @@ export function initUploaderUI(root, options = {}) {
             : ($(`dateStr`)?.value || todayYYYYMMDD());
           if (vinToDel) {
             deleteSlot({ vin: vinToDel, dateStr: dateToDel, slot, apsUrl: options.apsUrl })
-              .catch(() => {}); // no bloquear UI si falla (ya borrado localmente)
+              .then(() => {
+                // Confirmar que R2 ya no tiene el archivo
+                if (isSold) refreshSoldStatus().catch(() => {});
+                else       refreshStatus().catch(() => {});
+              })
+              .catch(() => {});
           }
           delete selectedFilesBySlot[slot];
           setPreview(slot, null);

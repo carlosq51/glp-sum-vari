@@ -133,18 +133,19 @@ export async function fileToB64Compressed(file) {
 
     return b64;
   } catch (err) {
-    // Si el navegador no pudo decodificar la imagen (ej: formato exótico),
-    // subir el archivo original sin comprimir en lugar de abortar.
-    if (String(err?.message).includes("NO_SE_PUDO_ABRIR") || String(err?.message).includes("tardó demasiado")) {
-      URL.revokeObjectURL(imgURL);
+    // Si la compresión falla por CUALQUIER razón (formato no soportado, dimensiones
+    // inválidas, canvas bloqueado, etc.), subir el archivo original sin comprimir.
+    URL.revokeObjectURL(imgURL);
+    try {
       return await new Promise((resolve, reject) => {
         const r = new FileReader();
         r.onload = () => resolve(String(r.result).split(",")[1] || "");
         r.onerror = () => reject(new Error("No se pudo leer el archivo."));
         r.readAsDataURL(file);
       });
+    } catch {
+      throw new Error(`Error comprimiendo imagen: ${err?.message || err}`);
     }
-    throw new Error(`Error comprimiendo imagen: ${err?.message || err}`);
   } finally {
     URL.revokeObjectURL(imgURL);
   }
