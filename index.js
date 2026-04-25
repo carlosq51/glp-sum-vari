@@ -33,6 +33,22 @@ app.get("/env-config.js", (_req, res) => {
 
 // Serve Vite build output if available, otherwise fallback to source
 const staticDir = existsSync("dist") ? "dist" : "public";
+
+// Headers especiales para PWA (Service Worker + Manifest)
+app.get("/sw.js", (_req, res, next) => {
+  res.setHeader("Service-Worker-Allowed", "/");
+  res.setHeader("Cache-Control", "no-cache");
+  next();
+});
+app.get("/workbox-*.js", (_req, res, next) => {
+  res.setHeader("Cache-Control", "no-cache");
+  next();
+});
+app.get("/manifest.webmanifest", (_req, res, next) => {
+  res.setHeader("Content-Type", "application/manifest+json");
+  next();
+});
+
 app.use(express.static(staticDir));
 
 // Helper para medir tiempos
