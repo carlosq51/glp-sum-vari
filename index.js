@@ -40,12 +40,13 @@ app.get("/sw.js", (_req, res, next) => {
   res.setHeader("Cache-Control", "no-cache");
   next();
 });
-app.get("/workbox-*.js", (_req, res, next) => {
-  res.setHeader("Cache-Control", "no-cache");
-  next();
-});
-app.get("/manifest.webmanifest", (_req, res, next) => {
-  res.setHeader("Content-Type", "application/manifest+json");
+app.use((_req, res, next) => {
+  if (/^\/workbox-[^/]+\.js$/.test(_req.path)) {
+    res.setHeader("Cache-Control", "no-cache");
+  }
+  if (_req.path === "/manifest.webmanifest") {
+    res.setHeader("Content-Type", "application/manifest+json");
+  }
   next();
 });
 
