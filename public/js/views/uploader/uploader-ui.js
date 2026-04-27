@@ -85,6 +85,12 @@ export function initUploaderUI(root, options = {}) {
     const el = screens[name];
     if (el) el.classList.add("active");
     stopAllScanners().catch(() => {});
+
+    // Refresh previews when entering params screen (comp thumbnails may not be populated yet)
+    if (name === "params") {
+      const vin = ($("vinText")?.value || "").trim();
+      if (vin) refreshStatus().catch(() => {});
+    }
   }
 
     function openBackControl() {
