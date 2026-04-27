@@ -175,7 +175,7 @@ export function initUploaderUI(root, options = {}) {
 
     const img = document.createElement("img");
     img.alt = "drive preview";
-    img.loading = "lazy";
+    img.loading = "eager";
     img.referrerPolicy = "no-referrer";
     img.style.width = "100%";
     img.style.height = "100%";
@@ -204,7 +204,7 @@ export function initUploaderUI(root, options = {}) {
 
     const img = document.createElement("img");
     img.alt = "drive preview";
-    img.loading = "lazy";
+    img.loading = "eager";
     img.referrerPolicy = "no-referrer";
     img.style.width = "100%";
     img.style.height = "100%";
