@@ -21,3 +21,72 @@
   right: 0;
   width: 100%;
 }
+
+/* ── Tipo select ── */
+#incModal .incSelect {
+  font-size: var(--fs-body);
+}
+
+/* ── Gravedad radio group ── */
+.incGravedadGroup {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.incGravedadBtn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 90px;
+  padding: 10px 12px;
+  border-radius: var(--radiusSm);
+  border: var(--border-w-md, 1.5px) solid var(--surfaceLine);
+  background: var(--pillBg);
+  cursor: pointer;
+  font-size: var(--fs-sm, 13px);
+  font-weight: var(--fw-bold, 700);
+  transition: background var(--dur-base), border-color var(--dur-base);
+  user-select: none;
+}
+
+.incGravedadBtn input[type="radio"] {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--muted);
+  flex-shrink: 0;
+  transition: border-color var(--dur-base), background var(--dur-base);
+}
+
+.incGravedadBtn:has(input[value="LEVE"]:checked) {
+  border-color: #f0b429;
+  background: rgba(240,180,41,.12);
+}
+.incGravedadBtn:has(input[value="MODERADA"]:checked) {
+  border-color: #e87d00;
+  background: rgba(232,125,0,.12);
+}
+.incGravedadBtn:has(input[value="CRITICA"]:checked) {
+  border-color: var(--danger, #e05);
+  background: var(--dangerBg, rgba(238,0,85,.12));
+}
+
+.incGravedadBtn input[value="LEVE"]:checked  { border-color: #f0b429; background: #f0b429; }
+.incGravedadBtn input[value="MODERADA"]:checked { border-color: #e87d00; background: #e87d00; }
+.incGravedadBtn input[value="CRITICA"]:checked  { border-color: var(--danger, #e05); background: var(--danger, #e05); }
+
+/* ── Titulo chip in supervisor list ── */
+.incTituloChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 100px;
+  background: var(--noteBg);
+  color: var(--note);
+  font-weight: var(--fw-bold, 700);
+  letter-spacing: .2px;
+}

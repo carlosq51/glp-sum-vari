@@ -41,6 +41,29 @@ export async function fetchIncidencias_(vin, conversionId, { getJSON_user }) {
   return r;
 }
 
+const INC_TITULOS_CONOCIDOS = new Set([
+  "FALTA MARCAR AJUSTAR COMPONENTES","CABLEADO","CINTILLOS","MANGUERA","CAÑERIA",
+  "REDUCTOR","FILTRO DE GAS","SENSOR MAP","EMULACIÓN INVERTIDA","CONECTORES INVERTIDOS",
+  "DOCUMENTO OT INCOMPLETA","PERFORACIÓN INCORRECTA","GRAPAS","FUGA DE GAS",
+  "TOMA DE CARGA","TANQUE MAL INSTALADO","DAÑO ESTÉTICO","SIN PINTURA O ANTICORROSIVO",
+  "TANQUE SIN GAS","OTRO",
+]);
+
+function parseNota_(raw) {
+  const s = String(raw || "").trim();
+  const nl = s.indexOf("\n");
+  if (nl === -1) {
+    return INC_TITULOS_CONOCIDOS.has(s.toUpperCase())
+      ? { titulo: s, extra: "" }
+      : { titulo: "", extra: s };
+  }
+  const first = s.slice(0, nl).trim();
+  const rest  = s.slice(nl + 1).trim();
+  return INC_TITULOS_CONOCIDOS.has(first.toUpperCase())
+    ? { titulo: first, extra: rest }
+    : { titulo: "", extra: s };
+}
+
 export function renderIncidencias_(j, ctx, { escapeHtml, fmtShort_ }) {
   const info = document.getElementById("supIncInfo");
   const list = document.getElementById("supIncList");
@@ -71,8 +94,9 @@ export function renderIncidencias_(j, ctx, { escapeHtml, fmtShort_ }) {
   list.innerHTML = items.map((it) => {
     const tipo = String(it.tipo || "").toUpperCase();
     const tecnico = it.tecnico || "-";
-    const nota = it.nota || "";
+    const rawNota = it.nota || "";
     const fecha = it.fecha || "";
+    const { titulo, extra } = parseNota_(rawNota);
 
     const hasFoto = !!(it.fotoThumbUrl || it.fotoUrl || it.fotoImgUrl);
 
@@ -124,11 +148,17 @@ export function renderIncidencias_(j, ctx, { escapeHtml, fmtShort_ }) {
           </div>
         ` : ""}
 
-        ${nota ? `
-          <div class="small" style="margin-top:8px; white-space:pre-wrap;">
-            <b>Nota:</b> ${escapeHtml(nota)}
+        ${titulo ? `
+          <div class="small incTituloChip" style="margin-top:8px;">
+            📌 ${escapeHtml(titulo)}
           </div>
-        ` : `<div class="small" style="margin-top:8px; opacity:.8;">Sin nota.</div>`}
+        ` : ""}
+
+        ${extra ? `
+          <div class="small" style="margin-top:6px; white-space:pre-wrap; opacity:.85;">
+            ${escapeHtml(extra)}
+          </div>
+        ` : (!titulo ? `<div class="small" style="margin-top:8px; opacity:.6;">Sin nota.</div>` : "")}
 
         ${fotoHtml}
       </div>

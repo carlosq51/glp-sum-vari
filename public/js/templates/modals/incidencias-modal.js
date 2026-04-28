@@ -3,7 +3,36 @@
 // Template HTML: modal de registro de incidencias
 // =========================
 
+const INC_TITULOS = [
+  "FALTA MARCAR AJUSTAR COMPONENTES",
+  "CABLEADO",
+  "CINTILLOS",
+  "MANGUERA",
+  "CAÑERIA",
+  "REDUCTOR",
+  "FILTRO DE GAS",
+  "SENSOR MAP",
+  "EMULACIÓN INVERTIDA",
+  "CONECTORES INVERTIDOS",
+  "DOCUMENTO OT INCOMPLETA",
+  "PERFORACIÓN INCORRECTA",
+  "GRAPAS",
+  "FUGA DE GAS",
+  "TOMA DE CARGA",
+  "TANQUE MAL INSTALADO",
+  "DAÑO ESTÉTICO",
+  "SIN PINTURA O ANTICORROSIVO",
+  "TANQUE SIN GAS",
+  "OTRO",
+];
+
+export { INC_TITULOS };
+
 export function incidenciasModal() {
+  const tituloOpts = INC_TITULOS.map(t =>
+    `<option value="${t}">${t}</option>`
+  ).join("");
+
   return `
     <!-- =========================
         MODAL INCIDENCIAS
@@ -19,7 +48,7 @@ export function incidenciasModal() {
           <div class="small" id="incInfo" style="opacity:.85; margin-bottom:10px;"></div>
 
           <div class="card" style="border:1px solid rgba(255,255,255,.16);">
-            <div style="font-weight:900; margin-bottom:8px;">Selecciona técnico y severidad</div>
+            <div style="font-weight:900; margin-bottom:8px;">Selecciona técnico, tipo y gravedad</div>
 
             <label class="small" style="display:block; margin-top:8px;">Técnico</label>
 
@@ -31,15 +60,26 @@ export function incidenciasModal() {
             <select id="incTech" style="display:none;"></select>
 
             <label class="small" style="display:block; margin-top:10px;">Tipo de incidencia</label>
-            <select id="incTipo" style="width:100%; height:44px;">
-              <option value="">Selecciona tipo</option>
-              <option value="LEVE">Incidencia leve</option>
-              <option value="MODERADA">Incidencia moderada</option>
-              <option value="CRITICA">Incidencia crítica</option>
+            <select id="incTitulo" class="incSelect" style="width:100%; height:44px;">
+              <option value="">— Selecciona tipo —</option>
+              ${tituloOpts}
             </select>
 
-            <label class="small" style="display:block; margin-top:10px;">Nota (opcional)</label>
-            <textarea id="incNota" rows="2" placeholder="Describe brevemente la incidencia..." style="width:100%;"></textarea>
+            <label class="small" style="display:block; margin-top:10px;">Gravedad</label>
+            <div class="incGravedadGroup" style="margin-top:6px;">
+              <label class="incGravedadBtn">
+                <input type="radio" name="incGravedad" value="LEVE"> <span>🟡 Leve</span>
+              </label>
+              <label class="incGravedadBtn">
+                <input type="radio" name="incGravedad" value="MODERADA"> <span>🟠 Moderada</span>
+              </label>
+              <label class="incGravedadBtn">
+                <input type="radio" name="incGravedad" value="CRITICA"> <span>🔴 Crítica</span>
+              </label>
+            </div>
+
+            <label class="small" style="display:block; margin-top:10px;">Nota adicional (opcional)</label>
+            <textarea id="incNota" rows="2" placeholder="Detalle adicional..." style="width:100%;"></textarea>
 
             <!-- =========================
                  FOTO INCIDENCIA

@@ -286,8 +286,17 @@ function incSelectHidden() {
   return incEl("incTech");
 }
 
-function incTipo() {
-  return incEl("incTipo");
+function incTitulo() {
+  return incEl("incTitulo");
+}
+
+function incGravedadValue() {
+  const checked = document.querySelector('input[name="incGravedad"]:checked');
+  return checked ? checked.value : "";
+}
+
+function incGravedadReset_() {
+  document.querySelectorAll('input[name="incGravedad"]').forEach(r => { r.checked = false; });
 }
 
 function incNota() {
@@ -306,8 +315,9 @@ function resetIncForm_() {
   const sel = incSelectHidden();
   if (sel) sel.innerHTML = "";
 
-  const tipo = incTipo();
-  if (tipo) tipo.value = "";
+  const titulo = incTitulo();
+  if (titulo) titulo.value = "";
+  incGravedadReset_();
 
   const nota = incNota();
   if (nota) nota.value = "";
@@ -324,9 +334,10 @@ function incRefreshSaveBtn_() {
   if (!btn) return;
 
   const okTech = !!INC.techSelected?.userId || !!INC.techSelected?.email;
-  const okTipo = !!String(incTipo()?.value || "").trim();
+  const okTitulo = !!String(incTitulo()?.value || "").trim();
+  const okGravedad = !!incGravedadValue();
 
-  btn.disabled = !(okTech && okTipo);
+  btn.disabled = !(okTech && okTitulo && okGravedad);
 }
 
 // -----------------------------------------
@@ -581,9 +592,15 @@ async function saveIncidencia_() {
     return;
   }
 
-  const tipo = String(incTipo()?.value || "").trim().toUpperCase();
-  if (!["LEVE", "MODERADA", "CRITICA"].includes(tipo)) {
+  const titulo = String(incTitulo()?.value || "").trim();
+  if (!titulo) {
     incSetMsg("Selecciona el tipo de incidencia.");
+    return;
+  }
+
+  const gravedad = incGravedadValue().toUpperCase();
+  if (!["LEVE", "MODERADA", "CRITICA"].includes(gravedad)) {
+    incSetMsg("Selecciona la gravedad.");
     return;
   }
 
@@ -593,7 +610,8 @@ async function saveIncidencia_() {
     return;
   }
 
-  const nota = String(incNota()?.value || "").trim();
+  const notaExtra = String(incNota()?.value || "").trim();
+  const nota = notaExtra ? `${titulo}\n${notaExtra}` : titulo;
 
   const it = INC.item;
   const payload = {
@@ -606,7 +624,7 @@ async function saveIncidencia_() {
     tecnicoEmail: String(tech.email || "").trim(),
     tecnicoNombre: String(tech.name || "").trim(),
 
-    tipo,
+    tipo: gravedad,
     nota,
 
         // ✅ foto opcional (1 por incidencia)
@@ -655,13 +673,13 @@ async function saveIncidencia_() {
         const next = { ...current };
 
         if (maybeItem.inc_leve != null) next.inc_leve = Number(maybeItem.inc_leve || 0);
-        else if (tipo === "LEVE") next.inc_leve = Number(next.inc_leve || 0) + 1;
+        else if (gravedad === "LEVE") next.inc_leve = Number(next.inc_leve || 0) + 1;
 
         if (maybeItem.inc_moderada != null) next.inc_moderada = Number(maybeItem.inc_moderada || 0);
-        else if (tipo === "MODERADA") next.inc_moderada = Number(next.inc_moderada || 0) + 1;
+        else if (gravedad === "MODERADA") next.inc_moderada = Number(next.inc_moderada || 0) + 1;
 
         if (maybeItem.inc_critica != null) next.inc_critica = Number(maybeItem.inc_critica || 0);
-        else if (tipo === "CRITICA") next.inc_critica = Number(next.inc_critica || 0) + 1;
+        else if (gravedad === "CRITICA") next.inc_critica = Number(next.inc_critica || 0) + 1;
 
         c.itemsByKey.set(INC.itemKey, next);
 
@@ -746,10 +764,17 @@ export function initIncidenciasUI_() {
     incSuggestHide_();
   });
 
-  // tipo / nota
-  incTipo()?.addEventListener("change", () => {
+  // titulo / gravedad / nota
+  incTitulo()?.addEventListener("change", () => {
     incSetMsg("");
     incRefreshSaveBtn_();
+  });
+
+  document.querySelectorAll('input[name="incGravedad"]').forEach(r => {
+    r.addEventListener("change", () => {
+      incSetMsg("");
+      incRefreshSaveBtn_();
+    });
   });
 
   incNota()?.addEventListener("input", () => {
