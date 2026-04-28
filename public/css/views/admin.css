@@ -1,0 +1,254 @@
+/* =====================================================================
+   views/admin.css — Vista Admin CRUD
+   ===================================================================== */
+
+/* ── Header ── */
+.adminHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.adminHeader h3 {
+  margin: 0;
+}
+
+/* ── Tabs ── */
+.adminTabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.adminTab {
+  height: var(--h-btn-sm, 34px);
+  padding: 0 14px;
+  font-size: var(--fs-sm, 13px);
+  font-weight: var(--fw-bold, 700);
+  border-radius: var(--radiusSm);
+  border: var(--border-w-md) solid var(--btnLine);
+  background: var(--grad-btn);
+  color: var(--btnText);
+  opacity: .65;
+  transition: opacity var(--dur-base), background var(--dur-base);
+  white-space: nowrap;
+}
+
+.adminTab.active {
+  opacity: 1;
+  background: var(--grad-surface-v, var(--surface));
+  border-color: var(--surfaceLine);
+}
+
+/* ── Toolbar ── */
+.adminToolbar {
+  display: flex;
+  gap: var(--gap);
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.adminToolbar input {
+  flex: 1;
+  height: var(--h-input);
+}
+
+.adminToolbar button {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ── Table wrapper ── */
+.adminTableScroll {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.adminTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm, 13px);
+}
+
+.adminTable th {
+  text-align: left;
+  padding: 8px 10px;
+  font-weight: var(--fw-extrabold);
+  font-size: var(--fs-xs, 11px);
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: var(--muted);
+  border-bottom: var(--border-w) solid var(--surfaceLine);
+  white-space: nowrap;
+}
+
+.adminTable td {
+  padding: 8px 10px;
+  border-bottom: var(--border-w) solid rgba(255,255,255,.06);
+  vertical-align: middle;
+  line-height: 1.4;
+}
+
+.adminTable tr:last-child td {
+  border-bottom: none;
+}
+
+.adminTable tr:hover td {
+  background: rgba(255,255,255,.03);
+}
+
+/* ── Action buttons inside table ── */
+.adminActionsCell {
+  white-space: nowrap;
+  text-align: right;
+}
+
+.adminRowBtn {
+  height: 28px;
+  width: 28px;
+  padding: 0;
+  font-size: 14px;
+  border-radius: var(--radiusSm);
+  background: var(--pillBg);
+  border-color: var(--pillLine);
+}
+
+.adminRowBtn + .adminRowBtn {
+  margin-left: 4px;
+}
+
+/* ── Badges ── */
+.adminBadge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 100px;
+  font-size: var(--fs-xs, 11px);
+  font-weight: var(--fw-bold, 700);
+  background: var(--noteBg);
+  color: var(--note);
+  letter-spacing: .3px;
+}
+
+.adminBadgeOk {
+  composes: adminBadge;
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 100px;
+  font-size: var(--fs-xs, 11px);
+  font-weight: var(--fw-bold, 700);
+  background: var(--okBg);
+  color: var(--ok);
+}
+
+.adminBadgeMuted {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 100px;
+  font-size: var(--fs-xs, 11px);
+  font-weight: var(--fw-bold, 700);
+  background: var(--pillBg);
+  color: var(--muted);
+}
+
+.adminBadgeDanger {
+  background: var(--dangerBg);
+  color: var(--danger);
+}
+
+.adminBadgeWarn {
+  background: var(--warnBg);
+  color: var(--warn);
+}
+
+/* ── Empty / msg ── */
+.adminEmpty {
+  padding: 24px;
+  text-align: center;
+}
+
+.adminMsg {
+  min-height: 18px;
+  margin-top: 8px;
+  text-align: center;
+  transition: opacity .2s;
+}
+
+/* ── Modal específico Admin ── */
+.adminModalBox {
+  width: min(100%, 520px);
+}
+
+.adminModalFoot {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding: 12px 16px 16px;
+  border-top: var(--border-w) solid var(--modalLine);
+  flex-shrink: 0;
+}
+
+.adminBtnGhost {
+  background: var(--pillBg);
+  border-color: var(--pillLine);
+  color: var(--text);
+}
+
+.adminBtnOk {
+  background: var(--okBg);
+  border-color: var(--ok);
+  color: var(--ok);
+  font-weight: var(--fw-extrabold);
+}
+
+/* ── Form inside modal ── */
+.adminForm {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.adminLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--fs-sm, 13px);
+  font-weight: var(--fw-bold, 700);
+  color: var(--muted);
+}
+
+.adminLabel input,
+.adminLabel select,
+.adminLabel textarea {
+  font-size: var(--fs-body);
+  color: var(--text);
+}
+
+/* Checkbox row */
+.adminLabelRow {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-size: var(--fs-body);
+  cursor: pointer;
+}
+
+.adminLabelRow input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  padding: 0;
+  accent-color: var(--ok);
+}
+
+/* ── Day theme adjustments ── */
+:root[data-theme="day"] .adminTable td {
+  border-bottom-color: rgba(11,18,32,.07);
+}
+
+:root[data-theme="day"] .adminTable tr:hover td {
+  background: rgba(11,18,32,.04);
+}

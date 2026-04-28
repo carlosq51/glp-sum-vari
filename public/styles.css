@@ -60,6 +60,7 @@
 @import url("./css/views/incidencias.css");
 @import url("./css/views/qr-reader.css");
 @import url("./css/views/debug.css");
+@import url("./css/views/admin.css");
 
 /* ── 8. Uploader ── */
 @import url("./css/07-uploader.css");
