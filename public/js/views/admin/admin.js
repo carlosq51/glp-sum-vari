@@ -2,7 +2,7 @@
 // public/js/views/admin/admin.js
 // Vista ADMIN – CRUD completo: Usuarios, VINs, OTs, Incidencias
 // =========================
-import { CORE } from "../../core/core.js";
+import { CORE, MODULES } from "../../core/core.js";
 import {
   supabaseGet,
   supabasePost,
@@ -16,6 +16,7 @@ const S = {
   rows: [],
   editId: null,
   searchTimer: null,
+  userModulos: [],
 };
 
 // ─── Enums (mirror schema.sql) ───────────────────────────────────────
@@ -149,12 +150,19 @@ async function loadTab() {
 
 // ─── Form definitions ────────────────────────────────────────────────
 function formUsuario(r = {}) {
+  const checksHtml = MODULES.map(m =>
+    `<label class="adminCheckLabel"><input type="checkbox" class="fModulo" value="${m}"> ${m}</label>`
+  ).join("");
   return `
     <label class="adminLabel">Nombre<input id="fNombre" type="text" value="${escHtml(r.nombre || "")}" placeholder="Nombre completo"></label>
     <label class="adminLabel">Email<input id="fEmail" type="email" value="${escHtml(r.email || "")}" placeholder="correo@empresa.com"></label>
     <label class="adminLabel">Rol<select id="fRol">${opts(ROLES, r.rol || "TECNICO")}</select></label>
     <label class="adminLabel">Especialidad<select id="fEsp">${opts(ESPECIALIDADES, r.especialidad || "AMBOS")}</select></label>
     <label class="adminLabel adminLabelRow"><input id="fActivo" type="checkbox"${r.activo !== false ? " checked" : ""}> Activo</label>
+    <div class="adminLabel">
+      <span class="adminLabelText">Módulos asignados <span class="adminLabelHint">(vacío = default del rol)</span></span>
+      <div class="adminCheckGroup" id="fModulosGroup">${checksHtml}</div>
+    </div>
   `;
 }
 
@@ -209,13 +217,17 @@ function collectForm() {
   const v = id => $id(id)?.value?.trim() ?? "";
   const b = id => !!$id(id)?.checked;
 
-  if (S.tab === "usuarios") return {
-    nombre: v("fNombre"),
-    email: v("fEmail"),
-    rol: v("fRol"),
-    especialidad: v("fEsp"),
-    activo: b("fActivo"),
-  };
+  if (S.tab === "usuarios") {
+    const _modulos = [...document.querySelectorAll(".fModulo:checked")].map(cb => cb.value);
+    return {
+      nombre: v("fNombre"),
+      email: v("fEmail"),
+      rol: v("fRol"),
+      especialidad: v("fEsp"),
+      activo: b("fActivo"),
+      _modulos,
+    };
+  }
   if (S.tab === "vins") return {
     vin: v("fVin"),
     modelo: v("fModelo"),
@@ -298,14 +310,19 @@ async function save() {
 
   try {
     const table = TABLE_MAP[S.tab];
+    const { _modulos, ...rowData } = (S.tab === "usuarios") ? data : { ...data, _modulos: undefined };
     if (S.editId) {
       // UPDATE
       const pkField = S.tab === "vins" ? "vin" : "id";
-      await supabasePatch(table, { [pkField]: S.editId }, data);
+      await supabasePatch(table, { [pkField]: S.editId }, rowData);
+      if (S.tab === "usuarios") await syncModulos_(S.editId, _modulos || []);
       msg("Actualizado correctamente.");
     } else {
       // CREATE
-      await supabasePost(table, data);
+      const result = await supabasePost(table, rowData);
+      if (S.tab === "usuarios" && Array.isArray(result) && result[0]?.id) {
+        await syncModulos_(result[0].id, _modulos || []);
+      }
       msg("Creado correctamente.");
     }
     closeModal();
@@ -314,6 +331,14 @@ async function save() {
     msg(e.message, true);
   } finally {
     saveBtn.disabled = false;
+  }
+}
+
+// ─── Sync usuario_modulos ────────────────────────────────────────────
+async function syncModulos_(userId, modulos) {
+  await supabaseDelete("usuario_modulos", { user_id: userId });
+  if (modulos.length) {
+    await supabasePost("usuario_modulos", modulos.map(m => ({ user_id: userId, modulo: m })));
   }
 }
 
@@ -337,13 +362,22 @@ function bindTableActions() {
   const wrap = $id("adminTableContent");
   if (!wrap) return;
   wrap.querySelectorAll(".adminBtnEdit").forEach(btn => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", async () => {
       const id = btn.dataset.id;
       const pkField = S.tab === "vins" ? "vin" : "id";
       const row = S.rows.find(r => String(r[pkField]) === id);
       if (!row) return;
       S.editId = id;
       openModal(`Editar ${TITLE_MAP[S.tab]}`, FORM_MAP[S.tab](row));
+      if (S.tab === "usuarios") {
+        try {
+          const mods = await supabaseGet("usuario_modulos", { user_id: id });
+          const modNames = Array.isArray(mods) ? mods.map(m => m.modulo) : [];
+          document.querySelectorAll(".fModulo").forEach(cb => {
+            cb.checked = modNames.includes(cb.value);
+          });
+        } catch { /* silent – checkboxes stay unchecked */ }
+      }
     });
   });
   wrap.querySelectorAll(".adminBtnDel").forEach(btn => {
