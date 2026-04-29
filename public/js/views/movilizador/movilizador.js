@@ -61,7 +61,7 @@ function renderList1_(rows) {
               <td>
                 <button class="movBtnAction btnTrasladar"
                   data-vin="${escapeHtml(r.vin)}" type="button">
-                  Trasladar ▶
+                  Mover a zona de espera ▶
                 </button>
               </td>
             </tr>
@@ -100,15 +100,15 @@ function renderList2_(rows) {
               <td>${fmtDate_(r.trasladado_at)}</td>
               <td>
                 ${r.estado === "ENTREGADO_CALIDAD"
-                  ? `<span class="badge badge-note">En calidad</span>`
-                  : `<span class="badge badge-warn">En espera</span>`
+                  ? `<span class="badge badge-note">En revisión técnica</span>`
+                  : `<span class="badge badge-warn">En zona de espera</span>`
                 }
               </td>
               <td>
                 ${r.estado === "TRASLADADO" ? `
                   <button class="movBtnAction btnEntregarCalidad"
                     data-vin="${escapeHtml(r.vin)}" type="button">
-                    Entregar a calidad ▶
+                    Entregar a revisión técnica ▶
                   </button>
                 ` : `<span class="muted small">—</span>`}
               </td>
@@ -126,7 +126,7 @@ function renderList3_(rows) {
   setBadge_("movBadge3", rows.length);
 
   if (!rows.length) {
-    box.innerHTML = `<div class="movEmpty small muted">No hay vehículos listos para salir.</div>`;
+    box.innerHTML = `<div class="movEmpty small muted">No hay vehículos listos para trasladar a otras áreas.</div>`;
     return;
   }
 
@@ -136,7 +136,7 @@ function renderList3_(rows) {
         <thead>
           <tr>
             <th>VIN</th>
-            <th>Calidad finalizada</th>
+            <th>Revisión técnica finalizada</th>
           </tr>
         </thead>
         <tbody>

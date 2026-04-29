@@ -16,36 +16,36 @@ export function movilizadorView() {
         </div>
       </div>
 
-      <!-- Panel 1: Conversión Finalizada – pendientes de traslado -->
+      <!-- Panel 1: Conversión Finalizada – mover a zona de espera -->
       <div class="movPanel open" id="movPanel1">
         <button class="movPanelHeader" type="button" aria-expanded="true">
           <span class="movPanelIcon">⚙️</span>
           <span class="movPanelTitle">Conversión Finalizada</span>
-          <span class="movPanelHint">Pendientes de traslado</span>
+          <span class="movPanelHint">Pendientes de traslado a zona de espera</span>
           <span id="movBadge1" class="movBadge movBadgeWarn" aria-label="Pendientes" style="display:none;"></span>
           <span class="movChevron" aria-hidden="true">▼</span>
         </button>
         <div id="movPanel1Body" class="movPanelBody"></div>
       </div>
 
-      <!-- Panel 2: En zona de calidad / espera -->
+      <!-- Panel 2: Zona de espera / revisión técnica -->
       <div class="movPanel open" id="movPanel2">
         <button class="movPanelHeader" type="button" aria-expanded="true">
-          <span class="movPanelIcon">🔍</span>
-          <span class="movPanelTitle">En Zona de Calidad</span>
-          <span class="movPanelHint">Esperando revisión</span>
-          <span id="movBadge2" class="movBadge movBadgeNote" aria-label="En calidad" style="display:none;"></span>
+          <span class="movPanelIcon">🕐</span>
+          <span class="movPanelTitle">Zona de Espera</span>
+          <span class="movPanelHint">En espera o en revisión técnica</span>
+          <span id="movBadge2" class="movBadge movBadgeNote" aria-label="En espera" style="display:none;"></span>
           <span class="movChevron" aria-hidden="true">▼</span>
         </button>
         <div id="movPanel2Body" class="movPanelBody"></div>
       </div>
 
-      <!-- Panel 3: Listos para salir -->
+      <!-- Panel 3: Revisión técnica finalizada – listo para traslado -->
       <div class="movPanel open" id="movPanel3">
         <button class="movPanelHeader" type="button" aria-expanded="true">
           <span class="movPanelIcon">✅</span>
-          <span class="movPanelTitle">Listos para Salir</span>
-          <span class="movPanelHint">Calidad finalizada</span>
+          <span class="movPanelTitle">Revisión Técnica Finalizada</span>
+          <span class="movPanelHint">Listo para trasladar a otras áreas</span>
           <span id="movBadge3" class="movBadge movBadgeOk" aria-label="Listos" style="display:none;"></span>
           <span class="movChevron" aria-hidden="true">▼</span>
         </button>

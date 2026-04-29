@@ -901,36 +901,36 @@ var of=Object.defineProperty;var af=(e,t,n)=>t in e?of(e,t,{enumerable:!0,config
         </div>
       </div>
 
-      <!-- Panel 1: Conversión Finalizada – pendientes de traslado -->
+      <!-- Panel 1: Conversión Finalizada – mover a zona de espera -->
       <div class="movPanel open" id="movPanel1">
         <button class="movPanelHeader" type="button" aria-expanded="true">
           <span class="movPanelIcon">⚙️</span>
           <span class="movPanelTitle">Conversión Finalizada</span>
-          <span class="movPanelHint">Pendientes de traslado</span>
+          <span class="movPanelHint">Pendientes de traslado a zona de espera</span>
           <span id="movBadge1" class="movBadge movBadgeWarn" aria-label="Pendientes" style="display:none;"></span>
           <span class="movChevron" aria-hidden="true">▼</span>
         </button>
         <div id="movPanel1Body" class="movPanelBody"></div>
       </div>
 
-      <!-- Panel 2: En zona de calidad / espera -->
+      <!-- Panel 2: Zona de espera / revisión técnica -->
       <div class="movPanel open" id="movPanel2">
         <button class="movPanelHeader" type="button" aria-expanded="true">
-          <span class="movPanelIcon">🔍</span>
-          <span class="movPanelTitle">En Zona de Calidad</span>
-          <span class="movPanelHint">Esperando revisión</span>
-          <span id="movBadge2" class="movBadge movBadgeNote" aria-label="En calidad" style="display:none;"></span>
+          <span class="movPanelIcon">🕐</span>
+          <span class="movPanelTitle">Zona de Espera</span>
+          <span class="movPanelHint">En espera o en revisión técnica</span>
+          <span id="movBadge2" class="movBadge movBadgeNote" aria-label="En espera" style="display:none;"></span>
           <span class="movChevron" aria-hidden="true">▼</span>
         </button>
         <div id="movPanel2Body" class="movPanelBody"></div>
       </div>
 
-      <!-- Panel 3: Listos para salir -->
+      <!-- Panel 3: Revisión técnica finalizada – listo para traslado -->
       <div class="movPanel open" id="movPanel3">
         <button class="movPanelHeader" type="button" aria-expanded="true">
           <span class="movPanelIcon">✅</span>
-          <span class="movPanelTitle">Listos para Salir</span>
-          <span class="movPanelHint">Calidad finalizada</span>
+          <span class="movPanelTitle">Revisión Técnica Finalizada</span>
+          <span class="movPanelHint">Listo para trasladar a otras áreas</span>
           <span id="movBadge3" class="movBadge movBadgeOk" aria-label="Listos" style="display:none;"></span>
           <span class="movChevron" aria-hidden="true">▼</span>
         </button>
@@ -2263,7 +2263,7 @@ El técnico deberá reanudarla manualmente.`)){n.disabled=!0,n.textContent="Paus
               <td>
                 <button class="movBtnAction btnTrasladar"
                   data-vin="${B(n.vin)}" type="button">
-                  Trasladar ▶
+                  Mover a zona de espera ▶
                 </button>
               </td>
             </tr>
@@ -2288,13 +2288,13 @@ El técnico deberá reanudarla manualmente.`)){n.disabled=!0,n.textContent="Paus
               <td class="movVin">${B(n.vin)}</td>
               <td>${$a(n.trasladado_at)}</td>
               <td>
-                ${n.estado==="ENTREGADO_CALIDAD"?'<span class="badge badge-note">En calidad</span>':'<span class="badge badge-warn">En espera</span>'}
+                ${n.estado==="ENTREGADO_CALIDAD"?'<span class="badge badge-note">En revisión técnica</span>':'<span class="badge badge-warn">En zona de espera</span>'}
               </td>
               <td>
                 ${n.estado==="TRASLADADO"?`
                   <button class="movBtnAction btnEntregarCalidad"
                     data-vin="${B(n.vin)}" type="button">
-                    Entregar a calidad ▶
+                    Entregar a revisión técnica ▶
                   </button>
                 `:'<span class="muted small">—</span>'}
               </td>
@@ -2303,13 +2303,13 @@ El técnico deberá reanudarla manualmente.`)){n.disabled=!0,n.textContent="Paus
         </tbody>
       </table>
     </div>
-  `}}function K_(e){const t=document.getElementById("movPanel3Body");if(t){if(Fa("movBadge3",e.length),!e.length){t.innerHTML='<div class="movEmpty small muted">No hay vehículos listos para salir.</div>';return}t.innerHTML=`
+  `}}function K_(e){const t=document.getElementById("movPanel3Body");if(t){if(Fa("movBadge3",e.length),!e.length){t.innerHTML='<div class="movEmpty small muted">No hay vehículos listos para trasladar a otras áreas.</div>';return}t.innerHTML=`
     <div class="tableWrap">
       <table class="table movTable">
         <thead>
           <tr>
             <th>VIN</th>
-            <th>Calidad finalizada</th>
+            <th>Revisión técnica finalizada</th>
           </tr>
         </thead>
         <tbody>
