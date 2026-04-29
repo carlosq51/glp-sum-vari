@@ -260,6 +260,113 @@
   font-weight: var(--fw-extrabold);
 }
 
+/* Sections inside config panel */
+.adminConfigSection {
+  padding: 16px;
+  margin-bottom: 16px;
+  border-radius: var(--radiusSm);
+  background: var(--glass, rgba(255,255,255,.04));
+  border: var(--border-w) solid var(--surfaceLine, rgba(255,255,255,.12));
+}
+
+.adminConfigSection:last-child {
+  margin-bottom: 0;
+}
+
+/* Pausa global status banner */
+.adminPausaStatus {
+  display: inline-block;
+  padding: 6px 14px;
+  border-radius: var(--radiusSm);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+}
+
+.adminPausaStatus.pausaActiva {
+  background: rgba(248, 113, 113, .15);
+  color: var(--danger, #f87171);
+  border: 1px solid rgba(248, 113, 113, .3);
+}
+
+.adminPausaStatus.pausaInactiva {
+  background: rgba(74, 222, 128, .12);
+  color: var(--ok, #4ade80);
+  border: 1px solid rgba(74, 222, 128, .25);
+}
+
+/* Pausa / reanudar buttons */
+.adminBtnPausa {
+  height: var(--h-btn-sm, 34px);
+  padding: 0 18px;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  border-radius: var(--radiusSm);
+  border: 1px solid rgba(248, 113, 113, .4);
+  background: rgba(248, 113, 113, .15);
+  color: var(--danger, #f87171);
+  cursor: pointer;
+  transition: background var(--dur-base);
+}
+
+.adminBtnPausa:hover:not(:disabled) {
+  background: rgba(248, 113, 113, .28);
+}
+
+.adminBtnReanudar {
+  height: var(--h-btn-sm, 34px);
+  padding: 0 18px;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  border-radius: var(--radiusSm);
+  border: 1px solid rgba(74, 222, 128, .35);
+  background: rgba(74, 222, 128, .12);
+  color: var(--ok, #4ade80);
+  cursor: pointer;
+  transition: background var(--dur-base);
+}
+
+.adminBtnReanudar:hover:not(:disabled) {
+  background: rgba(74, 222, 128, .22);
+}
+
+/* Schedule grid */
+.adminHorarioGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.adminHorarioGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.adminHorarioLabel {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  color: var(--textMuted, rgba(240,244,255,.6));
+  margin-bottom: 2px;
+}
+
+.adminHorarioRow {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.adminLabelInline {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--fs-sm);
+}
+
+.hidden {
+  display: none !important;
+}
+
+
 /* ─── Mobile ─── */
 @media (max-width: 520px) {
   .movPanelHeader {

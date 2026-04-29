@@ -207,6 +207,13 @@ CREATE TABLE app_config (
 INSERT INTO app_config (key, value) VALUES ('REV', '0');
 INSERT INTO app_config (key, value) VALUES ('REV_TS', '0');
 INSERT INTO app_config (key, value) VALUES ('FECHA_CORTE_MOVILIZADOR', '');
+INSERT INTO app_config (key, value) VALUES ('PAUSA_GLOBAL_ACTIVA', '0');
+-- Horario de comida: HH:MM formato 24h
+INSERT INTO app_config (key, value) VALUES ('HORARIO_COMIDA_INICIO', '13:00');
+INSERT INTO app_config (key, value) VALUES ('HORARIO_COMIDA_FIN', '14:00');
+-- Horario nocturno (pausa infinita): desde HH:MM hasta HH:MM (puede cruzar medianoche)
+INSERT INTO app_config (key, value) VALUES ('HORARIO_DESCANSO_INICIO', '16:30');
+INSERT INTO app_config (key, value) VALUES ('HORARIO_DESCANSO_FIN', '07:00');
 
 -- ────────────────────────────────────────────
 --  9. MOVILIZADOR_TRASLADOS

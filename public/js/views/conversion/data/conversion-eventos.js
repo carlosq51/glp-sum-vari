@@ -54,17 +54,93 @@ export const SCHEDULED_PAUSES = [
   [16, 40],  // fin de tarde
 ];
 
+// --------------------------
+// SCHEDULE CONFIG (configurable desde panel admin)
+// Se cachea en memoria; se refresca cada 5 min.
+// --------------------------
+let _scheduleCache = null;
+let _scheduleFetchedAt = 0;
+const SCHEDULE_TTL_MS = 5 * 60 * 1000; // 5 minutos
+
+async function getScheduleConfig_() {
+  const now = Date.now();
+  if (_scheduleCache && now - _scheduleFetchedAt < SCHEDULE_TTL_MS) return _scheduleCache;
+  try {
+    const resp = await fetch("/api/admin/config");
+    if (!resp.ok) throw new Error("config fetch failed");
+    const j = await resp.json();
+    const cfg = j.config || {};
+    _scheduleCache = {
+      pausaGlobal:  cfg.PAUSA_GLOBAL_ACTIVA    === "1",
+      comidaInicio: cfg.HORARIO_COMIDA_INICIO   || "13:00",
+      comidaFin:    cfg.HORARIO_COMIDA_FIN       || "14:00",
+      descInicio:   cfg.HORARIO_DESCANSO_INICIO  || "16:30",
+      descFin:      cfg.HORARIO_DESCANSO_FIN     || "07:00",
+    };
+    _scheduleFetchedAt = now;
+    // También persistir en localStorage como fallback offline
+    try { localStorage.setItem("glp_app_config_cache", JSON.stringify({ ..._scheduleCache, ts: now })); } catch {}
+  } catch {
+    // Intentar leer desde cache localStorage
+    try {
+      const raw = localStorage.getItem("glp_app_config_cache");
+      if (raw) { const parsed = JSON.parse(raw); const { ts, ...rest } = parsed; _scheduleCache = rest; }
+    } catch {}
+    // Si aún no hay cache, usar defaults
+    _scheduleCache = _scheduleCache || {
+      pausaGlobal: false,
+      comidaInicio: "13:00", comidaFin: "14:00",
+      descInicio: "16:30", descFin: "07:00",
+    };
+  }
+  return _scheduleCache;
+}
+
+/** Fuerza refresco del caché (llamado tras cambios en admin). */
+export function invalidateScheduleCache_() { _scheduleCache = null; _scheduleFetchedAt = 0; }
+
+/**
+ * Parsea "HH:MM" → minutos desde medianoche.
+ * @param {string} t
+ * @returns {number}
+ */
+function hhmm_(t) {
+  const [h, m] = String(t || "0:0").split(":").map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
 /**
  * Devuelve true si la hora actual cae en una ventana de pausa infinita
- * (sin auto-resume de 8 min):
- *   - 13:00 → 14:00  (almuerzo)
- *   - 16:20 → 07:00  (tarde/noche, cruza medianoche)
+ * (sin auto-resume de 8 min).
+ * Lee la configuración del servidor (con caché de 5 min).
+ * Es async; conversion.js debe usar "await isInfinitePauseWindow_()".
  */
-export function isInfinitePauseWindow_() {
+export async function isInfinitePauseWindow_() {
+  const cfg = await getScheduleConfig_();
+  if (cfg.pausaGlobal) return true;          // Pausa global forzada desde admin
+
   const now = new Date();
   const t = now.getHours() * 60 + now.getMinutes();
-  if (t >= 13 * 60 && t < 14 * 60) return true;          // 13:00–14:00
-  if (t >= 16 * 60 + 20 || t < 7 * 60) return true;      // 16:20–07:00
+
+  // Ventana de comida
+  const ci = hhmm_(cfg.comidaInicio);
+  const cf = hhmm_(cfg.comidaFin);
+  if (ci <= cf) {
+    if (t >= ci && t < cf) return true;
+  } else {
+    if (t >= ci || t < cf) return true;      // cruza medianoche (raro para comida, pero por si acaso)
+  }
+
+  // Ventana de descanso nocturno
+  const di = hhmm_(cfg.descInicio);
+  const df = hhmm_(cfg.descFin);
+  if (di <= df) {
+    if (t >= di && t < df) return true;
+  } else {
+    // cruza medianoche, ej 16:30 → 07:00
+    if (t >= di || t < df) return true;
+  }
+
   return false;
 }
 

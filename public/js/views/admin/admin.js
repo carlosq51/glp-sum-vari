@@ -135,33 +135,122 @@ async function loadTab() {
   const wrap = $id("adminTableContent");
   if (!wrap) return;
 
-  // ─── Tab Configuración (flujo movilizador) ──────────────────────
+  // ─── Tab Configuración ─────────────────────────────────────────────
   if (S.tab === "config") {
     $id("adminToolbar") && ($id("adminToolbar").style.display = "none");
     wrap.innerHTML = `<div class="small muted" style="padding:12px;">Cargando configuración…</div>`;
     try {
       const resp = await fetch("/api/admin/config");
       const j = resp.ok ? await resp.json() : { ok: false };
-      const fechaCorte = j.config?.FECHA_CORTE_MOVILIZADOR || "";
+      const cfg = j.config || {};
+      const fechaCorte    = cfg.FECHA_CORTE_MOVILIZADOR || "";
+      const pausaActiva   = cfg.PAUSA_GLOBAL_ACTIVA === "1";
+      const comidaInicio  = cfg.HORARIO_COMIDA_INICIO   || "13:00";
+      const comidaFin     = cfg.HORARIO_COMIDA_FIN       || "14:00";
+      const descInicio    = cfg.HORARIO_DESCANSO_INICIO  || "16:30";
+      const descFin       = cfg.HORARIO_DESCANSO_FIN     || "07:00";
+
       wrap.innerHTML = `
         <div class="adminConfigPanel">
-          <h4 class="adminConfigTitle">Configuración del Movilizador</h4>
-          <p class="small muted" style="margin-bottom:14px;">
-            Define la fecha de corte: solo se muestran conversiones y calidades
-            finalizadas <strong>a partir de esta fecha</strong>. Vacío = sin filtro.
-          </p>
-          <label class="adminLabel">
-            Fecha de corte movilizador
-            <input id="cfgFechaCorte" type="date" value="${escHtml(fechaCorte)}"
-              style="max-width:220px;">
-          </label>
-          <div style="margin-top:14px; display:flex; gap:10px; align-items:center;">
-            <button id="btnSaveConfig" type="button" class="adminBtnOk">Guardar</button>
-            <span id="cfgMsg" class="small muted"></span>
+
+          <!-- PAUSA MAESTRA -->
+          <div class="adminConfigSection">
+            <h4 class="adminConfigTitle">Control de pausa global</h4>
+            <p class="small muted">
+              Pausar todas las OTs que estén en estado <strong>TRABAJANDO</strong> en este momento.
+              Reanudar las que estén en <strong>PAUSADO</strong>.
+            </p>
+            <div class="adminPausaStatus ${pausaActiva ? "pausaActiva" : "pausaInactiva"}">
+              ${pausaActiva
+                ? "⏸ Pausa global activa — las OTs están detenidas"
+                : "▶ Sin pausa global — las OTs corren normalmente"}
+            </div>
+            <div style="display:flex;gap:10px;margin-top:10px;align-items:center;flex-wrap:wrap;">
+              <button id="btnPausarTodo" type="button"
+                class="adminBtnPausa ${pausaActiva ? "hidden" : ""}">
+                ⏸ Pausar todas las OTs
+              </button>
+              <button id="btnReanudarTodo" type="button"
+                class="adminBtnReanudar ${pausaActiva ? "" : "hidden"}">
+                ▶ Reanudar todas las OTs
+              </button>
+              <span id="cfgPausaMsg" class="small muted"></span>
+            </div>
           </div>
+
+          <!-- HORARIOS -->
+          <div class="adminConfigSection">
+            <h4 class="adminConfigTitle">Horarios de pausa automática</h4>
+            <p class="small muted">
+              Durante estos intervalos las OTs en pausa <strong>no se reanudan automáticamente</strong>
+              (pausa indefinida). Los cambios se aplican en el próximo ciclo de polling del técnico.
+            </p>
+
+            <div class="adminHorarioGrid">
+              <div class="adminHorarioGroup">
+                <span class="adminHorarioLabel">🍽 Hora de comida</span>
+                <div class="adminHorarioRow">
+                  <label class="adminLabel adminLabelInline">
+                    Inicio
+                    <input id="cfgComidaInicio" type="time" value="${escHtml(comidaInicio)}" style="width:120px;">
+                  </label>
+                  <label class="adminLabel adminLabelInline">
+                    Fin
+                    <input id="cfgComidaFin" type="time" value="${escHtml(comidaFin)}" style="width:120px;">
+                  </label>
+                </div>
+              </div>
+
+              <div class="adminHorarioGroup">
+                <span class="adminHorarioLabel">🌙 Horario nocturno / descanso</span>
+                <p class="small muted" style="margin:2px 0 6px;">
+                  Puede cruzar la medianoche (ej. 16:30 → 07:00).
+                </p>
+                <div class="adminHorarioRow">
+                  <label class="adminLabel adminLabelInline">
+                    Inicio
+                    <input id="cfgDescInicio" type="time" value="${escHtml(descInicio)}" style="width:120px;">
+                  </label>
+                  <label class="adminLabel adminLabelInline">
+                    Fin
+                    <input id="cfgDescFin" type="time" value="${escHtml(descFin)}" style="width:120px;">
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div style="margin-top:14px;display:flex;gap:10px;align-items:center;">
+              <button id="btnSaveHorarios" type="button" class="adminBtnOk">Guardar horarios</button>
+              <span id="cfgHorariosMsg" class="small muted"></span>
+            </div>
+          </div>
+
+          <!-- FECHA CORTE MOVILIZADOR -->
+          <div class="adminConfigSection">
+            <h4 class="adminConfigTitle">Configuración del Movilizador</h4>
+            <p class="small muted">
+              Solo se muestran conversiones y calidades finalizadas
+              <strong>a partir de esta fecha</strong>. Vacío = sin filtro.
+            </p>
+            <label class="adminLabel">
+              Fecha de corte movilizador
+              <input id="cfgFechaCorte" type="date" value="${escHtml(fechaCorte)}" style="max-width:220px;">
+            </label>
+            <div style="margin-top:14px;display:flex;gap:10px;align-items:center;">
+              <button id="btnSaveConfig" type="button" class="adminBtnOk">Guardar</button>
+              <span id="cfgMsg" class="small muted"></span>
+            </div>
+          </div>
+
         </div>
       `;
+
+      // --- eventos ---
       $id("btnSaveConfig")?.addEventListener("click", saveConfig_);
+      $id("btnSaveHorarios")?.addEventListener("click", saveHorarios_);
+      $id("btnPausarTodo")?.addEventListener("click", () => pausaMasiva_("PAUSA"));
+      $id("btnReanudarTodo")?.addEventListener("click", () => pausaMasiva_("REANUDAR"));
+
     } catch (e) {
       wrap.innerHTML = `<div class="small" style="color:var(--danger);padding:12px;">${escHtml(e.message)}</div>`;
     }
@@ -202,6 +291,65 @@ async function saveConfig_() {
   } catch (e) {
     if (msgEl) { msgEl.textContent = `Error: ${e.message}`; msgEl.style.color = "var(--danger)"; }
   } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function saveHorarios_() {
+  const btn    = $id("btnSaveHorarios");
+  const msgEl  = $id("cfgHorariosMsg");
+  const ci     = $id("cfgComidaInicio")?.value?.trim() || "13:00";
+  const cf     = $id("cfgComidaFin")?.value?.trim()    || "14:00";
+  const di     = $id("cfgDescInicio")?.value?.trim()   || "16:30";
+  const df     = $id("cfgDescFin")?.value?.trim()      || "07:00";
+  if (btn) btn.disabled = true;
+  if (msgEl) msgEl.textContent = "Guardando…";
+  try {
+    const resp = await fetch("/api/admin/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        configs: [
+          { key: "HORARIO_COMIDA_INICIO",   value: ci },
+          { key: "HORARIO_COMIDA_FIN",       value: cf },
+          { key: "HORARIO_DESCANSO_INICIO",  value: di },
+          { key: "HORARIO_DESCANSO_FIN",     value: df },
+        ],
+      }),
+    });
+    const j = await resp.json();
+    if (!j?.ok) throw new Error(j?.error || "Error");
+    if (msgEl) { msgEl.textContent = "✔ Guardado"; msgEl.style.color = "var(--ok)"; }
+    // Limpiar caché del frontend para que los técnicos lean el nuevo horario
+    try { localStorage.removeItem("glp_app_config_cache"); } catch {}
+  } catch (e) {
+    if (msgEl) { msgEl.textContent = `Error: ${e.message}`; msgEl.style.color = "var(--danger)"; }
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function pausaMasiva_(accion) {
+  const btn    = accion === "PAUSA" ? $id("btnPausarTodo") : $id("btnReanudarTodo");
+  const msgEl  = $id("cfgPausaMsg");
+  if (btn) btn.disabled = true;
+  if (msgEl) { msgEl.textContent = accion === "PAUSA" ? "Pausando…" : "Reanudando…"; msgEl.style.color = ""; }
+  try {
+    const resp = await fetch("/api/admin/pausa-masiva", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accion }),
+    });
+    const j = await resp.json();
+    if (!j?.ok) throw new Error(j?.error || "Error");
+    const txt = accion === "PAUSA"
+      ? `✔ ${j.afectadas} OT(s) pausadas`
+      : `✔ ${j.afectadas} OT(s) reanudadas`;
+    if (msgEl) { msgEl.textContent = txt; msgEl.style.color = "var(--ok)"; }
+    // Reload config tab to flip the button and status banner
+    await loadTab();
+  } catch (e) {
+    if (msgEl) { msgEl.textContent = `Error: ${e.message}`; msgEl.style.color = "var(--danger)"; }
     if (btn) btn.disabled = false;
   }
 }

@@ -93,28 +93,31 @@ export function tickClocksUI_() {
 
           // En ventana de pausa infinita, pausa muy larga, o pausa impuesta por supervisor
           // → no mostrar countdown ni auto-reanudar
-          const esSupervisor = String(it.last_nota || "").startsWith("__SUP");
-          if (isInfinitePauseWindow_() || pausedMs > PAUSA_AUTO_RESUME_MS * 2 || esSupervisor) {
-            cdEl.textContent = esSupervisor ? "⏸ Pausado por supervisor" : "";
-            return;
-          }
-
-          if (!isNaN(pausedAt)) {
-            const remainMs = PAUSA_AUTO_RESUME_MS - pausedMs;
-            if (remainMs > 0) {
-              const mins = Math.floor(remainMs / 60000);
-              const secs = Math.floor((remainMs % 60000) / 1000);
-              cdEl.textContent = `⏳ Auto-reanuda en ${mins}:${String(secs).padStart(2, "0")}`;
-            } else if (!autoResumingKeys_.has(k)) {
-              cdEl.textContent = "⏳ Reanudando...";
-              autoResumingKeys_.add(k);
-              enviarEvento("REANUDAR", { vin: it.vin, rolTrabajo: it.rolTrabajo, clearKey: k })
-                .catch((e) => console.warn("[AUTO-PAUSA] Error al reanudar:", e))
-                .finally(() => autoResumingKeys_.delete(k));
+          const esSupervisor = String(it.last_nota || "").startsWith("__SUP") ||
+                                String(it.last_nota || "").startsWith("__ADMIN");
+          isInfinitePauseWindow_().then(isInfinite => {
+            if (isInfinite || pausedMs > PAUSA_AUTO_RESUME_MS * 2 || esSupervisor) {
+              cdEl.textContent = esSupervisor ? "⏸ Pausado por supervisor" : "";
+              return;
             }
-          } else {
-            cdEl.textContent = "";
-          }
+
+            if (!isNaN(pausedAt)) {
+              const remainMs = PAUSA_AUTO_RESUME_MS - pausedMs;
+              if (remainMs > 0) {
+                const mins = Math.floor(remainMs / 60000);
+                const secs = Math.floor((remainMs % 60000) / 1000);
+                cdEl.textContent = `⏳ Auto-reanuda en ${mins}:${String(secs).padStart(2, "0")}`;
+              } else if (!autoResumingKeys_.has(k)) {
+                cdEl.textContent = "⏳ Reanudando...";
+                autoResumingKeys_.add(k);
+                enviarEvento("REANUDAR", { vin: it.vin, rolTrabajo: it.rolTrabajo, clearKey: k })
+                  .catch((e) => console.warn("[AUTO-PAUSA] Error al reanudar:", e))
+                  .finally(() => autoResumingKeys_.delete(k));
+              }
+            } else {
+              cdEl.textContent = "";
+            }
+          }).catch(() => {});
         }
       }
     });

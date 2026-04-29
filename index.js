@@ -2083,24 +2083,103 @@ app.get("/api/admin/config", async (req, res) => {
   }
 });
 
-// POST /api/admin/config  body: { key, value }
+// POST /api/admin/config  body: { key, value } OR { configs: [{key,value},...] }
 app.post("/api/admin/config", async (req, res) => {
   try {
-    const { key, value } = req.body || {};
-    if (!key) return res.status(400).json({ ok: false, error: "Falta key" });
+    const body = req.body || {};
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const headers = supabaseHeaders_();
-    const resp = await fetch(`${SUPABASE_URL}/rest/v1/app_config`, {
-      method: "POST",
-      headers: { ...headers, "Prefer": "resolution=merge-duplicates,return=representation" },
-      body: JSON.stringify({ key, value: String(value ?? "") }),
-    });
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => "");
-      throw new Error(`Supabase: ${resp.status} ${text.slice(0, 200)}`);
+
+    // Permite guardar múltiples claves en un solo POST
+    const pairs = Array.isArray(body.configs)
+      ? body.configs
+      : [{ key: body.key, value: body.value }];
+
+    for (const { key, value } of pairs) {
+      if (!key) return res.status(400).json({ ok: false, error: "Falta key" });
+      const resp = await fetch(`${SUPABASE_URL}/rest/v1/app_config`, {
+        method: "POST",
+        headers: { ...headers, "Prefer": "resolution=merge-duplicates,return=representation" },
+        body: JSON.stringify({ key, value: String(value ?? "") }),
+      });
+      if (!resp.ok) {
+        const text = await resp.text().catch(() => "");
+        throw new Error(`Supabase: ${resp.status} ${text.slice(0, 200)}`);
+      }
     }
     return res.json({ ok: true });
   } catch (e) {
+    return res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
+// POST /api/admin/pausa-masiva
+// body: { accion: "PAUSA" | "REANUDAR", nota?: string }
+// Pausa o reanuda TODAS las asignaciones activas en estado TRABAJANDO (o PAUSADO para reanudar)
+app.post("/api/admin/pausa-masiva", async (req, res) => {
+  try {
+    const { accion, nota } = req.body || {};
+    if (!["PAUSA", "REANUDAR"].includes(accion)) {
+      return res.status(400).json({ ok: false, error: "accion debe ser PAUSA o REANUDAR" });
+    }
+
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const headers = supabaseHeaders_();
+    const now = new Date().toISOString();
+    const estadoBuscar  = accion === "PAUSA" ? "TRABAJANDO" : "PAUSADO";
+    const estadoNuevo   = accion === "PAUSA" ? "PAUSADO"    : "TRABAJANDO";
+    const notaFinal     = nota || (accion === "PAUSA" ? "__ADMIN_PAUSA_MASIVA" : "__ADMIN_REANUDAR_MASIVA");
+
+    // 1. Obtener todas las asignaciones en el estado objetivo
+    const url = `${SUPABASE_URL}/rest/v1/asignaciones?activo=eq.true&estado_actual=eq.${estadoBuscar}&select=id,running_since,tiempo_trab_ms`;
+    const resp = await fetch(url, { method: "GET", headers });
+    if (!resp.ok) throw new Error(`Supabase GET asignaciones: ${resp.status}`);
+    const asignaciones = await resp.json();
+
+    if (!asignaciones.length) {
+      return res.json({ ok: true, afectadas: 0, mensaje: `No hay OTs en estado ${estadoBuscar}` });
+    }
+
+    let afectadas = 0;
+    const errors = [];
+
+    for (const asg of asignaciones) {
+      try {
+        const updateData = { estado_actual: estadoNuevo, updated_at: now, last_nota: notaFinal };
+        if (accion === "PAUSA") {
+          // Acumular tiempo transcurrido
+          const extraMs = asg.running_since
+            ? Math.max(0, Date.now() - new Date(asg.running_since).getTime())
+            : 0;
+          updateData.tiempo_trab_ms = (asg.tiempo_trab_ms || 0) + extraMs;
+          updateData.running_since  = null;
+        } else {
+          // Reanudar
+          updateData.running_since = now;
+        }
+        const patchUrl = `${SUPABASE_URL}/rest/v1/asignaciones?id=eq.${asg.id}`;
+        const pr = await fetch(patchUrl, {
+          method: "PATCH",
+          headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify(updateData),
+        });
+        if (!pr.ok) errors.push(asg.id);
+        else afectadas++;
+      } catch {
+        errors.push(asg.id);
+      }
+    }
+
+    // 2. Guardar estado en app_config para que el frontend lo muestre
+    await fetch(`${SUPABASE_URL}/rest/v1/app_config`, {
+      method: "POST",
+      headers: { ...headers, "Prefer": "resolution=merge-duplicates,return=representation" },
+      body: JSON.stringify({ key: "PAUSA_GLOBAL_ACTIVA", value: accion === "PAUSA" ? "1" : "0" }),
+    }).catch(() => {});
+
+    return res.json({ ok: true, afectadas, errors: errors.length ? errors : undefined });
+  } catch (e) {
+    console.error("[PAUSA_MASIVA]", e.message);
     return res.status(500).json({ ok: false, error: String(e.message || e) });
   }
 });
