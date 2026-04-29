@@ -206,6 +206,28 @@ CREATE TABLE app_config (
 
 INSERT INTO app_config (key, value) VALUES ('REV', '0');
 INSERT INTO app_config (key, value) VALUES ('REV_TS', '0');
+INSERT INTO app_config (key, value) VALUES ('FECHA_CORTE_MOVILIZADOR', '');
+
+-- ────────────────────────────────────────────
+--  9. MOVILIZADOR_TRASLADOS
+--     Rastrea el movimiento físico de vehículos desde
+--     zona de conversión → zona de espera → calidad.
+--     Disparado por el MOVILIZADOR en la app.
+-- ────────────────────────────────────────────
+CREATE TABLE movilizador_traslados (
+  vin            TEXT        PRIMARY KEY REFERENCES vins(vin),
+  estado         TEXT        NOT NULL DEFAULT 'TRASLADADO',
+  -- 'TRASLADADO'       = movilizador movió de conversión a zona de espera
+  -- 'ENTREGADO_CALIDAD' = movilizador entregó a zona de calidad
+  trasladado_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  trasladado_por TEXT        NOT NULL DEFAULT '',
+  entregado_at   TIMESTAMPTZ,
+  entregado_por  TEXT        DEFAULT ''
+);
+
+CREATE INDEX idx_mov_traslados_estado ON movilizador_traslados (estado);
+ALTER TABLE movilizador_traslados ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "service_full_access" ON movilizador_traslados FOR ALL USING (true) WITH CHECK (true);
 
 -- ────────────────────────────────────────────
 --  8. ROW LEVEL SECURITY (RLS)

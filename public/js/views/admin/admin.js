@@ -134,6 +134,42 @@ const TABLE_MAP = {
 async function loadTab() {
   const wrap = $id("adminTableContent");
   if (!wrap) return;
+
+  // ─── Tab Configuración (flujo movilizador) ──────────────────────
+  if (S.tab === "config") {
+    $id("adminToolbar") && ($id("adminToolbar").style.display = "none");
+    wrap.innerHTML = `<div class="small muted" style="padding:12px;">Cargando configuración…</div>`;
+    try {
+      const resp = await fetch("/api/admin/config");
+      const j = resp.ok ? await resp.json() : { ok: false };
+      const fechaCorte = j.config?.FECHA_CORTE_MOVILIZADOR || "";
+      wrap.innerHTML = `
+        <div class="adminConfigPanel">
+          <h4 class="adminConfigTitle">Configuración del Movilizador</h4>
+          <p class="small muted" style="margin-bottom:14px;">
+            Define la fecha de corte: solo se muestran conversiones y calidades
+            finalizadas <strong>a partir de esta fecha</strong>. Vacío = sin filtro.
+          </p>
+          <label class="adminLabel">
+            Fecha de corte movilizador
+            <input id="cfgFechaCorte" type="date" value="${escHtml(fechaCorte)}"
+              style="max-width:220px;">
+          </label>
+          <div style="margin-top:14px; display:flex; gap:10px; align-items:center;">
+            <button id="btnSaveConfig" type="button" class="adminBtnOk">Guardar</button>
+            <span id="cfgMsg" class="small muted"></span>
+          </div>
+        </div>
+      `;
+      $id("btnSaveConfig")?.addEventListener("click", saveConfig_);
+    } catch (e) {
+      wrap.innerHTML = `<div class="small" style="color:var(--danger);padding:12px;">${escHtml(e.message)}</div>`;
+    }
+    return;
+  }
+
+  // ─── Tabs CRUD normales ─────────────────────────────────────────
+  $id("adminToolbar") && ($id("adminToolbar").style.display = "");
   wrap.innerHTML = `<div class="small muted" style="padding:12px;">Cargando…</div>`;
   msg("");
 
@@ -145,6 +181,28 @@ async function loadTab() {
   } catch (e) {
     wrap.innerHTML = `<div class="small" style="color:var(--danger);padding:12px;">${escHtml(e.message)}</div>`;
     msg(e.message, true);
+  }
+}
+
+async function saveConfig_() {
+  const btn = $id("btnSaveConfig");
+  const msgEl = $id("cfgMsg");
+  const value = $id("cfgFechaCorte")?.value?.trim() || "";
+  if (btn) btn.disabled = true;
+  if (msgEl) msgEl.textContent = "Guardando…";
+  try {
+    const resp = await fetch("/api/admin/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: "FECHA_CORTE_MOVILIZADOR", value }),
+    });
+    const j = await resp.json();
+    if (!j?.ok) throw new Error(j?.error || "Error");
+    if (msgEl) { msgEl.textContent = "✔ Guardado"; msgEl.style.color = "var(--ok)"; }
+  } catch (e) {
+    if (msgEl) { msgEl.textContent = `Error: ${e.message}`; msgEl.style.color = "var(--danger)"; }
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 

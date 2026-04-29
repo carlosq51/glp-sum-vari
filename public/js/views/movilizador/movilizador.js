@@ -1,151 +1,69 @@
 // =========================
 // public/js/views/movilizador/movilizador.js
-// Vista MOVILIZADOR
-// - Muestra VIN + fecha de conversión
-// - Solo unidades FINALIZADAS en CONVERSION
-// - Excluye VIN que ya tienen registro en CALIDAD
-// - Si CALIDAD falla, no rompe la vista
+// Vista MOVILIZADOR – flujo de 3 etapas
+//
+// Lista 1: Conversión finalizada → pendientes de traslado
+// Lista 2: En zona de calidad   → trasladados / entregados a calidad
+// Lista 3: Listos para salir    → calidad finalizada
 // =========================
 
-import { CORE, getJSON_user, escapeHtml, fmtShort_ } from "../../core/core.js";
-import { isFinalizado_ } from "../supervisor/sup-filters.js";
+import { CORE, escapeHtml, fmtShort_, getJSON_user, postJSON } from "../../core/core.js";
+import { updateHubModuleBadge } from "../../core/ui-shell.js";
 
-let movTimer = null;
+let pollTimer = null;
+const POLL_MS = 30_000;
 
-function norm_(v) {
-  return String(v || "").trim().toUpperCase();
+// ─── Helpers ──────────────────────────────────────────────────────────
+
+function getMovNombre_() {
+  return CORE.state.currentProfile?.nombre || CORE.state.currentProfile?.email || "Movilizador";
 }
 
-function getVin_(it) {
-  return norm_(it?.vin || it?.chasis_id || it?.chasisId || it?.VIN || it?.CHASIS_ID);
+function fmtDate_(iso) {
+  return iso ? fmtShort_(iso) : "—";
 }
 
-function parseDateSafe_(v) {
-  if (!v) return NaN;
-  const t = Date.parse(v);
-  return Number.isFinite(t) ? t : NaN;
+function setBadge_(id, count) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = count > 0 ? String(count) : "";
+  el.style.display = count > 0 ? "inline-flex" : "none";
 }
 
-function getConversionDateMs_(it) {
-  return (
-    parseDateSafe_(it?.fecha_fin) ||
-    parseDateSafe_(it?.updated_at) ||
-    parseDateSafe_(it?.fechaFin) ||
-    parseDateSafe_(it?.fecha_inicio) ||
-    parseDateSafe_(it?.created_at) ||
-    parseDateSafe_(it?.fecha_creacion) ||
-    NaN
-  );
-}
+// ─── Render ───────────────────────────────────────────────────────────
 
-function getConversionDateLabel_(it) {
-  const raw =
-    it?.fecha_fin ||
-    it?.updated_at ||
-    it?.fechaFin ||
-    it?.fecha_inicio ||
-    it?.created_at ||
-    it?.fecha_creacion ||
-    "";
-
-  return raw ? fmtShort_(raw) : "—";
-}
-
-async function fetchTrack_(track) {
-  const url =
-    `/api/supervisor/report` +
-    `?name=` +
-    `&vin=` +
-    `&q=` +
-    `&from=` +
-    `&to=` +
-    `&month=` +
-    `&track=${encodeURIComponent(track)}`;
-
-  const j = await getJSON_user(url, `Cargando ${track}...`);
-  if (!j?.ok) throw new Error(j?.error || `No se pudo cargar ${track}`);
-  return Array.isArray(j.items) ? j.items : [];
-}
-
-function buildMovilizadorList_(convItems, calidadItems = []) {
-  const calidadVinSet = new Set();
-
-  for (const it of calidadItems) {
-    const vin = getVin_(it);
-    if (vin) calidadVinSet.add(vin);
-  }
-
-  const byVin = new Map();
-
-  for (const it of convItems) {
-    const vin = getVin_(it);
-    if (!vin) continue;
-    if (!isFinalizado_(it?.estado)) continue;
-
-    const ms = getConversionDateMs_(it);
-    const prev = byVin.get(vin);
-
-    if (!prev || ms > prev._sortMs) {
-      byVin.set(vin, {
-        vin,
-        fechaLabel: getConversionDateLabel_(it),
-        _sortMs: Number.isFinite(ms) ? ms : 0,
-      });
-    }
-  }
-
-  const pending = [];
-  for (const row of byVin.values()) {
-    if (calidadVinSet.has(row.vin)) continue;
-    pending.push(row);
-  }
-
-  // Más antiguos primero = mayor prioridad
-  pending.sort((a, b) => a._sortMs - b._sortMs);
-
-  return pending;
-}
-
-function renderMovilizador_(rows, meta = {}) {
-  const sum = document.getElementById("movSummary");
-  const box = document.getElementById("movTable");
-
+function renderList1_(rows) {
+  const box = document.getElementById("movPanel1Body");
   if (!box) return;
-
-  const warn = meta?.warn ? `
-    <div class="small" style="margin-bottom:10px; color:#ffd166;">
-      ${escapeHtml(meta.warn)}
-    </div>
-  ` : "";
+  setBadge_("movBadge1", rows.length);
+  updateHubModuleBadge("MOVILIZADOR", rows.length);
 
   if (!rows.length) {
-    if (sum) sum.textContent = "Pendientes para calidad: 0";
-    box.innerHTML = `
-      ${warn}
-      <div class="small">No hay unidades pendientes por llevar a calidad.</div>
-    `;
+    box.innerHTML = `<div class="movEmpty small muted">Sin conversiones finalizadas pendientes.</div>`;
     return;
   }
 
-  if (sum) sum.textContent = `Pendientes para calidad: ${rows.length}`;
-
   box.innerHTML = `
-    ${warn}
     <div class="tableWrap">
-      <table class="table">
+      <table class="table movTable">
         <thead>
           <tr>
             <th>VIN</th>
-            <th>Fecha conversión</th>
+            <th>Fecha conv.</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
-          ${rows.map((r) => `
+          ${rows.map(r => `
             <tr>
-              <td style="font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-weight:800;">
-                ${escapeHtml(r.vin)}
+              <td class="movVin">${escapeHtml(r.vin)}</td>
+              <td>${fmtDate_(r.fecha)}</td>
+              <td>
+                <button class="movBtnAction btnTrasladar"
+                  data-vin="${escapeHtml(r.vin)}" type="button">
+                  Trasladar ▶
+                </button>
               </td>
-              <td>${escapeHtml(r.fechaLabel)}</td>
             </tr>
           `).join("")}
         </tbody>
@@ -154,55 +72,188 @@ function renderMovilizador_(rows, meta = {}) {
   `;
 }
 
-async function fetchMovilizadorReport_() {
-  const sum = document.getElementById("movSummary");
-  const box = document.getElementById("movTable");
+function renderList2_(rows) {
+  const box = document.getElementById("movPanel2Body");
+  if (!box) return;
+  setBadge_("movBadge2", rows.length);
 
+  if (!rows.length) {
+    box.innerHTML = `<div class="movEmpty small muted">Ningún vehículo en zona de espera.</div>`;
+    return;
+  }
+
+  box.innerHTML = `
+    <div class="tableWrap">
+      <table class="table movTable">
+        <thead>
+          <tr>
+            <th>VIN</th>
+            <th>Trasladado</th>
+            <th>Estado</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(r => `
+            <tr>
+              <td class="movVin">${escapeHtml(r.vin)}</td>
+              <td>${fmtDate_(r.trasladado_at)}</td>
+              <td>
+                ${r.estado === "ENTREGADO_CALIDAD"
+                  ? `<span class="badge badge-note">En calidad</span>`
+                  : `<span class="badge badge-warn">En espera</span>`
+                }
+              </td>
+              <td>
+                ${r.estado === "TRASLADADO" ? `
+                  <button class="movBtnAction btnEntregarCalidad"
+                    data-vin="${escapeHtml(r.vin)}" type="button">
+                    Entregar a calidad ▶
+                  </button>
+                ` : `<span class="muted small">—</span>`}
+              </td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderList3_(rows) {
+  const box = document.getElementById("movPanel3Body");
+  if (!box) return;
+  setBadge_("movBadge3", rows.length);
+
+  if (!rows.length) {
+    box.innerHTML = `<div class="movEmpty small muted">No hay vehículos listos para salir.</div>`;
+    return;
+  }
+
+  box.innerHTML = `
+    <div class="tableWrap">
+      <table class="table movTable">
+        <thead>
+          <tr>
+            <th>VIN</th>
+            <th>Calidad finalizada</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(r => `
+            <tr>
+              <td class="movVin">${escapeHtml(r.vin)}</td>
+              <td>${fmtDate_(r.fecha_calidad)}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+// ─── Fetch ────────────────────────────────────────────────────────────
+
+async function refreshAll_() {
+  const statusEl = document.getElementById("movStatus");
+  const refreshBtn = document.getElementById("btnMovRefresh");
   try {
-    if (sum) sum.textContent = "Cargando pendientes...";
-    if (box) box.innerHTML = "";
+    if (statusEl) statusEl.textContent = "Actualizando…";
+    if (refreshBtn) refreshBtn.disabled = true;
 
-    // CONVERSION es obligatoria
-    const convItems = await fetchTrack_("CONVERSION");
+    const j = await getJSON_user("/api/movilizador/status", "Cargando movilizador...");
+    if (!j?.ok) throw new Error(j?.error || "Error cargando estado");
 
-    // CALIDAD es opcional: si falla, no tumbamos la vista
-    let calidadItems = [];
-    let warn = "";
+    renderList1_(j.list1 || []);
+    renderList2_(j.list2 || []);
+    renderList3_(j.list3 || []);
 
-    try {
-      calidadItems = await fetchTrack_("CALIDAD");
-    } catch (err) {
-      console.warn("MOVILIZADOR: no se pudo cargar CALIDAD", err);
-      warn = "No se pudo validar CALIDAD. Se muestran conversiones finalizadas sin excluir registros de calidad.";
+    if (statusEl) {
+      const t = new Date();
+      statusEl.textContent = `Actualizado ${t.toLocaleTimeString("es-PE")}`;
     }
-
-    const rows = buildMovilizadorList_(convItems, calidadItems);
-    renderMovilizador_(rows, { warn });
-
-  } catch (err) {
-    if (sum) sum.textContent = err?.message || "Error cargando vista MOVILIZADOR.";
-    if (box) box.innerHTML = "";
+  } catch (e) {
+    if (statusEl) statusEl.textContent = e.message || "Error";
+  } finally {
+    if (refreshBtn) refreshBtn.disabled = false;
   }
 }
 
-function debounceFetchMov_() {
-  clearTimeout(movTimer);
-  movTimer = setTimeout(() => {
-    fetchMovilizadorReport_().catch(() => {});
-  }, 250);
+// ─── Actions ──────────────────────────────────────────────────────────
+
+async function handleAction_(vin, accion, btn) {
+  btn.disabled = true;
+  const originalText = btn.textContent;
+  btn.textContent = "Guardando…";
+  try {
+    const j = await postJSON("/api/movilizador/traslado", {
+      vin,
+      accion,
+      usuario: getMovNombre_(),
+    });
+    if (!j?.ok) throw new Error(j?.error || "Error al guardar");
+    await refreshAll_();
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = originalText;
+    const statusEl = document.getElementById("movStatus");
+    if (statusEl) statusEl.textContent = `Error: ${e.message}`;
+  }
 }
 
-export function init() {
-  document.getElementById("btnMovRefresh")?.addEventListener("click", () => {
-    fetchMovilizadorReport_().catch(() => {});
+// ─── Panel toggle ─────────────────────────────────────────────────────
+
+function bindPanelToggles_() {
+  document.querySelectorAll(".movPanel").forEach(panel => {
+    const hdr = panel.querySelector(".movPanelHeader");
+    const body = panel.querySelector(".movPanelBody");
+    if (!hdr || !body) return;
+    hdr.addEventListener("click", () => {
+      const open = panel.classList.toggle("open");
+      hdr.setAttribute("aria-expanded", String(open));
+    });
   });
 }
 
+// ─── Poll ─────────────────────────────────────────────────────────────
+
+function startPoll_() {
+  stopPoll_();
+  pollTimer = setInterval(() => refreshAll_().catch(() => {}), POLL_MS);
+}
+
+function stopPoll_() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+
+// ─── Public API ───────────────────────────────────────────────────────
+
+export function init() {
+  document.getElementById("btnMovRefresh")?.addEventListener("click", () => {
+    refreshAll_().catch(() => {});
+  });
+
+  // Delegación de eventos para botones de acción
+  document.getElementById("viewMOVILIZADOR")?.addEventListener("click", e => {
+    const btn = e.target.closest(".movBtnAction");
+    if (!btn) return;
+    const vin = btn.dataset.vin;
+    if (!vin) return;
+    if (btn.classList.contains("btnTrasladar")) {
+      handleAction_(vin, "TRASLADAR", btn).catch(() => {});
+    } else if (btn.classList.contains("btnEntregarCalidad")) {
+      handleAction_(vin, "ENTREGAR_CALIDAD", btn).catch(() => {});
+    }
+  });
+
+  bindPanelToggles_();
+}
+
 export function enter() {
-  CORE.state.currentModule = "MOVILIZADOR";
-  fetchMovilizadorReport_().catch(() => {});
+  refreshAll_().catch(() => {});
+  startPoll_();
 }
 
 export function exit() {
-  clearTimeout(movTimer);
+  stopPoll_();
 }

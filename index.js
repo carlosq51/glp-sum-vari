@@ -2066,6 +2066,183 @@ app.post("/api/solicitud-ramal/:id/entregar", async (req, res) => {
 });
 
 // -----------------------------------------------------------------
+// ─── ADMIN CONFIG ────────────────────────────────────────────────────
+// GET /api/admin/config  → { ok, config: { KEY: "value", ... } }
+app.get("/api/admin/config", async (req, res) => {
+  try {
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const headers = supabaseHeaders_();
+    const resp = await fetch(`${SUPABASE_URL}/rest/v1/app_config?select=key,value`, { method: "GET", headers });
+    if (!resp.ok) throw new Error(`Supabase: ${resp.status}`);
+    const rows = await resp.json();
+    const config = {};
+    (rows || []).forEach(r => { config[r.key] = r.value; });
+    return res.json({ ok: true, config });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
+// POST /api/admin/config  body: { key, value }
+app.post("/api/admin/config", async (req, res) => {
+  try {
+    const { key, value } = req.body || {};
+    if (!key) return res.status(400).json({ ok: false, error: "Falta key" });
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const headers = supabaseHeaders_();
+    const resp = await fetch(`${SUPABASE_URL}/rest/v1/app_config`, {
+      method: "POST",
+      headers: { ...headers, "Prefer": "resolution=merge-duplicates,return=representation" },
+      body: JSON.stringify({ key, value: String(value ?? "") }),
+    });
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => "");
+      throw new Error(`Supabase: ${resp.status} ${text.slice(0, 200)}`);
+    }
+    return res.json({ ok: true });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
+// ─── MOVILIZADOR STATUS ───────────────────────────────────────────────
+// GET /api/movilizador/status
+// Devuelve las 3 listas del flujo movilizador + fecha_corte activa
+app.get("/api/movilizador/status", async (req, res) => {
+  try {
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const headers = supabaseHeaders_();
+
+    // 1. Fecha de corte desde app_config
+    const cfgResp = await fetch(
+      `${SUPABASE_URL}/rest/v1/app_config?key=eq.FECHA_CORTE_MOVILIZADOR`,
+      { method: "GET", headers }
+    );
+    const cfgRows = cfgResp.ok ? await cfgResp.json() : [];
+    const fechaCorte = cfgRows[0]?.value || "";
+
+    // 2. CONVERSION FINALIZADO
+    let convUrl = `${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CONVERSION&estado_general=eq.FINALIZADO&select=vin,fecha_creacion,updated_at`;
+    if (fechaCorte) convUrl += `&updated_at=gte.${fechaCorte}T00:00:00`;
+    convUrl += `&order=fecha_creacion.asc`;
+    const convResp = await fetch(convUrl, { method: "GET", headers });
+    const convRows = convResp.ok ? await convResp.json() : [];
+
+    // 3. Traslados movilizador
+    const trasResp = await fetch(
+      `${SUPABASE_URL}/rest/v1/movilizador_traslados?select=vin,estado,trasladado_at,trasladado_por,entregado_at,entregado_por`,
+      { method: "GET", headers }
+    );
+    const trasRows = trasResp.ok ? await trasResp.json() : [];
+    const trasMap = new Map();
+    for (const t of (trasRows || [])) {
+      if (t.vin) trasMap.set(t.vin, t);
+    }
+
+    // 4. CALIDAD FINALIZADO
+    let calUrl = `${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CALIDAD&estado_general=eq.FINALIZADO&select=vin,fecha_creacion,updated_at`;
+    if (fechaCorte) calUrl += `&updated_at=gte.${fechaCorte}T00:00:00`;
+    calUrl += `&order=updated_at.desc`;
+    const calResp = await fetch(calUrl, { method: "GET", headers });
+    const calRows = calResp.ok ? await calResp.json() : [];
+    const calidadDoneMap = new Map();
+    for (const wo of (calRows || [])) {
+      if (wo.vin && !calidadDoneMap.has(wo.vin)) calidadDoneMap.set(wo.vin, wo);
+    }
+
+    // ─── Lista 1: conversión finalizada, sin traslado registrado
+    const convVinMap = new Map();
+    for (const wo of (convRows || [])) {
+      if (!wo.vin || trasMap.has(wo.vin)) continue;
+      const prev = convVinMap.get(wo.vin);
+      if (!prev || new Date(wo.fecha_creacion) > new Date(prev.fecha_creacion)) {
+        convVinMap.set(wo.vin, wo);
+      }
+    }
+    const list1 = Array.from(convVinMap.values())
+      .map(wo => ({ vin: wo.vin, fecha: wo.fecha_creacion, fecha_updated: wo.updated_at }))
+      .sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+
+    // ─── Lista 2: trasladados que aún no terminaron calidad
+    const list2 = [];
+    for (const [vin, t] of trasMap) {
+      const calidadDone = calidadDoneMap.has(vin);
+      if (t.estado === "TRASLADADO" || (t.estado === "ENTREGADO_CALIDAD" && !calidadDone)) {
+        list2.push({
+          vin,
+          estado: t.estado,
+          trasladado_at: t.trasladado_at,
+          trasladado_por: t.trasladado_por || "",
+          entregado_at: t.entregado_at || null,
+          entregado_por: t.entregado_por || "",
+        });
+      }
+    }
+    list2.sort((a, b) => new Date(a.trasladado_at) - new Date(b.trasladado_at));
+
+    // ─── Lista 3: calidad finalizada con registro de traslado
+    const list3 = [];
+    for (const [vin, wo] of calidadDoneMap) {
+      if (trasMap.has(vin)) {
+        const t = trasMap.get(vin);
+        list3.push({
+          vin,
+          fecha_calidad: wo.updated_at || wo.fecha_creacion,
+          trasladado_por: t.trasladado_por || "",
+        });
+      }
+    }
+    list3.sort((a, b) => new Date(b.fecha_calidad) - new Date(a.fecha_calidad));
+
+    return res.json({
+      ok: true,
+      fechaCorte,
+      list1,
+      list2,
+      list3,
+      counts: { list1: list1.length, list2: list2.length, list3: list3.length },
+    });
+  } catch (e) {
+    console.error("[MOVILIZADOR_STATUS]", e);
+    return res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
+// POST /api/movilizador/traslado
+// body: { vin, accion: "TRASLADAR" | "ENTREGAR_CALIDAD", usuario }
+app.post("/api/movilizador/traslado", async (req, res) => {
+  try {
+    const { vin, accion, usuario } = req.body || {};
+    if (!vin) return res.status(400).json({ ok: false, error: "Falta vin" });
+    if (!["TRASLADAR", "ENTREGAR_CALIDAD"].includes(accion)) {
+      return res.status(400).json({ ok: false, error: "accion inválida: use TRASLADAR o ENTREGAR_CALIDAD" });
+    }
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const headers = supabaseHeaders_();
+    const now = new Date().toISOString();
+    const userName = String(usuario || "").trim();
+
+    const data = accion === "TRASLADAR"
+      ? { vin, estado: "TRASLADADO", trasladado_at: now, trasladado_por: userName }
+      : { vin, estado: "ENTREGADO_CALIDAD", entregado_at: now, entregado_por: userName };
+
+    const resp = await fetch(`${SUPABASE_URL}/rest/v1/movilizador_traslados`, {
+      method: "POST",
+      headers: { ...headers, "Prefer": "resolution=merge-duplicates,return=representation" },
+      body: JSON.stringify(data),
+    });
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => "");
+      throw new Error(`Supabase: ${resp.status} ${text.slice(0, 200)}`);
+    }
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error("[MOVILIZADOR_TRASLADO]", e);
+    return res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
+// -----------------------------------------------------------------
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Servidor corriendo en puerto ${PORT}`);

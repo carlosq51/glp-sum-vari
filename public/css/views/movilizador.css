@@ -1,195 +1,291 @@
 /* =====================================================================
-   views/movilizador.css — Vista Movilizador (tabla de pendientes)
+   views/movilizador.css — Vista Movilizador (3 paneles de flujo)
    ===================================================================== */
 
 #viewMOVILIZADOR {
   width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
-#viewMOVILIZADOR h3 {
-  margin-bottom: 8px;
+/* ─── Header ─── */
+.movHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 2px;
 }
 
-#viewMOVILIZADOR .small {
-  line-height: 1.35;
+.movHeader h3 {
+  margin: 0;
 }
 
-/* Resumen */
-#movSummary {
-  margin-top: 12px;
+.movHeaderActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.movRefreshBtn {
+  min-width: 120px;
+}
+
+/* ─── Panel accordion ─── */
+.movPanel {
+  border-radius: var(--radius);
+  border: var(--border-w) solid var(--codeLine);
+  background: rgba(0,0,0,.12);
+  overflow: hidden;
+  transition: box-shadow .2s ease;
+}
+
+.movPanel:has(.movBadge:not([style*="none"])) {
+  border-color: rgba(255,255,255,.22);
+}
+
+.movPanelHeader {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-extrabold);
+  transition: background .18s ease;
+  border-bottom: var(--border-w) solid transparent;
+}
+
+.movPanel.open .movPanelHeader {
+  border-bottom-color: var(--codeLine);
+  background: rgba(255,255,255,.03);
+}
+
+.movPanelHeader:hover {
+  background: rgba(255,255,255,.05);
+}
+
+.movPanelIcon {
+  font-size: 1.1em;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.movPanelTitle {
   font-weight: var(--fw-extrabold);
   font-size: var(--fs-md);
-  color: var(--btnText);
 }
 
-/* Contenedor general de resultados */
-#movTable {
-  margin-top: 12px;
-  width: 100%;
+.movPanelHint {
+  flex: 1;
+  color: rgba(240,244,255,.55);
+  font-size: var(--fs-sm);
+  font-weight: 400;
 }
 
-/* Mensaje de estado / aviso */
-#movTable .small {
-  color: rgba(240,244,255,.82);
+.movChevron {
+  font-size: 11px;
+  color: rgba(240,244,255,.5);
+  transition: transform .22s ease;
+  flex-shrink: 0;
 }
 
-/* Wrapper con scroll suave */
-#viewMOVILIZADOR .tableWrap {
-  width: 100%;
-  overflow: auto;
-  border-radius: var(--radius);
-  background: rgba(0,0,0,.14);
-  border: var(--border-w) solid var(--codeLine);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
-  -webkit-overflow-scrolling: touch;
+.movPanel.open .movChevron {
+  transform: rotate(0deg);
 }
 
-/* Tabla */
-#viewMOVILIZADOR .table {
+.movPanel:not(.open) .movChevron {
+  transform: rotate(-90deg);
+}
+
+/* ─── Panel body (collapses) ─── */
+.movPanelBody {
+  display: none;
+  padding: 14px;
+}
+
+.movPanel.open .movPanelBody {
+  display: block;
+}
+
+/* ─── Badges ─── */
+.movBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-black);
+  letter-spacing: .1px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.movBadgeWarn   { background: var(--warnBg);   color: var(--warn);   border: 1px solid rgba(250,204,21,.3);  }
+.movBadgeNote   { background: var(--noteBg);   color: var(--note);   border: 1px solid rgba(96,165,250,.3); }
+.movBadgeOk     { background: var(--okBg);     color: var(--ok);     border: 1px solid rgba(34,197,94,.3);  }
+
+/* ─── Hub badge (en el botón del hub) ─── */
+.hubBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  margin-left: 6px;
+  border-radius: 999px;
+  background: var(--warnBg);
+  color: var(--warn);
+  border: 1px solid rgba(250,204,21,.3);
+  font-size: 11px;
+  font-weight: var(--fw-black);
+  line-height: 1;
+  vertical-align: middle;
+}
+
+/* ─── Table inside panels ─── */
+.movTable {
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
   min-width: 100%;
 }
 
-/* Cabecera sticky */
-#viewMOVILIZADOR .table thead th {
+.movTable thead th {
   position: sticky;
   top: 0;
-  z-index: var(--z-sticky);
+  z-index: 1;
   text-align: left;
   font-size: var(--fs-sm);
   font-weight: var(--fw-black);
   letter-spacing: .25px;
-  padding: 12px 14px;
+  padding: 10px 12px;
   color: rgba(240,244,255,.96);
   background: linear-gradient(180deg, rgba(10,20,85,.98) 0%, rgba(17,38,140,.96) 100%);
   border-bottom: var(--border-w) solid rgba(255,255,255,.12);
   white-space: nowrap;
 }
 
-/* Celdas */
-#viewMOVILIZADOR .table tbody td {
-  padding: 12px 14px;
+.movTable tbody td {
+  padding: 11px 12px;
   font-size: var(--fs-md);
   color: rgba(240,244,255,.94);
   border-bottom: var(--border-w) solid rgba(255,255,255,.08);
   vertical-align: middle;
 }
 
-/* Hover / foco visual */
-#viewMOVILIZADOR .table tbody tr {
-  transition: background .18s ease, transform .18s ease;
-}
-
-#viewMOVILIZADOR .table tbody tr:hover {
+.movTable tbody tr:hover {
   background: rgba(255,255,255,.04);
 }
 
-#viewMOVILIZADOR .table tbody tr:last-child td {
+.movTable tbody tr:last-child td {
   border-bottom: 0;
 }
 
-/* VIN más legible */
-#viewMOVILIZADOR .table tbody td:first-child {
-  font-family: var(--font-mono);
+/* VIN monospace */
+.movVin {
+  font-family: var(--font-mono, ui-monospace, monospace);
   font-weight: var(--fw-black);
   letter-spacing: .45px;
   color: #ffffff;
   white-space: nowrap;
 }
 
-/* Fecha un poco más suave */
-#viewMOVILIZADOR .table tbody td:last-child {
-  color: rgba(235,240,255,.88);
-  white-space: nowrap;
-}
-
-/* Botón actualizar */
-#btnMovRefresh {
-  min-width: 140px;
-}
-
-/* Estado vacío */
-#viewMOVILIZADOR .movEmpty {
-  padding: 16px 14px;
-  border-radius: 14px;
-  background: var(--glass);
-  border: var(--border-w) dashed rgba(255,255,255,.16);
-  color: rgba(240,244,255,.85);
-}
-
-/* Aviso amarillo */
-#viewMOVILIZADOR .movWarn {
-  margin-bottom: var(--gap);
-  padding: 10px 12px;
-  border-radius: var(--radiusSm);
-  background: rgba(255, 209, 102, .10);
-  border: var(--border-w) solid rgba(255, 209, 102, .28);
-  color: #ffe08a;
+/* ─── Action buttons ─── */
+.movBtnAction {
+  padding: 5px 12px;
   font-size: var(--fs-sm);
-  line-height: 1.35;
+  font-weight: var(--fw-bold);
+  border-radius: var(--radiusSm);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: opacity .15s;
 }
 
-/* Scrollbar sutil */
-#viewMOVILIZADOR .tableWrap::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+.movBtnAction:disabled {
+  opacity: .5;
+  cursor: not-allowed;
 }
 
-#viewMOVILIZADOR .tableWrap::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,.18);
-  border-radius: var(--radius-full);
+.btnTrasladar {
+  background: rgba(250,204,21,.18);
+  color: var(--warn);
+  border: 1px solid rgba(250,204,21,.35);
 }
 
-#viewMOVILIZADOR .tableWrap::-webkit-scrollbar-track {
-  background: rgba(255,255,255,.04);
-  border-radius: var(--radius-full);
+.btnTrasladar:hover:not(:disabled) {
+  background: rgba(250,204,21,.28);
+}
+
+.btnEntregarCalidad {
+  background: rgba(96,165,250,.18);
+  color: var(--note);
+  border: 1px solid rgba(96,165,250,.35);
+}
+
+.btnEntregarCalidad:hover:not(:disabled) {
+  background: rgba(96,165,250,.28);
+}
+
+/* ─── Empty state ─── */
+.movEmpty {
+  padding: 14px 12px;
+  border-radius: var(--radiusSm);
+  background: var(--glass, rgba(255,255,255,.04));
+  border: var(--border-w) dashed rgba(255,255,255,.16);
+  color: rgba(240,244,255,.6);
+  font-size: var(--fs-sm);
+}
+
+/* ─── Admin config panel ─── */
+.adminConfigPanel {
+  padding: 16px;
+}
+
+.adminConfigTitle {
+  margin: 0 0 6px;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-extrabold);
 }
 
 /* ─── Mobile ─── */
 @media (max-width: 520px) {
-  #movSummary {
+  .movPanelHeader {
+    padding: 12px 12px;
     font-size: var(--fs-sm);
   }
 
-  #viewMOVILIZADOR .table thead th {
-    padding: 11px 12px;
-    font-size: var(--fs-xs);
-  }
-
-  #viewMOVILIZADOR .table tbody td {
-    padding: 11px 12px;
+  .movTable thead th,
+  .movTable tbody td {
+    padding: 10px 10px;
     font-size: var(--fs-sm);
   }
 
-  #viewMOVILIZADOR .table tbody td:first-child {
+  .movVin {
     font-size: var(--fs-sm);
-    letter-spacing: .35px;
+    letter-spacing: .3px;
   }
 
-  #viewMOVILIZADOR .table tbody td:last-child {
-    font-size: 12.5px;
+  .movBtnAction {
+    font-size: 12px;
+    padding: 5px 8px;
   }
 
-  #btnMovRefresh {
+  .movRefreshBtn {
     width: 100%;
     min-width: 0;
   }
 }
 
-/* ─── Muy pequeño ─── */
-@media (max-width: 380px) {
-  #viewMOVILIZADOR .table thead th,
-  #viewMOVILIZADOR .table tbody td {
-    padding: 10px 10px;
-  }
-
-  #viewMOVILIZADOR .table tbody td:first-child {
-    font-size: 12.5px;
-  }
-
-  #viewMOVILIZADOR .table tbody td:last-child {
-    font-size: var(--fs-xs);
-  }
-}

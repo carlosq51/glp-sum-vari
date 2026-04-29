@@ -41,9 +41,28 @@ export function showHubUI(mods, onPick) {
   mods.forEach((m) => {
     const btn = document.createElement("button");
     btn.textContent = m;
+    btn.dataset.mod = m;
     btn.addEventListener("click", () => onPick?.(m));
     box.appendChild(btn);
   });
+}
+
+/**
+ * Muestra u oculta un badge con el número de pendientes
+ * en el botón del hub correspondiente al módulo dado.
+ * @param {string} modName  - Nombre del módulo (ej. "MOVILIZADOR")
+ * @param {number} count    - Cantidad a mostrar (0 = ocultar)
+ */
+export function updateHubModuleBadge(modName, count) {
+  const btn = document.querySelector(`#hubButtons [data-mod="${modName}"]`);
+  if (!btn) return;
+  btn.querySelector(".hubBadge")?.remove();
+  if (count > 0) {
+    const badge = document.createElement("span");
+    badge.className = "hubBadge";
+    badge.textContent = String(count);
+    btn.appendChild(badge);
+  }
 }
 export function hasMultipleModulesUI() {
   const mods = CORE.state.currentProfile?.modulos;
