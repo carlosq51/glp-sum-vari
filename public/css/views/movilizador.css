@@ -79,16 +79,28 @@
   flex-shrink: 0;
 }
 
+.movPanelTitleGroup {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
 .movPanelTitle {
   font-weight: var(--fw-extrabold);
-  font-size: var(--fs-md);
+  font-size: 1.05rem;
+  line-height: 1.2;
+  color: #fff;
 }
 
 .movPanelHint {
-  flex: 1;
-  color: rgba(240,244,255,.55);
-  font-size: var(--fs-sm);
+  color: rgba(240,244,255,.5);
+  font-size: var(--fs-xs);
   font-weight: 400;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .movChevron {
@@ -121,11 +133,11 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 22px;
-  height: 22px;
-  padding: 0 7px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 9px;
   border-radius: 999px;
-  font-size: var(--fs-xs);
+  font-size: var(--fs-sm);
   font-weight: var(--fw-black);
   letter-spacing: .1px;
   line-height: 1;
