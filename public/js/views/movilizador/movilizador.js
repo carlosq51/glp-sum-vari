@@ -99,18 +99,18 @@ function renderList2_(rows) {
               <td class="movVin">${escapeHtml(r.vin)}</td>
               <td>${fmtDate_(r.trasladado_at)}</td>
               <td>
-                ${r.estado === "ENTREGADO_CALIDAD"
-                  ? `<span class="badge badge-note">En revisión técnica</span>`
-                  : `<span class="badge badge-warn">En zona de espera</span>`
+                ${r.estado === "TRASLADADO"
+                  ? `<span class="badge badge-warn">En zona de espera</span>`
+                  : `<span class="badge badge-note">En proceso de revisión</span>`
                 }
               </td>
               <td>
                 ${r.estado === "TRASLADADO" ? `
                   <button class="movBtnAction btnEntregarCalidad"
                     data-vin="${escapeHtml(r.vin)}" type="button">
-                    Entregar a revisión técnica ▶
+                    Mover a revisión técnica ▶
                   </button>
-                ` : `<span class="muted small">—</span>`}
+                ` : ``}
               </td>
             </tr>
           `).join("")}

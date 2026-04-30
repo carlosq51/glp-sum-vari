@@ -2362,15 +2362,15 @@ El técnico deberá reanudarla manualmente.`)){n.disabled=!0,n.textContent="Paus
               <td class="movVin">${$(n.vin)}</td>
               <td>${Ua(n.trasladado_at)}</td>
               <td>
-                ${n.estado==="ENTREGADO_CALIDAD"?'<span class="badge badge-note">En revisión técnica</span>':'<span class="badge badge-warn">En zona de espera</span>'}
+                ${n.estado==="TRASLADADO"?'<span class="badge badge-warn">En zona de espera</span>':'<span class="badge badge-note">En proceso de revisión</span>'}
               </td>
               <td>
                 ${n.estado==="TRASLADADO"?`
                   <button class="movBtnAction btnEntregarCalidad"
                     data-vin="${$(n.vin)}" type="button">
-                    Entregar a revisión técnica ▶
+                    Mover a revisión técnica ▶
                   </button>
-                `:'<span class="muted small">—</span>'}
+                `:""}
               </td>
             </tr>
           `).join("")}

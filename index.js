@@ -2215,7 +2215,7 @@ app.get("/api/movilizador/status", async (req, res) => {
     const fechaCorte = cfgRows[0]?.value || "";
 
     // 2. CONVERSION FINALIZADO
-    let convUrl = `${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CONVERSION&estado_general=eq.FINALIZADO&select=vin,fecha_creacion,created_at`;
+    let convUrl = `${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CONVERSION&estado_general=eq.FINALIZADO&select=vin,fecha_creacion,created_at,asignaciones(updated_at,estado_actual,rol_trabajo)`;
     if (fechaCorte) convUrl += `&created_at=gte.${fechaCorte}T00:00:00`;
     convUrl += `&order=fecha_creacion.asc`;
     const convResp = await fetch(convUrl, { method: "GET", headers });
@@ -2245,43 +2245,74 @@ app.get("/api/movilizador/status", async (req, res) => {
 
     // 4b. CALIDAD ACTIVA (PENDIENTE o EN PROCESO) — para saber si el inspector está trabajando
     const calActivaResp = await fetch(
-      `${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CALIDAD&estado_general=in.(PENDIENTE,EN PROCESO)&select=vin`,
+      `${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CALIDAD&estado_general=in.(PENDIENTE,EN PROCESO)&select=vin,fecha_creacion,created_at`,
       { method: "GET", headers }
     );
     const calActivaRows = calActivaResp.ok ? await calActivaResp.json() : [];
-    const calidadActivaSet = new Set((calActivaRows || []).map(w => w.vin).filter(Boolean));
+    // Map vin → OT data para VINs con CALIDAD activa
+    const calidadActivaMap = new Map();
+    for (const wo of (calActivaRows || [])) {
+      if (wo.vin && !calidadActivaMap.has(wo.vin)) calidadActivaMap.set(wo.vin, wo);
+    }
 
-    // ─── Lista 1: conversión finalizada, sin traslado registrado
+    // ─── Lista 1: conversión finalizada + sin traslado + sin OT de CALIDAD (ni activa ni finalizada)
     const convVinMap = new Map();
     for (const wo of (convRows || [])) {
-      if (!wo.vin || trasMap.has(wo.vin) || calidadDoneMap.has(wo.vin)) continue;
+      if (!wo.vin || calidadDoneMap.has(wo.vin) || calidadActivaMap.has(wo.vin) || trasMap.has(wo.vin)) continue;
       const prev = convVinMap.get(wo.vin);
       if (!prev || new Date(wo.fecha_creacion) > new Date(prev.fecha_creacion)) {
         convVinMap.set(wo.vin, wo);
       }
     }
     const list1 = Array.from(convVinMap.values())
-      .map(wo => ({ vin: wo.vin, fecha: wo.fecha_creacion, fecha_updated: wo.created_at }))
+      .map(wo => {
+        // Fecha fin = max updated_at de asignaciones FINALIZADAS (MOTOR/TANQUE)
+        const fechaFin = (wo.asignaciones || [])
+          .filter(a => a.estado_actual === "FINALIZADO")
+          .reduce((max, a) => (!max || new Date(a.updated_at) > new Date(max)) ? a.updated_at : max, null);
+        return { vin: wo.vin, fecha: fechaFin || wo.fecha_creacion, fecha_updated: wo.created_at };
+      })
       .sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
 
-    // ─── Lista 2: trasladados que aún no terminaron calidad
+    // ─── Lista 2: VINs trasladados (sin calidad done) + VINs con OT CALIDAD activa
     const list2 = [];
+    const list2Vins = new Set();
+
+    // 2a. Trasladados manualmente por el movilizador (TRASLADADO o ENTREGADO_CALIDAD)
     for (const [vin, t] of trasMap) {
-      const calidadDone = calidadDoneMap.has(vin);
-      const calidadActiva = calidadActivaSet.has(vin);
-      // ENTREGADO_CALIDAD sin OT activa y sin calidad done → va a list3, no list2
-      if ((t.estado === "TRASLADADO" && !calidadDone) || (t.estado === "ENTREGADO_CALIDAD" && !calidadDone && calidadActiva)) {
+      if (calidadDoneMap.has(vin)) continue;
+      if (t.estado === "ENTREGADO_FINAL") continue;
+      if (t.estado === "TRASLADADO" || t.estado === "ENTREGADO_CALIDAD") {
+        // Si ya tiene OT de calidad activa, mostrar como EN_REVISION aunque traslado diga TRASLADADO
+        const estadoReal = calidadActivaMap.has(vin) ? "EN_REVISION" : t.estado;
         list2.push({
           vin,
-          estado: t.estado,
+          estado: estadoReal,
           trasladado_at: t.trasladado_at,
           trasladado_por: t.trasladado_por || "",
           entregado_at: t.entregado_at || null,
           entregado_por: t.entregado_por || "",
         });
+        list2Vins.add(vin);
       }
     }
-    list2.sort((a, b) => new Date(a.trasladado_at) - new Date(b.trasladado_at));
+
+    // 2b. OT CALIDAD activa sin traslado registrado (inspector abrió OT directo)
+    for (const [vin] of calidadActivaMap) {
+      if (list2Vins.has(vin)) continue; // ya incluido por traslado
+      if (calidadDoneMap.has(vin)) continue;
+      const t = trasMap.get(vin);
+      if (t?.estado === "ENTREGADO_FINAL") continue;
+      list2.push({
+        vin,
+        estado: "EN_REVISION",
+        trasladado_at: null,
+        trasladado_por: "",
+        entregado_at: null,
+        entregado_por: "",
+      });
+    }
+    list2.sort((a, b) => new Date(a.trasladado_at || 0) - new Date(b.trasladado_at || 0));
 
     // ─── Lista 3: calidad finalizada (con o sin traslado registrado, excluye ENTREGADO_FINAL)
     const list3 = [];
