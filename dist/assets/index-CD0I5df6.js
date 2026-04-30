@@ -2320,87 +2320,51 @@ El técnico deberá reanudarla manualmente.`)){n.disabled=!0,n.textContent="Paus
     <label class="adminLabel">Registrado por<input id="fRegPor" type="text" value="${z(e.registrado_por||"")}"></label>
     <label class="adminLabel">Nota<textarea id="fNota">${z(e.nota||"")}</textarea></label>
   `}const Yu={usuarios:V_,vins:z_,ots:H_,incidencias:j_},Xu={usuarios:"Usuario",vins:"VIN",ots:"Orden de Trabajo",incidencias:"Incidencia"};function q_(){const e=n=>{var i,s;return((s=(i=K(n))==null?void 0:i.value)==null?void 0:s.trim())??""},t=n=>{var i;return!!((i=K(n))!=null&&i.checked)};if(G.tab==="usuarios"){const n=[...document.querySelectorAll(".fModulo:checked")].map(i=>i.value);return{nombre:e("fNombre"),email:e("fEmail"),rol:e("fRol"),especialidad:e("fEsp"),activo:t("fActivo"),_modulos:n}}if(G.tab==="vins")return{vin:e("fVin"),modelo:e("fModelo"),dua:e("fDua"),cliente:e("fCliente"),reductor_asignado:e("fReductor"),tanque_asignado:e("fTanque")};if(G.tab==="ots")return{tipo_ot:e("fTipoOt"),vin:e("fOtVin")||null,estado_general:e("fEstado"),observaciones:e("fObs"),tanque_registrado:e("fTanqueReg"),reductor_registrado:e("fReductorReg")};if(G.tab==="incidencias"){const n=e("fIncVin"),i=new Date;return{vin:n||null,tecnico:e("fTecnico"),tipo:e("fTipo"),registrado_por:e("fRegPor"),nota:e("fNota"),mes:`${i.getFullYear()}-${String(i.getMonth()+1).padStart(2,"0")}`}}return{}}function W_(e){if(G.tab==="usuarios"){if(!e.nombre)return"El nombre es requerido.";if(!e.email||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.email))return"Email inválido."}if(G.tab==="vins"&&(!e.vin||e.vin.length!==17))return"El VIN debe tener exactamente 17 caracteres.";if(G.tab==="ots"&&e.tipo_ot!=="RAMALERO"&&!e.vin)return"El VIN es requerido para este tipo de OT.";if(G.tab==="incidencias"){if(!e.tecnico)return"El técnico es requerido.";if(!e.registrado_por)return"Quién registra es requerido."}return null}function Ju(e,t){K("adminModalTitle").textContent=e,K("adminModalBody").innerHTML=`<div class="adminForm">${t}</div>`;const n=K("adminModal");n.classList.add("show"),n.removeAttribute("aria-hidden"),document.body.classList.add("modal-open"),setTimeout(()=>{var i;return(i=K("adminModalBody").querySelector("input,select,textarea"))==null?void 0:i.focus()},80)}function ls(){const e=K("adminModal");e.classList.remove("show"),e.setAttribute("aria-hidden","true"),document.body.classList.remove("modal-open"),G.editId=null}async function Q_(){var i;const e=q_(),t=W_(e);if(t){de(t,!0);return}const n=K("btnAdminModalSave");n.disabled=!0,de("Guardando…");try{const s=Ba[G.tab],{_modulos:o,...a}=G.tab==="usuarios"?e:{...e,_modulos:void 0};if(G.editId){const r=G.tab==="vins"?"vin":"id";await Qf(s,{[r]:G.editId},a),G.tab==="usuarios"&&await wc(G.editId,o||[]),de("Actualizado correctamente.")}else{const r=await jc(s,a);G.tab==="usuarios"&&Array.isArray(r)&&((i=r[0])!=null&&i.id)&&await wc(r[0].id,o||[]),de("Creado correctamente.")}ls(),await Ti()}catch(s){de(s.message,!0)}finally{n.disabled=!1}}async function wc(e,t){await qc("usuario_modulos",{user_id:e}),t.length&&await jc("usuario_modulos",t.map(n=>({user_id:e,modulo:n})))}async function K_(e){if(confirm("¿Eliminar este registro? Esta acción no se puede deshacer.")){de("Eliminando…");try{const t=Ba[G.tab],n=G.tab==="vins"?"vin":"id";await qc(t,{[n]:e}),de("Eliminado."),await Ti()}catch(t){de(t.message,!0)}}}function Zu(){const e=K("adminTableContent");e&&(e.querySelectorAll(".adminBtnEdit").forEach(t=>{t.addEventListener("click",async()=>{const n=t.dataset.id,i=G.tab==="vins"?"vin":"id",s=G.rows.find(o=>String(o[i])===n);if(s&&(G.editId=n,Ju(`Editar ${Xu[G.tab]}`,Yu[G.tab](s)),G.tab==="usuarios"))try{const o=await te("usuario_modulos",{user_id:n}),a=Array.isArray(o)?o.map(r=>r.modulo):[];document.querySelectorAll(".fModulo").forEach(r=>{r.checked=a.includes(r.value)})}catch{}})}),e.querySelectorAll(".adminBtnDel").forEach(t=>{t.addEventListener("click",()=>K_(t.dataset.id))}))}function G_(){var e,t,n,i,s,o;document.addEventListener("click",a=>{const r=a.target.closest("[data-tab]");!r||!r.closest("#viewADMIN")||(document.querySelectorAll(".adminTab").forEach(l=>l.classList.toggle("active",l===r)),G.tab=r.dataset.tab,K("adminSearch").value="",Ti())}),(e=K("adminSearch"))==null||e.addEventListener("input",a=>{clearTimeout(G.searchTimer),G.searchTimer=setTimeout(()=>{const r=K("adminTableContent");r&&(r.innerHTML=Gu(G.rows,a.target.value),Zu())},220)}),(t=K("btnAdminNuevo"))==null||t.addEventListener("click",()=>{G.editId=null,Ju(`Nuevo ${Xu[G.tab]}`,Yu[G.tab]())}),(n=K("btnAdminModalClose"))==null||n.addEventListener("click",ls),(i=K("btnAdminModalCancel"))==null||i.addEventListener("click",ls),(s=K("adminModal"))==null||s.addEventListener("click",a=>{a.target===a.currentTarget&&ls()}),(o=K("btnAdminModalSave"))==null||o.addEventListener("click",Q_)}function Y_(){S.state.currentModule="ADMIN",Ti()}let cs=null;const X_=3e4;function J_(){var e,t;return((e=S.state.currentProfile)==null?void 0:e.nombre)||((t=S.state.currentProfile)==null?void 0:t.email)||"Movilizador"}function Ua(e){return e?fe(e):"—"}function Va(e,t){const n=document.getElementById(e);n&&(n.textContent=t>0?String(t):"",n.style.display=t>0?"inline-flex":"none")}function Z_(e){const t=document.getElementById("movPanel1Body");if(t){if(Va("movBadge1",e.length),Nf("MOVILIZADOR",e.length),!e.length){t.innerHTML='<div class="movEmpty small muted">Sin conversiones finalizadas pendientes.</div>';return}t.innerHTML=`
-    <div class="tableWrap">
-      <table class="table movTable">
-        <thead>
-          <tr>
-            <th>VIN</th>
-            <th>Fecha conv.</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          ${e.map(n=>`
-            <tr>
-              <td class="movVin">${$(n.vin)}</td>
-              <td>${Ua(n.fecha)}</td>
-              <td>
-                <button class="movBtnAction btnTrasladar"
-                  data-vin="${$(n.vin)}" type="button">
-                  Mover a zona de espera ▶
-                </button>
-              </td>
-            </tr>
-          `).join("")}
-        </tbody>
-      </table>
+    <div class="movCardList">
+      ${e.map(n=>`
+        <div class="movCard">
+          <div class="movCardTop">
+            <span class="movVin">${$(n.vin)}</span>
+            <span class="movCardDate">${Ua(n.fecha)}</span>
+          </div>
+          <button class="movBtnAction btnTrasladar movBtnFull"
+            data-vin="${$(n.vin)}" type="button">
+            Mover a zona de espera ▶
+          </button>
+        </div>
+      `).join("")}
     </div>
   `}}function tx(e){const t=document.getElementById("movPanel2Body");if(t){if(Va("movBadge2",e.length),!e.length){t.innerHTML='<div class="movEmpty small muted">Ningún vehículo en zona de espera.</div>';return}t.innerHTML=`
-    <div class="tableWrap">
-      <table class="table movTable">
-        <thead>
-          <tr>
-            <th>VIN</th>
-            <th>Trasladado</th>
-            <th>Estado</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          ${e.map(n=>`
-            <tr>
-              <td class="movVin">${$(n.vin)}</td>
-              <td>${Ua(n.trasladado_at)}</td>
-              <td>
-                ${n.estado==="TRASLADADO"?'<span class="badge badge-warn">En zona de espera</span>':'<span class="badge badge-note">En proceso de revisión</span>'}
-              </td>
-              <td>
-                ${n.estado==="TRASLADADO"?`
-                  <button class="movBtnAction btnEntregarCalidad"
-                    data-vin="${$(n.vin)}" type="button">
-                    Mover a revisión técnica ▶
-                  </button>
-                `:""}
-              </td>
-            </tr>
-          `).join("")}
-        </tbody>
-      </table>
+    <div class="movCardList">
+      ${e.map(n=>`
+        <div class="movCard">
+          <div class="movCardTop">
+            <span class="movVin">${$(n.vin)}</span>
+            ${n.estado==="TRASLADADO"?'<span class="badge badge-warn">En zona de espera</span>':'<span class="badge badge-note">En proceso de revisión</span>'}
+          </div>
+          ${n.trasladado_at?`<div class="movCardSub">Trasladado: ${Ua(n.trasladado_at)}</div>`:""}
+          ${n.estado==="TRASLADADO"?`
+            <button class="movBtnAction btnEntregarCalidad movBtnFull"
+              data-vin="${$(n.vin)}" type="button">
+              Mover a revisión técnica ▶
+            </button>
+          `:""}
+        </div>
+      `).join("")}
     </div>
   `}}function ex(e){const t=document.getElementById("movPanel3Body");if(t){if(Va("movBadge3",e.length),!e.length){t.innerHTML='<div class="movEmpty small muted">No hay vehículos listos para trasladar a otras áreas.</div>';return}t.innerHTML=`
-    <div class="tableWrap">
-      <table class="table movTable">
-        <thead>
-          <tr>
-            <th>VIN</th>
-            <th>Rev. técnica finalizada</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          ${e.map(n=>`
-            <tr>
-              <td class="movVin">${$(n.vin)}</td>
-              <td>${Ua(n.fecha_calidad)}</td>
-              <td>
-                <button class="movBtnAction btnEntregarFinal"
-                  data-vin="${$(n.vin)}" type="button">
-                  Trasladar ▶
-                </button>
-              </td>
-            </tr>
-          `).join("")}
-        </tbody>
-      </table>
+    <div class="movCardList">
+      ${e.map(n=>`
+        <div class="movCard">
+          <div class="movCardTop">
+            <span class="movVin">${$(n.vin)}</span>
+            <span class="movCardDate">${Ua(n.fecha_calidad)}</span>
+          </div>
+          <button class="movBtnAction btnEntregarFinal movBtnFull"
+            data-vin="${$(n.vin)}" type="button">
+            Trasladar ▶
+          </button>
+        </div>
+      `).join("")}
     </div>
   `}}async function Gs(){const e=document.getElementById("movStatus"),t=document.getElementById("btnMovRefresh");try{e&&(e.textContent="Actualizando…"),t&&(t.disabled=!0);const n=await ds("/api/movilizador/status","Cargando movilizador...");if(!(n!=null&&n.ok))throw new Error((n==null?void 0:n.error)||"Error cargando estado");if(Z_(n.list1||[]),tx(n.list2||[]),ex(n.list3||[]),e){const i=new Date;e.textContent=`Actualizado ${i.toLocaleTimeString("es-PE")}`}}catch(n){e&&(e.textContent=n.message||"Error")}finally{t&&(t.disabled=!1)}}async function bo(e,t,n){n.disabled=!0;const i=n.textContent;n.textContent="Guardando…";try{const s=await Me("/api/movilizador/traslado",{vin:e,accion:t,usuario:J_()});if(!(s!=null&&s.ok))throw new Error((s==null?void 0:s.error)||"Error al guardar");await Gs()}catch(s){n.disabled=!1,n.textContent=i;const o=document.getElementById("movStatus");o&&(o.textContent=`Error: ${s.message}`)}}function nx(){document.querySelectorAll(".movPanel").forEach(e=>{const t=e.querySelector(".movPanelHeader"),n=e.querySelector(".movPanelBody");!t||!n||t.addEventListener("click",()=>{const i=e.classList.toggle("open");t.setAttribute("aria-expanded",String(i))})})}function ix(){tf(),cs=setInterval(()=>Gs().catch(()=>{}),X_)}function tf(){cs&&(clearInterval(cs),cs=null)}function sx(){var e,t;(e=document.getElementById("btnMovRefresh"))==null||e.addEventListener("click",()=>{Gs().catch(()=>{})}),(t=document.getElementById("viewMOVILIZADOR"))==null||t.addEventListener("click",n=>{const i=n.target.closest(".movBtnAction");if(!i)return;const s=i.dataset.vin;s&&(i.classList.contains("btnTrasladar")?bo(s,"TRASLADAR",i).catch(()=>{}):i.classList.contains("btnEntregarCalidad")?bo(s,"ENTREGAR_CALIDAD",i).catch(()=>{}):i.classList.contains("btnEntregarFinal")&&bo(s,"ENTREGAR_FINAL",i).catch(()=>{}))}),nx()}function ox(){Gs().catch(()=>{}),ix()}function ef(){tf()}const Dc=document.getElementById("appRoot");Dc&&(Dc.innerHTML=Lf());async function nf(e){if(!e)return ei("Pon tu email.");try{let t;if(sa()&&(await kt(async()=>{t=await Gf(e)},"Iniciando sesión..."),!t))return ei("Usuario no encontrado en Supabase.");S.state.currentProfile=t,Vf(e),Bf(),Ff(),$f(),S.state.rolLock=Uf(S.state.currentProfile),Ls();const n=Vc(S.state.currentProfile);Df(),n.length>1?(vn(),Uc(n,i=>ta(i)),S.state.currentModule=null):ta(n[0])}catch(t){console.error("Error en login:",t),ei((t==null?void 0:t.message)||"Error al iniciar sesión.")}}function ta(e){_n(),We(e),S.state.currentModule=e,vn();const t=document.getElementById(`view${e}`);t&&(t.style.display="block");const n=T("viewHub");n&&(n.style.display="none"),Ls()}We.register("TECNICO",()=>Ud("TECNICO"),()=>xs("TECNICO"));We.register("CALIDAD",()=>Ud("CALIDAD"),()=>xs("CALIDAD"));We.register("RAMALERO",()=>wp(),()=>qd());We.register("SUPERVISOR",()=>O_(),()=>L_());We.register("ADMIN",()=>Y_(),()=>void 0);We.register("MOVILIZADOR",()=>ox(),()=>ef());Cp();Lp();k_();G_();sx();nd();var Nc;(Nc=T("btnTheme"))==null||Nc.addEventListener("click",Wf);var Pc;(Pc=T("btnRegistroFallas"))==null||Pc.addEventListener("click",()=>{var t,n,i,s,o,a;vn(),T("viewHub")&&(T("viewHub").style.display="none");const e=((n=(t=T("vin"))==null?void 0:t.value)==null?void 0:n.trim())||((s=(i=T("vinQ"))==null?void 0:i.value)==null?void 0:s.trim())||((a=(o=T("supVin"))==null?void 0:o.value)==null?void 0:a.trim())||"";la({vin:e,screen:"menu"})});var $c;($c=T("btnGoHome"))==null||$c.addEventListener("click",()=>{const e=Vc(S.state.currentProfile);_n(),vn(),Uc(e,t=>ta(t)),S.state.currentModule=null});var Fc;(Fc=T("btnMe"))==null||Fc.addEventListener("click",async()=>{const e=ni();await nf(e)});var Bc;(Bc=T("btnLogout"))==null||Bc.addEventListener("click",()=>{var e,t,n;Hf(),T("email").value="",S.state.currentProfile=null,S.state.currentModule=null,xs("TECNICO"),xs("CALIDAD"),qd(),ef(),vn(),T("viewHub").style.display="none",(e=T("btnGoHome"))==null||e.classList.add("hidden"),(t=document.getElementById("debugWrap"))==null||t.classList.add("debug-hidden"),(n=document.getElementById("viewUploader"))!=null&&n.style&&(document.getElementById("viewUploader").style.display="none"),ei("Sesión cerrada.")});window.addEventListener("load",async()=>{jf();const e=zf();if(!e)return ei("");T("email").value=e,await nf(e)});window.getRealtimeStatus=Kf;

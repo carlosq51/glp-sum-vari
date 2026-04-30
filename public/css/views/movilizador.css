@@ -155,7 +155,50 @@
   vertical-align: middle;
 }
 
-/* ─── Table inside panels ─── */
+/* ─── Card list (reemplaza tablas) ─── */
+.movCardList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.movCard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: var(--radiusSm);
+  background: rgba(255,255,255,.05);
+  border: var(--border-w) solid rgba(255,255,255,.1);
+}
+
+.movCardTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.movCardDate {
+  font-size: var(--fs-sm);
+  color: rgba(240,244,255,.6);
+  white-space: nowrap;
+}
+
+.movCardSub {
+  font-size: var(--fs-sm);
+  color: rgba(240,244,255,.55);
+}
+
+.movBtnFull {
+  width: 100%;
+  padding: 9px 14px;
+  font-size: var(--fs-sm);
+  text-align: center;
+}
+
+/* ─── Table inside panels (legacy, kept for admin) ─── */
 .movTable {
   width: 100%;
   border-collapse: separate;

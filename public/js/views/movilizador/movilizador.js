@@ -44,30 +44,19 @@ function renderList1_(rows) {
   }
 
   box.innerHTML = `
-    <div class="tableWrap">
-      <table class="table movTable">
-        <thead>
-          <tr>
-            <th>VIN</th>
-            <th>Fecha conv.</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rows.map(r => `
-            <tr>
-              <td class="movVin">${escapeHtml(r.vin)}</td>
-              <td>${fmtDate_(r.fecha)}</td>
-              <td>
-                <button class="movBtnAction btnTrasladar"
-                  data-vin="${escapeHtml(r.vin)}" type="button">
-                  Mover a zona de espera ▶
-                </button>
-              </td>
-            </tr>
-          `).join("")}
-        </tbody>
-      </table>
+    <div class="movCardList">
+      ${rows.map(r => `
+        <div class="movCard">
+          <div class="movCardTop">
+            <span class="movVin">${escapeHtml(r.vin)}</span>
+            <span class="movCardDate">${fmtDate_(r.fecha)}</span>
+          </div>
+          <button class="movBtnAction btnTrasladar movBtnFull"
+            data-vin="${escapeHtml(r.vin)}" type="button">
+            Mover a zona de espera ▶
+          </button>
+        </div>
+      `).join("")}
     </div>
   `;
 }
@@ -83,39 +72,25 @@ function renderList2_(rows) {
   }
 
   box.innerHTML = `
-    <div class="tableWrap">
-      <table class="table movTable">
-        <thead>
-          <tr>
-            <th>VIN</th>
-            <th>Trasladado</th>
-            <th>Estado</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rows.map(r => `
-            <tr>
-              <td class="movVin">${escapeHtml(r.vin)}</td>
-              <td>${fmtDate_(r.trasladado_at)}</td>
-              <td>
-                ${r.estado === "TRASLADADO"
-                  ? `<span class="badge badge-warn">En zona de espera</span>`
-                  : `<span class="badge badge-note">En proceso de revisión</span>`
-                }
-              </td>
-              <td>
-                ${r.estado === "TRASLADADO" ? `
-                  <button class="movBtnAction btnEntregarCalidad"
-                    data-vin="${escapeHtml(r.vin)}" type="button">
-                    Mover a revisión técnica ▶
-                  </button>
-                ` : ``}
-              </td>
-            </tr>
-          `).join("")}
-        </tbody>
-      </table>
+    <div class="movCardList">
+      ${rows.map(r => `
+        <div class="movCard">
+          <div class="movCardTop">
+            <span class="movVin">${escapeHtml(r.vin)}</span>
+            ${r.estado === "TRASLADADO"
+              ? `<span class="badge badge-warn">En zona de espera</span>`
+              : `<span class="badge badge-note">En proceso de revisión</span>`
+            }
+          </div>
+          ${r.trasladado_at ? `<div class="movCardSub">Trasladado: ${fmtDate_(r.trasladado_at)}</div>` : ""}
+          ${r.estado === "TRASLADADO" ? `
+            <button class="movBtnAction btnEntregarCalidad movBtnFull"
+              data-vin="${escapeHtml(r.vin)}" type="button">
+              Mover a revisión técnica ▶
+            </button>
+          ` : ""}
+        </div>
+      `).join("")}
     </div>
   `;
 }
@@ -131,30 +106,19 @@ function renderList3_(rows) {
   }
 
   box.innerHTML = `
-    <div class="tableWrap">
-      <table class="table movTable">
-        <thead>
-          <tr>
-            <th>VIN</th>
-            <th>Rev. técnica finalizada</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rows.map(r => `
-            <tr>
-              <td class="movVin">${escapeHtml(r.vin)}</td>
-              <td>${fmtDate_(r.fecha_calidad)}</td>
-              <td>
-                <button class="movBtnAction btnEntregarFinal"
-                  data-vin="${escapeHtml(r.vin)}" type="button">
-                  Trasladar ▶
-                </button>
-              </td>
-            </tr>
-          `).join("")}
-        </tbody>
-      </table>
+    <div class="movCardList">
+      ${rows.map(r => `
+        <div class="movCard">
+          <div class="movCardTop">
+            <span class="movVin">${escapeHtml(r.vin)}</span>
+            <span class="movCardDate">${fmtDate_(r.fecha_calidad)}</span>
+          </div>
+          <button class="movBtnAction btnEntregarFinal movBtnFull"
+            data-vin="${escapeHtml(r.vin)}" type="button">
+            Trasladar ▶
+          </button>
+        </div>
+      `).join("")}
     </div>
   `;
 }
