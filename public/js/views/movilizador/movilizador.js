@@ -136,7 +136,8 @@ function renderList3_(rows) {
         <thead>
           <tr>
             <th>VIN</th>
-            <th>Revisión técnica finalizada</th>
+            <th>Rev. técnica finalizada</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -144,6 +145,12 @@ function renderList3_(rows) {
             <tr>
               <td class="movVin">${escapeHtml(r.vin)}</td>
               <td>${fmtDate_(r.fecha_calidad)}</td>
+              <td>
+                <button class="movBtnAction btnEntregarFinal"
+                  data-vin="${escapeHtml(r.vin)}" type="button">
+                  Trasladar ▶
+                </button>
+              </td>
             </tr>
           `).join("")}
         </tbody>
@@ -243,6 +250,8 @@ export function init() {
       handleAction_(vin, "TRASLADAR", btn).catch(() => {});
     } else if (btn.classList.contains("btnEntregarCalidad")) {
       handleAction_(vin, "ENTREGAR_CALIDAD", btn).catch(() => {});
+    } else if (btn.classList.contains("btnEntregarFinal")) {
+      handleAction_(vin, "ENTREGAR_FINAL", btn).catch(() => {});
     }
   });
 

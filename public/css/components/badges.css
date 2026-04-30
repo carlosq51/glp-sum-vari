@@ -11,6 +11,7 @@
   font-size: var(--fs-xs);
   font-weight: var(--fw-extrabold);
   letter-spacing: .2px;
+  white-space: nowrap;
 }
 
 .badge-ok     { color: var(--ok);     background: var(--okBg); }

@@ -883,6 +883,20 @@ app.post("/api/evento", async (req, res) => {
       }
     }
 
+    // 10b. Actualizar estado_general del work_order para OTs de CALIDAD
+    if (rolTrabajo === "CALIDAD" && tipoOt === "CALIDAD") {
+      try {
+        const estadoGeneral = nuevoEstado === "FINALIZADO" ? "FINALIZADO"
+          : nuevoEstado === "PAUSADO" ? "EN PROCESO"
+          : nuevoEstado === "EN PROCESO" ? "EN PROCESO"
+          : "PENDIENTE";
+        await supabasePatch_("work_orders", { id: workOrderId }, { estado_general: estadoGeneral });
+        console.log(`[EVENTO] CALIDAD estado_general actualizado: ${estadoGeneral}`);
+      } catch (err) {
+        console.warn("[EVENTO] No se pudo actualizar estado_general CALIDAD:", err.message);
+      }
+    }
+
     // ?? Retornar asignaci�n actualizada - CON TODOS LOS CAMPOS ESPERADOS Y NORMALIZADOS
     const duration = Date.now() - t1;
     
@@ -2201,8 +2215,8 @@ app.get("/api/movilizador/status", async (req, res) => {
     const fechaCorte = cfgRows[0]?.value || "";
 
     // 2. CONVERSION FINALIZADO
-    let convUrl = `${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CONVERSION&estado_general=eq.FINALIZADO&select=vin,fecha_creacion,updated_at`;
-    if (fechaCorte) convUrl += `&updated_at=gte.${fechaCorte}T00:00:00`;
+    let convUrl = `${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CONVERSION&estado_general=eq.FINALIZADO&select=vin,fecha_creacion,created_at`;
+    if (fechaCorte) convUrl += `&created_at=gte.${fechaCorte}T00:00:00`;
     convUrl += `&order=fecha_creacion.asc`;
     const convResp = await fetch(convUrl, { method: "GET", headers });
     const convRows = convResp.ok ? await convResp.json() : [];
@@ -2218,10 +2232,10 @@ app.get("/api/movilizador/status", async (req, res) => {
       if (t.vin) trasMap.set(t.vin, t);
     }
 
-    // 4. CALIDAD FINALIZADO
-    let calUrl = `${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CALIDAD&estado_general=eq.FINALIZADO&select=vin,fecha_creacion,updated_at`;
-    if (fechaCorte) calUrl += `&updated_at=gte.${fechaCorte}T00:00:00`;
-    calUrl += `&order=updated_at.desc`;
+    // 4. CALIDAD FINALIZADO (con filtro de fecha de corte)
+    let calUrl = `${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CALIDAD&estado_general=eq.FINALIZADO&select=vin,fecha_creacion,created_at`;
+    if (fechaCorte) calUrl += `&fecha_creacion=gte.${fechaCorte}T00:00:00`;
+    calUrl += `&order=fecha_creacion.desc`;
     const calResp = await fetch(calUrl, { method: "GET", headers });
     const calRows = calResp.ok ? await calResp.json() : [];
     const calidadDoneMap = new Map();
@@ -2229,24 +2243,34 @@ app.get("/api/movilizador/status", async (req, res) => {
       if (wo.vin && !calidadDoneMap.has(wo.vin)) calidadDoneMap.set(wo.vin, wo);
     }
 
+    // 4b. CALIDAD ACTIVA (PENDIENTE o EN PROCESO) — para saber si el inspector está trabajando
+    const calActivaResp = await fetch(
+      `${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CALIDAD&estado_general=in.(PENDIENTE,EN PROCESO)&select=vin`,
+      { method: "GET", headers }
+    );
+    const calActivaRows = calActivaResp.ok ? await calActivaResp.json() : [];
+    const calidadActivaSet = new Set((calActivaRows || []).map(w => w.vin).filter(Boolean));
+
     // ─── Lista 1: conversión finalizada, sin traslado registrado
     const convVinMap = new Map();
     for (const wo of (convRows || [])) {
-      if (!wo.vin || trasMap.has(wo.vin)) continue;
+      if (!wo.vin || trasMap.has(wo.vin) || calidadDoneMap.has(wo.vin)) continue;
       const prev = convVinMap.get(wo.vin);
       if (!prev || new Date(wo.fecha_creacion) > new Date(prev.fecha_creacion)) {
         convVinMap.set(wo.vin, wo);
       }
     }
     const list1 = Array.from(convVinMap.values())
-      .map(wo => ({ vin: wo.vin, fecha: wo.fecha_creacion, fecha_updated: wo.updated_at }))
+      .map(wo => ({ vin: wo.vin, fecha: wo.fecha_creacion, fecha_updated: wo.created_at }))
       .sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
 
     // ─── Lista 2: trasladados que aún no terminaron calidad
     const list2 = [];
     for (const [vin, t] of trasMap) {
       const calidadDone = calidadDoneMap.has(vin);
-      if (t.estado === "TRASLADADO" || (t.estado === "ENTREGADO_CALIDAD" && !calidadDone)) {
+      const calidadActiva = calidadActivaSet.has(vin);
+      // ENTREGADO_CALIDAD sin OT activa y sin calidad done → va a list3, no list2
+      if ((t.estado === "TRASLADADO" && !calidadDone) || (t.estado === "ENTREGADO_CALIDAD" && !calidadDone && calidadActiva)) {
         list2.push({
           vin,
           estado: t.estado,
@@ -2259,17 +2283,16 @@ app.get("/api/movilizador/status", async (req, res) => {
     }
     list2.sort((a, b) => new Date(a.trasladado_at) - new Date(b.trasladado_at));
 
-    // ─── Lista 3: calidad finalizada con registro de traslado
+    // ─── Lista 3: calidad finalizada (con o sin traslado registrado, excluye ENTREGADO_FINAL)
     const list3 = [];
     for (const [vin, wo] of calidadDoneMap) {
-      if (trasMap.has(vin)) {
-        const t = trasMap.get(vin);
-        list3.push({
-          vin,
-          fecha_calidad: wo.updated_at || wo.fecha_creacion,
-          trasladado_por: t.trasladado_por || "",
-        });
-      }
+      const t = trasMap.get(vin);
+      if (t?.estado === "ENTREGADO_FINAL") continue;
+      list3.push({
+        vin,
+        fecha_calidad: wo.fecha_creacion || wo.created_at,
+        trasladado_por: t?.trasladado_por || "",
+      });
     }
     list3.sort((a, b) => new Date(b.fecha_calidad) - new Date(a.fecha_calidad));
 
@@ -2288,13 +2311,13 @@ app.get("/api/movilizador/status", async (req, res) => {
 });
 
 // POST /api/movilizador/traslado
-// body: { vin, accion: "TRASLADAR" | "ENTREGAR_CALIDAD", usuario }
+// body: { vin, accion: "TRASLADAR" | "ENTREGAR_CALIDAD" | "ENTREGAR_FINAL", usuario }
 app.post("/api/movilizador/traslado", async (req, res) => {
   try {
     const { vin, accion, usuario } = req.body || {};
     if (!vin) return res.status(400).json({ ok: false, error: "Falta vin" });
-    if (!["TRASLADAR", "ENTREGAR_CALIDAD"].includes(accion)) {
-      return res.status(400).json({ ok: false, error: "accion inválida: use TRASLADAR o ENTREGAR_CALIDAD" });
+    if (!["TRASLADAR", "ENTREGAR_CALIDAD", "ENTREGAR_FINAL"].includes(accion)) {
+      return res.status(400).json({ ok: false, error: "accion inválida: use TRASLADAR, ENTREGAR_CALIDAD o ENTREGAR_FINAL" });
     }
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const headers = supabaseHeaders_();
@@ -2303,7 +2326,9 @@ app.post("/api/movilizador/traslado", async (req, res) => {
 
     const data = accion === "TRASLADAR"
       ? { vin, estado: "TRASLADADO", trasladado_at: now, trasladado_por: userName }
-      : { vin, estado: "ENTREGADO_CALIDAD", entregado_at: now, entregado_por: userName };
+      : accion === "ENTREGAR_CALIDAD"
+        ? { vin, estado: "ENTREGADO_CALIDAD", entregado_at: now, entregado_por: userName }
+        : { vin, estado: "ENTREGADO_FINAL", entregado_at: now, entregado_por: userName };
 
     const resp = await fetch(`${SUPABASE_URL}/rest/v1/movilizador_traslados`, {
       method: "POST",
