@@ -29,11 +29,14 @@ export function movilizadorView() {
         <div class="movRegBox">
           <div class="movRegTitle">📥 Registro de Entrada</div>
           <div class="movRegHint">Marca el vehículo como <strong>En Espera Conversión</strong></div>
-          <div class="vinWrap">
-            <input id="movVinEntrada" type="text"
-              placeholder="Buscar VIN…" class="movVinInput"
-              autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" />
-            <div id="movVinEntradaSuggest" class="vinSuggest hidden" role="listbox"></div>
+          <div class="movVinRow">
+            <div class="vinWrap">
+              <input id="movVinEntrada" type="text"
+                placeholder="Buscar VIN…" class="movVinInput"
+                autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" />
+              <div id="movVinEntradaSuggest" class="vinSuggest hidden" role="listbox"></div>
+            </div>
+            <button id="btnMovQrEntrada" type="button" class="movQrBtn" title="Escanear QR">📷</button>
           </div>
           <button id="btnMovRegistrarEntrada" class="movBtnFull movBtnEntrada" type="button" disabled>
             Registrar Ingreso ▶
@@ -44,17 +47,34 @@ export function movilizadorView() {
         <div class="movRegBox">
           <div class="movRegTitle">📤 Registro de Salida</div>
           <div class="movRegHint">Marca el vehículo como <strong>Trasladado</strong></div>
-          <div class="vinWrap">
-            <input id="movVinSalida" type="text"
-              placeholder="Buscar VIN…" class="movVinInput"
-              autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" />
-            <div id="movVinSalidaSuggest" class="vinSuggest hidden" role="listbox"></div>
+          <div class="movVinRow">
+            <div class="vinWrap">
+              <input id="movVinSalida" type="text"
+                placeholder="Buscar VIN…" class="movVinInput"
+                autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" />
+              <div id="movVinSalidaSuggest" class="vinSuggest hidden" role="listbox"></div>
+            </div>
+            <button id="btnMovQrSalida" type="button" class="movQrBtn" title="Escanear QR">📷</button>
           </div>
           <button id="btnMovRegistrarSalida" class="movBtnFull movBtnSalida" type="button" disabled>
             Registrar Salida ▶
           </button>
         </div>
 
+      </div>
+
+      <!-- QR Modal (movilizador) -->
+      <div id="movQrModal" class="modal" aria-hidden="true" style="display:none;">
+        <div class="modalBox">
+          <div class="modalHead">
+            <div class="modalTitle">Escanear QR / Código de Barras</div>
+            <button id="btnMovCloseQr" type="button" title="Cerrar">✕</button>
+          </div>
+          <div class="modalBody">
+            <div id="movQrReader"></div>
+            <div id="movQrMsg" class="small" style="margin-top:10px;"></div>
+          </div>
+        </div>
       </div>
 
       <!-- Panel 1: Conversión Finalizada – mover a zona de espera -->

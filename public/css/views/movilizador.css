@@ -452,7 +452,51 @@
   }
 }
 
-/* ─── GPS Quick Link ─── */
+.movVinRow {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.movVinRow .vinWrap {
+  flex: 1;
+  min-width: 0;
+}
+
+.movQrBtn {
+  flex-shrink: 0;
+  height: 38px;
+  width: 42px;
+  border-radius: var(--radiusSm);
+  border: 1px solid rgba(255,255,255,.2);
+  background: rgba(255,255,255,.08);
+  color: var(--text);
+  font-size: 1.15rem;
+  cursor: pointer;
+  transition: background .16s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.movQrBtn:hover {
+  background: rgba(96,165,250,.22);
+  border-color: rgba(96,165,250,.5);
+}
+
+:root[data-theme="day"] .movQrBtn {
+  background: rgba(0,0,0,.06);
+  border-color: rgba(0,0,0,.18);
+  color: #111;
+}
+
+:root[data-theme="day"] .movQrBtn:hover {
+  background: rgba(37,99,235,.12);
+  border-color: rgba(37,99,235,.4);
+}
+
+/* GPS Quick Link */
 .movGpsLink {
   display: flex;
   align-items: center;

@@ -10,6 +10,7 @@
 import { CORE, escapeHtml, fmtShort_, getJSON, getJSON_user, postJSON } from "../../core/core.js";
 import { updateHubModuleBadge } from "../../core/ui-shell.js";
 import { getVinSuggest } from "../../core/supabase-client.js";
+import { createScanner } from "../../core/qr-scanner.js";
 
 let pollTimer = null;
 const POLL_MS = 30_000;
@@ -299,6 +300,48 @@ function createVinAc_(inputId, suggestId, onPick) {
   }
 }
 
+// ─── QR Scanner ────────────────────────────────────────────────────────
+
+const movScanner_ = createScanner("movQrReader");
+let movQrTarget_ = null; // "entrada" | "salida"
+
+function movQrModal_() { return document.getElementById("movQrModal"); }
+
+async function openMovQr_(target) {
+  movQrTarget_ = target;
+  const modal = movQrModal_();
+  if (!modal) return;
+  modal.style.display = "flex";
+  modal.classList.add("show");
+  const msg = document.getElementById("movQrMsg");
+  try {
+    await movScanner_.start({
+      mode: "QR",
+      msgEl: msg,
+      onDecoded: async (code) => {
+        await closeMovQr_();
+        const inputId = movQrTarget_ === "entrada" ? "movVinEntrada" : "movVinSalida";
+        const btnId   = movQrTarget_ === "entrada" ? "btnMovRegistrarEntrada" : "btnMovRegistrarSalida";
+        const inp = document.getElementById(inputId);
+        if (inp) {
+          inp.value = code;
+          inp.dispatchEvent(new Event("input"));
+        }
+        const btn = document.getElementById(btnId);
+        if (btn) btn.disabled = code.length < 7;
+      },
+    });
+  } catch { /* mensaje ya mostrado en msgEl */ }
+}
+
+async function closeMovQr_() {
+  await movScanner_.stop().catch(() => {});
+  const modal = movQrModal_();
+  if (!modal) return;
+  modal.classList.remove("show");
+  modal.style.display = "none";
+}
+
 // ─── GPS + Registro ────────────────────────────────────────────────────
 
 function openGpsWithVin_(vin) {
@@ -373,6 +416,14 @@ export function init() {
   createVinAc_("movVinEntrada", "movVinEntradaSuggest", () => {});
   createVinAc_("movVinSalida", "movVinSalidaSuggest", () => {});
 
+  // QR scanner buttons
+  document.getElementById("btnMovQrEntrada")?.addEventListener("click", () => openMovQr_("entrada").catch(() => {}));
+  document.getElementById("btnMovQrSalida")?.addEventListener("click",  () => openMovQr_("salida").catch(() => {}));
+  document.getElementById("btnMovCloseQr")?.addEventListener("click",   () => closeMovQr_().catch(() => {}));
+  document.getElementById("movQrModal")?.addEventListener("click", e => {
+    if (e.target === document.getElementById("movQrModal")) closeMovQr_().catch(() => {});
+  });
+
   // Registration buttons
   document.getElementById("btnMovRegistrarEntrada")?.addEventListener("click", () => {
     const vin = document.getElementById("movVinEntrada")?.value?.trim().toUpperCase() || "";
@@ -424,4 +475,5 @@ export function enter() {
 
 export function exit() {
   stopPoll_();
+  closeMovQr_().catch(() => {});
 }
