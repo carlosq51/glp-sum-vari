@@ -9,7 +9,7 @@ import { escapeHtml } from "../../core/format.js";
 let liveTimer_    = null;
 let liveActive_   = false;
 let liveLastData_ = null;   // último fetch, para re-abrir detalle actualizado
-const REFRESH_MS  = 30_000; // refresco cada 30 s
+const REFRESH_MS  = 300_000; // refresco cada 5 min
 
 // ── Colores y etiquetas por especialidad ──────────────────────────────
 const ROL_META = {
@@ -80,6 +80,7 @@ function renderLive_(container, data) {
   let html = `<div class="live-refresh-bar">
     <span class="live-fecha small">📅 ${escapeHtml(data.fecha || "")}</span>
     <span id="liveLastUpdate" class="live-last-update small">Actualizado: ${fmtHora_(new Date().toISOString())}</span>
+    <button type="button" id="btnLiveRefresh" class="live-refresh-btn" title="Actualizar ahora">↻</button>
   </div>`;
 
   for (const rol of allRoles) {
@@ -107,6 +108,9 @@ function renderLive_(container, data) {
   }
 
   container.innerHTML = html;
+
+  // Bind: botón actualizar manual
+  container.querySelector("#btnLiveRefresh")?.addEventListener("click", () => refreshLive_().catch(() => {}));
 
   // Bind: toggle de grupo
   container.querySelectorAll(".live-group-toggle").forEach(header => {

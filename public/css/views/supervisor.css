@@ -157,11 +157,25 @@ button[data-suptrack].active {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 8px;
   padding: 6px 2px;
   margin-bottom: 12px;
   border-bottom: 1px solid rgba(255,255,255,.1);
 }
-.live-last-update { opacity: .6; }
+.live-last-update { opacity: .6; flex: 1; text-align: right; }
+.live-refresh-btn {
+  background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.18);
+  border-radius: 8px;
+  color: #fff;
+  cursor: pointer;
+  font-size: 1em;
+  padding: 3px 10px;
+  line-height: 1.4;
+  transition: background .15s;
+  flex-shrink: 0;
+}
+.live-refresh-btn:hover { background: rgba(255,255,255,.16); }
 
 /* Grupo por especialidad */
 .live-group {
@@ -348,6 +362,10 @@ button[data-suptrack].active {
   padding: 16px 0;
   text-align: center;
 }
+
+/* Tarjetas de solo lectura en UBICACIONES */
+.ub-card-readonly { pointer-events: none; opacity: .95; }
+.ub-card-readonly .ub-card-status { margin-top: 4px; }
 
 /* Modal detalle del día */
 .live-detail-body {

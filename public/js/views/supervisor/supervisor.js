@@ -27,6 +27,7 @@ import { bindSupVinSuggest_ } from "./sup-vin-suggest.js";
 import { bindSupQuickDates_ } from "./sup-quick-dates.js";
 import { bindSupPausaIndefinida_ } from "./sup-pausa-indefinida.js";
 import { bindSupLive_, enterLive_, exitLive_ } from "./sup-live.js";
+import { bindSupUbicaciones_, enterUbicaciones_, exitUbicaciones_ } from "./sup-ubicaciones.js";
 
 let supTrack = "CONVERSION";
 let supTimer = null;
@@ -230,7 +231,7 @@ function renderSupervisor_(j) {
 }
 
 export function init() {
-  // ── Pestañas REPORTE / LIVE ─────────────────────────────────────────
+  // ── Pestañas REPORTE / LIVE / UBICACIONES ──────────────────────────
   document.querySelectorAll(".sup-tab[data-suptab]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const tab = btn.dataset.suptab;
@@ -238,15 +239,23 @@ export function init() {
       document.querySelectorAll(".sup-tab[data-suptab]").forEach((b) =>
         b.classList.toggle("active", b.dataset.suptab === tab)
       );
-      const panelReporte = document.getElementById("supPanelReporte");
-      const panelLive    = document.getElementById("supPanelLive");
-      if (panelReporte) panelReporte.style.display = tab === "REPORTE" ? "" : "none";
-      if (panelLive)    panelLive.style.display    = tab === "LIVE"    ? "" : "none";
+      const panelReporte     = document.getElementById("supPanelReporte");
+      const panelLive        = document.getElementById("supPanelLive");
+      const panelUbicaciones = document.getElementById("supPanelUbicaciones");
+      if (panelReporte)     panelReporte.style.display     = tab === "REPORTE"     ? "" : "none";
+      if (panelLive)        panelLive.style.display        = tab === "LIVE"        ? "" : "none";
+      if (panelUbicaciones) panelUbicaciones.style.display = tab === "UBICACIONES" ? "" : "none";
 
       if (tab === "LIVE") {
+        exitUbicaciones_();
         enterLive_();
+      } else if (tab === "UBICACIONES") {
+        exitLive_();
+        enterUbicaciones_();
       } else {
         exitLive_();
+        exitUbicaciones_();
+        fetchSupervisorReport_().catch(() => {});
       }
     });
   });
@@ -288,6 +297,7 @@ export function init() {
   bindSupVinSuggest_({ CORE, escapeHtml, onApply: () => fetchSupervisorReport_().catch(() => {}) });
   bindSupPausaIndefinida_({ getJSON_user });
   bindSupLive_();
+  bindSupUbicaciones_();
 }
 
 export function enter() {
@@ -314,4 +324,5 @@ export function exit() {
   clearTimeout(supTimer);
   destroyTrendChart_();
   exitLive_();
+  exitUbicaciones_();
 }

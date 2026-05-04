@@ -4,10 +4,11 @@ export function supervisorView() {
     <div id="viewSUPERVISOR" class="card" style="display:none;">
       <h3>Supervisor</h3>
 
-      <!-- Pestañas principales: REPORTE / LIVE -->
+      <!-- Pestañas principales: REPORTE / LIVE / UBICACIONES -->
       <div class="sup-tab-row">
         <button type="button" class="btn sup-tab" data-suptab="REPORTE">📊 REPORTE</button>
         <button type="button" class="btn sup-tab active" data-suptab="LIVE">🔴 LIVE</button>
+        <button type="button" class="btn sup-tab" data-suptab="UBICACIONES">📍 UBICACIONES</button>
       </div>
 
       <!-- ══════════════════════════════════════════════
@@ -85,6 +86,60 @@ export function supervisorView() {
       ══════════════════════════════════════════════ -->
       <div id="supPanelLive" style="display:none;">
         <div id="liveContainer" style="margin-top:10px;"></div>
+      </div>
+
+      <!-- ══════════════════════════════════════════════
+           PANEL UBICACIONES (solo lectura, datos del movilizador)
+      ══════════════════════════════════════════════ -->
+      <div id="supPanelUbicaciones" style="display:none;">
+        <div class="live-refresh-bar" style="margin-top:10px;">
+          <span class="live-fecha small">📅 Estado de traslados</span>
+          <span id="ubLastUpdate" class="live-last-update small"></span>
+          <button type="button" id="btnUbRefresh" class="live-refresh-btn" title="Actualizar ahora">↻</button>
+        </div>
+        <div id="ubError" class="small" style="color:#f87171;"></div>
+
+        <!-- Panel 1: Conversión finalizada -->
+        <div class="movPanel open" id="ubPanel1">
+          <button class="movPanelHeader" type="button" aria-expanded="true">
+            <span class="movPanelIcon">⚙️</span>
+            <div class="movPanelTitleGroup">
+              <span class="movPanelTitle">Conversión Finalizada</span>
+              <span class="movPanelHint">Pendientes de traslado a zona de espera</span>
+            </div>
+            <span id="ubBadge1" class="movBadge movBadgeWarn" style="display:none;"></span>
+            <span class="movChevron" aria-hidden="true">▼</span>
+          </button>
+          <div id="ubPanel1Body" class="movPanelBody"></div>
+        </div>
+
+        <!-- Panel 2: Zona de espera -->
+        <div class="movPanel open" id="ubPanel2">
+          <button class="movPanelHeader" type="button" aria-expanded="true">
+            <span class="movPanelIcon">🕐</span>
+            <div class="movPanelTitleGroup">
+              <span class="movPanelTitle">Zona de Espera</span>
+              <span class="movPanelHint">En espera o en revisión técnica</span>
+            </div>
+            <span id="ubBadge2" class="movBadge movBadgeNote" style="display:none;"></span>
+            <span class="movChevron" aria-hidden="true">▼</span>
+          </button>
+          <div id="ubPanel2Body" class="movPanelBody"></div>
+        </div>
+
+        <!-- Panel 3: Revisión finalizada -->
+        <div class="movPanel open" id="ubPanel3">
+          <button class="movPanelHeader" type="button" aria-expanded="true">
+            <span class="movPanelIcon">✅</span>
+            <div class="movPanelTitleGroup">
+              <span class="movPanelTitle">Revisión Técnica Finalizada</span>
+              <span class="movPanelHint">Listo para trasladar a otras áreas</span>
+            </div>
+            <span id="ubBadge3" class="movBadge movBadgeOk" style="display:none;"></span>
+            <span class="movChevron" aria-hidden="true">▼</span>
+          </button>
+          <div id="ubPanel3Body" class="movPanelBody"></div>
+        </div>
       </div>
     </div>
   `;
