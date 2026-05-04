@@ -1260,6 +1260,12 @@ app.get("/api/supervisor/live", async (req, res) => {
         new Date(b.updated_at) - new Date(a.updated_at)
       )[0] || null;
 
+      // carsHoy: trabajos finalizados contando 0.5 si empezaron un día anterior
+      const carsHoy = finalizados.reduce((sum, a) => {
+        const d = (a.fecha_asignacion || "").slice(0, 10);
+        return sum + (d < todayStr ? 0.5 : 1.0);
+      }, 0);
+
       techs.push({
         userId: tech.userId,
         nombre: tech.nombre,
@@ -1270,6 +1276,7 @@ app.get("/api/supervisor/live", async (req, res) => {
         totalHoy: asgList.length,
         finalizadosHoy: finalizados.length,
         activosHoy: activos.length,
+        carsHoy,
         vinsHoy: [...new Set(asgList.map(a => a.vin).filter(Boolean))],
         asignacionesHoy: asgList,
       });

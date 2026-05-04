@@ -102,45 +102,59 @@ function renderLive_(container, data) {
 
   container.innerHTML = html;
 
-  // Bind clics en cards → detalle
+  // Bind: clic en card → modal detalle; clic en expand-btn → toggle extra
   container.querySelectorAll(".live-tech-card[data-techkey]").forEach(card => {
-    card.addEventListener("click", () => {
+    card.addEventListener("click", (e) => {
+      if (e.target.closest(".live-expand-btn")) return;
       const techKey = card.dataset.techkey;
       const tech = techs.find(t => `${t.userId}__${t.rol}` === techKey);
       if (tech) openLiveDetail_(tech);
     });
+
+    card.querySelector(".live-expand-btn")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const isExpanded = card.classList.toggle("expanded");
+      e.currentTarget.textContent = isExpanded ? "▲ menos" : "▼ más";
+    });
   });
+}
+
+function fmtCars_(n) {
+  const v = Number(n) || 0;
+  return v === Math.floor(v) ? String(v) : v.toFixed(1);
 }
 
 function renderTechCard_(t) {
   const em = ESTADO_META[t.estadoActivo] || ESTADO_META.SIN_ACTIVIDAD;
   const nombre = t.nombre || t.email || "Técnico";
-  const vins = Array.isArray(t.vinsHoy) ? t.vinsHoy : [];
   const vinActivo = t.vinActivo || "";
-
   const currentAsg = (t.asignacionesHoy || []).find(a => a.vin === vinActivo && a.estado !== "FINALIZADO");
+  const cars = Number(t.carsHoy ?? t.finalizadosHoy ?? 0);
+  const carsStr = fmtCars_(cars);
+  const hasHalf = cars !== Math.floor(cars);
 
   return `
-  <div class="live-tech-card" data-techkey="${escapeHtml(t.userId + "__" + t.rol)}" title="Ver detalle del día">
+  <div class="live-tech-card" data-techkey="${escapeHtml(t.userId + "__" + t.rol)}" title="Click: ver detalle completo del día">
     <div class="live-tech-header">
       <span class="live-tech-dot" style="background:${em.dot};"></span>
       <span class="live-tech-name">${escapeHtml(nombre)}</span>
       <span class="live-badge ${escapeHtml(em.badge)}">${escapeHtml(em.label)}</span>
     </div>
 
-    ${vinActivo ? `
-    <div class="live-vin-active">
-      <span class="live-vin-label small">VIN ACTUAL</span>
+    ${vinActivo ? `<div class="live-vin-compact">
+      <span class="live-vin-abbr">VIN</span>
       <span class="live-vin-value">${escapeHtml(vinActivo)}</span>
-      ${currentAsg?.running_since ? `<span class="live-tiempo small">⏱ ${fmtTiempo_(currentAsg.tiempo_ms, currentAsg.running_since)}</span>` : ""}
-    </div>
-    ` : ""}
+    </div>` : ""}
 
-    <div class="live-tech-footer">
-      <span class="small" title="Vehículos trabajados hoy">🚗 ${t.totalHoy || 0} auto${(t.totalHoy || 0) !== 1 ? "s" : ""}</span>
-      <span class="small" title="Finalizados hoy">✅ ${t.finalizadosHoy || 0} fin.</span>
-      ${vins.length > 1 ? `<span class="small live-more-vins">+${vins.length - 1} más</span>` : ""}
+    <div class="live-extra" aria-hidden="true">
+      <div class="live-extra-row">
+        ${currentAsg?.running_since ? `<span title="Tiempo en taller">⏱ ${fmtTiempo_(currentAsg.tiempo_ms, currentAsg.running_since)}</span>` : ""}
+        <span title="${hasHalf ? "Incluye trabajos iniciados el día anterior (½ carro)" : "Carros finalizados hoy"}">🚗 ${carsStr} carro${cars !== 1 ? "s" : ""}${hasHalf ? " ✦" : ""}</span>
+        ${t.activosHoy > 0 ? `<span title="En proceso">🔧 ${t.activosHoy} activo${t.activosHoy !== 1 ? "s" : ""}</span>` : ""}
+      </div>
     </div>
+
+    <button type="button" class="live-expand-btn" title="Mostrar/ocultar datos del turno">▼ más</button>
   </div>`;
 }
 
@@ -156,24 +170,38 @@ function openLiveDetail_(tech) {
   title.textContent = `${meta.icon} ${nombre} — ${meta.label}`;
 
   const asgList = Array.isArray(tech.asignacionesHoy) ? tech.asignacionesHoy : [];
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const cars = Number(tech.carsHoy ?? tech.finalizadosHoy ?? 0);
+  const carsStr = fmtCars_(cars);
   if (!asgList.length) {
     body.innerHTML = `<div class="small">Sin asignaciones hoy.</div>`;
   } else {
-    body.innerHTML = asgList.map(a => renderDetailRow_(a)).join("");
+    const summary = `<div class="live-detail-summary small">
+      🚗 <b>${carsStr} carro${cars !== 1 ? "s" : ""}</b>
+      ${cars !== Math.floor(cars) ? `<span class="live-half-legend">✦ = empezó día anterior (½)</span>` : ""}
+      · ✅ <b>${tech.finalizadosHoy || 0} finalizado${tech.finalizadosHoy !== 1 ? "s" : ""}</b>
+      · 🔧 <b>${tech.activosHoy || 0} en proceso</b>
+    </div>`;
+    body.innerHTML = summary + asgList.map(a => renderDetailRow_(a, todayStr)).join("");
   }
 
   modal.setAttribute("aria-hidden", "false");
   modal.classList.add("open");
 }
 
-function renderDetailRow_(a) {
+function renderDetailRow_(a, todayStr) {
   const em  = ESTADO_META[a.estado] || ESTADO_META.SIN_ACTIVIDAD;
   const vin = a.vin || (a.tipo_ramal ? `RAMAL: ${a.tipo_ramal}` : "–");
   const tiempoTotal = fmtTiempo_(a.tiempo_ms, a.estado === "TRABAJANDO" ? a.running_since : null);
+  const asgDate = (a.fecha_asignacion || "").slice(0, 10);
+  const isYesterday = asgDate && asgDate < todayStr;
 
   return `
-  <div class="live-detail-row">
-    <div class="live-detail-vin">${escapeHtml(vin)}</div>
+  <div class="live-detail-row${isYesterday ? " live-detail-row--half" : ""}">
+    <div class="live-detail-vin">
+      ${escapeHtml(vin)}
+      ${isYesterday ? `<span class="live-half-badge" title="Empezó el día anterior → cuenta ½ carro">½</span>` : ""}
+    </div>
     <div class="live-detail-meta small">
       <span class="live-badge ${escapeHtml(em.badge)}">${escapeHtml(em.label)}</span>
       <span>⏱ ${escapeHtml(tiempoTotal)}</span>

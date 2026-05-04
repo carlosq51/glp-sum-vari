@@ -203,12 +203,12 @@ button[data-suptrack].active {
   background: linear-gradient(180deg, rgba(255,255,255,.07), rgba(0,0,0,.1));
   border: 1px solid rgba(255,255,255,.13);
   border-radius: 16px;
-  padding: 14px;
+  padding: 10px 12px 8px;
   cursor: pointer;
   transition: transform .15s, box-shadow .15s, border-color .15s;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 .live-tech-card:hover {
   transform: translateY(-2px);
@@ -220,7 +220,6 @@ button[data-suptrack].active {
   display: flex;
   align-items: center;
   gap: 7px;
-  flex-wrap: wrap;
 }
 .live-tech-dot {
   width: 9px; height: 9px;
@@ -235,6 +234,64 @@ button[data-suptrack].active {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* VIN compacto (siempre visible) */
+.live-vin-compact {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255,255,255,.05);
+  border-radius: 7px;
+  padding: 4px 8px;
+}
+.live-vin-abbr {
+  font-size: .68em;
+  font-weight: 800;
+  opacity: .5;
+  letter-spacing: .5px;
+}
+.live-vin-value {
+  font-weight: 800;
+  font-size: .82em;
+  letter-spacing: .7px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Sección expandible (oculta por defecto) */
+.live-extra {
+  display: none;
+  padding: 6px 0 2px;
+  border-top: 1px solid rgba(255,255,255,.09);
+  margin-top: 2px;
+}
+.live-tech-card.expanded .live-extra {
+  display: block;
+}
+.live-extra-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: .8em;
+  opacity: .9;
+  align-items: center;
+}
+
+/* Botón expandir */
+.live-expand-btn {
+  all: unset;
+  cursor: pointer;
+  font-size: .7em;
+  font-weight: 700;
+  opacity: .5;
+  letter-spacing: .3px;
+  text-align: right;
+  padding: 2px 0;
+  transition: opacity .15s;
+  align-self: flex-end;
+}
+.live-expand-btn:hover { opacity: 1; }
 
 /* Badges de estado */
 .live-badge {
@@ -251,28 +308,7 @@ button[data-suptrack].active {
 .badge-finalizado    { background: rgba(96,165,250,.18); color: #93c5fd; border: 1px solid rgba(96,165,250,.35); }
 .badge-sin-actividad { background: rgba(71,85,105,.25);  color: #94a3b8; border: 1px solid rgba(71,85,105,.4); }
 
-/* VIN activo */
-.live-vin-active {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  background: rgba(255,255,255,.05);
-  border-radius: 8px;
-  padding: 7px 10px;
-}
-.live-vin-label { opacity: .55; font-size: .72em; letter-spacing: .5px; }
-.live-vin-value { font-weight: 800; font-size: .88em; letter-spacing: .8px; }
-.live-tiempo    { opacity: .75; }
-
 /* Pie de card */
-.live-tech-footer {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  align-items: center;
-  margin-top: auto;
-  opacity: .8;
-}
 .live-more-vins { opacity: .55; font-style: italic; }
 
 /* Mensajes */
@@ -286,21 +322,51 @@ button[data-suptrack].active {
 .live-detail-body {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   max-height: 70vh;
   overflow-y: auto;
 }
+.live-detail-summary {
+  padding: 8px 12px;
+  background: rgba(255,255,255,.06);
+  border-radius: 8px;
+  margin-bottom: 2px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.live-half-legend {
+  opacity: .6;
+  font-style: italic;
+}
 .live-detail-row {
-  padding: 10px 12px;
+  padding: 8px 12px;
   background: rgba(255,255,255,.05);
   border-radius: 10px;
   border: 1px solid rgba(255,255,255,.1);
 }
+.live-detail-row--half {
+  border-left: 3px solid rgba(251,191,36,.5);
+}
 .live-detail-vin {
   font-weight: 800;
-  font-size: .92em;
+  font-size: .88em;
   letter-spacing: .6px;
-  margin-bottom: 5px;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.live-half-badge {
+  font-size: .7em;
+  font-weight: 900;
+  color: #fbbf24;
+  background: rgba(251,191,36,.18);
+  border: 1px solid rgba(251,191,36,.35);
+  border-radius: 4px;
+  padding: 1px 5px;
+  line-height: 1.4;
 }
 .live-detail-meta {
   display: flex;
