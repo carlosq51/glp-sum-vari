@@ -6,9 +6,10 @@
 import { getJSON } from "../../core/api.js";
 import { escapeHtml } from "../../core/format.js";
 
-let liveTimer_ = null;
-let liveActive_ = false;
-const REFRESH_MS = 30_000; // refresco cada 30 s
+let liveTimer_    = null;
+let liveActive_   = false;
+let liveLastData_ = null;   // último fetch, para re-abrir detalle actualizado
+const REFRESH_MS  = 30_000; // refresco cada 30 s
 
 // ── Colores y etiquetas por especialidad ──────────────────────────────
 const ROL_META = {
@@ -141,6 +142,18 @@ function fmtCars_(n) {
   return v === Math.floor(v) ? String(v) : v.toFixed(1);
 }
 
+// Primer nombre (primera palabra) + truncado a maxLen caracteres
+function firstName_(nombre, maxLen = 10) {
+  const first = String(nombre || "").trim().split(/\s+/)[0] || "Técnico";
+  return first.length > maxLen ? first.slice(0, maxLen) : first;
+}
+
+// Primera palabra del label de estado, truncado a maxLen
+function shortEstado_(label, maxLen = 4) {
+  const word = String(label || "").trim().split(/\s+/)[0] || "";
+  return word.length > maxLen ? word.slice(0, maxLen) : word;
+}
+
 function renderTechCard_(t) {
   const em = ESTADO_META[t.estadoActivo] || ESTADO_META.SIN_ACTIVIDAD;
   const nombre = t.nombre || t.email || "Técnico";
@@ -149,13 +162,15 @@ function renderTechCard_(t) {
   const cars = Number(t.carsHoy ?? t.finalizadosHoy ?? 0);
   const carsStr = fmtCars_(cars);
   const hasHalf = cars !== Math.floor(cars);
+  const displayName = firstName_(nombre);
+  const displayEstado = shortEstado_(em.label);
 
   return `
-  <div class="live-tech-card" data-techkey="${escapeHtml(t.userId + "__" + t.rol)}" title="Click: ver detalle completo del día">
+  <div class="live-tech-card" data-techkey="${escapeHtml(t.userId + "__" + t.rol)}" title="${escapeHtml(nombre)} — Click: ver detalle">
     <div class="live-tech-header">
       <span class="live-tech-dot" style="background:${em.dot};"></span>
-      <span class="live-tech-name">${escapeHtml(nombre)}</span>
-      <span class="live-badge ${escapeHtml(em.badge)}">${escapeHtml(em.label)}</span>
+      <span class="live-tech-name">${escapeHtml(displayName)}</span>
+      <span class="live-badge ${escapeHtml(em.badge)}">${escapeHtml(displayEstado)}</span>
       <span class="live-cars-pill${hasHalf ? " half" : ""}" title="${hasHalf ? "Incluye trabajos del día anterior (½)" : "Carros finalizados hoy"}">🚗 ${carsStr}</span>
     </div>
 
@@ -213,6 +228,10 @@ function renderDetailRow_(a, todayStr) {
   const asgDate = (a.fecha_asignacion || "").slice(0, 10);
   const isYesterday = asgDate && asgDate < todayStr;
 
+  // Fechas de inicio y fin
+  const inicioStr = a.fecha_asignacion ? fmtFechaHora_(a.fecha_asignacion) : null;
+  const finStr    = a.estado === "FINALIZADO" && a.updated_at ? fmtFechaHora_(a.updated_at) : null;
+
   return `
   <div class="live-detail-row${isYesterday ? " live-detail-row--half" : ""}">
     <div class="live-detail-top">
@@ -222,9 +241,24 @@ function renderDetailRow_(a, todayStr) {
     </div>
     <div class="live-detail-meta small">
       <span class="live-badge ${escapeHtml(em.badge)}">${escapeHtml(em.label)}</span>
-      ${a.running_since ? `<span>🕐 ${fmtHora_(a.running_since)}</span>` : ""}
+      ${inicioStr ? `<span>🟢 ${escapeHtml(inicioStr)}</span>` : ""}
+      ${finStr    ? `<span>🏁 ${escapeHtml(finStr)}</span>`    : ""}
     </div>
   </div>`;
+}
+
+// Formatea ISO → "DD/MM HH:MM" (omite la fecha si es hoy)
+function fmtFechaHora_(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d)) return "";
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const dayStr   = d.toISOString().slice(0, 10);
+  const hhmm     = new Intl.DateTimeFormat("es-PE", { hour: "2-digit", minute: "2-digit" }).format(d);
+  if (dayStr === todayStr) return hhmm;
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  return `${dd}/${mm} ${hhmm}`;
 }
 
 function closeLiveDetail_() {
@@ -232,6 +266,11 @@ function closeLiveDetail_() {
   if (!modal) return;
   modal.setAttribute("aria-hidden", "true");
   modal.classList.remove("show");
+  // Si hubo actualización mientras el modal estaba abierto, aplicarla ahora
+  if (liveLastData_) {
+    const container = document.getElementById("liveContainer");
+    if (container) renderLive_(container, liveLastData_);
+  }
 }
 
 // ── Ciclo de vida ─────────────────────────────────────────────────────
@@ -240,8 +279,15 @@ async function refreshLive_() {
   const container = document.getElementById("liveContainer");
   if (!container) return;
   const data = await fetchLive_();
-  renderLive_(container, data);
-  // Actualizar timestamp si está visible
+  liveLastData_ = data;
+
+  // Si hay un modal abierto, NO re-renderizar para no interrumpir al usuario
+  const modalOpen = document.getElementById("liveDetailModal")?.classList.contains("show");
+  if (!modalOpen) {
+    renderLive_(container, data);
+  }
+
+  // Actualizar solo el timestamp (siempre, silenciosamente)
   const ts = document.getElementById("liveLastUpdate");
   if (ts) ts.textContent = `Actualizado: ${fmtHora_(new Date().toISOString())}`;
 }
