@@ -25,6 +25,7 @@ const ESTADO_META = {
   SIN_INICIAR:   { label: "SIN INICIAR",  badge: "badge-sin-iniciar",  dot: "#94a3b8" },
   FINALIZADO:    { label: "FINALIZADO",   badge: "badge-finalizado",   dot: "#60a5fa" },
   SIN_ACTIVIDAD: { label: "SIN ACTIVIDAD",badge: "badge-sin-actividad",dot: "#475569" },
+  DESCONECTADO:  { label: "DESCON.",      badge: "badge-desconectado", dot: "#64748b" },
 };
 
 // ── API ───────────────────────────────────────────────────────────────
@@ -126,6 +127,7 @@ function renderLive_(container, data) {
 
   // Bind: clic en card → modal detalle; clic en expand-btn → toggle extra
   container.querySelectorAll(".live-tech-card[data-techkey]").forEach(card => {
+    if (card.classList.contains("disconnected")) return; // sin detalle para desconectados
     card.addEventListener("click", (e) => {
       if (e.target.closest(".live-expand-btn")) return;
       const techKey = card.dataset.techkey;
@@ -168,29 +170,31 @@ function renderTechCard_(t) {
   const hasHalf = cars !== Math.floor(cars);
   const displayName = firstName_(nombre);
   const displayEstado = shortEstado_(em.label);
+  const isDisconnected = t.estadoActivo === "DESCONECTADO";
 
   return `
-  <div class="live-tech-card" data-techkey="${escapeHtml(t.userId + "__" + t.rol)}" title="${escapeHtml(nombre)} — Click: ver detalle">
+  <div class="live-tech-card${isDisconnected ? " disconnected" : ""}" data-techkey="${escapeHtml(t.userId + "__" + t.rol)}" title="${escapeHtml(nombre)} — ${isDisconnected ? "Sin actividad hoy" : "Click: ver detalle"}">
     <div class="live-tech-header">
       <span class="live-tech-dot" style="background:${em.dot};"></span>
       <span class="live-tech-name">${escapeHtml(displayName)}</span>
       <span class="live-badge ${escapeHtml(em.badge)}">${escapeHtml(displayEstado)}</span>
-      <span class="live-cars-pill${hasHalf ? " half" : ""}" title="${hasHalf ? "Incluye trabajos del día anterior (½)" : "Carros finalizados hoy"}">🚗 ${carsStr}</span>
+      ${!isDisconnected ? `<span class="live-cars-pill${hasHalf ? " half" : ""}" title="${hasHalf ? "Incluye trabajos del día anterior (½)" : "Carros finalizados hoy"}">🚗 ${carsStr}</span>` : ""}
     </div>
 
-    ${vinActivo ? `<div class="live-vin-compact">
+    ${vinActivo && !isDisconnected ? `<div class="live-vin-compact">
       <span class="live-vin-abbr">VIN</span>
       <span class="live-vin-value">${escapeHtml(vinActivo)}</span>
     </div>` : ""}
 
+    ${!isDisconnected ? `
     <div class="live-extra" aria-hidden="true">
       <div class="live-extra-row">
         ${currentAsg?.running_since ? `<span>⏱ ${fmtTiempo_(currentAsg.tiempo_ms, currentAsg.running_since)}</span>` : ""}
         ${t.activosHoy > 0 ? `<span>🔧 ${t.activosHoy} en proceso</span>` : ""}
       </div>
     </div>
-
     <button type="button" class="live-expand-btn" title="Mostrar/ocultar datos del turno">▼ más</button>
+    ` : ""}
   </div>`;
 }
 

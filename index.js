@@ -1198,6 +1198,7 @@ app.get("/api/supervisor/live", async (req, res) => {
     const headers = supabaseHeaders_();
 
     const todayStr = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString().slice(0, 10);
 
     const selectFields =
       `id,work_order_id,user_id,tipo_ot,rol_trabajo,estado_actual,running_since,tiempo_trab_ms,fecha_asignacion,updated_at,activo,` +
@@ -1210,15 +1211,49 @@ app.get("/api/supervisor/live", async (req, res) => {
     // Q2: Trabajos de días anteriores finalizados HOY (cross-day: ½ carro)
     let url2 = `${SUPABASE_URL}/rest/v1/asignaciones?select=${selectFields}&estado_actual=eq.FINALIZADO&updated_at=gte.${todayStr}T00:00:00&fecha_asignacion=lt.${todayStr}T00:00:00&order=updated_at.desc`;
 
-    const [resp1, resp2] = await Promise.all([
+    // Q3: Todos los usuarios activos con rol técnico (para mostrar DESCONECTADO)
+    const url3 = `${SUPABASE_URL}/rest/v1/usuarios?select=id,nombre,email,rol,especialidad&activo=eq.true&rol=in.(TECNICO,CALIDAD,RAMALERO)&order=nombre.asc`;
+
+    // Q4: Última asignación reciente por usuario (para rol_trabajo de TECNICO AMBOS)
+    const url4 = `${SUPABASE_URL}/rest/v1/asignaciones?select=user_id,rol_trabajo,updated_at&fecha_asignacion=gte.${thirtyDaysAgo}T00:00:00&order=updated_at.desc&limit=2000`;
+
+    const [resp1, resp2, resp3, resp4] = await Promise.all([
       fetch(url1, { method: "GET", headers }),
       fetch(url2, { method: "GET", headers }),
+      fetch(url3, { method: "GET", headers }),
+      fetch(url4, { method: "GET", headers }),
     ]);
     if (!resp1.ok) {
       const text = await resp1.text().catch(() => "");
       throw new Error(`Supabase Q1: ${resp1.status} ${text.slice(0, 200)}`);
     }
-    const [raw1, raw2] = await Promise.all([resp1.json(), resp2.json().catch(() => [])]);
+    const [raw1, raw2, allUsers, recentAsg] = await Promise.all([
+      resp1.json(),
+      resp2.json().catch(() => []),
+      resp3.json().catch(() => []),
+      resp4.json().catch(() => []),
+    ]);
+
+    // Mapa: user_id → último rol_trabajo conocido (para TECNICO AMBOS)
+    const lastRolMap = new Map();
+    for (const a of (recentAsg || [])) {
+      if (a.user_id && a.rol_trabajo && !lastRolMap.has(a.user_id)) {
+        lastRolMap.set(a.user_id, a.rol_trabajo);
+      }
+    }
+
+    // Rol_trabajo por defecto según perfil del usuario
+    function defaultRolTrabajo_(u) {
+      if (u.rol === "CALIDAD")   return "CALIDAD";
+      if (u.rol === "RAMALERO")  return "RAMALERO";
+      if (u.rol === "TECNICO") {
+        if (u.especialidad === "MOTOR")  return "MOTOR";
+        if (u.especialidad === "TANQUE") return "TANQUE";
+        // AMBOS: usar último rol conocido, si no MOTOR por defecto
+        return lastRolMap.get(u.id) || "MOTOR";
+      }
+      return null; // otros roles no se muestran
+    }
 
     // Merge deduplicando por id (cross-day no solapan con Q1 por la fecha)
     const seenIds = new Set();
@@ -1259,7 +1294,7 @@ app.get("/api/supervisor/live", async (req, res) => {
     }
 
     // 3. Construir resultado por técnico
-    const estadoOrder = { "TRABAJANDO": 0, "PAUSADO": 1, "SIN_INICIAR": 2, "FINALIZADO": 3 };
+    const estadoOrder = { "TRABAJANDO": 0, "PAUSADO": 1, "SIN_INICIAR": 2, "FINALIZADO": 3, "DESCONECTADO": 9 };
     const techs = [];
 
     for (const tech of techMap.values()) {
@@ -1291,6 +1326,29 @@ app.get("/api/supervisor/live", async (req, res) => {
         carsHoy,
         vinsHoy: [...new Set(asgList.map(a => a.vin).filter(Boolean))],
         asignacionesHoy: asgList,
+      });
+    }
+
+    // 4. Agregar usuarios DESCONECTADO (activos pero sin actividad hoy)
+    const seenUserRols = new Set(Array.from(techMap.keys())); // "userId__rol"
+    for (const u of (allUsers || [])) {
+      const rol = defaultRolTrabajo_(u);
+      if (!rol) continue;
+      const key = `${u.id}__${rol}`;
+      if (seenUserRols.has(key)) continue; // ya tiene actividad hoy
+      techs.push({
+        userId: u.id,
+        nombre: u.nombre || "",
+        email: u.email || "",
+        rol,
+        vinActivo: "",
+        estadoActivo: "DESCONECTADO",
+        totalHoy: 0,
+        finalizadosHoy: 0,
+        activosHoy: 0,
+        carsHoy: 0,
+        vinsHoy: [],
+        asignacionesHoy: [],
       });
     }
 

@@ -352,6 +352,13 @@ button[data-suptrack].active {
 .badge-sin-iniciar   { background: rgba(148,163,184,.15);color: #cbd5e1; border: 1px solid rgba(148,163,184,.3); }
 .badge-finalizado    { background: rgba(96,165,250,.18); color: #93c5fd; border: 1px solid rgba(96,165,250,.35); }
 .badge-sin-actividad { background: rgba(71,85,105,.25);  color: #94a3b8; border: 1px solid rgba(71,85,105,.4); }
+.badge-desconectado  { background: rgba(51,65,85,.3);    color: #64748b; border: 1px solid rgba(51,65,85,.5); }
+
+/* Cards desconectados: apagadas */
+.live-tech-card.disconnected {
+  opacity: .45;
+  filter: grayscale(.6);
+}
 
 /* Pie de card */
 .live-more-vins { opacity: .55; font-style: italic; }
