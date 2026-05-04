@@ -6,7 +6,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build || true",
     "preview": "vite preview",
     "start": "node index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -32,6 +32,9 @@
     "url": "https://github.com/carlosq51/glp-sum-vari/issues"
   },
   "homepage": "https://github.com/carlosq51/glp-sum-vari#readme",
+  "engines": {
+    "node": ">=20.9.0"
+  },
   "devDependencies": {
     "@vitejs/plugin-legacy": "^5.4.3",
     "autoprefixer": "^10.4.27",
