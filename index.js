@@ -2377,10 +2377,23 @@ app.get("/api/movilizador/status", async (req, res) => {
       if (wo.vin && !calidadActivaMap.has(wo.vin)) calidadActivaMap.set(wo.vin, wo);
     }
 
-    // ─── Lista 1: conversión finalizada + sin traslado + sin OT de CALIDAD (ni activa ni finalizada)
+    // 4c. CONVERSION ACTIVA (PENDIENTE o EN PROCESO) — para saber si técnico ya inició
+    let convActivaUrl = `${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CONVERSION&estado_general=in.(PENDIENTE,EN%20PROCESO)&select=vin,created_at`;
+    if (fechaCorte) convActivaUrl += `&created_at=gte.${fechaCorte}T00:00:00`;
+    const convActivaResp = await fetch(convActivaUrl, { method: "GET", headers });
+    const convActivaRows = convActivaResp.ok ? await convActivaResp.json() : [];
+    const convActivaMap = new Set();
+    for (const wo of (convActivaRows || [])) {
+      if (wo.vin) convActivaMap.add(wo.vin);
+    }
+
+    // ─── Lista 1: conversión finalizada + sin traslado (o en EN_ESPERA_CONVERSION) + sin OT de CALIDAD
     const convVinMap = new Map();
     for (const wo of (convRows || [])) {
-      if (!wo.vin || calidadDoneMap.has(wo.vin) || calidadActivaMap.has(wo.vin) || trasMap.has(wo.vin)) continue;
+      if (!wo.vin || calidadDoneMap.has(wo.vin) || calidadActivaMap.has(wo.vin)) continue;
+      const trasEntry = trasMap.get(wo.vin);
+      // Excluir solo si ya fue trasladado/entregado (no si está en espera de conversión)
+      if (trasEntry && trasEntry.estado !== "EN_ESPERA_CONVERSION") continue;
       const prev = convVinMap.get(wo.vin);
       if (!prev || new Date(wo.fecha_creacion) > new Date(prev.fecha_creacion)) {
         convVinMap.set(wo.vin, wo);
@@ -2395,6 +2408,20 @@ app.get("/api/movilizador/status", async (req, res) => {
         return { vin: wo.vin, fecha: fechaFin || wo.fecha_creacion, fecha_updated: wo.created_at };
       })
       .sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+
+    // ─── Lista 0: en espera de conversión (registradas por movilizador, conversión no finalizada aún)
+    const list0 = [];
+    for (const [vin, t] of trasMap) {
+      if (t.estado !== "EN_ESPERA_CONVERSION") continue;
+      if (convVinMap.has(vin)) continue; // conversión ya finalizada → aparece en list1
+      list0.push({
+        vin,
+        fecha_entrada: t.trasladado_at,
+        registrado_por: t.trasladado_por || "",
+        en_conversion: convActivaMap.has(vin), // técnico ya inició OT
+      });
+    }
+    list0.sort((a, b) => new Date(a.fecha_entrada || 0) - new Date(b.fecha_entrada || 0));
 
     // ─── Lista 2: VINs trasladados (sin calidad done) + VINs con OT CALIDAD activa
     const list2 = [];
@@ -2452,10 +2479,11 @@ app.get("/api/movilizador/status", async (req, res) => {
     return res.json({
       ok: true,
       fechaCorte,
+      list0,
       list1,
       list2,
       list3,
-      counts: { list1: list1.length, list2: list2.length, list3: list3.length },
+      counts: { list0: list0.length, list1: list1.length, list2: list2.length, list3: list3.length },
     });
   } catch (e) {
     console.error("[MOVILIZADOR_STATUS]", e);

@@ -77,6 +77,20 @@ export function movilizadorView() {
         </div>
       </div>
 
+      <!-- Panel 0: En espera de conversión -->
+      <div class="movPanel open" id="movPanel0">
+        <button class="movPanelHeader" type="button" aria-expanded="true">
+          <span class="movPanelIcon">🚗</span>
+          <div class="movPanelTitleGroup">
+            <span class="movPanelTitle">En Espera de Conversión</span>
+            <span class="movPanelHint">Ingresados al taller, pendientes de conversión</span>
+          </div>
+          <span id="movBadge0" class="movBadge movBadgeWarn" aria-label="En espera" style="display:none;"></span>
+          <span class="movChevron" aria-hidden="true">▼</span>
+        </button>
+        <div id="movPanel0Body" class="movPanelBody"></div>
+      </div>
+
       <!-- Panel 1: Conversión Finalizada – mover a zona de espera -->
       <div class="movPanel open" id="movPanel1">
         <button class="movPanelHeader" type="button" aria-expanded="true">

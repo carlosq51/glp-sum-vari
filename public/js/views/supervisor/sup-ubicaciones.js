@@ -32,6 +32,34 @@ function setUbTimestamp_() {
 
 // ── Render ────────────────────────────────────────────────────────────
 
+function renderUbPanel0_(rows) {
+  const box   = document.getElementById("ubPanel0Body");
+  const badge = document.getElementById("ubBadge0");
+  if (!box) return;
+  if (badge) {
+    badge.textContent = rows.length > 0 ? String(rows.length) : "";
+    badge.style.display = rows.length > 0 ? "inline-flex" : "none";
+  }
+  if (!rows.length) {
+    box.innerHTML = `<div class="movEmpty small muted">Sin vehículos en espera de conversión.</div>`;
+    return;
+  }
+  box.innerHTML = `<div class="movCardList">${rows.map(r => `
+    <div class="movCard ub-card-readonly">
+      <div class="movCardTop">
+        <span class="movVin">${escapeHtml(r.vin)}</span>
+        ${r.en_conversion
+          ? `<span class="badge badge-note">🔧 En Conversión</span>`
+          : `<span class="badge badge-warn">⏳ En Espera</span>`
+        }
+      </div>
+      <div class="movCardSub small muted">
+        Entrada: ${fmtDate_(r.fecha_entrada)}
+        ${r.registrado_por ? ` · por ${escapeHtml(r.registrado_por)}` : ""}
+      </div>
+    </div>`).join("")}</div>`;
+}
+
 function renderUbPanel1_(rows) {
   const box = document.getElementById("ubPanel1Body");
   const badge = document.getElementById("ubBadge1");
@@ -110,6 +138,7 @@ async function refreshUb_() {
   try {
     const j = await getJSON("/api/movilizador/status").catch(() => null);
     if (!j?.ok) throw new Error(j?.error || "Error");
+    renderUbPanel0_(j.list0 || []);
     renderUbPanel1_(j.list1 || []);
     renderUbPanel2_(j.list2 || []);
     renderUbPanel3_(j.list3 || []);

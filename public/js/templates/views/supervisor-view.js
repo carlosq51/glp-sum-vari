@@ -99,6 +99,20 @@ export function supervisorView() {
         </div>
         <div id="ubError" class="small" style="color:#f87171;"></div>
 
+        <!-- Panel 0: En espera de conversión -->
+        <div class="movPanel open" id="ubPanel0">
+          <button class="movPanelHeader" type="button" aria-expanded="true">
+            <span class="movPanelIcon">🚗</span>
+            <div class="movPanelTitleGroup">
+              <span class="movPanelTitle">En Espera de Conversión</span>
+              <span class="movPanelHint">Ingresados al taller, pendientes de conversión</span>
+            </div>
+            <span id="ubBadge0" class="movBadge movBadgeWarn" style="display:none;"></span>
+            <span class="movChevron" aria-hidden="true">▼</span>
+          </button>
+          <div id="ubPanel0Body" class="movPanelBody"></div>
+        </div>
+
         <!-- Panel 1: Conversión finalizada -->
         <div class="movPanel open" id="ubPanel1">
           <button class="movPanelHeader" type="button" aria-expanded="true">

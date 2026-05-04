@@ -35,6 +35,37 @@ function setBadge_(id, count) {
 
 // ─── Render ───────────────────────────────────────────────────────────
 
+function renderList0_(rows) {
+  const box = document.getElementById("movPanel0Body");
+  if (!box) return;
+  setBadge_("movBadge0", rows.length);
+
+  if (!rows.length) {
+    box.innerHTML = `<div class="movEmpty small muted">Sin vehículos en espera de conversión.</div>`;
+    return;
+  }
+
+  box.innerHTML = `
+    <div class="movCardList">
+      ${rows.map(r => `
+        <div class="movCard">
+          <div class="movCardTop">
+            <span class="movVin">${escapeHtml(r.vin)}</span>
+            ${r.en_conversion
+              ? `<span class="badge badge-note">🔧 En Conversión</span>`
+              : `<span class="badge badge-warn">⏳ En Espera</span>`
+            }
+          </div>
+          <div class="movCardSub small muted">
+            Entrada: ${fmtDate_(r.fecha_entrada)}
+            ${r.registrado_por ? ` · por ${escapeHtml(r.registrado_por)}` : ""}
+          </div>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
 function renderList1_(rows) {
   const box = document.getElementById("movPanel1Body");
   if (!box) return;
@@ -145,6 +176,7 @@ async function refreshAll_() {
     const j = await getJSON("/api/movilizador/status");
     if (!j?.ok) throw new Error(j?.error || "Error cargando estado");
 
+    renderList0_(j.list0 || []);
     renderList1_(j.list1 || []);
     renderList2_(j.list2 || []);
     renderList3_(j.list3 || []);
