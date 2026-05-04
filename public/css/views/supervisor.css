@@ -165,20 +165,35 @@ button[data-suptrack].active {
 
 /* Grupo por especialidad */
 .live-group {
-  margin-bottom: 20px;
+  margin-bottom: 10px;
 }
 .live-group-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px;
-  margin-bottom: 10px;
-  background: rgba(255,255,255,.04);
-  border-radius: 10px;
+  padding: 10px 12px;
+  background: rgba(255,255,255,.05);
+  border-radius: 12px;
   flex-wrap: wrap;
+  cursor: pointer;
+  user-select: none;
+  transition: background .15s;
 }
-.live-group-icon  { font-size: 1.15em; }
+.live-group-header:hover {
+  background: rgba(255,255,255,.09);
+}
+.live-group-icon  { font-size: 1.1em; }
 .live-group-label { font-weight: 800; letter-spacing: .5px; flex: 1; }
+.live-group-chevron {
+  font-size: .75em;
+  opacity: .55;
+  margin-left: auto;
+  transition: transform .2s;
+}
+.live-group-body {
+  margin-top: 8px;
+  padding: 0 2px;
+}
 .live-dot-working {
   display: inline-block;
   width: 8px; height: 8px;
@@ -233,6 +248,22 @@ button[data-suptrack].active {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* Indicador numérico de carros (ej: 🚗 2.5) */
+.live-cars-pill {
+  font-size: .78em;
+  font-weight: 800;
+  padding: 1px 6px;
+  border-radius: 20px;
+  white-space: nowrap;
+  background: rgba(255,255,255,.1);
+  border: 1px solid rgba(255,255,255,.18);
+  flex-shrink: 0;
+}
+.live-cars-pill.half {
+  background: rgba(251,191,36,.15);
+  border-color: rgba(251,191,36,.4);
+  color: #fde68a;
 }
 
 /* VIN compacto (siempre visible) */
@@ -349,14 +380,29 @@ button[data-suptrack].active {
 .live-detail-row--half {
   border-left: 3px solid rgba(251,191,36,.5);
 }
-.live-detail-vin {
-  font-weight: 800;
-  font-size: .88em;
-  letter-spacing: .6px;
-  margin-bottom: 4px;
+/* Fila principal del detalle: VIN + tiempo */
+.live-detail-top {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  margin-bottom: 4px;
+  flex-wrap: wrap;
+}
+.live-detail-vin-text {
+  font-weight: 800;
+  font-size: .9em;
+  letter-spacing: .6px;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.live-detail-conv {
+  font-weight: 700;
+  font-size: .88em;
+  white-space: nowrap;
+  opacity: .9;
 }
 .live-half-badge {
   font-size: .7em;
@@ -367,12 +413,13 @@ button[data-suptrack].active {
   border-radius: 4px;
   padding: 1px 5px;
   line-height: 1.4;
+  flex-shrink: 0;
 }
 .live-detail-meta {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
-  opacity: .85;
+  opacity: .75;
   align-items: center;
 }
 

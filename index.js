@@ -1199,21 +1199,33 @@ app.get("/api/supervisor/live", async (req, res) => {
 
     const todayStr = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
 
-    // 1. Todas las asignaciones activas de hoy con JOIN a usuarios y work_orders
-    let url = `${SUPABASE_URL}/rest/v1/asignaciones?`;
-    url += `select=id,work_order_id,user_id,tipo_ot,rol_trabajo,estado_actual,running_since,tiempo_trab_ms,fecha_asignacion,updated_at,activo,`;
-    url += `usuarios!inner(id,nombre,email),`;
-    url += `work_orders(id,vin,tipo_ramal,tipo_ot,estado_general)`;
-    url += `&activo=eq.true`;
-    url += `&fecha_asignacion=gte.${todayStr}T00:00:00`;
-    url += `&order=updated_at.desc`;
+    const selectFields =
+      `id,work_order_id,user_id,tipo_ot,rol_trabajo,estado_actual,running_since,tiempo_trab_ms,fecha_asignacion,updated_at,activo,` +
+      `usuarios!inner(id,nombre,email),` +
+      `work_orders(id,vin,tipo_ramal,tipo_ot,estado_general)`;
 
-    const resp = await fetch(url, { method: "GET", headers });
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => "");
-      throw new Error(`Supabase: ${resp.status} ${text.slice(0, 200)}`);
+    // Q1: Asignaciones creadas hoy (activas o no)
+    let url1 = `${SUPABASE_URL}/rest/v1/asignaciones?select=${selectFields}&activo=eq.true&fecha_asignacion=gte.${todayStr}T00:00:00&order=updated_at.desc`;
+
+    // Q2: Trabajos de días anteriores finalizados HOY (cross-day: ½ carro)
+    let url2 = `${SUPABASE_URL}/rest/v1/asignaciones?select=${selectFields}&estado_actual=eq.FINALIZADO&updated_at=gte.${todayStr}T00:00:00&fecha_asignacion=lt.${todayStr}T00:00:00&order=updated_at.desc`;
+
+    const [resp1, resp2] = await Promise.all([
+      fetch(url1, { method: "GET", headers }),
+      fetch(url2, { method: "GET", headers }),
+    ]);
+    if (!resp1.ok) {
+      const text = await resp1.text().catch(() => "");
+      throw new Error(`Supabase Q1: ${resp1.status} ${text.slice(0, 200)}`);
     }
-    const raw = await resp.json();
+    const [raw1, raw2] = await Promise.all([resp1.json(), resp2.json().catch(() => [])]);
+
+    // Merge deduplicando por id (cross-day no solapan con Q1 por la fecha)
+    const seenIds = new Set();
+    const raw = [];
+    for (const asg of [...(raw1 || []), ...(raw2 || [])]) {
+      if (!seenIds.has(asg.id)) { seenIds.add(asg.id); raw.push(asg); }
+    }
 
     // 2. Agrupar por user_id + rol_trabajo
     const techMap = new Map();
