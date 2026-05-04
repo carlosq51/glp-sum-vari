@@ -2347,8 +2347,8 @@ app.post("/api/movilizador/traslado", async (req, res) => {
   try {
     const { vin, accion, usuario } = req.body || {};
     if (!vin) return res.status(400).json({ ok: false, error: "Falta vin" });
-    if (!["TRASLADAR", "ENTREGAR_CALIDAD", "ENTREGAR_FINAL"].includes(accion)) {
-      return res.status(400).json({ ok: false, error: "accion inválida: use TRASLADAR, ENTREGAR_CALIDAD o ENTREGAR_FINAL" });
+    if (!["TRASLADAR", "ENTREGAR_CALIDAD", "ENTREGAR_FINAL", "REGISTRAR_ENTRADA", "REGISTRAR_SALIDA"].includes(accion)) {
+      return res.status(400).json({ ok: false, error: "accion inválida: use TRASLADAR, ENTREGAR_CALIDAD, ENTREGAR_FINAL, REGISTRAR_ENTRADA o REGISTRAR_SALIDA" });
     }
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const headers = supabaseHeaders_();
@@ -2359,7 +2359,11 @@ app.post("/api/movilizador/traslado", async (req, res) => {
       ? { vin, estado: "TRASLADADO", trasladado_at: now, trasladado_por: userName }
       : accion === "ENTREGAR_CALIDAD"
         ? { vin, estado: "ENTREGADO_CALIDAD", entregado_at: now, entregado_por: userName }
-        : { vin, estado: "ENTREGADO_FINAL", entregado_at: now, entregado_por: userName };
+        : accion === "REGISTRAR_ENTRADA"
+          ? { vin, estado: "EN_ESPERA_CONVERSION", trasladado_at: now, trasladado_por: userName }
+          : accion === "REGISTRAR_SALIDA"
+            ? { vin, estado: "TRASLADADO", trasladado_at: now, trasladado_por: userName }
+            : { vin, estado: "ENTREGADO_FINAL", entregado_at: now, entregado_por: userName };
 
     const resp = await fetch(`${SUPABASE_URL}/rest/v1/movilizador_traslados`, {
       method: "POST",

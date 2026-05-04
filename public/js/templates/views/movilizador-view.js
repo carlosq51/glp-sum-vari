@@ -16,6 +16,47 @@ export function movilizadorView() {
         </div>
       </div>
 
+      <!-- GPS Quick Link -->
+      <a href="https://gps-ubicaciones-app.vercel.app/" target="_blank" rel="noopener noreferrer"
+         class="movGpsLink" id="btnMovGps">
+        📍 Registrar Ubicación GPS
+      </a>
+
+      <!-- Registro Rápido: Entrada / Salida -->
+      <div class="movRegSection">
+
+        <!-- Registro de Entrada -->
+        <div class="movRegBox">
+          <div class="movRegTitle">📥 Registro de Entrada</div>
+          <div class="movRegHint">Marca el vehículo como <strong>En Espera Conversión</strong></div>
+          <div class="vinWrap">
+            <input id="movVinEntrada" type="text"
+              placeholder="Buscar VIN…" class="movVinInput"
+              autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" />
+            <div id="movVinEntradaSuggest" class="vinSuggest hidden" role="listbox"></div>
+          </div>
+          <button id="btnMovRegistrarEntrada" class="movBtnFull movBtnEntrada" type="button" disabled>
+            Registrar Ingreso ▶
+          </button>
+        </div>
+
+        <!-- Registro de Salida -->
+        <div class="movRegBox">
+          <div class="movRegTitle">📤 Registro de Salida</div>
+          <div class="movRegHint">Marca el vehículo como <strong>Trasladado</strong></div>
+          <div class="vinWrap">
+            <input id="movVinSalida" type="text"
+              placeholder="Buscar VIN…" class="movVinInput"
+              autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" />
+            <div id="movVinSalidaSuggest" class="vinSuggest hidden" role="listbox"></div>
+          </div>
+          <button id="btnMovRegistrarSalida" class="movBtnFull movBtnSalida" type="button" disabled>
+            Registrar Salida ▶
+          </button>
+        </div>
+
+      </div>
+
       <!-- Panel 1: Conversión Finalizada – mover a zona de espera -->
       <div class="movPanel open" id="movPanel1">
         <button class="movPanelHeader" type="button" aria-expanded="true">

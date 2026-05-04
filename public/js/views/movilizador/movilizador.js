@@ -9,9 +9,11 @@
 
 import { CORE, escapeHtml, fmtShort_, getJSON, getJSON_user, postJSON } from "../../core/core.js";
 import { updateHubModuleBadge } from "../../core/ui-shell.js";
+import { getVinSuggest } from "../../core/supabase-client.js";
 
 let pollTimer = null;
 const POLL_MS = 30_000;
+const GPS_URL = "https://gps-ubicaciones-app.vercel.app/";
 
 // ─── Helpers ──────────────────────────────────────────────────────────
 
@@ -193,6 +195,162 @@ function bindPanelToggles_() {
   });
 }
 
+// ─── VIN Autocomplete (genérico para Entrada / Salida) ─────────────────
+
+function createVinAc_(inputId, suggestId, onPick) {
+  const MIN = 1, LIMIT = 12, DEBOUNCE = 220;
+  let timer = null, items = [], open = false, idx = -1, lastQ = "";
+
+  const input_ = () => document.getElementById(inputId);
+  const box_ = () => document.getElementById(suggestId);
+
+  function hide_() {
+    open = false; idx = -1; items = [];
+    const b = box_();
+    if (b) { b.classList.add("hidden"); b.innerHTML = ""; }
+  }
+
+  function render_() {
+    const b = box_();
+    if (!b) return;
+    if (!items.length) { hide_(); return; }
+    b.innerHTML = items.map((vin, i) => `
+      <div class="vsItem ${i === idx ? "active" : ""}" data-idx="${i}" role="option">
+        <div class="vsVin">${escapeHtml(vin)}</div>
+      </div>
+    `).join("");
+    b.classList.remove("hidden");
+    open = true;
+  }
+
+  async function fetch_(q) {
+    try {
+      const res = await getVinSuggest(q, LIMIT);
+      return (res || [])
+        .map(item => (typeof item === "object" && item?.vin) ? String(item.vin).toUpperCase() : String(item || "").toUpperCase())
+        .filter(Boolean);
+    } catch {
+      return [];
+    }
+  }
+
+  function onInput_() {
+    const q = String(input_()?.value || "").trim().toUpperCase();
+    lastQ = q;
+    // enable/disable button based on input length
+    const btn = document.getElementById(inputId === "movVinEntrada" ? "btnMovRegistrarEntrada" : "btnMovRegistrarSalida");
+    if (btn) btn.disabled = q.length < 7;
+    if (!q || q.length < MIN) { hide_(); return; }
+    clearTimeout(timer);
+    timer = setTimeout(async () => {
+      try {
+        const res = await fetch_(q);
+        if (lastQ !== q) return;
+        items = res;
+        idx = items.length ? 0 : -1;
+        render_();
+      } catch { hide_(); }
+    }, DEBOUNCE);
+  }
+
+  function pick_(vin) {
+    const inp = input_();
+    if (inp) inp.value = String(vin || "").toUpperCase();
+    hide_();
+    const btn = document.getElementById(inputId === "movVinEntrada" ? "btnMovRegistrarEntrada" : "btnMovRegistrarSalida");
+    if (btn) btn.disabled = !vin || vin.length < 7;
+    onPick(String(vin || "").toUpperCase());
+  }
+
+  function onKeyDown_(e) {
+    if (!open) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      idx = Math.min(idx + 1, items.length - 1);
+      render_();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      idx = Math.max(idx - 1, 0);
+      render_();
+    } else if (e.key === "Enter" && idx >= 0 && items[idx]) {
+      e.preventDefault();
+      pick_(items[idx]);
+    } else if (e.key === "Escape") {
+      hide_();
+    }
+  }
+
+  // Bind events
+  const inp = input_();
+  if (inp) {
+    inp.addEventListener("input", onInput_);
+    inp.addEventListener("keydown", onKeyDown_);
+  }
+
+  const b = box_();
+  if (b && !b.dataset.bound) {
+    b.dataset.bound = "1";
+    b.addEventListener("mousedown", e => {
+      const row = e.target.closest(".vsItem[data-idx]");
+      if (!row) return;
+      e.preventDefault();
+      pick_(items[Number(row.dataset.idx)]);
+    });
+  }
+}
+
+// ─── GPS + Registro ────────────────────────────────────────────────────
+
+function openGpsWithVin_(vin) {
+  // Try passing VIN via query param (GPS app may support it)
+  window.open(`${GPS_URL}?vin=${encodeURIComponent(vin)}`, "_blank", "noopener,noreferrer");
+  // Also copy VIN to clipboard for manual paste
+  try {
+    navigator.clipboard.writeText(vin).catch(() => {});
+  } catch {}
+}
+
+async function handleRegistro_(vin, accion, btnId) {
+  const btn = document.getElementById(btnId);
+  if (!btn) return;
+
+  const inputId = accion === "REGISTRAR_ENTRADA" ? "movVinEntrada" : "movVinSalida";
+  const vinClean = String(vin || "").trim().toUpperCase();
+  if (!vinClean) return;
+
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Guardando…";
+
+  try {
+    const j = await postJSON("/api/movilizador/traslado", {
+      vin: vinClean,
+      accion,
+      usuario: getMovNombre_(),
+    });
+    if (!j?.ok) throw new Error(j?.error || "Error al guardar");
+
+    // Open GPS app in new tab with VIN as query param + copy to clipboard
+    openGpsWithVin_(vinClean);
+
+    const statusEl = document.getElementById("movStatus");
+    if (statusEl) statusEl.textContent = `✓ ${vinClean} registrado. VIN copiado — pégalo en la app GPS.`;
+
+    // Clear input and disable button
+    const inputEl = document.getElementById(inputId);
+    if (inputEl) { inputEl.value = ""; inputEl.dispatchEvent(new Event("input")); }
+    btn.disabled = true;
+    btn.textContent = original;
+
+    await refreshAll_();
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = original;
+    const statusEl = document.getElementById("movStatus");
+    if (statusEl) statusEl.textContent = `Error: ${e.message}`;
+  }
+}
+
 // ─── Poll ─────────────────────────────────────────────────────────────
 
 function startPoll_() {
@@ -210,6 +368,36 @@ export function init() {
   document.getElementById("btnMovRefresh")?.addEventListener("click", () => {
     refreshAll_().catch(() => {});
   });
+
+  // VIN Autocomplete for Entrada / Salida
+  createVinAc_("movVinEntrada", "movVinEntradaSuggest", () => {});
+  createVinAc_("movVinSalida", "movVinSalidaSuggest", () => {});
+
+  // Registration buttons
+  document.getElementById("btnMovRegistrarEntrada")?.addEventListener("click", () => {
+    const vin = document.getElementById("movVinEntrada")?.value?.trim().toUpperCase() || "";
+    if (vin.length >= 7) handleRegistro_(vin, "REGISTRAR_ENTRADA", "btnMovRegistrarEntrada").catch(() => {});
+  });
+
+  document.getElementById("btnMovRegistrarSalida")?.addEventListener("click", () => {
+    const vin = document.getElementById("movVinSalida")?.value?.trim().toUpperCase() || "";
+    if (vin.length >= 7) handleRegistro_(vin, "REGISTRAR_SALIDA", "btnMovRegistrarSalida").catch(() => {});
+  });
+
+  // Close autocomplete dropdowns on outside click
+  if (!document.body.dataset.movVinDocBound) {
+    document.body.dataset.movVinDocBound = "1";
+    document.addEventListener("click", e => {
+      const wraps = document.querySelectorAll("#viewMOVILIZADOR .vinWrap");
+      const inside = [...wraps].some(w => w.contains(e.target));
+      if (!inside) {
+        ["movVinEntradaSuggest", "movVinSalidaSuggest"].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) { el.classList.add("hidden"); el.innerHTML = ""; }
+        });
+      }
+    });
+  }
 
   // Delegación de eventos para botones de acción
   document.getElementById("viewMOVILIZADOR")?.addEventListener("click", e => {

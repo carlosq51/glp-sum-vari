@@ -452,3 +452,138 @@
   }
 }
 
+/* ─── GPS Quick Link ─── */
+.movGpsLink {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-radius: var(--radius);
+  background: rgba(96,165,250,.15);
+  border: 1px solid rgba(96,165,250,.4);
+  color: var(--note, #60a5fa);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-extrabold);
+  text-decoration: none;
+  transition: background .18s ease, border-color .18s ease;
+  cursor: pointer;
+}
+
+.movGpsLink:hover {
+  background: rgba(96,165,250,.25);
+  border-color: rgba(96,165,250,.6);
+  color: #93c5fd;
+}
+
+/* ─── Registro Rápido section ─── */
+.movRegSection {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.movRegBox {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border-radius: var(--radius);
+  background: rgba(0,0,0,.18);
+  border: 1px solid rgba(255,255,255,.12);
+}
+
+.movRegTitle {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-extrabold);
+  color: #fff;
+}
+
+.movRegHint {
+  font-size: var(--fs-xs);
+  color: rgba(240,244,255,.55);
+  line-height: 1.4;
+}
+
+.movVinInput {
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: var(--radiusSm);
+  border: 1px solid rgba(255,255,255,.18);
+  background: rgba(255,255,255,.06);
+  color: var(--text);
+  font-size: var(--fs-md);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  letter-spacing: .4px;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.movVinInput:focus {
+  border-color: rgba(96,165,250,.6);
+  background: rgba(96,165,250,.08);
+}
+
+.movBtnEntrada {
+  background: rgba(74,222,128,.15);
+  color: var(--ok, #4ade80);
+  border: 1px solid rgba(74,222,128,.35);
+  font-weight: var(--fw-bold);
+}
+
+.movBtnEntrada:hover:not(:disabled) {
+  background: rgba(74,222,128,.25);
+}
+
+.movBtnSalida {
+  background: rgba(250,204,21,.15);
+  color: var(--warn, #facc15);
+  border: 1px solid rgba(250,204,21,.35);
+  font-weight: var(--fw-bold);
+}
+
+.movBtnSalida:hover:not(:disabled) {
+  background: rgba(250,204,21,.25);
+}
+
+.movBtnEntrada:disabled,
+.movBtnSalida:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+/* Day theme overrides for registration section */
+:root[data-theme="day"] .movRegBox {
+  background: rgba(0,0,0,.04);
+  border-color: rgba(0,0,0,.12);
+}
+
+:root[data-theme="day"] .movVinInput {
+  background: #fff;
+  border-color: rgba(0,0,0,.2);
+  color: #111;
+}
+
+:root[data-theme="day"] .movRegTitle {
+  color: #0b1220;
+}
+
+:root[data-theme="day"] .movRegHint {
+  color: rgba(11,18,32,.55);
+}
+
+:root[data-theme="day"] .movGpsLink {
+  background: rgba(37,99,235,.1);
+  border-color: rgba(37,99,235,.35);
+  color: #1d4ed8;
+}
+
+:root[data-theme="day"] .movGpsLink:hover {
+  background: rgba(37,99,235,.18);
+}
+
+@media (max-width: 520px) {
+  .movRegSection {
+    grid-template-columns: 1fr;
+  }
+}
