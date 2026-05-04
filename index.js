@@ -1188,6 +1188,109 @@ async function handleSupervisorReport_(payload, res) {
   return res.json({ ok: true, items, count: items.length, _timing: `${duration}ms`, _source: "supabase" });
 }
 
+// =========================
+// SUPERVISOR LIVE (resumen en tiempo real de técnicos del día)
+// =========================
+app.get("/api/supervisor/live", async (req, res) => {
+  try {
+    const t1 = Date.now();
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const headers = supabaseHeaders_();
+
+    const todayStr = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+
+    // 1. Todas las asignaciones activas de hoy con JOIN a usuarios y work_orders
+    let url = `${SUPABASE_URL}/rest/v1/asignaciones?`;
+    url += `select=id,work_order_id,user_id,tipo_ot,rol_trabajo,estado_actual,running_since,tiempo_trab_ms,fecha_asignacion,updated_at,activo,`;
+    url += `usuarios!inner(id,nombre,email),`;
+    url += `work_orders(id,vin,tipo_ramal,tipo_ot,estado_general)`;
+    url += `&activo=eq.true`;
+    url += `&fecha_asignacion=gte.${todayStr}T00:00:00`;
+    url += `&order=updated_at.desc`;
+
+    const resp = await fetch(url, { method: "GET", headers });
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => "");
+      throw new Error(`Supabase: ${resp.status} ${text.slice(0, 200)}`);
+    }
+    const raw = await resp.json();
+
+    // 2. Agrupar por user_id + rol_trabajo
+    const techMap = new Map();
+    for (const asg of (raw || [])) {
+      const user = Array.isArray(asg.usuarios) ? asg.usuarios[0] : (asg.usuarios || {});
+      const wo   = Array.isArray(asg.work_orders) ? asg.work_orders[0] : (asg.work_orders || {});
+      const key  = `${asg.user_id}__${asg.rol_trabajo}`;
+
+      if (!techMap.has(key)) {
+        techMap.set(key, {
+          userId: asg.user_id,
+          nombre: user.nombre || "",
+          email: user.email || "",
+          rol: asg.rol_trabajo || "",
+          assignments: [],
+        });
+      }
+
+      techMap.get(key).assignments.push({
+        id: asg.id,
+        vin: wo.vin || "",
+        tipo_ramal: wo.tipo_ramal || "",
+        tipo_ot: asg.tipo_ot || "",
+        estado: asg.estado_actual,
+        tiempo_ms: asg.tiempo_trab_ms || 0,
+        running_since: asg.running_since,
+        updated_at: asg.updated_at,
+        fecha_asignacion: asg.fecha_asignacion,
+        work_order_id: asg.work_order_id,
+      });
+    }
+
+    // 3. Construir resultado por técnico
+    const estadoOrder = { "TRABAJANDO": 0, "PAUSADO": 1, "SIN_INICIAR": 2, "FINALIZADO": 3 };
+    const techs = [];
+
+    for (const tech of techMap.values()) {
+      const asgList = tech.assignments;
+      const finalizados = asgList.filter(a => a.estado === "FINALIZADO");
+      const activos     = asgList.filter(a => a.estado !== "FINALIZADO");
+
+      // El VIN/estado activo actual (el más reciente no finalizado)
+      const current = [...activos].sort((a, b) =>
+        new Date(b.updated_at) - new Date(a.updated_at)
+      )[0] || null;
+
+      techs.push({
+        userId: tech.userId,
+        nombre: tech.nombre,
+        email: tech.email,
+        rol: tech.rol,
+        vinActivo: current?.vin || "",
+        estadoActivo: current?.estado || (finalizados.length > 0 ? "FINALIZADO" : "SIN_ACTIVIDAD"),
+        totalHoy: asgList.length,
+        finalizadosHoy: finalizados.length,
+        activosHoy: activos.length,
+        vinsHoy: [...new Set(asgList.map(a => a.vin).filter(Boolean))],
+        asignacionesHoy: asgList,
+      });
+    }
+
+    // Ordenar: TRABAJANDO → PAUSADO → SIN_INICIAR → FINALIZADO → otros; luego por nombre
+    techs.sort((a, b) => {
+      const oa = estadoOrder[a.estadoActivo] ?? 8;
+      const ob = estadoOrder[b.estadoActivo] ?? 8;
+      if (oa !== ob) return oa - ob;
+      return (a.nombre || "").localeCompare(b.nombre || "");
+    });
+
+    const duration = Date.now() - t1;
+    return res.json({ ok: true, techs, fecha: todayStr, _timing: `${duration}ms` });
+  } catch (e) {
+    console.error("[GET /api/supervisor/live]", e.message);
+    res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
 // endpoint Node ? Supabase (supervisor_conversion_detail) - LECTURA SOLO
 app.get("/api/supervisor/conversion-detail", async (req, res) => {
   try {

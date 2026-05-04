@@ -1,0 +1,225 @@
+// =========================
+// public/js/views/supervisor/sup-live.js
+// Panel LIVE de técnicos: estado en tiempo real del día, agrupado por especialidad
+// =========================
+
+import { getJSON } from "../../core/api.js";
+import { escapeHtml } from "../../core/format.js";
+
+let liveTimer_ = null;
+let liveActive_ = false;
+const REFRESH_MS = 30_000; // refresco cada 30 s
+
+// ── Colores y etiquetas por especialidad ──────────────────────────────
+const ROL_META = {
+  MOTOR:    { label: "Motor",    icon: "🔧", color: "var(--c-motor,   #38bdf8)" },
+  TANQUE:   { label: "Tanque",   icon: "⛽", color: "var(--c-tanque,  #fb923c)" },
+  CALIDAD:  { label: "Calidad",  icon: "✅", color: "var(--c-calidad, #4ade80)" },
+  RAMALERO: { label: "Ramal",    icon: "🔗", color: "var(--c-ramal,   #c084fc)" },
+};
+
+const ESTADO_META = {
+  TRABAJANDO:    { label: "TRABAJANDO",   badge: "badge-trabajando",   dot: "#22c55e" },
+  PAUSADO:       { label: "PAUSADO",      badge: "badge-pausado",      dot: "#f59e0b" },
+  SIN_INICIAR:   { label: "SIN INICIAR",  badge: "badge-sin-iniciar",  dot: "#94a3b8" },
+  FINALIZADO:    { label: "FINALIZADO",   badge: "badge-finalizado",   dot: "#60a5fa" },
+  SIN_ACTIVIDAD: { label: "SIN ACTIVIDAD",badge: "badge-sin-actividad",dot: "#475569" },
+};
+
+// ── API ───────────────────────────────────────────────────────────────
+async function fetchLive_() {
+  const j = await getJSON("/api/supervisor/live").catch(() => null);
+  return j;
+}
+
+// ── Formato de tiempo ─────────────────────────────────────────────────
+function fmtHora_(iso) {
+  if (!iso) return "--:--";
+  const d = new Date(iso);
+  if (isNaN(d)) return "--:--";
+  return new Intl.DateTimeFormat("es-PE", { hour: "2-digit", minute: "2-digit" }).format(d);
+}
+
+function fmtTiempo_(ms, runningSince) {
+  let total = Number(ms) || 0;
+  if (runningSince) total += Date.now() - new Date(runningSince).getTime();
+  total = Math.max(0, total);
+  const h = Math.floor(total / 3_600_000);
+  const m = Math.floor((total % 3_600_000) / 60_000);
+  if (h > 0) return `${h}h ${String(m).padStart(2, "0")}m`;
+  return `${m}m`;
+}
+
+// ── Render principal ──────────────────────────────────────────────────
+function renderLive_(container, data) {
+  if (!container) return;
+  if (!data?.ok) {
+    container.innerHTML = `<div class="live-error small">⚠️ ${escapeHtml(data?.error || "Error cargando datos.")}</div>`;
+    return;
+  }
+
+  const techs = Array.isArray(data.techs) ? data.techs : [];
+  if (!techs.length) {
+    container.innerHTML = `<div class="live-empty small">Sin actividad registrada hoy.</div>`;
+    return;
+  }
+
+  // Agrupar por rol
+  const groups = {};
+  const ORDER = ["MOTOR", "TANQUE", "CALIDAD", "RAMALERO"];
+  for (const t of techs) {
+    const rol = String(t.rol || "OTRO").toUpperCase();
+    if (!groups[rol]) groups[rol] = [];
+    groups[rol].push(t);
+  }
+
+  // Renderizar grupos en orden definido
+  const allRoles = [...ORDER.filter(r => groups[r]), ...Object.keys(groups).filter(r => !ORDER.includes(r))];
+
+  let html = `<div class="live-refresh-bar">
+    <span class="live-fecha small">📅 ${escapeHtml(data.fecha || "")}</span>
+    <span id="liveLastUpdate" class="live-last-update small">Actualizado: ${fmtHora_(new Date().toISOString())}</span>
+  </div>`;
+
+  for (const rol of allRoles) {
+    const meta  = ROL_META[rol] || { label: rol, icon: "👤", color: "#94a3b8" };
+    const group = groups[rol];
+    const countTrabajando = group.filter(t => t.estadoActivo === "TRABAJANDO").length;
+
+    html += `
+    <div class="live-group" data-rol="${escapeHtml(rol)}">
+      <div class="live-group-header" style="border-left: 3px solid ${meta.color};">
+        <span class="live-group-icon">${meta.icon}</span>
+        <span class="live-group-label">${escapeHtml(meta.label)}</span>
+        <span class="live-group-count pill small">${group.length} técnico${group.length !== 1 ? "s" : ""}</span>
+        ${countTrabajando > 0 ? `<span class="live-dot-working"></span><span class="small">${countTrabajando} activo${countTrabajando !== 1 ? "s" : ""}</span>` : ""}
+      </div>
+      <div class="live-cards">
+        ${group.map(t => renderTechCard_(t)).join("")}
+      </div>
+    </div>`;
+  }
+
+  container.innerHTML = html;
+
+  // Bind clics en cards → detalle
+  container.querySelectorAll(".live-tech-card[data-techkey]").forEach(card => {
+    card.addEventListener("click", () => {
+      const techKey = card.dataset.techkey;
+      const tech = techs.find(t => `${t.userId}__${t.rol}` === techKey);
+      if (tech) openLiveDetail_(tech);
+    });
+  });
+}
+
+function renderTechCard_(t) {
+  const em = ESTADO_META[t.estadoActivo] || ESTADO_META.SIN_ACTIVIDAD;
+  const nombre = t.nombre || t.email || "Técnico";
+  const vins = Array.isArray(t.vinsHoy) ? t.vinsHoy : [];
+  const vinActivo = t.vinActivo || "";
+
+  const currentAsg = (t.asignacionesHoy || []).find(a => a.vin === vinActivo && a.estado !== "FINALIZADO");
+
+  return `
+  <div class="live-tech-card" data-techkey="${escapeHtml(t.userId + "__" + t.rol)}" title="Ver detalle del día">
+    <div class="live-tech-header">
+      <span class="live-tech-dot" style="background:${em.dot};"></span>
+      <span class="live-tech-name">${escapeHtml(nombre)}</span>
+      <span class="live-badge ${escapeHtml(em.badge)}">${escapeHtml(em.label)}</span>
+    </div>
+
+    ${vinActivo ? `
+    <div class="live-vin-active">
+      <span class="live-vin-label small">VIN ACTUAL</span>
+      <span class="live-vin-value">${escapeHtml(vinActivo)}</span>
+      ${currentAsg?.running_since ? `<span class="live-tiempo small">⏱ ${fmtTiempo_(currentAsg.tiempo_ms, currentAsg.running_since)}</span>` : ""}
+    </div>
+    ` : ""}
+
+    <div class="live-tech-footer">
+      <span class="small" title="Vehículos trabajados hoy">🚗 ${t.totalHoy || 0} auto${(t.totalHoy || 0) !== 1 ? "s" : ""}</span>
+      <span class="small" title="Finalizados hoy">✅ ${t.finalizadosHoy || 0} fin.</span>
+      ${vins.length > 1 ? `<span class="small live-more-vins">+${vins.length - 1} más</span>` : ""}
+    </div>
+  </div>`;
+}
+
+// ── Modal de detalle del día ───────────────────────────────────────────
+function openLiveDetail_(tech) {
+  const modal = document.getElementById("liveDetailModal");
+  const title = document.getElementById("liveDetailTitle");
+  const body  = document.getElementById("liveDetailBody");
+  if (!modal || !title || !body) return;
+
+  const nombre = tech.nombre || tech.email || "Técnico";
+  const meta   = ROL_META[tech.rol] || { label: tech.rol, icon: "👤" };
+  title.textContent = `${meta.icon} ${nombre} — ${meta.label}`;
+
+  const asgList = Array.isArray(tech.asignacionesHoy) ? tech.asignacionesHoy : [];
+  if (!asgList.length) {
+    body.innerHTML = `<div class="small">Sin asignaciones hoy.</div>`;
+  } else {
+    body.innerHTML = asgList.map(a => renderDetailRow_(a)).join("");
+  }
+
+  modal.setAttribute("aria-hidden", "false");
+  modal.classList.add("open");
+}
+
+function renderDetailRow_(a) {
+  const em  = ESTADO_META[a.estado] || ESTADO_META.SIN_ACTIVIDAD;
+  const vin = a.vin || (a.tipo_ramal ? `RAMAL: ${a.tipo_ramal}` : "–");
+  const tiempoTotal = fmtTiempo_(a.tiempo_ms, a.estado === "TRABAJANDO" ? a.running_since : null);
+
+  return `
+  <div class="live-detail-row">
+    <div class="live-detail-vin">${escapeHtml(vin)}</div>
+    <div class="live-detail-meta small">
+      <span class="live-badge ${escapeHtml(em.badge)}">${escapeHtml(em.label)}</span>
+      <span>⏱ ${escapeHtml(tiempoTotal)}</span>
+      ${a.running_since ? `<span>🕐 Inicio: ${fmtHora_(a.running_since)}</span>` : ""}
+      ${a.fecha_asignacion ? `<span>📋 Asig: ${fmtHora_(a.fecha_asignacion)}</span>` : ""}
+    </div>
+  </div>`;
+}
+
+function closeLiveDetail_() {
+  const modal = document.getElementById("liveDetailModal");
+  if (!modal) return;
+  modal.setAttribute("aria-hidden", "true");
+  modal.classList.remove("open");
+}
+
+// ── Ciclo de vida ─────────────────────────────────────────────────────
+async function refreshLive_() {
+  if (!liveActive_) return;
+  const container = document.getElementById("liveContainer");
+  if (!container) return;
+  const data = await fetchLive_();
+  renderLive_(container, data);
+  // Actualizar timestamp si está visible
+  const ts = document.getElementById("liveLastUpdate");
+  if (ts) ts.textContent = `Actualizado: ${fmtHora_(new Date().toISOString())}`;
+}
+
+export function bindSupLive_() {
+  // Botón cerrar modal detalle
+  document.getElementById("btnCloseLiveDetail")?.addEventListener("click", closeLiveDetail_);
+  document.getElementById("liveDetailModal")?.addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) closeLiveDetail_();
+  });
+}
+
+export async function enterLive_() {
+  liveActive_ = true;
+  await refreshLive_();
+  // Arrancar polling
+  clearInterval(liveTimer_);
+  liveTimer_ = setInterval(() => refreshLive_(), REFRESH_MS);
+}
+
+export function exitLive_() {
+  liveActive_ = false;
+  clearInterval(liveTimer_);
+  liveTimer_ = null;
+}

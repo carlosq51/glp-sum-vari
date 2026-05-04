@@ -26,9 +26,11 @@ import { bindSupNameSuggest_ } from "./sup-name-suggest.js";
 import { bindSupVinSuggest_ } from "./sup-vin-suggest.js";
 import { bindSupQuickDates_ } from "./sup-quick-dates.js";
 import { bindSupPausaIndefinida_ } from "./sup-pausa-indefinida.js";
+import { bindSupLive_, enterLive_, exitLive_ } from "./sup-live.js";
 
 let supTrack = "CONVERSION";
 let supTimer = null;
+let supActiveTab_ = "REPORTE"; // "REPORTE" | "LIVE"
 
 function setSupTrack_(t) {
   supTrack = (t === "CALIDAD" || t === "RAMAL") ? t : "CONVERSION";
@@ -228,6 +230,27 @@ function renderSupervisor_(j) {
 }
 
 export function init() {
+  // ── Pestañas REPORTE / LIVE ─────────────────────────────────────────
+  document.querySelectorAll(".sup-tab[data-suptab]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const tab = btn.dataset.suptab;
+      supActiveTab_ = tab;
+      document.querySelectorAll(".sup-tab[data-suptab]").forEach((b) =>
+        b.classList.toggle("active", b.dataset.suptab === tab)
+      );
+      const panelReporte = document.getElementById("supPanelReporte");
+      const panelLive    = document.getElementById("supPanelLive");
+      if (panelReporte) panelReporte.style.display = tab === "REPORTE" ? "" : "none";
+      if (panelLive)    panelLive.style.display    = tab === "LIVE"    ? "" : "none";
+
+      if (tab === "LIVE") {
+        enterLive_();
+      } else {
+        exitLive_();
+      }
+    });
+  });
+
   document.querySelectorAll("[data-suptrack]").forEach((btn) =>
     btn.addEventListener("click", () => setSupTrack_(btn.dataset.suptrack))
   );
@@ -264,6 +287,7 @@ export function init() {
   bindSupNameSuggest_({ CORE, escapeHtml, onApply: () => fetchSupervisorReport_().catch(() => {}) });
   bindSupVinSuggest_({ CORE, escapeHtml, onApply: () => fetchSupervisorReport_().catch(() => {}) });
   bindSupPausaIndefinida_({ getJSON_user });
+  bindSupLive_();
 }
 
 export function enter() {
@@ -280,4 +304,5 @@ export function enter() {
 export function exit() {
   clearTimeout(supTimer);
   destroyTrendChart_();
+  exitLive_();
 }
