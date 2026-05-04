@@ -31,7 +31,6 @@ export default defineConfig({
   plugins: [
     legacy({
       targets: ['ios >= 12', 'safari >= 12'],
-      additionalLegacyPolyfills: ['regenerator-runtime/runtime'],
     }),
     VitePWA({
       registerType: 'autoUpdate',
