@@ -33,8 +33,10 @@
   },
   "homepage": "https://github.com/carlosq51/glp-sum-vari#readme",
   "devDependencies": {
+    "@vitejs/plugin-legacy": "^5.4.3",
     "autoprefixer": "^10.4.27",
     "sharp": "^0.34.5",
+    "terser": "^5.46.2",
     "vite": "^6.4.1",
     "vite-plugin-pwa": "^1.2.0"
   }

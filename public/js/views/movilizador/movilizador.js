@@ -7,7 +7,7 @@
 // Lista 3: Listos para salir    → calidad finalizada
 // =========================
 
-import { CORE, escapeHtml, fmtShort_, getJSON_user, postJSON } from "../../core/core.js";
+import { CORE, escapeHtml, fmtShort_, getJSON, getJSON_user, postJSON } from "../../core/core.js";
 import { updateHubModuleBadge } from "../../core/ui-shell.js";
 
 let pollTimer = null;
@@ -71,9 +71,16 @@ function renderList2_(rows) {
     return;
   }
 
+  // Ordenar: En zona de espera (TRASLADADO) primero, luego en proceso de revisión
+  const sorted = [...rows].sort((a, b) => {
+    const pa = a.estado === "TRASLADADO" ? 0 : 1;
+    const pb = b.estado === "TRASLADADO" ? 0 : 1;
+    return pa - pb;
+  });
+
   box.innerHTML = `
     <div class="movCardList">
-      ${rows.map(r => `
+      ${sorted.map(r => `
         <div class="movCard">
           <div class="movCardTop">
             <span class="movVin">${escapeHtml(r.vin)}</span>
@@ -132,7 +139,7 @@ async function refreshAll_() {
     if (statusEl) statusEl.textContent = "Actualizando…";
     if (refreshBtn) refreshBtn.disabled = true;
 
-    const j = await getJSON_user("/api/movilizador/status", "Cargando movilizador...");
+    const j = await getJSON("/api/movilizador/status");
     if (!j?.ok) throw new Error(j?.error || "Error cargando estado");
 
     renderList1_(j.list1 || []);

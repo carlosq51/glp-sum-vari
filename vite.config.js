@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import autoprefixer from 'autoprefixer'
 import { VitePWA } from 'vite-plugin-pwa'
+import legacy from '@vitejs/plugin-legacy'
 import { copyFileSync, mkdirSync } from 'fs'
 import { resolve, dirname } from 'path'
 import { fileURLToPath } from 'url'
@@ -28,6 +29,10 @@ export default defineConfig({
   publicDir: false,
 
   plugins: [
+    legacy({
+      targets: ['ios >= 12', 'safari >= 12'],
+      additionalLegacyPolyfills: ['regenerator-runtime/runtime'],
+    }),
     VitePWA({
       registerType: 'autoUpdate',
       manifest: {
