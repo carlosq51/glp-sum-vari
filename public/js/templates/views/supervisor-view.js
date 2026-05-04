@@ -6,14 +6,14 @@ export function supervisorView() {
 
       <!-- Pestañas principales: REPORTE / LIVE -->
       <div class="sup-tab-row">
-        <button type="button" class="btn sup-tab active" data-suptab="REPORTE">📊 REPORTE</button>
-        <button type="button" class="btn sup-tab" data-suptab="LIVE">🔴 LIVE</button>
+        <button type="button" class="btn sup-tab" data-suptab="REPORTE">📊 REPORTE</button>
+        <button type="button" class="btn sup-tab active" data-suptab="LIVE">🔴 LIVE</button>
       </div>
 
       <!-- ══════════════════════════════════════════════
            PANEL REPORTE (contenido anterior)
       ══════════════════════════════════════════════ -->
-      <div id="supPanelReporte">
+      <div id="supPanelReporte" style="display:none;">
         <div class="small" style="margin-top:6px;">Filtros opcionales: nombre/email, fechas o mes.</div>
 
         <div class="supTrackRow">

@@ -30,7 +30,7 @@ import { bindSupLive_, enterLive_, exitLive_ } from "./sup-live.js";
 
 let supTrack = "CONVERSION";
 let supTimer = null;
-let supActiveTab_ = "REPORTE"; // "REPORTE" | "LIVE"
+let supActiveTab_ = "LIVE"; // "REPORTE" | "LIVE"
 
 function setSupTrack_(t) {
   supTrack = (t === "CALIDAD" || t === "RAMAL") ? t : "CONVERSION";
@@ -298,7 +298,16 @@ export function enter() {
     fetch("/api/name-suggest?q=.&limit=200").catch(() => {});
   }
 
-  fetchSupervisorReport_().catch(() => {});
+  // Activar pestaña LIVE al entrar
+  supActiveTab_ = "LIVE";
+  document.querySelectorAll(".sup-tab[data-suptab]").forEach((b) =>
+    b.classList.toggle("active", b.dataset.suptab === "LIVE")
+  );
+  const panelReporte = document.getElementById("supPanelReporte");
+  const panelLive    = document.getElementById("supPanelLive");
+  if (panelReporte) panelReporte.style.display = "none";
+  if (panelLive)    panelLive.style.display    = "";
+  enterLive_();
 }
 
 export function exit() {

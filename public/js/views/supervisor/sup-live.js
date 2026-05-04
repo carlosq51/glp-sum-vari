@@ -203,7 +203,7 @@ function openLiveDetail_(tech) {
   }
 
   modal.setAttribute("aria-hidden", "false");
-  modal.classList.add("open");
+  modal.classList.add("show");
 }
 
 function renderDetailRow_(a, todayStr) {
@@ -231,7 +231,7 @@ function closeLiveDetail_() {
   const modal = document.getElementById("liveDetailModal");
   if (!modal) return;
   modal.setAttribute("aria-hidden", "true");
-  modal.classList.remove("open");
+  modal.classList.remove("show");
 }
 
 // ── Ciclo de vida ─────────────────────────────────────────────────────
