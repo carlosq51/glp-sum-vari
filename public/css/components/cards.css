@@ -8,7 +8,7 @@
   border: var(--border-w) solid var(--surfaceLine);
   border-radius: var(--radius);
   padding: 16px;
-  margin-top: 12px;
+  margin-top: 14px;
   box-shadow: var(--shadow);
 }
 

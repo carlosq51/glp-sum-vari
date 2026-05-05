@@ -145,19 +145,19 @@
 
 /* ─── TEMA DAY ─── */
 :root[data-theme="day"] {
-  --bg0: #e8edf8;
-  --bg1: #f4f7ff;
-  --bgAccent: #dce6ff;
+  --bg0: #d4ddf0;
+  --bg1: #dce5f5;
+  --bgAccent: #c8d5ee;
 
   --text: #0b1220;
   --muted: rgba(11,18,32,.70);
   --placeholder: rgba(11,18,32,.38);
 
-  --surface: #ffffff;
-  --surface2: #f0f4ff;
-  --surfaceLine: rgba(11,18,32,.14);
+  --surface: #c8d5ee;
+  --surface2: #bccae4;
+  --surfaceLine: rgba(11,18,32,.16);
 
-  --inputBg: #ffffff;
+  --inputBg: #dde6f7;
   --inputLine: rgba(11,18,32,.22);
   --inputFocus: #1d4ed8;
 
@@ -165,20 +165,20 @@
   --btnBg2: #08245e;
   --btnLine: rgba(11,18,32,.18);
 
-  --pillBg: rgba(11,18,32,.06);
-  --pillLine: rgba(11,18,32,.14);
+  --pillBg: rgba(11,18,32,.08);
+  --pillLine: rgba(11,18,32,.18);
 
-  --codeBg: rgba(11,18,32,.04);
-  --codeLine: rgba(11,18,32,.10);
-  --modalLine: rgba(11,18,32,.08);
+  --codeBg: rgba(11,18,32,.06);
+  --codeLine: rgba(11,18,32,.12);
+  --modalLine: rgba(11,18,32,.10);
 
-  --ok: #16a34a;     --okBg: rgba(22,163,74,.12);
-  --warn: #b45309;   --warnBg: rgba(180,83,9,.12);
-  --danger: #dc2626; --dangerBg: rgba(220,38,38,.12);
-  --note: #1d4ed8;   --noteBg: rgba(29,78,216,.12);
+  --ok: #16a34a;     --okBg: rgba(22,163,74,.15);
+  --warn: #b45309;   --warnBg: rgba(180,83,9,.15);
+  --danger: #dc2626; --dangerBg: rgba(220,38,38,.15);
+  --note: #1d4ed8;   --noteBg: rgba(29,78,216,.15);
 
-  --shadow: 0 6px 18px rgba(11,18,32,.10);
-  --shadowSm: 0 2px 8px rgba(11,18,32,.08);
+  --shadow: 0 6px 18px rgba(11,18,32,.14);
+  --shadowSm: 0 2px 8px rgba(11,18,32,.10);
 
   /* Texto de botones de acción en day */
    --actionTextOk: #0b1220;
