@@ -7,34 +7,34 @@
 
 /* ─── TEMA NIGHT (default) ─── */
 :root {
-  /* Fondos */
-  --bg0: #05070d;
-  --bg1: #0a1020;
-  --bgAccent: #121a2b;
+  /* Fondos — navy profundo */
+  --bg0: #060b14;
+  --bg1: #0a1322;
+  --bgAccent: #0e1d38;
 
   /* Texto */
-  --text: #f0f4ff;
-  --muted: rgba(240,244,255,.65);
-  --placeholder: rgba(240,244,255,.40);
+  --text: #eef0ff;
+  --muted: rgba(220,228,255,.62);
+  --placeholder: rgba(220,228,255,.36);
 
-  /* Cards / superficies */
-  --surface: #0c2e9a;
-  --surface2: #0a257a;
-  --surfaceLine: rgba(255,255,255,.18);
+  /* Cards / superficies — índigo rico */
+  --surface: #1e3a8a;
+  --surface2: #193278;
+  --surfaceLine: rgba(255,255,255,.16);
 
   /* Inputs */
-  --inputBg: #0b1530;
-  --inputLine: rgba(255,255,255,.28);
-  --inputFocus: #7dd3fc;
+  --inputBg: #0f1d38;
+  --inputLine: rgba(255,255,255,.22);
+  --inputFocus: #60a5fa;
 
-  /* Botones base */
-  --btnBg: #132d6b;
-  --btnBg2: #0f2456;
-  --btnLine: rgba(255,255,255,.22);
+  /* Botones base — azul eléctrico */
+  --btnBg: #1d4ed8;
+  --btnBg2: #1a42c0;
+  --btnLine: rgba(255,255,255,.18);
 
   /* Pills / chips */
   --pillBg: rgba(255,255,255,.10);
-  --pillLine: rgba(255,255,255,.20);
+  --pillLine: rgba(255,255,255,.18);
 
   /* Code / pre */
   --codeBg: rgba(255,255,255,.05);
@@ -45,17 +45,17 @@
 
   /* Estados semánticos */
   --ok: #22c55e;     --okBg: rgba(34,197,94,.18);
-  --warn: #facc15;   --warnBg: rgba(250,204,21,.18);
-  --danger: #ff3b3b; --dangerBg: rgba(255,59,59,.18);
-  --note: #60a5fa;   --noteBg: rgba(96,165,250,.18);
+  --warn: #fbbf24;   --warnBg: rgba(251,191,36,.18);
+  --danger: #f87171; --dangerBg: rgba(248,113,113,.18);
+  --note: #7dd3fc;   --noteBg: rgba(125,211,252,.18);
 
   /* Forma */
   --radius: 16px;
   --radiusSm: 12px;
 
   /* Sombras */
-  --shadow: 0 12px 32px rgba(0,0,0,.55);
-  --shadowSm: 0 4px 12px rgba(0,0,0,.35);
+  --shadow: 0 12px 32px rgba(0,0,0,.60);
+  --shadowSm: 0 4px 12px rgba(0,0,0,.40);
 
   /* Safe areas iOS */
   --safeTop:    env(safe-area-inset-top,    0px);
@@ -118,8 +118,8 @@
   --btnText: rgba(240,244,255,.92);
 
   /* ── Backdrops ── */
-  --backdrop:      rgba(5,7,13,.72);
-  --backdropHeavy: rgba(5,7,13,.78);
+  --backdrop:      rgba(6,11,20,.74);
+  --backdropHeavy: rgba(6,11,20,.82);
 
   /* ── Glass ── */
   --glass: rgba(255,255,255,.05);
@@ -139,58 +139,75 @@
   --dur-base: .15s;
 
   /* ── Focus ── */
-  --focusRing: rgba(125,211,252,.65);
-  --focusGlow: rgba(125,211,252,.15);
+  --focusRing: rgba(96,165,250,.70);
+  --focusGlow: rgba(96,165,250,.18);
 }
 
 /* ─── TEMA DAY ─── */
 :root[data-theme="day"] {
-  --bg0: #d4ddf0;
-  --bg1: #dce5f5;
-  --bgAccent: #c8d5ee;
+  /* Fondos — periwinkle suave, no blanco */
+  --bg0: #ced8f4;
+  --bg1: #dce5fb;
+  --bgAccent: #c4d0ef;
 
-  --text: #0b1220;
-  --muted: rgba(11,18,32,.70);
-  --placeholder: rgba(11,18,32,.38);
+  /* Texto — navy oscuro */
+  --text: #0f172a;
+  --muted: rgba(15,23,42,.60);
+  --placeholder: rgba(15,23,42,.36);
 
-  --surface: #c8d5ee;
-  --surface2: #bccae4;
-  --surfaceLine: rgba(11,18,32,.16);
+  /* Cards — blanco con tinte índigo (contraste real vs fondo periwinkle) */
+  --surface: #eef1ff;
+  --surface2: #e3e8ff;
+  --surfaceLine: rgba(15,23,42,.12);
 
-  --inputBg: #dde6f7;
-  --inputLine: rgba(11,18,32,.22);
-  --inputFocus: #1d4ed8;
+  /* Inputs */
+  --inputBg: #f5f7ff;
+  --inputLine: rgba(15,23,42,.20);
+  --inputFocus: #4f46e5;
 
-  --btnBg: #0b2a6d;
-  --btnBg2: #08245e;
-  --btnLine: rgba(11,18,32,.18);
+  /* Botones — índigo sólido */
+  --btnBg: #4f46e5;
+  --btnBg2: #4338ca;
+  --btnLine: rgba(79,70,229,.22);
 
-  --pillBg: rgba(11,18,32,.08);
-  --pillLine: rgba(11,18,32,.18);
+  /* Pills / chips */
+  --pillBg: rgba(79,70,229,.08);
+  --pillLine: rgba(79,70,229,.18);
 
-  --codeBg: rgba(11,18,32,.06);
-  --codeLine: rgba(11,18,32,.12);
-  --modalLine: rgba(11,18,32,.10);
+  /* Code / pre */
+  --codeBg: rgba(15,23,42,.05);
+  --codeLine: rgba(15,23,42,.12);
 
-  --ok: #16a34a;     --okBg: rgba(22,163,74,.15);
-  --warn: #b45309;   --warnBg: rgba(180,83,9,.15);
-  --danger: #dc2626; --dangerBg: rgba(220,38,38,.15);
-  --note: #1d4ed8;   --noteBg: rgba(29,78,216,.15);
+  /* Modal */
+  --modalLine: rgba(15,23,42,.10);
 
-  --shadow: 0 6px 18px rgba(11,18,32,.14);
-  --shadowSm: 0 2px 8px rgba(11,18,32,.10);
+  /* Estados semánticos */
+  --ok: #16a34a;     --okBg: rgba(22,163,74,.14);
+  --warn: #d97706;   --warnBg: rgba(217,119,6,.14);
+  --danger: #dc2626; --dangerBg: rgba(220,38,38,.14);
+  --note: #4f46e5;   --noteBg: rgba(79,70,229,.14);
+
+  /* Sombras */
+  --shadow: 0 6px 22px rgba(15,23,42,.13);
+  --shadowSm: 0 2px 8px rgba(15,23,42,.09);
 
   /* Texto de botones de acción en day */
-   --actionTextOk: #0b1220;
-   --actionTextWarn: #0b1220;
-   --actionTextDanger: #0b1220;
+   --actionTextOk: #064e1d;
+   --actionTextWarn: #431d04;
+   --actionTextDanger: #5e0a0a;
    --actionTextNote: #fff;
 
   /* ── Overrides Day ── */
   --btnText: #fff;
-  --glass:   rgba(11,18,32,.04);
+  --glass:   rgba(15,23,42,.04);
+
+  --backdrop:      rgba(15,23,42,.60);
+  --backdropHeavy: rgba(15,23,42,.70);
 
   --okBgFade:     rgba(22,163,74,.03);
-  --warnBgFade:   rgba(180,83,9,.03);
+  --warnBgFade:   rgba(217,119,6,.03);
   --dangerBgFade: rgba(220,38,38,.03);
+
+  --focusRing: rgba(79,70,229,.65);
+  --focusGlow: rgba(79,70,229,.15);
 }

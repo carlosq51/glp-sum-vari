@@ -75,22 +75,22 @@
 }
 
 :root[data-theme="day"] .movPanel {
-  background: rgba(11,18,32,.04);
-  border-color: rgba(11,18,32,.14);
+  background: rgba(79,70,229,.04);
+  border-color: rgba(15,23,42,.12);
 }
 
 :root[data-theme="day"] .movPanelHeader:hover {
-  background: rgba(11,18,32,.06);
+  background: rgba(79,70,229,.07);
 }
 
 :root[data-theme="day"] .movPanel.open .movPanelHeader {
-  background: rgba(11,18,32,.04);
-  border-bottom-color: rgba(11,18,32,.12);
+  background: rgba(79,70,229,.05);
+  border-bottom-color: rgba(15,23,42,.10);
 }
 
-:root[data-theme="day"] .movPanelTitle { color: #0b1220; }
-:root[data-theme="day"] .movPanelHint  { color: rgba(11,18,32,.55); }
-:root[data-theme="day"] .movChevron    { color: rgba(11,18,32,.5); }
+:root[data-theme="day"] .movPanelTitle { color: #0f172a; }
+:root[data-theme="day"] .movPanelHint  { color: rgba(15,23,42,.52); }
+:root[data-theme="day"] .movChevron    { color: rgba(15,23,42,.45); }
 
 .movPanelIcon {
   font-size: 1.1em;
@@ -204,16 +204,16 @@
   color: rgba(240,244,255,.94);
 }
 
-/* Day theme: swap to dark-tinted surface so cards stay readable */
+/* Day theme: swap to indigo-tinted surface so cards stay readable */
 :root[data-theme="day"] .movCard {
-  background: rgba(11, 42, 109, 0.12);
-  border-color: rgba(11,18,32,.18);
+  background: rgba(79,70,229,.09);
+  border-color: rgba(15,23,42,.15);
   color: var(--text);
 }
 
 :root[data-theme="day"] .movCardDate,
 :root[data-theme="day"] .movCardSub { color: var(--muted); }
-:root[data-theme="day"] .movVin { color: #0b1220; }
+:root[data-theme="day"] .movVin { color: #0f172a; }
 
 .movCardTop {
   display: flex;
@@ -628,32 +628,30 @@
 
 /* Day theme overrides for registration section */
 :root[data-theme="day"] .movRegBox {
-  background: rgba(11,42,109,.08);
-  border-color: rgba(11,18,32,.15);
+  background: rgba(79,70,229,.07);
+  border-color: rgba(15,23,42,.13);
 }
 
 :root[data-theme="day"] .movVinInput {
-  background: rgba(11,18,32,.06);
-  border-color: rgba(11,18,32,.2);
-  color: #0b1220;
+  background: rgba(255,255,255,.75);
+  border-color: rgba(15,23,42,.18);
+  color: #0f172a;
 }
 
-:root[data-theme="day"] .movRegTitle {
-  color: #0b1220;
-}
+:root[data-theme="day"] .movRegTitle { color: #0f172a; }
 
 :root[data-theme="day"] .movRegHint {
-  color: rgba(11,18,32,.55);
+  color: rgba(15,23,42,.52);
 }
 
 :root[data-theme="day"] .movGpsLink {
-  background: rgba(37,99,235,.1);
-  border-color: rgba(37,99,235,.35);
-  color: #1d4ed8;
+  background: rgba(79,70,229,.12);
+  border-color: rgba(79,70,229,.35);
+  color: #4338ca;
 }
 
 :root[data-theme="day"] .movGpsLink:hover {
-  background: rgba(37,99,235,.18);
+  background: rgba(79,70,229,.20);
 }
 
 @media (max-width: 520px) {
