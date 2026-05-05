@@ -1217,21 +1217,26 @@ app.get("/api/supervisor/live", async (req, res) => {
     // Q4: Última asignación reciente por usuario (para rol_trabajo de TECNICO AMBOS)
     const url4 = `${SUPABASE_URL}/rest/v1/asignaciones?select=user_id,rol_trabajo,updated_at&fecha_asignacion=gte.${thirtyDaysAgo}T00:00:00&order=updated_at.desc&limit=2000`;
 
-    const [resp1, resp2, resp3, resp4] = await Promise.all([
+    // Q5: Trabajos de días anteriores que siguen ACTIVOS hoy ("virtual" — en progreso, no finalizados)
+    const url5 = `${SUPABASE_URL}/rest/v1/asignaciones?select=${selectFields}&activo=eq.true&estado_actual=in.(TRABAJANDO,PAUSADO,SIN_INICIAR)&fecha_asignacion=lt.${todayStr}T00:00:00&order=updated_at.desc`;
+
+    const [resp1, resp2, resp3, resp4, resp5] = await Promise.all([
       fetch(url1, { method: "GET", headers }),
       fetch(url2, { method: "GET", headers }),
       fetch(url3, { method: "GET", headers }),
       fetch(url4, { method: "GET", headers }),
+      fetch(url5, { method: "GET", headers }),
     ]);
     if (!resp1.ok) {
       const text = await resp1.text().catch(() => "");
       throw new Error(`Supabase Q1: ${resp1.status} ${text.slice(0, 200)}`);
     }
-    const [raw1, raw2, allUsers, recentAsg] = await Promise.all([
+    const [raw1, raw2, allUsers, recentAsg, raw5] = await Promise.all([
       resp1.json(),
       resp2.json().catch(() => []),
       resp3.json().catch(() => []),
       resp4.json().catch(() => []),
+      resp5.json().catch(() => []),
     ]);
 
     // Mapa: user_id → último rol_trabajo conocido (para TECNICO AMBOS)
@@ -1255,10 +1260,11 @@ app.get("/api/supervisor/live", async (req, res) => {
       return null; // otros roles no se muestran
     }
 
-    // Merge deduplicando por id (cross-day no solapan con Q1 por la fecha)
+    // Merge deduplicando por id:
+    // raw1 = hoy activos, raw2 = cross-day FINALIZADO hoy, raw5 = cross-day aún ACTIVOS (virtual)
     const seenIds = new Set();
     const raw = [];
-    for (const asg of [...(raw1 || []), ...(raw2 || [])]) {
+    for (const asg of [...(raw1 || []), ...(raw2 || []), ...(raw5 || [])]) {
       if (!seenIds.has(asg.id)) { seenIds.add(asg.id); raw.push(asg); }
     }
 
@@ -1313,6 +1319,9 @@ app.get("/api/supervisor/live", async (req, res) => {
         return sum + (d < todayStr ? 0.5 : 1.0);
       }, 0);
 
+      // virtualHoy: trabajos aún en progreso (no finalizados) — incluye cross-day activos
+      const virtualHoy = activos.length;
+
       techs.push({
         userId: tech.userId,
         nombre: tech.nombre,
@@ -1324,6 +1333,7 @@ app.get("/api/supervisor/live", async (req, res) => {
         finalizadosHoy: finalizados.length,
         activosHoy: activos.length,
         carsHoy,
+        virtualHoy,
         vinsHoy: [...new Set(asgList.map(a => a.vin).filter(Boolean))],
         asignacionesHoy: asgList,
       });

@@ -89,6 +89,7 @@ function renderLive_(container, data) {
     const group = groups[rol];
     const countTrabajando = group.filter(t => t.estadoActivo === "TRABAJANDO").length;
     const totalCars = group.reduce((s, t) => s + (Number(t.carsHoy) || 0), 0);
+    const totalVirtual = group.reduce((s, t) => s + (Number(t.virtualHoy) || 0), 0);
     const totalCarsStr = fmtCars_(totalCars);
     const hasHalfGroup = totalCars !== Math.floor(totalCars);
 
@@ -97,7 +98,8 @@ function renderLive_(container, data) {
       <div class="live-group-header live-group-toggle" style="border-left: 3px solid ${meta.color};">
         <span class="live-group-icon">${meta.icon}</span>
         <span class="live-group-label">${escapeHtml(meta.label)}</span>
-        <span class="live-cars-pill${hasHalfGroup ? " half" : ""}" title="Total carros ${escapeHtml(meta.label)}">🚗 ${totalCarsStr}</span>
+        <span class="live-cars-pill${hasHalfGroup ? " half" : ""}" title="Carros finalizados ${escapeHtml(meta.label)}">🚗 ${totalCarsStr}</span>
+        ${totalVirtual > 0 ? `<span class="live-virtual-pill" title="${totalVirtual} trabajo${totalVirtual !== 1 ? "s" : ""} en progreso sin finalizar">⚙️ ${totalVirtual} virt.</span>` : ""}
         <span class="live-group-count pill small">${group.length} téc.</span>
         ${countTrabajando > 0 ? `<span class="live-dot-working"></span><span class="small">${countTrabajando} activo${countTrabajando !== 1 ? "s" : ""}</span>` : ""}
         <span class="live-group-chevron">▶</span>
@@ -168,6 +170,7 @@ function renderTechCard_(t) {
   const cars = Number(t.carsHoy ?? t.finalizadosHoy ?? 0);
   const carsStr = fmtCars_(cars);
   const hasHalf = cars !== Math.floor(cars);
+  const virtual = Number(t.virtualHoy ?? t.activosHoy ?? 0);
   const displayName = firstName_(nombre);
   const displayEstado = shortEstado_(em.label);
   const isDisconnected = t.estadoActivo === "DESCONECTADO";
@@ -179,6 +182,7 @@ function renderTechCard_(t) {
       <span class="live-tech-name">${escapeHtml(displayName)}</span>
       <span class="live-badge ${escapeHtml(em.badge)}">${escapeHtml(displayEstado)}</span>
       ${!isDisconnected ? `<span class="live-cars-pill${hasHalf ? " half" : ""}" title="${hasHalf ? "Incluye trabajos del día anterior (½)" : "Carros finalizados hoy"}">🚗 ${carsStr}</span>` : ""}
+      ${!isDisconnected && virtual > 0 ? `<span class="live-virtual-pill" title="${virtual} trabajo${virtual !== 1 ? "s" : ""} en progreso (sin finalizar)">⚙️ ${virtual}</span>` : ""}
     </div>
 
     ${vinActivo && !isDisconnected ? `<div class="live-vin-compact">
@@ -213,14 +217,14 @@ function openLiveDetail_(tech) {
   const todayStr = new Date().toISOString().slice(0, 10);
   const cars = Number(tech.carsHoy ?? tech.finalizadosHoy ?? 0);
   const carsStr = fmtCars_(cars);
+  const virtual = Number(tech.virtualHoy ?? tech.activosHoy ?? 0);
   if (!asgList.length) {
     body.innerHTML = `<div class="small">Sin asignaciones hoy.</div>`;
   } else {
     const summary = `<div class="live-detail-summary small">
-      🚗 <b>${carsStr}</b>
+      🚗 <b>${carsStr}</b> finalizado${cars !== 1 ? "s" : ""}
       ${cars !== Math.floor(cars) ? `<span class="live-half-legend" title="Incluye trabajos iniciados el día anterior">½ = día anterior</span>` : ""}
-      · ✅ <b>${tech.finalizadosHoy || 0} finalizado${(tech.finalizadosHoy || 0) !== 1 ? "s" : ""}</b>
-      · 🔧 <b>${tech.activosHoy || 0} en proceso</b>
+      ${virtual > 0 ? `· <span class="live-virtual-pill" style="font-size:inherit;">⚙️ <b>${virtual}</b> en progreso</span>` : ""}
     </div>`;
     body.innerHTML = summary + asgList.map(a => renderDetailRow_(a, todayStr)).join("");
   }

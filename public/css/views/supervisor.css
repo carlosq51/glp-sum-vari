@@ -280,6 +280,25 @@ button[data-suptrack].active {
   color: #fde68a;
 }
 
+/* Pill de trabajos en progreso (virtual — aún no finalizados) */
+.live-virtual-pill {
+  font-size: .78em;
+  font-weight: 800;
+  padding: 1px 7px;
+  border-radius: 20px;
+  white-space: nowrap;
+  background: rgba(251,146,60,.15);
+  border: 1px solid rgba(251,146,60,.40);
+  color: #fdba74;
+  flex-shrink: 0;
+}
+
+:root[data-theme="day"] .live-virtual-pill {
+  background: rgba(194,65,12,.12);
+  border-color: rgba(194,65,12,.30);
+  color: #9a3412;
+}
+
 /* VIN compacto (siempre visible) */
 .live-vin-compact {
   display: flex;
