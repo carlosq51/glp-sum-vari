@@ -231,6 +231,58 @@ export function init() {
     await withLock(async () => syncNow({ forceFull: true, showOut: true, _fromLock: true }), "Refrescando...");
   });
 
+  // ─── Modal sugerencias calidad: 3 VINs más antiguos sin revisión iniciada ───
+  $("btnSugQ")?.addEventListener("click", async () => {
+    if (CORE.state.currentModule !== "CALIDAD") return;
+    const modal = document.getElementById("calSugModal");
+    const body  = document.getElementById("calSugBody");
+    if (!modal || !body) return;
+
+    body.innerHTML = `<div class="small muted">Cargando…</div>`;
+    modal.setAttribute("aria-hidden", "false");
+    modal.classList.add("show");
+
+    try {
+      const { escapeHtml, fmtShort_ } = await import("../../core/format.js");
+      const j = await getJSON("/api/movilizador/status");
+      if (!j?.ok) throw new Error(j?.error || "Error al cargar");
+
+      // list2 tiene los VINs en zona de espera; filtrar los que NO están en EN_REVISION
+      const pending = (j.list2 || [])
+        .filter(r => r.estado !== "EN_REVISION")
+        .sort((a, b) => new Date(a.trasladado_at || 0) - new Date(b.trasladado_at || 0))
+        .slice(0, 3);
+
+      if (!pending.length) {
+        body.innerHTML = `<div class="small muted" style="padding:8px 0;">✅ No hay carros en espera sin revisión.</div>`;
+        return;
+      }
+
+      body.innerHTML = pending.map((r, i) => `
+        <div class="calSugCard">
+          <span class="calSugNum">${i + 1}</span>
+          <div class="calSugInfo">
+            <span class="calSugVin">${escapeHtml(r.vin)}</span>
+            <span class="calSugDate small muted">Traslado: ${fmtShort_(r.trasladado_at)}</span>
+          </div>
+        </div>
+      `).join("");
+    } catch (e) {
+      body.innerHTML = `<div class="small" style="color:var(--danger);">Error: ${e.message}</div>`;
+    }
+  });
+
+  document.getElementById("btnCalSugClose")?.addEventListener("click", () => {
+    const modal = document.getElementById("calSugModal");
+    if (modal) { modal.classList.remove("show"); modal.setAttribute("aria-hidden", "true"); }
+  });
+  document.getElementById("calSugModal")?.addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) {
+      e.currentTarget.classList.remove("show");
+      e.currentTarget.setAttribute("aria-hidden", "true");
+    }
+  });
+
   $("btnFinalizadosQ")?.addEventListener("click", async () => {
     if (CORE.state.currentModule !== "CALIDAD") return;
     await withLock(async () => {

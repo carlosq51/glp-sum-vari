@@ -2477,8 +2477,11 @@ app.get("/api/movilizador/status", async (req, res) => {
       })
       .sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
 
-    // ─── Lista 0: en espera de conversión (registradas por movilizador, conversión no finalizada aún)
+    // ─── Lista 0: en espera de conversión + en conversión activa
     const list0 = [];
+    const list0Vins = new Set();
+
+    // a) Registrados por movilizador como EN_ESPERA_CONVERSION
     for (const [vin, t] of trasMap) {
       if (t.estado !== "EN_ESPERA_CONVERSION") continue;
       if (convVinMap.has(vin)) continue; // conversión ya finalizada → aparece en list1
@@ -2486,10 +2489,31 @@ app.get("/api/movilizador/status", async (req, res) => {
         vin,
         fecha_entrada: t.trasladado_at,
         registrado_por: t.trasladado_por || "",
-        en_conversion: convActivaMap.has(vin), // técnico ya inició OT
+        en_conversion: convActivaMap.has(vin),
+      });
+      list0Vins.add(vin);
+    }
+
+    // b) VINs con OT de conversión activa pero sin registro de entrada (movilizador no los registró)
+    for (const vin of convActivaMap) {
+      if (list0Vins.has(vin)) continue; // ya está por traslado
+      if (convVinMap.has(vin)) continue; // conversión finalizada → va a list1
+      list0.push({
+        vin,
+        fecha_entrada: null,
+        registrado_por: "",
+        en_conversion: true,
+        sin_registro: true,
       });
     }
-    list0.sort((a, b) => new Date(a.fecha_entrada || 0) - new Date(b.fecha_entrada || 0));
+
+    // Orden: primero En Espera (newest first), luego En Conversión
+    list0.sort((a, b) => {
+      if (a.en_conversion !== b.en_conversion) return a.en_conversion ? 1 : -1;
+      // Dentro de En Espera: más reciente arriba
+      if (!a.en_conversion) return new Date(b.fecha_entrada || 0) - new Date(a.fecha_entrada || 0);
+      return 0;
+    });
 
     // ─── Lista 2: VINs trasladados (sin calidad done) + VINs con OT CALIDAD activa
     const list2 = [];
@@ -2551,7 +2575,14 @@ app.get("/api/movilizador/status", async (req, res) => {
       list1,
       list2,
       list3,
-      counts: { list0: list0.length, list1: list1.length, list2: list2.length, list3: list3.length },
+      counts: {
+        list0: list0.length,
+        list0_espera: list0.filter(r => !r.en_conversion).length,
+        list0_conversion: list0.filter(r => r.en_conversion).length,
+        list1: list1.length,
+        list2: list2.length,
+        list3: list3.length,
+      },
     });
   } catch (e) {
     console.error("[MOVILIZADOR_STATUS]", e);

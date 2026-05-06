@@ -335,6 +335,22 @@
   font-size: var(--fs-sm);
 }
 
+/* Separador entre "En Espera" y "En Conversión" dentro del panel 0 */
+.movList0Separator {
+  padding: 6px 4px 2px;
+  color: var(--note);
+  opacity: .75;
+  font-weight: 700;
+  letter-spacing: .2px;
+}
+
+/* Aviso de VIN sin registro de entrada */
+.movCardNoReg {
+  color: var(--warn);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+}
+
 /* ─── Admin config panel ─── */
 .adminConfigPanel {
   padding: 16px;

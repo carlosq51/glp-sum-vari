@@ -473,3 +473,63 @@ button[data-suptrack].active {
     grid-template-columns: 1fr;
   }
 }
+
+/* =====================================================================
+   CALIDAD — Modal de sugerencias de cola
+   ===================================================================== */
+
+#btnSugQ {
+  width: 100%;
+}
+
+.calSugCard {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: var(--radiusSm);
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.12);
+  margin-bottom: 8px;
+}
+.calSugCard:last-child { margin-bottom: 0; }
+
+.calSugNum {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: .8em;
+  font-weight: 900;
+  background: var(--noteBg);
+  color: var(--note);
+  border: 1px solid var(--note);
+  flex-shrink: 0;
+}
+
+.calSugInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.calSugVin {
+  font-weight: 800;
+  font-size: .95em;
+  letter-spacing: .6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.calSugDate {
+  font-size: var(--fs-xs);
+  opacity: .72;
+}
+
+:root[data-theme="day"] .calSugCard {
+  background: rgba(79,70,229,.07);
+  border-color: rgba(15,23,42,.12);
+}

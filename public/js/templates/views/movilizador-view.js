@@ -86,6 +86,7 @@ export function movilizadorView() {
             <span class="movPanelHint">Ingresados al taller, pendientes de conversión</span>
           </div>
           <span id="movBadge0" class="movBadge movBadgeWarn" aria-label="En espera" style="display:none;"></span>
+          <span id="movBadge0conv" class="movBadge movBadgeNote" aria-label="En conversión" style="display:none;"></span>
           <span class="movChevron" aria-hidden="true">▼</span>
         </button>
         <div id="movPanel0Body" class="movPanelBody"></div>

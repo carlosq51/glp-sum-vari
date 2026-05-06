@@ -38,32 +38,55 @@ function setBadge_(id, count) {
 function renderList0_(rows) {
   const box = document.getElementById("movPanel0Body");
   if (!box) return;
-  setBadge_("movBadge0", rows.length);
+
+  const countEspera     = rows.filter(r => !r.en_conversion).length;
+  const countConversion = rows.filter(r =>  r.en_conversion).length;
+
+  // Badge naranja = en espera, badge azul = en conversión
+  setBadge_("movBadge0",      countEspera);
+  setBadge_("movBadge0conv",  countConversion);
 
   if (!rows.length) {
     box.innerHTML = `<div class="movEmpty small muted">Sin vehículos en espera de conversión.</div>`;
     return;
   }
 
-  box.innerHTML = `
-    <div class="movCardList">
-      ${rows.map(r => `
-        <div class="movCard">
-          <div class="movCardTop">
-            <span class="movVin">${escapeHtml(r.vin)}</span>
-            ${r.en_conversion
-              ? `<span class="badge badge-note">🔧 En Conversión</span>`
-              : `<span class="badge badge-warn">⏳ En Espera</span>`
-            }
-          </div>
-          <div class="movCardSub small muted">
-            Entrada: ${fmtDate_(r.fecha_entrada)}
-            ${r.registrado_por ? ` · por ${escapeHtml(r.registrado_por)}` : ""}
-          </div>
-        </div>
-      `).join("")}
-    </div>
-  `;
+  // Separar los dos grupos (ya vienen ordenados del backend)
+  const espera     = rows.filter(r => !r.en_conversion);
+  const conversion = rows.filter(r =>  r.en_conversion);
+
+  const cardHtml = (r) => `
+    <div class="movCard">
+      <div class="movCardTop">
+        <span class="movVin">${escapeHtml(r.vin)}</span>
+        ${r.en_conversion
+          ? `<span class="badge badge-note">🔧 En Conversión</span>`
+          : `<span class="badge badge-warn">⏳ En Espera</span>`
+        }
+      </div>
+      <div class="movCardSub small muted">
+        ${r.fecha_entrada
+          ? `Entrada: ${fmtDate_(r.fecha_entrada)}${r.registrado_por ? ` · por ${escapeHtml(r.registrado_por)}` : ""}`
+          : `<span class="movCardNoReg">⚠️ Sin registro de entrada</span>`
+        }
+      </div>
+    </div>`;
+
+  let html = `<div class="movCardList">`;
+
+  if (espera.length) {
+    html += espera.map(cardHtml).join("");
+  }
+
+  if (conversion.length) {
+    if (espera.length) {
+      html += `<div class="movList0Separator small muted">🔧 En Conversión</div>`;
+    }
+    html += conversion.map(cardHtml).join("");
+  }
+
+  html += `</div>`;
+  box.innerHTML = html;
 }
 
 function renderList1_(rows) {
