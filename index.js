@@ -1087,11 +1087,26 @@ async function handleSupervisorReport_(payload, res) {
   else if (track === "RAMAL") tipoOtFilter = "tipo_ot=eq.RAMALERO";
   else tipoOtFilter = "tipo_ot=in.(CONVERSION)";
 
-  // Query asignaciones con JOINs embebidos a usuarios y work_orders
+  // Calcular fecha efectiva de inicio (para cross-day logic)
+  let effectiveFrom = from;
+  let effectiveTo = to;
+  if (!effectiveFrom && month) {
+    effectiveFrom = `${month}-01`;
+    const [y, m] = month.split("-").map(Number);
+    const lastDay = new Date(y, m, 0).getDate();
+    effectiveTo = effectiveTo || `${month}-${String(lastDay).padStart(2, "0")}`;
+  }
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  // Campo select compartido
+  const selectFields =
+    `id,work_order_id,user_id,tipo_ot,rol_trabajo,estado_actual,running_since,tiempo_trab_ms,fecha_asignacion,updated_at,last_nota,activo,` +
+    `usuarios(id,nombre,email),` +
+    `work_orders(id,vin,tipo_ot,tipo_ramal,fecha_creacion,estado_general)`;
+
+  // ── Q1: Query principal — asignaciones dentro del rango ──
   let url = `${SUPABASE_URL}/rest/v1/asignaciones?`;
-  url += `select=id,work_order_id,user_id,tipo_ot,rol_trabajo,estado_actual,running_since,tiempo_trab_ms,fecha_asignacion,updated_at,last_nota,activo,`;
-  url += `usuarios(id,nombre,email),`;
-  url += `work_orders(id,vin,tipo_ot,tipo_ramal,fecha_creacion,estado_general)`;
+  url += `select=${selectFields}`;
   url += `&${tipoOtFilter}`;
   url += `&activo=eq.true`;
 
@@ -1108,14 +1123,64 @@ async function handleSupervisorReport_(payload, res) {
 
   url += `&order=updated_at.desc`;
 
-  const resp = await fetch(url, { method: "GET", headers });
+  // ── Q2 (cross-day): finalizados HOY pero iniciados ANTES del rango ──
+  // Igual que LIVE Q2: trabajos del día anterior que se terminaron dentro del rango
+  let urlCrossFin = null;
+  if (effectiveFrom) {
+    urlCrossFin = `${SUPABASE_URL}/rest/v1/asignaciones?` +
+      `select=${selectFields}` +
+      `&${tipoOtFilter}` +
+      `&activo=eq.true` +
+      `&estado_actual=eq.FINALIZADO` +
+      `&updated_at=gte.${effectiveFrom}T00:00:00` +
+      `&fecha_asignacion=lt.${effectiveFrom}T00:00:00` +
+      `&order=updated_at.desc`;
+    if (effectiveTo) urlCrossFin += `&updated_at=lte.${effectiveTo}T23:59:59`;
+  }
+
+  // ── Q5 (cross-day active): aún ACTIVOS pero iniciados ANTES del rango ──
+  // Aplica siempre que haya un from: un trabajo que empezó antes del rango y sigue
+  // activo (sin finalizar) estaba activo DURANTE el rango también.
+  let urlCrossActive = null;
+  if (effectiveFrom) {
+    urlCrossActive = `${SUPABASE_URL}/rest/v1/asignaciones?` +
+      `select=${selectFields}` +
+      `&${tipoOtFilter}` +
+      `&activo=eq.true` +
+      `&estado_actual=in.(TRABAJANDO,PAUSADO,SIN_INICIAR)` +
+      `&fecha_asignacion=lt.${effectiveFrom}T00:00:00` +
+      `&order=updated_at.desc`;
+  }
+
+  const fetches = [
+    fetch(url, { method: "GET", headers }),
+    urlCrossFin    ? fetch(urlCrossFin,    { method: "GET", headers }) : Promise.resolve(null),
+    urlCrossActive ? fetch(urlCrossActive, { method: "GET", headers }) : Promise.resolve(null),
+  ];
+
+  const [resp, respCrossFin, respCrossActive] = await Promise.all(fetches);
+
   if (!resp.ok) {
     const text = await resp.text().catch(() => "");
     console.error("[SUPERVISOR_REPORT] Supabase error:", resp.status, text.slice(0, 300));
     return res.status(500).json({ ok: false, error: `Supabase: ${resp.status}` });
   }
 
-  const raw = await resp.json();
+  const [rawMain, rawCrossFin, rawCrossActive] = await Promise.all([
+    resp.json(),
+    respCrossFin    ? respCrossFin.json().catch(() => [])    : [],
+    respCrossActive ? respCrossActive.json().catch(() => []) : [],
+  ]);
+
+  // Merge deduplicando por id; marcar cross-day
+  const seenIds = new Set();
+  const raw = [];
+  for (const asg of (rawMain || [])) {
+    if (!seenIds.has(asg.id)) { seenIds.add(asg.id); raw.push({ ...asg, _crossDay: false }); }
+  }
+  for (const asg of [...(rawCrossFin || []), ...(rawCrossActive || [])]) {
+    if (!seenIds.has(asg.id)) { seenIds.add(asg.id); raw.push({ ...asg, _crossDay: true }); }
+  }
 
   // Obtener modelos de VINs (consulta separada)
   const vinsSet = new Set();
@@ -1170,6 +1235,8 @@ async function handleSupervisorReport_(payload, res) {
       fecha_creacion: wo.fecha_creacion,
       last_nota: asg.last_nota || "",
       activo: asg.activo,
+      // Cross-day flag: started before range start, finalized/active within range
+      crossDay: asg._crossDay === true,
     };
   });
 

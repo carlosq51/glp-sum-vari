@@ -106,6 +106,8 @@ export function renderRowGroup_(row, { escapeHtml, fmtShort_ }) {
   const motor = row.motor;
   const tanque = row.tanque;
 
+  const isCrossDay = !!(motor?.crossDay || tanque?.crossDay);
+
   const motorWho = motor?.userName || motor?.userEmail || motor?.userId || "-";
   const tanqueWho = tanque?.userName || tanque?.userEmail || tanque?.userId || "-";
 
@@ -120,9 +122,10 @@ export function renderRowGroup_(row, { escapeHtml, fmtShort_ }) {
   const cidAny = String(motor?.workId || tanque?.workId || "").trim();
 
   return `
-    <div class="card" style="margin-top:10px;">
+    <div class="card" style="margin-top:10px;${isCrossDay ? ' border-left: 3px solid rgba(251,191,36,.55);' : ''}">
       <div style="font-weight:900;">
         VIN: ${escapeHtml(vin)} <span class="small">(MOTOR + TANQUE)</span>
+        ${isCrossDay ? `<span class="live-half-badge" title="Iniciado el día anterior">½ día ant.</span>` : ""}
       </div>
 
       <div class="row space-between" style="margin-top:8px; gap:10px;">
@@ -193,6 +196,7 @@ export function renderRowNormal_(it, { escapeHtml, fmtShort_ }) {
   const rol = String(it?.rol || it?.rolTrabajo || "").toUpperCase() || "-";
   const isRamal = rol === "RAMALERO" || rol === "RAMAL";
   const vinOrTipo = isRamal ? `RAMAL: ${it?.tipoRamal || "-"}` : (it?.vin || "-");
+  const isCrossDay = !!it?.crossDay;
 
   const vinCard = String(it?.vin || "").trim().toUpperCase();
   const conversionIdCard = String(it?.workId || it?.conversionId || it?.conversion_id || "").trim();
@@ -201,9 +205,10 @@ export function renderRowNormal_(it, { escapeHtml, fmtShort_ }) {
   const durTxtItem = durMsItem ? fmtDur_(durMsItem) : "-";
 
   return `
-    <div class="card" style="margin-top:10px;">
+    <div class="card" style="margin-top:10px;${isCrossDay ? ' border-left: 3px solid rgba(251,191,36,.55);' : ''}">
       <div style="font-weight:900;">
         ${escapeHtml(who)} <span class="small">(${escapeHtml(rol)})</span>
+        ${isCrossDay ? `<span class="live-half-badge" title="Iniciado el día anterior">½ día ant.</span>` : ""}
       </div>
 
       <div class="row space-between" style="margin-top:8px; gap:10px;">
