@@ -16,9 +16,15 @@ export function renderAvgCard_(avgCardEl, {
   motorCount,
   tanqueCount,
   finalizedCount,
+  isHistorical,
   escapeHtml
 }) {
   if (!avgCardEl) return;
+
+  // Badge de modo de consulta
+  const modeBadge = isHistorical
+    ? `<span style="font-size:.68em;font-weight:800;background:rgba(99,102,241,.22);border:1px solid rgba(99,102,241,.45);color:#a5b4fc;border-radius:5px;padding:2px 7px;letter-spacing:.4px;">📅 HISTÓRICO · por fecha de cierre</span>`
+    : `<span style="font-size:.68em;font-weight:800;background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.35);color:#86efac;border-radius:5px;padding:2px 7px;letter-spacing:.4px;">🔴 HOY · en tiempo real</span>`;
 
   if (stats?.used > 0) {
     const nameUp = String(techName || "TÉCNICO").toUpperCase();
@@ -37,6 +43,7 @@ export function renderAvgCard_(avgCardEl, {
             <div style="font-weight:1000; font-size:20px; letter-spacing:1px; margin-top:4px;">
               ${escapeHtml(nameUp)}
             </div>
+            <div style="margin-top:6px;">${modeBadge}</div>
           </div>
 
           <div class="pill small" style="opacity:.95;">
@@ -73,13 +80,16 @@ export function renderAvgCard_(avgCardEl, {
         </div>
 
         <div class="small" style="margin-top:12px; opacity:.75;">
-          (Solo se consideran trabajos en estado <b>FINALIZADO</b>)
+          ${isHistorical
+            ? "Producción contada por <b>fecha de cierre</b> — el carro aparece en el día que se terminó."
+            : "Incluye trabajos activos del día. Cross-day (⬛½) empezaron ayer y cuentan 0.5."}
         </div>
       </div>
     `;
   } else {
     avgCardEl.innerHTML = `
       <div class="card" style="border:1px solid rgba(255,255,255,.14); border-radius:18px; padding:14px;">
+        <div style="margin-bottom:8px;">${modeBadge}</div>
         <div class="small">Sin FINALIZADOS con tiempo válido.</div>
       </div>
     `;

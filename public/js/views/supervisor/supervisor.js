@@ -83,6 +83,9 @@ function renderSupervisor_(j) {
   const avgCard = document.getElementById("supAvgCard");
 
   const items = Array.isArray(j.items) ? j.items : [];
+  // j.isHistorical = true  → backend ya envió solo FINALIZADO (fecha de cierre)
+  // j.isHistorical = false → modo hoy/LIVE, incluye en proceso + cross-day
+  const isHistorical = !!j.isHistorical;
 
   const marcaSel = String(document.getElementById("supMarca")?.value || "ALL").toUpperCase();
   const filtered = items.filter((it) => matchMarca_(it, marcaSel));
@@ -169,25 +172,46 @@ function renderSupervisor_(j) {
   let motorCount = 0;
   let tanqueCount = 0;
 
-  // Contar VINs únicos finalizados
-  const vinsFinalizados = new Set();
+  // Contar VINs únicos finalizados con peso:
+  // - crossDay = true  → 0.5 (empezó día anterior)
+  // - crossDay = false → 1.0
+  const vinsFinalizados = new Map(); // vin → peso acumulado (max 1.0)
 
   for (const it of list) {
     if (!isFinalizado_(it.estado)) continue;
 
     const rol = String(it.rol || it.rolTrabajo || "").toUpperCase();
-    if (rol === "TANQUE" || rol === "TANQUERO") tanqueCount++;
-    else if (rol === "MOTOR") motorCount++;
-    else if (rol === "TECNICO" || rol === "CONVERSION") motorCount++;
+    const peso = it.crossDay ? 0.5 : 1.0;
 
-    // Agregar VIN al set si está finalizado
+    if (rol === "TANQUE" || rol === "TANQUERO") tanqueCount += peso;
+    else if (rol === "MOTOR") motorCount += peso;
+    else if (rol === "TECNICO" || rol === "CONVERSION") motorCount += peso;
+
+    // Acumular peso por VIN (tope en 1.0 para no exceder)
     const vin = String(it.vin || "").trim();
-    if (vin) vinsFinalizados.add(vin);
+    if (vin) {
+      const prev = vinsFinalizados.get(vin) || 0;
+      vinsFinalizados.set(vin, Math.min(1.0, prev + peso));
+    }
   }
 
-  const finalizedCount = vinsFinalizados.size;
+  // Suma ponderada de VINs (puede ser decimal, ej: 4.5)
+  // - Histórico: crossDay siempre false → todos peso 1.0 → total = nº VINs exacto
+  // - Hoy: cross-day items cuentan 0.5 (½ carro del día anterior)
+  const finalizedCount = [...vinsFinalizados.values()].reduce((s, v) => s + v, 0);
+  const finalizedCountDisplay = Number.isInteger(finalizedCount)
+    ? finalizedCount
+    : finalizedCount.toFixed(1);
 
-  renderAvgCard_(avgCard, { stats, techName, motorCount, tanqueCount, finalizedCount, escapeHtml });
+  renderAvgCard_(avgCard, {
+    stats,
+    techName,
+    motorCount: Math.round(motorCount * 2) / 2,
+    tanqueCount: Math.round(tanqueCount * 2) / 2,
+    finalizedCount: finalizedCountDisplay,
+    isHistorical,
+    escapeHtml,
+  });
 
   // Calcular y renderizar KPIs
   const kpisPanel = document.getElementById("supKPIsPanel");
