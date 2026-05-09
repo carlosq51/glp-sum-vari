@@ -28,6 +28,7 @@ import { bindSupQuickDates_ } from "./sup-quick-dates.js";
 import { bindSupPausaIndefinida_ } from "./sup-pausa-indefinida.js";
 import { bindSupLive_, enterLive_, exitLive_ } from "./sup-live.js";
 import { bindSupUbicaciones_, enterUbicaciones_, exitUbicaciones_ } from "./sup-ubicaciones.js";
+import { bindSupIncidenciasReport_, enterIncReport_, exitIncReport_ } from "./sup-incidencias-report.js";
 
 let supTrack = "CONVERSION";
 let supTimer = null;
@@ -255,7 +256,7 @@ function renderSupervisor_(j) {
 }
 
 export function init() {
-  // ── Pestañas REPORTE / LIVE / UBICACIONES ──────────────────────────
+  // ── Pestañas REPORTE / LIVE / UBICACIONES / INCIDENCIAS ─────────────
   document.querySelectorAll(".sup-tab[data-suptab]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const tab = btn.dataset.suptab;
@@ -266,19 +267,28 @@ export function init() {
       const panelReporte     = document.getElementById("supPanelReporte");
       const panelLive        = document.getElementById("supPanelLive");
       const panelUbicaciones = document.getElementById("supPanelUbicaciones");
+      const panelIncidencias = document.getElementById("supPanelIncidencias");
       if (panelReporte)     panelReporte.style.display     = tab === "REPORTE"     ? "" : "none";
       if (panelLive)        panelLive.style.display        = tab === "LIVE"        ? "" : "none";
       if (panelUbicaciones) panelUbicaciones.style.display = tab === "UBICACIONES" ? "" : "none";
+      if (panelIncidencias) panelIncidencias.style.display = tab === "INCIDENCIAS" ? "" : "none";
 
       if (tab === "LIVE") {
         exitUbicaciones_();
+        exitIncReport_();
         enterLive_();
       } else if (tab === "UBICACIONES") {
         exitLive_();
+        exitIncReport_();
         enterUbicaciones_();
+      } else if (tab === "INCIDENCIAS") {
+        exitLive_();
+        exitUbicaciones_();
+        enterIncReport_();
       } else {
         exitLive_();
         exitUbicaciones_();
+        exitIncReport_();
         fetchSupervisorReport_().catch(() => {});
       }
     });
@@ -322,6 +332,7 @@ export function init() {
   bindSupPausaIndefinida_({ getJSON_user });
   bindSupLive_();
   bindSupUbicaciones_();
+  bindSupIncidenciasReport_({ getJSON_user, escapeHtml });
 }
 
 export function enter() {
@@ -337,10 +348,12 @@ export function enter() {
   document.querySelectorAll(".sup-tab[data-suptab]").forEach((b) =>
     b.classList.toggle("active", b.dataset.suptab === "LIVE")
   );
-  const panelReporte = document.getElementById("supPanelReporte");
-  const panelLive    = document.getElementById("supPanelLive");
-  if (panelReporte) panelReporte.style.display = "none";
-  if (panelLive)    panelLive.style.display    = "";
+  const panelReporte     = document.getElementById("supPanelReporte");
+  const panelLive        = document.getElementById("supPanelLive");
+  const panelIncidencias = document.getElementById("supPanelIncidencias");
+  if (panelReporte)     panelReporte.style.display     = "none";
+  if (panelLive)        panelLive.style.display        = "";
+  if (panelIncidencias) panelIncidencias.style.display = "none";
   enterLive_();
 }
 
@@ -349,4 +362,5 @@ export function exit() {
   destroyTrendChart_();
   exitLive_();
   exitUbicaciones_();
+  exitIncReport_();
 }

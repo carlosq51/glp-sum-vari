@@ -4,11 +4,12 @@ export function supervisorView() {
     <div id="viewSUPERVISOR" class="card" style="display:none;">
       <h3>Supervisor</h3>
 
-      <!-- Pestañas principales: REPORTE / LIVE / UBICACIONES -->
+      <!-- Pestañas principales: REPORTE / LIVE / UBICACIONES / INCIDENCIAS -->
       <div class="sup-tab-row">
         <button type="button" class="btn sup-tab" data-suptab="REPORTE">📊 REPORTE</button>
         <button type="button" class="btn sup-tab active" data-suptab="LIVE">🔴 LIVE</button>
-        <button type="button" class="btn sup-tab" data-suptab="UBICACIONES">📍 UBICACIONES</button>
+        <button type="button" class="btn sup-tab" data-suptab="UBICACIONES">📍 UBIC.</button>
+        <button type="button" class="btn sup-tab" data-suptab="INCIDENCIAS">⚠️ INCID.</button>
       </div>
 
       <!-- ══════════════════════════════════════════════
@@ -154,6 +155,43 @@ export function supervisorView() {
           </button>
           <div id="ubPanel3Body" class="movPanelBody"></div>
         </div>
+      </div>
+
+      <!-- ══════════════════════════════════════════════
+           PANEL INCIDENCIAS — Reporte global
+      ══════════════════════════════════════════════ -->
+      <div id="supPanelIncidencias" style="display:none;">
+
+        <!-- Barra de filtros -->
+        <div class="inc-rep-filters" style="margin-top:10px;">
+          <div class="supDateRow">
+            <input id="incRepFrom" type="date" title="Desde" />
+            <input id="incRepTo" type="date" title="Hasta" />
+            <button id="btnIncRepHoy" type="button" class="btn3">HOY</button>
+            <button id="btnIncRepMes" type="button" class="btn3">MES</button>
+          </div>
+
+          <div class="inc-rep-tipo-row" style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;">
+            <button type="button" class="btn3 inc-rep-tipo active" data-tipo="ALL">TODOS</button>
+            <button type="button" class="btn3 inc-rep-tipo" data-tipo="CRITICA" style="border-color:rgba(248,113,113,.6);">🔴 CRÍTICA</button>
+            <button type="button" class="btn3 inc-rep-tipo" data-tipo="MODERADA" style="border-color:rgba(251,146,60,.6);">🟠 MODERADA</button>
+            <button type="button" class="btn3 inc-rep-tipo" data-tipo="LEVE" style="border-color:rgba(250,204,21,.6);">🟡 LEVE</button>
+          </div>
+
+          <div style="display:flex; gap:8px; margin-top:8px; align-items:center;">
+            <input id="incRepQ" type="text" placeholder="Buscar por VIN, técnico o nota..." autocomplete="off" style="flex:1;" />
+            <button id="btnIncRepApply" type="button" class="btn">Buscar</button>
+          </div>
+        </div>
+
+        <!-- KPI pills -->
+        <div id="incRepKpis" style="display:none; margin-top:12px;"></div>
+
+        <!-- Ranking tables -->
+        <div id="incRepRanking" style="display:none; margin-top:10px;"></div>
+
+        <!-- Lista de incidencias -->
+        <div id="incRepList" style="margin-top:10px;"></div>
       </div>
     </div>
   `;

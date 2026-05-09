@@ -2079,6 +2079,113 @@ app.get("/api/incidencias/list", async (req, res) => {
 });
 
 // -----------------------------------------------------------------
+// GET /api/incidencias/report — reporte global con resumen
+// -----------------------------------------------------------------
+app.get("/api/incidencias/report", async (req, res) => {
+  try {
+    const from  = String(req.query.from  || "").trim();   // YYYY-MM-DD
+    const to    = String(req.query.to    || "").trim();   // YYYY-MM-DD
+    const month = String(req.query.month || "").trim();   // YYYY-MM
+    const tipo  = String(req.query.tipo  || "ALL").toUpperCase(); // LEVE|MODERADA|CRITICA|ALL
+    const q     = String(req.query.q     || "").trim().toLowerCase();
+    const limit = Math.min(Number(req.query.limit || 1000), 2000);
+
+    const headers = supabaseHeaders_();
+    if (!headers) throw new Error("Supabase no configurado (.env)");
+
+    // Build date filter
+    let dateFrom = "", dateTo = "";
+    if (month) {
+      dateFrom = `${month}-01T00:00:00.000Z`;
+      // Last day of month
+      const [y, m] = month.split("-").map(Number);
+      const lastDay = new Date(y, m, 0).getDate();
+      dateTo = `${month}-${String(lastDay).padStart(2,"0")}T23:59:59.999Z`;
+    } else if (from || to) {
+      if (from) dateFrom = `${from}T00:00:00.000Z`;
+      if (to)   dateTo   = `${to}T23:59:59.999Z`;
+    }
+
+    let qUrl = `${process.env.SUPABASE_URL}/rest/v1/incidencias?order=fecha_hora.desc&limit=${limit}`;
+    if (dateFrom) qUrl += `&fecha_hora=gte.${encodeURIComponent(dateFrom)}`;
+    if (dateTo)   qUrl += `&fecha_hora=lte.${encodeURIComponent(dateTo)}`;
+    if (tipo !== "ALL") qUrl += `&tipo=eq.${encodeURIComponent(tipo)}`;
+
+    const t1 = Date.now();
+    const qRes = await fetch(qUrl, { method: "GET", headers });
+    if (!qRes.ok) {
+      const t = await qRes.text().catch(() => "");
+      throw new Error(`Supabase incidencias: ${qRes.status} ${t.slice(0,200)}`);
+    }
+    let rows = await qRes.json();
+    const queryMs = Date.now() - t1;
+
+    // Text filter (nota or vin or tecnico)
+    if (q) {
+      rows = rows.filter(r =>
+        String(r.nota || "").toLowerCase().includes(q) ||
+        String(r.vin  || "").toLowerCase().includes(q) ||
+        String(r.tecnico || "").toLowerCase().includes(q)
+      );
+    }
+
+    // Map items
+    const items = rows.map(inc => {
+      const urls = photoUrls(inc.foto_file_id);
+      return {
+        id:             inc.id,
+        fecha_hora:     inc.fecha_hora,
+        mes:            inc.mes,
+        vin:            inc.vin || "",
+        tecnico:        inc.tecnico || "",
+        tipo:           inc.tipo,
+        registrado_por: inc.registrado_por || "",
+        nota:           inc.nota || "",
+        fotoFileId:     inc.foto_file_id || "",
+        fotoUrl:        urls.url,
+        fotoThumbUrl:   urls.thumbUrl,
+        fotoImgUrl:     urls.imgUrl,
+      };
+    });
+
+    // Summary
+    const byTipo = { CRITICA: 0, MODERADA: 0, LEVE: 0 };
+    const byTecnico = {};
+    const byVin = {};
+    for (const it of items) {
+      if (it.tipo === "CRITICA")  byTipo.CRITICA++;
+      else if (it.tipo === "MODERADA") byTipo.MODERADA++;
+      else if (it.tipo === "LEVE") byTipo.LEVE++;
+
+      if (it.tecnico) {
+        if (!byTecnico[it.tecnico]) byTecnico[it.tecnico] = { tecnico: it.tecnico, total: 0, CRITICA: 0, MODERADA: 0, LEVE: 0 };
+        byTecnico[it.tecnico].total++;
+        byTecnico[it.tecnico][it.tipo] = (byTecnico[it.tecnico][it.tipo] || 0) + 1;
+      }
+      if (it.vin) {
+        if (!byVin[it.vin]) byVin[it.vin] = { vin: it.vin, total: 0, CRITICA: 0 };
+        byVin[it.vin].total++;
+        if (it.tipo === "CRITICA") byVin[it.vin].CRITICA++;
+      }
+    }
+
+    const summary = {
+      total:    items.length,
+      critica:  byTipo.CRITICA,
+      moderada: byTipo.MODERADA,
+      leve:     byTipo.LEVE,
+      byTecnico: Object.values(byTecnico).sort((a,b) => b.total - a.total).slice(0,20),
+      byVin:     Object.values(byVin).sort((a,b) => b.total - a.total).slice(0,20),
+    };
+
+    return res.json({ ok: true, items, summary, _queryMs: queryMs });
+  } catch (e) {
+    console.error("[GET /api/incidencias/report]", e.message);
+    return res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
+// -----------------------------------------------------------------
 // ? ENDPOINTS OPTIMIZADOS SUPABASE (queries ultra-r�pidas)
 // -----------------------------------------------------------------
 
