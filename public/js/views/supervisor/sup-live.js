@@ -88,8 +88,11 @@ function renderLive_(container, data) {
     if (t.estadoActivo !== "PAUSADO" && t.estadoActivo !== "SIN_INICIAR") return false;
     const r = (t.asignacionesHoy||[]).filter(a=>a.estado!=="FINALIZADO").sort((a,b)=>new Date(b.updated_at||0)-new Date(a.updated_at||0))[0];
     const ms = r?.updated_at ? Date.now()-new Date(r.updated_at).getTime() : 0;
-    return (t.estadoActivo==="PAUSADO" && ms>45*60_000)||(t.estadoActivo==="SIN_INICIAR" && ms>60*60_000);
+    return (t.estadoActivo==="PAUSADO" && ms>40*60_000)||(t.estadoActivo==="SIN_INICIAR" && ms>60*60_000);
   }).length;
+  const totalVirtualAll = techs.filter(t => !["DESCONECTADO","SIN_ACTIVIDAD"].includes(t.estadoActivo)).reduce((s,t) => s + (Number(t.virtualHoy)||0), 0);
+  const _totAssAll = totalCarsAll + totalVirtualAll;
+  const pctCumplAll = _totAssAll > 0 ? Math.round(totalCarsAll / _totAssAll * 100) : null;
 
   let html = `<div class="live-refresh-bar">
     <span class="live-fecha small">📅 ${escapeHtml(data.fecha || "")}</span>
@@ -103,7 +106,10 @@ function renderLive_(container, data) {
     ${countPaused > 0 ? `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);color:#fbbf24;border-radius:6px;padding:2px 8px;font-size:.72em;font-weight:900;">&#x23F8; ${countPaused} pausado${countPaused!==1?"s":""}</span>` : ""}
     ${countSinIni > 0 ? `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(148,163,184,.10);border:1px solid rgba(148,163,184,.3);color:#94a3b8;border-radius:6px;padding:2px 8px;font-size:.72em;font-weight:900;">&#x25CB; ${countSinIni} sin ini.</span>` : ""}
     ${countStalled > 0 ? `<span style="background:rgba(249,115,22,.15);border:1px solid rgba(249,115,22,.5);color:#fb923c;border-radius:6px;padding:2px 8px;font-size:.72em;font-weight:900;">&#x26A0;&#xFE0F; ${countStalled} sin mov.</span>` : ""}
-    <span style="margin-left:auto;font-size:.68em;opacity:.35;">${countTotal} t\u00E9cnico${countTotal!==1?"s":""} hoy</span>
+    <div style="margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
+      ${pctCumplAll !== null ? `<div style="display:flex;align-items:center;gap:5px;"><span style="font-size:.62em;opacity:.45;letter-spacing:.4px;">CUMPL.</span><div style="width:52px;height:5px;background:rgba(255,255,255,.1);border-radius:3px;overflow:hidden;"><div style="height:100%;width:${pctCumplAll}%;background:${pctCumplAll>=80?"#4ade80":pctCumplAll>=50?"#fbbf24":"#f87171"};border-radius:3px;transition:width .4s;"></div></div><span style="font-size:.8em;font-weight:1000;color:${pctCumplAll>=80?"#4ade80":pctCumplAll>=50?"#fbbf24":"#f87171"}">${pctCumplAll}%</span></div>` : ""}
+      <span style="font-size:.62em;opacity:.3;">${countTotal} t\u00E9cnico${countTotal!==1?"s":""} hoy</span>
+    </div>
   </div>`;
 
   for (const rol of allRoles) {
@@ -114,6 +120,9 @@ function renderLive_(container, data) {
     const totalVirtual = group.reduce((s, t) => s + (Number(t.virtualHoy) || 0), 0);
     const totalCarsStr = fmtCars_(totalCars);
     const hasHalfGroup = totalCars !== Math.floor(totalCars);
+    const _totAssG = totalCars + totalVirtual;
+    const pctCumplGroup = _totAssG > 0 ? Math.round(totalCars / _totAssG * 100) : null;
+    const _cumplColorG = pctCumplGroup >= 80 ? "#4ade80" : pctCumplGroup >= 50 ? "#fbbf24" : "#f87171";
 
     html += `
     <div class="live-group" data-rol="${escapeHtml(rol)}">
@@ -122,6 +131,7 @@ function renderLive_(container, data) {
         <span class="live-group-label">${escapeHtml(meta.label)}</span>
         <span class="live-cars-pill${hasHalfGroup ? " half" : ""}" title="Carros finalizados ${escapeHtml(meta.label)}">🚗 ${totalCarsStr}</span>
         ${totalVirtual > 0 ? `<span class="live-virtual-pill" title="${totalVirtual} trabajo${totalVirtual !== 1 ? "s" : ""} en progreso sin finalizar">⚙️ ${totalVirtual} virt.</span>` : ""}
+        ${pctCumplGroup !== null && _totAssG > 0 ? `<span style="font-size:.7em;font-weight:900;color:${_cumplColorG};background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:5px;padding:1px 7px;">${pctCumplGroup}% cumpl.</span>` : ""}
         <span class="live-group-count pill small">${group.length} téc.</span>
         ${countTrabajando > 0 ? `<span class="live-dot-working"></span><span class="small">${countTrabajando} activo${countTrabajando !== 1 ? "s" : ""}</span>` : ""}
         <span class="live-group-chevron">▶</span>
@@ -192,12 +202,15 @@ function renderTechCard_(t) {
   // Stall detection: last non-finalized assignment state unchanged for too long
   const _recentNF = (t.asignacionesHoy||[]).filter(a=>a.estado!=="FINALIZADO").sort((a,b)=>new Date(b.updated_at||0)-new Date(a.updated_at||0))[0];
   const _sinceMs  = _recentNF?.updated_at ? Date.now()-new Date(_recentNF.updated_at).getTime() : 0;
-  const isStalled = (t.estadoActivo==="PAUSADO" && _sinceMs>45*60_000)||(t.estadoActivo==="SIN_INICIAR" && _sinceMs>60*60_000);
+  const isStalled = (t.estadoActivo==="PAUSADO" && _sinceMs>40*60_000)||(t.estadoActivo==="SIN_INICIAR" && _sinceMs>60*60_000);
   const stallMins = Math.floor(_sinceMs/60_000);
   const cars = Number(t.carsHoy ?? t.finalizadosHoy ?? 0);
   const carsStr = fmtCars_(cars);
   const hasHalf = cars !== Math.floor(cars);
   const virtual = Number(t.virtualHoy ?? t.activosHoy ?? 0);
+  const _totAss = cars + virtual;
+  const pctTech = _totAss > 0 ? Math.round(cars / _totAss * 100) : null;
+  const _cumplColor = pctTech !== null ? (pctTech >= 80 ? "#4ade80" : pctTech >= 50 ? "#fbbf24" : "#f87171") : "#94a3b8";
   const displayName = firstName_(nombre);
   const displayEstado = shortEstado_(em.label);
   const isDisconnected = t.estadoActivo === "DESCONECTADO";
@@ -210,6 +223,7 @@ function renderTechCard_(t) {
       <span class="live-badge ${escapeHtml(em.badge)}">${escapeHtml(displayEstado)}</span>
       ${!isDisconnected ? `<span class="live-cars-pill${hasHalf ? " half" : ""}" title="${hasHalf ? "Incluye trabajos del d\u00EDa anterior (\u00BD)" : "Carros finalizados hoy"}">\uD83D\uDE97 ${carsStr}</span>` : ""}
       ${!isDisconnected && virtual > 0 ? `<span class="live-virtual-pill" title="${virtual} trabajo${virtual !== 1 ? "s" : ""} en progreso (sin finalizar)">\u2699\uFE0F ${virtual}</span>` : ""}
+      ${!isDisconnected && pctTech !== null ? `<span style="font-size:.68em;font-weight:900;color:${_cumplColor};background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);border-radius:4px;padding:1px 5px;white-space:nowrap;" title="Cumplimiento: ${cars} finalizado${cars!==1?'s':''} de ${_totAss} asignado${_totAss!==1?'s':''}">${pctTech}%</span>` : ""}
       ${!isDisconnected && currentAsg?.running_since ? `<span style="font-size:.69em;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.3);color:#86efac;border-radius:4px;padding:1px 5px;white-space:nowrap;">&#x23F1; ${fmtTiempo_(currentAsg.tiempo_ms, currentAsg.running_since)}</span>` : ""}
       ${isStalled ? `<span style="font-size:.69em;background:rgba(249,115,22,.15);border:1px solid rgba(249,115,22,.4);color:#fb923c;border-radius:4px;padding:1px 5px;white-space:nowrap;font-weight:900;">&#x26A0;&#xFE0F; ${stallMins}m</span>` : ""}
     </div>
