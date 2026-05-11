@@ -220,35 +220,63 @@ button[data-suptrack].active {
   50%       { opacity: .5; transform: scale(1.35); }
 }
 
-/* Grid de cards de técnicos */
+/* Grid de cards de técnicos — 1 por fila */
 .live-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 10px;
-}
-
-/* Card de técnico */
-.live-tech-card {
-  background: linear-gradient(180deg, rgba(255,255,255,.07), rgba(0,0,0,.1));
-  border: 1px solid rgba(255,255,255,.13);
-  border-radius: 16px;
-  padding: 10px 12px 8px;
-  cursor: pointer;
-  transition: transform .15s, box-shadow .15s, border-color .15s;
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
+
+/* Card de técnico — fila horizontal */
+.live-tech-card {
+  background: linear-gradient(180deg, rgba(255,255,255,.07), rgba(0,0,0,.1));
+  border: 1px solid rgba(255,255,255,.13);
+  border-radius: 12px;
+  padding: 7px 12px 6px;
+  cursor: pointer;
+  transition: transform .15s, box-shadow .15s, border-color .15s;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
 .live-tech-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 18px rgba(0,0,0,.3);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(0,0,0,.3);
   border-color: rgba(255,255,255,.28);
 }
 
-.live-tech-header {
+/* Fila principal horizontal dentro de la card */
+.live-tech-main {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
+}
+/* Sección de identidad: dot + nombre + badge + stall */
+.live-tech-identity {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+  min-width: 0;
+}
+/* Sección VIN (centro expandible) */
+.live-vin-section {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 60px;
+  overflow: hidden;
+  background: rgba(255,255,255,.045);
+  border-radius: 6px;
+  padding: 3px 8px;
+}
+/* Sección stats: carros, pct, tiempo */
+.live-tech-stats {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
 }
 .live-tech-dot {
   width: 9px; height: 9px;
@@ -258,10 +286,11 @@ button[data-suptrack].active {
 .live-tech-name {
   font-weight: 700;
   font-size: .93em;
-  flex: 1;
+  max-width: 88px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex-shrink: 1;
 }
 /* Indicador numérico de carros (ej: 🚗 2.5) */
 .live-cars-pill {
@@ -467,11 +496,9 @@ button[data-suptrack].active {
   align-items: center;
 }
 
-/* Responsive: en móvil 1 columna */
+/* Responsive */
 @media (max-width: 480px) {
-  .live-cards {
-    grid-template-columns: 1fr;
-  }
+  .live-vin-section { display: none; }
 }
 
 /* =====================================================================

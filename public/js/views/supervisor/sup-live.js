@@ -9,6 +9,7 @@ import { escapeHtml } from "../../core/format.js";
 let liveTimer_    = null;
 let liveActive_   = false;
 let liveLastData_ = null;   // último fetch, para re-abrir detalle actualizado
+let _liveFilter_  = null;   // "TRABAJANDO"|"PAUSADO"|"SIN_INICIAR"|"STALLED"|"CUMPL_LOW"|null
 const REFRESH_MS  = 300_000; // refresco cada 5 min
 
 // ── Colores y etiquetas por especialidad ──────────────────────────────
@@ -102,12 +103,12 @@ function renderLive_(container, data) {
   <div style="display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 12px;padding:10px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;align-items:center;">
     <span style="font-size:1.6em;font-weight:1000;color:#38bdf8;min-width:36px;line-height:1;">${fmtCars_(totalCarsAll)}</span>
     <span style="font-size:.7em;font-weight:900;opacity:.5;letter-spacing:.5px;margin-right:8px;">CARROS HOY</span>
-    <span style="display:inline-flex;align-items:center;gap:4px;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.3);color:#4ade80;border-radius:6px;padding:2px 8px;font-size:.72em;font-weight:900;">&#x1F7E2; ${countWorking} activo${countWorking!==1?"s":""}</span>
-    ${countPaused > 0 ? `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);color:#fbbf24;border-radius:6px;padding:2px 8px;font-size:.72em;font-weight:900;">&#x23F8; ${countPaused} pausado${countPaused!==1?"s":""}</span>` : ""}
-    ${countSinIni > 0 ? `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(148,163,184,.10);border:1px solid rgba(148,163,184,.3);color:#94a3b8;border-radius:6px;padding:2px 8px;font-size:.72em;font-weight:900;">&#x25CB; ${countSinIni} sin ini.</span>` : ""}
-    ${countStalled > 0 ? `<span style="background:rgba(249,115,22,.15);border:1px solid rgba(249,115,22,.5);color:#fb923c;border-radius:6px;padding:2px 8px;font-size:.72em;font-weight:900;">&#x26A0;&#xFE0F; ${countStalled} sin mov.</span>` : ""}
+    <span style="display:inline-flex;align-items:center;gap:4px;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.3);color:#4ade80;border-radius:6px;padding:2px 8px;font-size:.72em;font-weight:900;cursor:pointer;user-select:none;transition:box-shadow .15s;" data-live-filter="TRABAJANDO" title="Click para filtrar activos">&#x1F7E2; ${countWorking} activo${countWorking!==1?"s":""}</span>
+    ${countPaused > 0 ? `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);color:#fbbf24;border-radius:6px;padding:2px 8px;font-size:.72em;font-weight:900;cursor:pointer;user-select:none;transition:box-shadow .15s;" data-live-filter="PAUSADO" title="Click para filtrar pausados">&#x23F8; ${countPaused} pausado${countPaused!==1?"s":""}</span>` : ""}
+    ${countSinIni > 0 ? `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(148,163,184,.10);border:1px solid rgba(148,163,184,.3);color:#94a3b8;border-radius:6px;padding:2px 8px;font-size:.72em;font-weight:900;cursor:pointer;user-select:none;transition:box-shadow .15s;" data-live-filter="SIN_INICIAR" title="Click para filtrar sin iniciar">&#x25CB; ${countSinIni} sin ini.</span>` : ""}
+    ${countStalled > 0 ? `<span style="background:rgba(249,115,22,.15);border:1px solid rgba(249,115,22,.5);color:#fb923c;border-radius:6px;padding:2px 8px;font-size:.72em;font-weight:900;cursor:pointer;user-select:none;transition:box-shadow .15s;" data-live-filter="STALLED" title="Click para filtrar sin movimiento">&#x26A0;&#xFE0F; ${countStalled} sin mov.</span>` : ""}
     <div style="margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
-      ${pctCumplAll !== null ? `<div style="display:flex;align-items:center;gap:5px;"><span style="font-size:.62em;opacity:.45;letter-spacing:.4px;">CUMPL.</span><div style="width:52px;height:5px;background:rgba(255,255,255,.1);border-radius:3px;overflow:hidden;"><div style="height:100%;width:${pctCumplAll}%;background:${pctCumplAll>=80?"#4ade80":pctCumplAll>=50?"#fbbf24":"#f87171"};border-radius:3px;transition:width .4s;"></div></div><span style="font-size:.8em;font-weight:1000;color:${pctCumplAll>=80?"#4ade80":pctCumplAll>=50?"#fbbf24":"#f87171"}">${pctCumplAll}%</span></div>` : ""}
+      ${pctCumplAll !== null ? `<div style="display:flex;align-items:center;gap:5px;cursor:pointer;user-select:none;" data-live-filter="CUMPL_LOW" title="Click para ver t\u00E9cnicos con bajo cumplimiento (<50%)"><span style="font-size:.62em;opacity:.45;letter-spacing:.4px;">CUMPL.</span><div style="width:52px;height:5px;background:rgba(255,255,255,.1);border-radius:3px;overflow:hidden;"><div style="height:100%;width:${pctCumplAll}%;background:${pctCumplAll>=80?"#4ade80":pctCumplAll>=50?"#fbbf24":"#f87171"};border-radius:3px;transition:width .4s;"></div></div><span style="font-size:.8em;font-weight:1000;color:${pctCumplAll>=80?"#4ade80":pctCumplAll>=50?"#fbbf24":"#f87171"}">${pctCumplAll}%</span></div>` : ""}
       <span style="font-size:.62em;opacity:.3;">${countTotal} t\u00E9cnico${countTotal!==1?"s":""} hoy</span>
     </div>
   </div>`;
@@ -144,7 +145,24 @@ function renderLive_(container, data) {
 
   container.innerHTML = html;
 
-  // Bind: botón actualizar manual
+  // ── Bind: filtros interactivos KPI ─────────────────────────────────
+  container.querySelectorAll("[data-live-filter]").forEach(pill => {
+    pill.addEventListener("click", e => {
+      e.stopPropagation();
+      const f = pill.dataset.liveFilter;
+      _liveFilter_ = _liveFilter_ === f ? null : f;
+      // Visual: highlight active pill
+      container.querySelectorAll("[data-live-filter]").forEach(p => {
+        p.style.outline = p.dataset.liveFilter === _liveFilter_ ? "2px solid rgba(255,255,255,.6)" : "";
+        p.style.outlineOffset = p.dataset.liveFilter === _liveFilter_ ? "2px" : "";
+      });
+      applyLiveFilter_(container);
+    });
+  });
+  // Re-apply filter if it was already set (e.g. after a refresh)
+  if (_liveFilter_) applyLiveFilter_(container);
+
+  // ── Bind: botón actualizar manual ──────────────────────────────
   container.querySelector("#btnLiveRefresh")?.addEventListener("click", () => refreshLive_().catch(() => {}));
 
   // Bind: toggle de grupo
@@ -216,31 +234,39 @@ function renderTechCard_(t) {
   const isDisconnected = t.estadoActivo === "DESCONECTADO";
 
   return `
-  <div class="live-tech-card${isDisconnected ? " disconnected" : ""}${isStalled ? " stalled" : ""}" data-techkey="${escapeHtml(t.userId + "__" + t.rol)}" title="${escapeHtml(nombre)} — ${isDisconnected ? "Sin actividad hoy" : "Click: ver detalle"}"${isStalled ? ` style="border-color:#f97316;background:rgba(249,115,22,.07);"` : ""}>
-    <div class="live-tech-header">
-      <span class="live-tech-dot" style="background:${em.dot};"></span>
-      <span class="live-tech-name">${escapeHtml(displayName)}</span>
-      <span class="live-badge ${escapeHtml(em.badge)}">${escapeHtml(displayEstado)}</span>
-      ${!isDisconnected ? `<span class="live-cars-pill${hasHalf ? " half" : ""}" title="${hasHalf ? "Incluye trabajos del d\u00EDa anterior (\u00BD)" : "Carros finalizados hoy"}">\uD83D\uDE97 ${carsStr}</span>` : ""}
-      ${!isDisconnected && virtual > 0 ? `<span class="live-virtual-pill" title="${virtual} trabajo${virtual !== 1 ? "s" : ""} en progreso (sin finalizar)">\u2699\uFE0F ${virtual}</span>` : ""}
-      ${!isDisconnected && pctTech !== null ? `<span style="font-size:.68em;font-weight:900;color:${_cumplColor};background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);border-radius:4px;padding:1px 5px;white-space:nowrap;" title="Cumplimiento: ${cars} finalizado${cars!==1?'s':''} de ${_totAss} asignado${_totAss!==1?'s':''}">${pctTech}%</span>` : ""}
-      ${!isDisconnected && currentAsg?.running_since ? `<span style="font-size:.69em;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.3);color:#86efac;border-radius:4px;padding:1px 5px;white-space:nowrap;">&#x23F1; ${fmtTiempo_(currentAsg.tiempo_ms, currentAsg.running_since)}</span>` : ""}
-      ${isStalled ? `<span style="font-size:.69em;background:rgba(249,115,22,.15);border:1px solid rgba(249,115,22,.4);color:#fb923c;border-radius:4px;padding:1px 5px;white-space:nowrap;font-weight:900;">&#x26A0;&#xFE0F; ${stallMins}m</span>` : ""}
+  <div class="live-tech-card${isDisconnected ? " disconnected" : ""}${isStalled ? " stalled" : ""}"
+    data-techkey="${escapeHtml(t.userId + "__" + t.rol)}"
+    data-estado="${escapeHtml(t.estadoActivo)}"
+    data-stalled="${isStalled ? "1" : "0"}"
+    data-pct="${pctTech !== null ? pctTech : ""}"
+    title="${escapeHtml(nombre)} \u2014 ${isDisconnected ? "Sin actividad hoy" : "Click: ver detalle"}"${isStalled ? ` style="border-color:#f97316;background:rgba(249,115,22,.07);"` : ""}>
+    <div class="live-tech-main">
+      <div class="live-tech-identity">
+        <span class="live-tech-dot" style="background:${em.dot};"></span>
+        <span class="live-tech-name">${escapeHtml(displayName)}</span>
+        <span class="live-badge ${escapeHtml(em.badge)}">${escapeHtml(displayEstado)}</span>
+        ${isStalled ? `<span style="font-size:.66em;background:rgba(249,115,22,.15);border:1px solid rgba(249,115,22,.4);color:#fb923c;border-radius:4px;padding:1px 5px;white-space:nowrap;font-weight:900;">&#x26A0;&#xFE0F; ${stallMins}m</span>` : ""}
+      </div>
+      <div class="live-vin-section">
+        ${vinActivo && !isDisconnected
+          ? `<span class="live-vin-abbr">VIN</span><span class="live-vin-value">${escapeHtml(vinActivo)}</span>`
+          : `<span style="opacity:.25;font-size:.75em;">\u2014</span>`}
+      </div>
+      <div class="live-tech-stats">
+        ${!isDisconnected ? `<span class="live-cars-pill${hasHalf ? " half" : ""}" title="${hasHalf ? "Incluye trabajos del d\u00EDa anterior (\u00BD)" : "Carros finalizados hoy"}">\uD83D\uDE97 ${carsStr}</span>` : ""}
+        ${!isDisconnected && virtual > 0 ? `<span class="live-virtual-pill" title="${virtual} en progreso">\u2699\uFE0F ${virtual}</span>` : ""}
+        ${!isDisconnected && pctTech !== null ? `<span style="font-size:.68em;font-weight:900;color:${_cumplColor};background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);border-radius:4px;padding:1px 5px;white-space:nowrap;" title="Cumplimiento: ${cars} finalizado${cars!==1?"s":""} de ${_totAss} asignado${_totAss!==1?"s":""}">${pctTech}%</span>` : ""}
+        ${!isDisconnected && currentAsg?.running_since ? `<span style="font-size:.68em;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.3);color:#86efac;border-radius:4px;padding:1px 5px;white-space:nowrap;">&#x23F1; ${fmtTiempo_(currentAsg.tiempo_ms, currentAsg.running_since)}</span>` : ""}
+      </div>
     </div>
-
-    ${vinActivo && !isDisconnected ? `<div class="live-vin-compact">
-      <span class="live-vin-abbr">VIN</span>
-      <span class="live-vin-value">${escapeHtml(vinActivo)}</span>
-    </div>` : ""}
-
     ${!isDisconnected ? `
     <div class="live-extra" aria-hidden="true">
       <div class="live-extra-row">
-        ${currentAsg?.running_since ? `<span>⏱ ${fmtTiempo_(currentAsg.tiempo_ms, currentAsg.running_since)}</span>` : ""}
-        ${t.activosHoy > 0 ? `<span>🔧 ${t.activosHoy} en proceso</span>` : ""}
+        ${currentAsg?.running_since ? `<span>\u23F1 ${fmtTiempo_(currentAsg.tiempo_ms, currentAsg.running_since)}</span>` : ""}
+        ${t.activosHoy > 0 ? `<span>\uD83D\uDD27 ${t.activosHoy} en proceso</span>` : ""}
       </div>
     </div>
-    <button type="button" class="live-expand-btn" title="Mostrar/ocultar datos del turno">▼ más</button>
+    <button type="button" class="live-expand-btn" title="Mostrar/ocultar datos del turno">\u25bc m\u00e1s</button>
     ` : ""}
   </div>`;
 }
