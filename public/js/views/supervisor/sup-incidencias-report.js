@@ -336,23 +336,18 @@ function renderRanking_(catGroups, summary) {
     }
   }
 
-  // Layout: grid responsivo — 1 col en móvil, 2 en tablet, 3 en desktop
-  // Fila 1: categorias | tecnicos  (siempre)
-  // Fila 2: VINs críticos (si los hay, span completo)
+  // Layout: paneles apilados verticalmente — evita overflow en contenedores estrechos
   el.innerHTML =
-    "<div style=\"display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;margin-bottom:10px;\">"
-    + panel("📊 CATEGORÍAS", catRows, "#818cf8")
-    + (tecRows ? panel("👷 TÉCNICOS", tecRows, "#f97316") : "")
-    + "</div>"
+    panel("📊 CATEGORÍAS", catRows, "#818cf8")
+    + "<div style=\"height:10px;\"></div>"
+    + (tecRows ? panel("👷 TÉCNICOS", tecRows, "#f97316") + "<div style=\"height:10px;\"></div>" : "")
     + (vinRows
-        ? "<div style=\"margin-bottom:14px;\">"
-          + panel(
-              "🚗 VINs CON INCIDENCIAS CRÍTICAS O REINCIDENTES",
-              "<div style=\"display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:0 14px;\">"
-              + vinRows + "</div>",
-              "#ef4444"
-            )
-          + "</div>"
+        ? panel(
+            "🚗 VINs CON INCIDENCIAS CRÍTICAS O REINCIDENTES",
+            "<div style=\"display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:0 14px;\">"
+            + vinRows + "</div>",
+            "#ef4444"
+          )
         : "");
   el.style.display = "";
 }
@@ -485,8 +480,65 @@ function renderList_(items) {
 }
 
 // ── Orquestador ──────────────────────────────────────────────────────────────
+// ── Daily trend mini bar chart ──────────────────────────────────────────────
+function renderTrend_(items) {
+  const el = document.getElementById("incRepKpis");
+  if (!el || !items?.length) return;
+
+  // Group by date
+  const days = {};
+  for (const it of items) {
+    const d = String(it.fecha_hora || "").slice(0, 10);
+    if (!d || d.length < 10) continue;
+    if (!days[d]) days[d] = { C: 0, M: 0, L: 0 };
+    if      (it.tipo === "CRITICA")  days[d].C++;
+    else if (it.tipo === "MODERADA") days[d].M++;
+    else if (it.tipo === "LEVE")     days[d].L++;
+  }
+
+  const entries = Object.entries(days).sort(([a],[b]) => a.localeCompare(b));
+  if (entries.length < 2) return; // not useful with a single day
+
+  const maxDay = Math.max(...entries.map(([,v]) => v.C + v.M + v.L), 1);
+  const barW   = Math.max(26, Math.min(52, Math.floor(260 / entries.length)));
+
+  const bars = entries.map(([d, v]) => {
+    const tot = v.C + v.M + v.L;
+    const hTot = Math.max(2, Math.round(tot / maxDay * 60));
+    const hC = Math.round(v.C / maxDay * 60);
+    const hM = Math.round(v.M / maxDay * 60);
+    const hL = Math.max(0, hTot - hC - hM);
+    const dayLabel = d.slice(8); // DD
+    return "<div style=\"display:flex;flex-direction:column;align-items:center;gap:0;min-width:" + barW + "px;\">"
+      + "<span style=\"font-size:.6em;opacity:.5;margin-bottom:2px;\">" + tot + "</span>"
+      + "<div style=\"display:flex;flex-direction:column-reverse;width:" + (barW - 4) + "px;height:60px;justify-content:flex-start;\">"
+      + (hC > 0 ? "<div style=\"height:" + hC + "px;background:#ef4444;border-radius:2px 2px 0 0;\"></div>" : "")
+      + (hM > 0 ? "<div style=\"height:" + hM + "px;background:#f97316;\"></div>" : "")
+      + (hL > 0 ? "<div style=\"height:" + hL + "px;background:#eab308;\"></div>" : "")
+      + "</div>"
+      + "<span style=\"font-size:.6em;opacity:.45;margin-top:3px;\">" + dayLabel + "</span>"
+      + "</div>";
+  }).join("");
+
+  const monthLabel = entries[0]?.[0]?.slice(0, 7) || "";
+  const trendHtml = "<div style=\"margin-top:10px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:11px;padding:10px 14px;\">"
+    + "<div style=\"font-size:.72em;font-weight:900;letter-spacing:.6px;opacity:.65;margin-bottom:8px;\">TENDENCIA DIARIA " + monthLabel + "</div>"
+    + "<div style=\"display:flex;gap:3px;align-items:flex-end;overflow-x:auto;padding-bottom:4px;\">"
+    + bars
+    + "</div>"
+    + "<div style=\"display:flex;gap:12px;margin-top:6px;font-size:.65em;\">"
+    + "<span style=\"color:#ef4444;font-weight:700;\">&#9632; CR&#205;TICA</span>"
+    + "<span style=\"color:#f97316;font-weight:700;\">&#9632; MODERADA</span>"
+    + "<span style=\"color:#eab308;font-weight:700;\">&#9632; LEVE</span>"
+    + "</div>"
+    + "</div>";
+
+  el.innerHTML += trendHtml;
+}
+
 function renderIncReport_(j) {
   renderKpis_(j.summary);
+  renderTrend_(j.items);
   const cats = renderList_(j.items);
   if (cats) renderRanking_(cats, j.summary);
 }

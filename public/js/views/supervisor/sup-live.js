@@ -78,10 +78,32 @@ function renderLive_(container, data) {
   // Renderizar grupos en orden definido
   const allRoles = [...ORDER.filter(r => groups[r]), ...Object.keys(groups).filter(r => !ORDER.includes(r))];
 
+  // ── KPI header globals ────────────────────────────────────────────────
+  const totalCarsAll = techs.filter(t => !["DESCONECTADO","SIN_ACTIVIDAD"].includes(t.estadoActivo)).reduce((s,t) => s + (Number(t.carsHoy)||0), 0);
+  const countWorking = techs.filter(t => t.estadoActivo === "TRABAJANDO").length;
+  const countPaused  = techs.filter(t => t.estadoActivo === "PAUSADO").length;
+  const countSinIni  = techs.filter(t => t.estadoActivo === "SIN_INICIAR").length;
+  const countTotal   = techs.filter(t => t.estadoActivo !== "DESCONECTADO").length;
+  const countStalled = techs.filter(t => {
+    if (t.estadoActivo !== "PAUSADO" && t.estadoActivo !== "SIN_INICIAR") return false;
+    const r = (t.asignacionesHoy||[]).filter(a=>a.estado!=="FINALIZADO").sort((a,b)=>new Date(b.updated_at||0)-new Date(a.updated_at||0))[0];
+    const ms = r?.updated_at ? Date.now()-new Date(r.updated_at).getTime() : 0;
+    return (t.estadoActivo==="PAUSADO" && ms>45*60_000)||(t.estadoActivo==="SIN_INICIAR" && ms>60*60_000);
+  }).length;
+
   let html = `<div class="live-refresh-bar">
     <span class="live-fecha small">📅 ${escapeHtml(data.fecha || "")}</span>
     <span id="liveLastUpdate" class="live-last-update small">Actualizado: ${fmtHora_(new Date().toISOString())}</span>
     <button type="button" id="btnLiveRefresh" class="live-refresh-btn" title="Actualizar ahora">↻</button>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 12px;padding:10px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;align-items:center;">
+    <span style="font-size:1.6em;font-weight:1000;color:#38bdf8;min-width:36px;line-height:1;">${fmtCars_(totalCarsAll)}</span>
+    <span style="font-size:.7em;font-weight:900;opacity:.5;letter-spacing:.5px;margin-right:8px;">CARROS HOY</span>
+    <span style="display:inline-flex;align-items:center;gap:4px;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.3);color:#4ade80;border-radius:6px;padding:2px 8px;font-size:.72em;font-weight:900;">&#x1F7E2; ${countWorking} activo${countWorking!==1?"s":""}</span>
+    ${countPaused > 0 ? `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);color:#fbbf24;border-radius:6px;padding:2px 8px;font-size:.72em;font-weight:900;">&#x23F8; ${countPaused} pausado${countPaused!==1?"s":""}</span>` : ""}
+    ${countSinIni > 0 ? `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(148,163,184,.10);border:1px solid rgba(148,163,184,.3);color:#94a3b8;border-radius:6px;padding:2px 8px;font-size:.72em;font-weight:900;">&#x25CB; ${countSinIni} sin ini.</span>` : ""}
+    ${countStalled > 0 ? `<span style="background:rgba(249,115,22,.15);border:1px solid rgba(249,115,22,.5);color:#fb923c;border-radius:6px;padding:2px 8px;font-size:.72em;font-weight:900;">&#x26A0;&#xFE0F; ${countStalled} sin mov.</span>` : ""}
+    <span style="margin-left:auto;font-size:.68em;opacity:.35;">${countTotal} t\u00E9cnico${countTotal!==1?"s":""} hoy</span>
   </div>`;
 
   for (const rol of allRoles) {
@@ -167,6 +189,11 @@ function renderTechCard_(t) {
   const nombre = t.nombre || t.email || "Técnico";
   const vinActivo = t.vinActivo || "";
   const currentAsg = (t.asignacionesHoy || []).find(a => a.vin === vinActivo && a.estado !== "FINALIZADO");
+  // Stall detection: last non-finalized assignment state unchanged for too long
+  const _recentNF = (t.asignacionesHoy||[]).filter(a=>a.estado!=="FINALIZADO").sort((a,b)=>new Date(b.updated_at||0)-new Date(a.updated_at||0))[0];
+  const _sinceMs  = _recentNF?.updated_at ? Date.now()-new Date(_recentNF.updated_at).getTime() : 0;
+  const isStalled = (t.estadoActivo==="PAUSADO" && _sinceMs>45*60_000)||(t.estadoActivo==="SIN_INICIAR" && _sinceMs>60*60_000);
+  const stallMins = Math.floor(_sinceMs/60_000);
   const cars = Number(t.carsHoy ?? t.finalizadosHoy ?? 0);
   const carsStr = fmtCars_(cars);
   const hasHalf = cars !== Math.floor(cars);
@@ -176,13 +203,15 @@ function renderTechCard_(t) {
   const isDisconnected = t.estadoActivo === "DESCONECTADO";
 
   return `
-  <div class="live-tech-card${isDisconnected ? " disconnected" : ""}" data-techkey="${escapeHtml(t.userId + "__" + t.rol)}" title="${escapeHtml(nombre)} — ${isDisconnected ? "Sin actividad hoy" : "Click: ver detalle"}">
+  <div class="live-tech-card${isDisconnected ? " disconnected" : ""}${isStalled ? " stalled" : ""}" data-techkey="${escapeHtml(t.userId + "__" + t.rol)}" title="${escapeHtml(nombre)} — ${isDisconnected ? "Sin actividad hoy" : "Click: ver detalle"}"${isStalled ? ` style="border-color:#f97316;background:rgba(249,115,22,.07);"` : ""}>
     <div class="live-tech-header">
       <span class="live-tech-dot" style="background:${em.dot};"></span>
       <span class="live-tech-name">${escapeHtml(displayName)}</span>
       <span class="live-badge ${escapeHtml(em.badge)}">${escapeHtml(displayEstado)}</span>
-      ${!isDisconnected ? `<span class="live-cars-pill${hasHalf ? " half" : ""}" title="${hasHalf ? "Incluye trabajos del día anterior (½)" : "Carros finalizados hoy"}">🚗 ${carsStr}</span>` : ""}
-      ${!isDisconnected && virtual > 0 ? `<span class="live-virtual-pill" title="${virtual} trabajo${virtual !== 1 ? "s" : ""} en progreso (sin finalizar)">⚙️ ${virtual}</span>` : ""}
+      ${!isDisconnected ? `<span class="live-cars-pill${hasHalf ? " half" : ""}" title="${hasHalf ? "Incluye trabajos del d\u00EDa anterior (\u00BD)" : "Carros finalizados hoy"}">\uD83D\uDE97 ${carsStr}</span>` : ""}
+      ${!isDisconnected && virtual > 0 ? `<span class="live-virtual-pill" title="${virtual} trabajo${virtual !== 1 ? "s" : ""} en progreso (sin finalizar)">\u2699\uFE0F ${virtual}</span>` : ""}
+      ${!isDisconnected && currentAsg?.running_since ? `<span style="font-size:.69em;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.3);color:#86efac;border-radius:4px;padding:1px 5px;white-space:nowrap;">&#x23F1; ${fmtTiempo_(currentAsg.tiempo_ms, currentAsg.running_since)}</span>` : ""}
+      ${isStalled ? `<span style="font-size:.69em;background:rgba(249,115,22,.15);border:1px solid rgba(249,115,22,.4);color:#fb923c;border-radius:4px;padding:1px 5px;white-space:nowrap;font-weight:900;">&#x26A0;&#xFE0F; ${stallMins}m</span>` : ""}
     </div>
 
     ${vinActivo && !isDisconnected ? `<div class="live-vin-compact">

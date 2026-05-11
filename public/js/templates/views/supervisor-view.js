@@ -63,6 +63,9 @@ export function supervisorView() {
             <button id="btnSupApply">Aplicar filtros</button>
             <button id="btnSupClear">Limpiar</button>
           </div>
+          <div style="text-align:right;margin-top:4px;">
+            <button id="btnSupExportCsv" type="button" class="btn3" title="Exportar tabla actual como CSV">⬇️ Exportar CSV</button>
+          </div>
         </div>
 
         <div id="supAvgCard" style="margin-top:10px;"></div>

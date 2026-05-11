@@ -33,6 +33,7 @@ import { bindSupIncidenciasReport_, enterIncReport_, exitIncReport_ } from "./su
 let supTrack = "CONVERSION";
 let supTimer = null;
 let supActiveTab_ = "LIVE"; // "REPORTE" | "LIVE"
+let _lastReportItems_ = [];
 
 function setSupTrack_(t) {
   supTrack = (t === "CALIDAD" || t === "RAMAL") ? t : "CONVERSION";
@@ -91,6 +92,7 @@ function renderSupervisor_(j) {
   const marcaSel = String(document.getElementById("supMarca")?.value || "ALL").toUpperCase();
   const filtered = items.filter((it) => matchMarca_(it, marcaSel));
   const list = filtered;
+  _lastReportItems_ = list;
 
   const rawTechName = String(document.getElementById("supName")?.value || "").trim();
   const hasTechFilter = !!rawTechName;
@@ -255,6 +257,24 @@ function renderSupervisor_(j) {
   renderTable_(box, { uiList, escapeHtml, fmtShort_ });
 }
 
+function exportReportCsv_() {
+  if (!_lastReportItems_.length) return;
+  const hdrs = ["Fecha Inicio","Fecha Fin","VIN","Modelo","Tecnico","Rol","Estado","Tiempo (h)","Cross-day"];
+  const esc  = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const rows = [hdrs.map(esc).join(",")];
+  for (const it of _lastReportItems_) {
+    const horas = it.tiempo_ms > 0 ? (it.tiempo_ms / 3600000).toFixed(2) : "";
+    const fIni  = it.fecha_asignacion ? new Date(it.fecha_asignacion).toLocaleDateString("es-PE") : "";
+    const fFin  = it.updated_at       ? new Date(it.updated_at).toLocaleDateString("es-PE")       : "";
+    rows.push([fIni, fFin, it.vin||"", it.modelo||"", it.userName||"", it.rolTrabajo||it.rol||"", it.estado||"", horas, it.crossDay?"SI":"NO"].map(esc).join(","));
+  }
+  const blob = new Blob(["\uFEFF" + rows.join("\n")], { type: "text/csv;charset=utf-8" });
+  const url  = URL.createObjectURL(blob);
+  const a    = Object.assign(document.createElement("a"), { href: url, download: "reporte_" + new Date().toISOString().slice(0,10) + ".csv" });
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export function init() {
   // ── Pestañas REPORTE / LIVE / UBICACIONES / INCIDENCIAS ─────────────
   document.querySelectorAll(".sup-tab[data-suptab]").forEach((btn) => {
@@ -322,6 +342,8 @@ export function init() {
     destroyTrendChart_();
     fetchSupervisorReport_().catch(() => {});
   });
+
+  document.getElementById("btnSupExportCsv")?.addEventListener("click", exportReportCsv_);
 
   // features
   bindSupIncidencias_({ CORE, getJSON_user, escapeHtml, fmtShort_ });
