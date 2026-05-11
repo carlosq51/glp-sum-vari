@@ -7,7 +7,7 @@ let _escape     = null;
 let _activeType = "ALL";
 let _loading    = false;
 
-// ── Categorías conocidas ────────────────────────────────────────────────────────────────
+// ── Categorías conocidas ─────────────────────────────────────────────────────────
 const INC_CATEGORIAS = new Set([
   "FALTA MARCAR AJUSTAR COMPONENTES","CABLEADO","CINTILLOS","MANGUERA","CAÑERIA",
   "REDUCTOR","FILTRO DE GAS","SENSOR MAP","EMULACIÓN INVERTIDA","CONECTORES INVERTIDOS",
@@ -33,7 +33,7 @@ function parseExtra_(nota) {
   return INC_CATEGORIAS.has(first.toUpperCase()) ? rest : s;
 }
 
-// ── helpers ───────────────────────────────────────────────────────────────────────
+// ── helpers ──────────────────────────────────────────────────────────────────
 function pad2_(n) { return String(n).padStart(2, "0"); }
 function todayStr_() {
   const d = new Date();
@@ -52,10 +52,7 @@ function fmtDateTime_(iso) {
   }).format(d);
 }
 
-// ── Paleta de colores  (saturados, claramente distintos) ──────────────────────────
-// CRITICA  = rojo vivo   #ef4444
-// MODERADA = naranja vivo #f97316  (claramente ≠ rojo)
-// LEVE     = ámbar/dorado  #eab308  (claramente ≠ naranja)
+// ── Paleta de colores ───────────────────────────────────────────────────────────────
 const GRADE = [
   { key:"CRITICA",  abbr:"C", label:"CRÍTICA",
     color:"#ef4444", dimC:"rgba(239,68,68,.7)",
@@ -69,7 +66,6 @@ const GRADE = [
 ];
 const GRADE_MAP = Object.fromEntries(GRADE.map(g => [g.key, g]));
 
-// Chip coloreado tipo [C 4]  mucho más legible que emoji
 function chip_(abbr, count, g) {
   return "<span style=\"display:inline-flex;align-items:center;gap:2px;"
     + "background:" + g.bg + ";border:1px solid " + g.border + ";color:" + g.color
@@ -78,7 +74,6 @@ function chip_(abbr, count, g) {
     + abbr + " <b>" + count + "</b></span>";
 }
 
-// Barra proporcional C/M/L
 function stackedBar_(C, M, L, h) {
   const total = C + M + L;
   if (!total) return "";
@@ -94,7 +89,6 @@ function stackedBar_(C, M, L, h) {
     + "</div>";
 }
 
-// Chips inline (solo los que tengan valor)
 function chips_(C, M, L) {
   return [
     C ? chip_("C", C, GRADE_MAP.CRITICA)  : "",
@@ -103,7 +97,7 @@ function chips_(C, M, L) {
   ].filter(Boolean).join(" ");
 }
 
-// ── fetch ────────────────────────────────────────────────────────────────────────────
+// ── fetch ──────────────────────────────────────────────────────────────────────
 async function fetchIncReport_() {
   if (_loading) return;
   _loading = true;
@@ -130,13 +124,13 @@ async function fetchIncReport_() {
     }
     renderIncReport_(j);
   } catch(e) {
-    if (elList) elList.innerHTML = "<div style=\"padding:10px;color:var(--danger);\">Error: " + _escape(e.message) + "</div>";
+    if (elList) elList.innerHTML = "<div style=\"padding:10px;color:var(--danger);\">⚠️ Error: " + _escape(e.message) + "</div>";
   } finally {
     _loading = false;
   }
 }
 
-// ── KPI cards + barra de riesgo ─────────────────────────────────────────────────────
+// ── KPI cards + barra de riesgo + impacto VIN ─────────────────────────────────────
 function renderKpis_(s) {
   const el = document.getElementById("incRepKpis");
   if (!el) return;
@@ -149,22 +143,76 @@ function renderKpis_(s) {
   const pctRisk  = Math.round(score / maxScore * 100);
   const riskColor = pctRisk > 66 ? "#ef4444" : pctRisk > 33 ? "#f97316" : "#4ade80";
 
+  // VIN impact
+  const totalVins  = s.totalVins      || 0;
+  const vinsCrit   = s.vinsConCritica || 0;
+  const vinsReinc  = s.vinsConReinci  || 0;
+  const pctVinCrit = totalVins ? Math.round(vinsCrit / totalVins * 100) : 0;
+
   function kpiCard(val, lbl, g) {
-    return "<div style=\"flex:1 1 70px;min-width:65px;background:" + g.bg
+    return "<div style=\"flex:1 1 65px;min-width:60px;background:" + g.bg
       + ";border:1px solid " + g.border
-      + ";border-radius:14px;padding:14px 10px;text-align:center;\">"
-      + "<div style=\"font-size:2.1em;font-weight:1000;color:" + g.color + ";line-height:1;\">" + val + "</div>"
-      + "<div style=\"font-size:.7em;font-weight:900;letter-spacing:.6px;margin-top:5px;color:" + g.dimC + ";\">" + lbl + "</div>"
+      + ";border-radius:14px;padding:13px 10px;text-align:center;\">"
+      + "<div style=\"font-size:2em;font-weight:1000;color:" + g.color + ";line-height:1;\">" + val + "</div>"
+      + "<div style=\"font-size:.68em;font-weight:900;letter-spacing:.5px;margin-top:5px;color:" + g.dimC + ";\">" + lbl + "</div>"
       + "</div>";
   }
 
   const TOTAL_G = { color:"#94a3b8", dimC:"rgba(148,163,184,.7)", bg:"rgba(148,163,184,.10)", border:"rgba(148,163,184,.35)" };
+  const VIN_G   = { color:"#818cf8", dimC:"rgba(129,140,248,.7)", bg:"rgba(129,140,248,.10)", border:"rgba(129,140,248,.35)" };
+
+  // Pill de estado para VIN impact
+  function vinPill(val, label, color) {
+    return "<span style=\"display:inline-flex;flex-direction:column;align-items:center;"
+      + "background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);"
+      + "border-radius:10px;padding:6px 10px;min-width:56px;\">"
+      + "<span style=\"font-size:1.4em;font-weight:1000;color:" + color + ";line-height:1;\">" + val + "</span>"
+      + "<span style=\"font-size:.65em;font-weight:800;letter-spacing:.5px;opacity:.55;margin-top:3px;\">" + label + "</span>"
+      + "</span>";
+  }
+
+  let vinImpactHtml = "";
+  if (totalVins > 0) {
+    vinImpactHtml =
+      "<div style=\"margin-top:10px;background:rgba(129,140,248,.07);"
+      + "border:1px solid rgba(129,140,248,.2);border-radius:11px;padding:10px 14px;\">"
+      + "<div style=\"font-size:.72em;font-weight:900;letter-spacing:.6px;opacity:.65;margin-bottom:8px;\">"
+      + "🚗 IMPACTO POR VIN</div>"
+      + "<div style=\"display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;\">"
+      + vinPill(totalVins, "VINS AFECT.", "#818cf8")
+      + vinPill(vinsCrit,  "CON CRÍTICA", "#ef4444")
+      + (vinsReinc > 0 ? vinPill(vinsReinc, "REINCID.", "#f97316") : "")
+      + "<div style=\"flex:1;min-width:120px;\">"
+      +   (pctVinCrit > 0
+          ? "<div style=\"font-size:.76em;opacity:.55;margin-bottom:4px;\">"
+            + "1 de cada <b style=\"color:#ef4444;\">" + (pctVinCrit > 0 ? Math.round(100/pctVinCrit) : "—")
+            + "</b> VINs tiene crítica</div>"
+          : "<div style=\"font-size:.76em;opacity:.4;margin-bottom:4px;\">Sin VINs con crítica</div>")
+      +   "<div style=\"height:8px;background:rgba(255,255,255,.08);border-radius:4px;overflow:hidden;\">"
+      +     (pctVinCrit > 0
+            ? "<div style=\"height:100%;width:" + pctVinCrit + "%;background:linear-gradient(90deg,#ef4444,#f97316);border-radius:4px;\"></div>"
+            : "")
+      +   "</div>"
+      +   "<div style=\"display:flex;justify-content:space-between;font-size:.65em;margin-top:3px;opacity:.4;\">"
+      +     "<span>0%</span><span style=\"color:#ef4444;font-weight:700;\">" + pctVinCrit + "% con crítica</span><span>100%</span>"
+      +   "</div>"
+      + "</div></div>"
+      + (vinsReinc > 0
+          ? "<div style=\"font-size:.72em;margin-top:7px;padding-top:7px;border-top:1px solid rgba(255,255,255,.06);"
+            + "color:#f97316;opacity:.7;\">"
+            + "⚠️ " + vinsReinc + " vehículo" + (vinsReinc > 1 ? "s" : "") + " con incidencias repetidas — revisar acciones correctivas"
+            + "</div>"
+          : "")
+      + "</div>";
+  }
+
   el.innerHTML =
     "<div style=\"display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;\">"
     + kpiCard(total, "TOTAL",    TOTAL_G)
     + kpiCard(C,     "CRÍTICA",  GRADE_MAP.CRITICA)
     + kpiCard(M,     "MODERADA", GRADE_MAP.MODERADA)
     + kpiCard(L,     "LEVE",     GRADE_MAP.LEVE)
+    + (totalVins ? kpiCard(totalVins, "VINS", VIN_G) : "")
     + "</div>"
     + (total > 0
       ? "<div style=\"background:rgba(255,255,255,.055);border-radius:11px;padding:10px 14px;\">"
@@ -178,11 +226,12 @@ function renderKpis_(s) {
         + "<span style=\"color:#f97316;font-weight:700;\">" + M + " moderada</span>"
         + "<span style=\"color:#eab308;font-weight:700;\">" + L + " leve</span>"
         + "</div></div>"
-      : "");
+      : "")
+    + vinImpactHtml;
   el.style.display = "";
 }
 
-// ── Rankings ─────────────────────────────────────────────────────────────────────────
+// ── Rankings ─────────────────────────────────────────────────────────────────────
 function renderRanking_(catGroups, summary) {
   const el = document.getElementById("incRepRanking");
   if (!el || !summary.total) { if (el) el.style.display = "none"; return; }
@@ -194,46 +243,76 @@ function renderRanking_(catGroups, summary) {
     return { cat, C, M, L, total: C + M + L };
   }).sort((a, b) => b.C - a.C || b.total - a.total);
 
-  // Fila de ranking: categorias
+  // Fila de categoría
   function catRow(name, C, M, L, total, rank) {
     const accentColor = C ? "#ef4444" : M ? "#f97316" : "#eab308";
     return "<div style=\"display:flex;align-items:center;gap:8px;padding:7px 0;"
       + (rank > 0 ? "border-top:1px solid rgba(255,255,255,.06);" : "") + "\">"
       + "<span style=\"font-size:.68em;font-weight:900;opacity:.35;min-width:16px;text-align:right;\">#" + (rank+1) + "</span>"
       + "<div style=\"flex:1;min-width:0;\">"
-      +   "<div style=\"font-size:.8em;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;\">"
-      +     _escape(name)
-      +   "</div>"
+      +   "<div style=\"font-size:.8em;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;\">" + _escape(name) + "</div>"
       +   stackedBar_(C, M, L, 5)
       + "</div>"
       + "<div style=\"display:flex;gap:3px;align-items:center;flex-shrink:0;\">"
       +   chips_(C, M, L)
       +   "<span style=\"font-size:.82em;font-weight:1000;min-width:20px;text-align:right;color:" + accentColor + ";\">" + total + "</span>"
-      + "</div>"
-      + "</div>";
+      + "</div></div>";
   }
 
-  // Fila de ranking: tecnicos — con borde izquierdo de color
+  // Fila de técnico — avatar con iniciales
   function tecRow(name, C, M, L, total, rank) {
-    const borderColor = C ? "#ef4444" : M ? "#f97316" : "#eab308";
-    const initials = name.trim().split(/\s+/).slice(0,2).map(w => w[0] || "").join("").toUpperCase();
+    const color = C ? "#ef4444" : M ? "#f97316" : "#eab308";
+    const initials = name.trim().split(/\s+/).slice(0,2).map(w => w[0]||"").join("").toUpperCase();
     return "<div style=\"display:flex;align-items:center;gap:8px;padding:7px 0;"
       + (rank > 0 ? "border-top:1px solid rgba(255,255,255,.06);" : "") + "\">"
       + "<span style=\"font-size:.67em;font-weight:900;opacity:.3;min-width:16px;text-align:right;\">#" + (rank+1) + "</span>"
-      // mini avatar
-      + "<div style=\"flex-shrink:0;width:26px;height:26px;border-radius:50%;background:" + borderColor
+      + "<div style=\"flex-shrink:0;width:26px;height:26px;border-radius:50%;background:" + color
       +   ";opacity:.85;display:flex;align-items:center;justify-content:center;"
       +   "font-size:.62em;font-weight:900;color:#000;\">" + initials + "</div>"
       + "<div style=\"flex:1;min-width:0;\">"
-      +   "<div style=\"font-size:.8em;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;\">"
-      +     _escape(name)
-      +   "</div>"
+      +   "<div style=\"font-size:.8em;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;\">" + _escape(name) + "</div>"
       +   stackedBar_(C, M, L, 5)
       + "</div>"
       + "<div style=\"display:flex;gap:3px;align-items:center;flex-shrink:0;\">"
       +   chips_(C, M, L)
-      +   "<span style=\"font-size:.82em;font-weight:1000;min-width:20px;text-align:right;color:" + borderColor + ";\">" + total + "</span>"
+      +   "<span style=\"font-size:.82em;font-weight:1000;min-width:20px;text-align:right;color:" + color + ";\">" + total + "</span>"
+      + "</div></div>";
+  }
+
+  // Fila de VIN
+  function vinRow(vin, C, M, L, total, rank) {
+    const color    = C ? "#ef4444" : M ? "#f97316" : "#eab308";
+    const isReinc  = total > 1;
+    // Mostrar solo últimos 8 chars del VIN para no ocupar espacio
+    const shortVin = vin.length > 9 ? "…" + vin.slice(-9) : vin;
+    return "<div style=\"display:flex;align-items:center;gap:8px;padding:7px 0;"
+      + (rank > 0 ? "border-top:1px solid rgba(255,255,255,.06);" : "") + "\">"
+      + "<span style=\"font-size:.67em;font-weight:900;opacity:.3;min-width:16px;text-align:right;\">#" + (rank+1) + "</span>"
+      // indicador cuadrado con color
+      + "<div style=\"flex-shrink:0;width:8px;height:28px;border-radius:3px;background:" + color + ";opacity:.85;\"></div>"
+      + "<div style=\"flex:1;min-width:0;\">"
+      +   "<div style=\"font-size:.76em;font-weight:800;font-family:monospace;overflow:hidden;text-overflow:ellipsis;"
+      +     "white-space:nowrap;color:" + color + ";\">" + _escape(shortVin) + "</div>"
+      +   (isReinc
+          ? "<div style=\"font-size:.65em;color:#f97316;font-weight:700;margin-top:1px;\">"
+            + "↻ reincidente • " + total + " inc."
+            + "</div>"
+          : stackedBar_(C, M, L, 4))
       + "</div>"
+      + "<div style=\"display:flex;gap:3px;align-items:center;flex-shrink:0;\">"
+      +   chips_(C, M, L)
+      + "</div></div>";
+  }
+
+  function panel(title, rows, accentColor) {
+    accentColor = accentColor || "rgba(255,255,255,.25)";
+    return "<div style=\"background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);"
+      + "border-top:2px solid " + accentColor + ";"
+      + "border-radius:14px;padding:12px 14px;min-width:0;\">"
+      + "<div style=\"font-weight:900;font-size:.76em;letter-spacing:.7px;margin-bottom:8px;"
+      + "opacity:.7;border-bottom:1px solid rgba(255,255,255,.07);padding-bottom:6px;\">"
+      + title + "</div>"
+      + rows
       + "</div>";
   }
 
@@ -246,24 +325,39 @@ function renderRanking_(catGroups, summary) {
     ).join("");
   }
 
-  function panel(title, rows) {
-    return "<div style=\"background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.10);"
-      + "border-radius:14px;padding:12px 14px;\">"
-      + "<div style=\"font-weight:900;font-size:.76em;letter-spacing:.7px;margin-bottom:8px;opacity:.7;border-bottom:1px solid rgba(255,255,255,.08);padding-bottom:6px;\">"
-      + title + "</div>"
-      + rows
-      + "</div>";
+  let vinRows = "";
+  if (summary.byVin?.length) {
+    // Solo mostrar VINs que tienen crítica o reincidencia (los que requieren acción)
+    const relevantVins = summary.byVin.filter(v => v.CRITICA > 0 || v.total > 1).slice(0, 10);
+    if (relevantVins.length) {
+      vinRows = relevantVins.map((v, i) =>
+        vinRow(v.vin, v.CRITICA||0, v.MODERADA||0, v.LEVE||0, v.total, i)
+      ).join("");
+    }
   }
 
+  // Layout: grid responsivo — 1 col en móvil, 2 en tablet, 3 en desktop
+  // Fila 1: categorias | tecnicos  (siempre)
+  // Fila 2: VINs críticos (si los hay, span completo)
   el.innerHTML =
-    "<div style=\"display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;\">"
-    + panel("📊 CATEGORÍAS", catRows)
-    + (tecRows ? panel("👷 TÉCNICOS", tecRows) : "")
-    + "</div>";
+    "<div style=\"display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;margin-bottom:10px;\">"
+    + panel("📊 CATEGORÍAS", catRows, "#818cf8")
+    + (tecRows ? panel("👷 TÉCNICOS", tecRows, "#f97316") : "")
+    + "</div>"
+    + (vinRows
+        ? "<div style=\"margin-bottom:14px;\">"
+          + panel(
+              "🚗 VINs CON INCIDENCIAS CRÍTICAS O REINCIDENTES",
+              "<div style=\"display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:0 14px;\">"
+              + vinRows + "</div>",
+              "#ef4444"
+            )
+          + "</div>"
+        : "");
   el.style.display = "";
 }
 
-// ── Tarjeta de incidencia individual ───────────────────────────────────────────────
+// ── Tarjeta de incidencia individual ───────────────────────────────────────────
 function renderCard_(it) {
   const g       = GRADE_MAP[it.tipo] || GRADE_MAP.LEVE;
   const extra   = parseExtra_(it.nota);
@@ -285,10 +379,8 @@ function renderCard_(it) {
       : "")
     + "<div style=\"flex:1;min-width:0;\">"
     +   "<div style=\"display:flex;gap:5px;align-items:center;flex-wrap:wrap;margin-bottom:3px;\">"
-    +     "<code style=\"font-size:.75em;background:rgba(255,255,255,.07);border-radius:4px;padding:1px 5px;\">"
-    +       _escape(it.vin || "—")
-    +     "</code>"
-    +     chip_(g.abbr, "", g).replace("<b></b>","").replace("abbr", g.abbr + " ").replace("gap:2px;","gap:0;")
+    +     "<code style=\"font-size:.75em;background:rgba(255,255,255,.07);border-radius:4px;padding:1px 5px;\">" + _escape(it.vin || "—") + "</code>"
+    +     chip_(g.abbr, g.label, g)
     +     "<span style=\"margin-left:auto;font-size:.73em;opacity:.45;flex-shrink:0;\">" + fmtDateTime_(it.fecha_hora) + "</span>"
     +   "</div>"
     +   "<div style=\"font-weight:800;font-size:.84em;color:" + g.color + ";opacity:.9;\">" + _escape(it.tecnico || "—") + "</div>"
@@ -296,7 +388,7 @@ function renderCard_(it) {
     + "</div></div>";
 }
 
-// ── Lista agrupada: categoría → grado ──────────────────────────────────────────────────
+// ── Lista agrupada ────────────────────────────────────────────────────────────────
 function buildCatGroups_(items) {
   const cats = {};
   for (const it of items) {
@@ -341,13 +433,12 @@ function renderList_(items) {
     const tot = C + M + L;
     const id  = "incCat_" + (catIdx++);
 
-    // Color del encabezado = peor grado
     const hdrColor  = C ? "#ef4444" : M ? "#f97316" : "#eab308";
-    const hdrBorder = C ? "rgba(239,68,68,.4)" : M ? "rgba(249,115,22,.4)" : "rgba(234,179,8,.3)";
+    const hdrBorder = C ? "rgba(239,68,68,.4)"  : M ? "rgba(249,115,22,.4)"  : "rgba(234,179,8,.3)";
     const hdrBg     = C ? "rgba(239,68,68,.08)" : M ? "rgba(249,115,22,.08)" : "rgba(234,179,8,.06)";
 
     let inner = "";
-    for (const { key, label, color, border, bg } of GRADE) {
+    for (const { key, label, color, border } of GRADE) {
       const grp = gg[key];
       if (!grp?.length) continue;
       inner += "<div style=\"margin-bottom:14px;\">"
@@ -363,17 +454,16 @@ function renderList_(items) {
 
     html +=
       "<div style=\"border:1px solid " + hdrBorder + ";border-radius:14px;overflow:hidden;margin-bottom:10px;\">"
-      // header toggle
       + "<button type=\"button\" data-catid=\"" + id + "\"" 
       + " style=\"width:100%;background:" + hdrBg + ";border:none;border-bottom:1px solid " + hdrBorder
       + ";padding:10px 14px;display:flex;align-items:center;gap:8px;cursor:pointer;color:inherit;text-align:left;\">"
-      + "<div style=\"width:10px;height:10px;border-radius:50%;background:" + hdrColor + ";flex-shrink:0;box-shadow:0 0 6px " + hdrColor + "80;\"></div>"
+      + "<div style=\"width:10px;height:10px;border-radius:50%;background:" + hdrColor + ";flex-shrink:0;"
+      +   "box-shadow:0 0 6px " + hdrColor + "80;\"></div>"
       + "<span style=\"font-weight:900;font-size:.86em;letter-spacing:.4px;color:" + hdrColor + ";flex:1;\">" + _escape(cat) + "</span>"
       + "<span style=\"display:flex;gap:4px;align-items:center;\">" + chips_(C, M, L) + "</span>"
       + "<span style=\"font-size:.74em;opacity:.4;flex-shrink:0;margin-left:6px;\">" + tot + " inc.</span>"
       + "<span class=\"inc-cat-chev\" style=\"font-size:.72em;opacity:.5;margin-left:4px;\">&#9660;</span>"
       + "</button>"
-      // body
       + "<div id=\"" + id + "\" style=\"padding:10px 12px;\">" + inner + "</div>"
       + "</div>";
   }
@@ -394,14 +484,14 @@ function renderList_(items) {
   return cats;
 }
 
-// ── Orquestador ─────────────────────────────────────────────────────────────────────
+// ── Orquestador ──────────────────────────────────────────────────────────────
 function renderIncReport_(j) {
   renderKpis_(j.summary);
   const cats = renderList_(j.items);
   if (cats) renderRanking_(cats, j.summary);
 }
 
-// ── bind ───────────────────────────────────────────────────────────────────────────
+// ── bind ────────────────────────────────────────────────────────────────────────
 export function bindSupIncidenciasReport_({ getJSON_user, escapeHtml }) {
   _getJSON = getJSON_user;
   _escape  = escapeHtml;

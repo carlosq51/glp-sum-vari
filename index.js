@@ -2163,19 +2163,29 @@ app.get("/api/incidencias/report", async (req, res) => {
         byTecnico[it.tecnico][it.tipo] = (byTecnico[it.tecnico][it.tipo] || 0) + 1;
       }
       if (it.vin) {
-        if (!byVin[it.vin]) byVin[it.vin] = { vin: it.vin, total: 0, CRITICA: 0 };
+        if (!byVin[it.vin]) byVin[it.vin] = { vin: it.vin, total: 0, CRITICA: 0, MODERADA: 0, LEVE: 0 };
         byVin[it.vin].total++;
-        if (it.tipo === "CRITICA") byVin[it.vin].CRITICA++;
+        if (it.tipo === "CRITICA")       byVin[it.vin].CRITICA++;
+        else if (it.tipo === "MODERADA") byVin[it.vin].MODERADA++;
+        else if (it.tipo === "LEVE")     byVin[it.vin].LEVE++;
       }
     }
+
+    const vinValues = Object.values(byVin);
+    const totalVins      = vinValues.length;
+    const vinsConCritica = vinValues.filter(v => v.CRITICA > 0).length;
+    const vinsConReinci  = vinValues.filter(v => v.total > 1).length;
 
     const summary = {
       total:    items.length,
       critica:  byTipo.CRITICA,
       moderada: byTipo.MODERADA,
       leve:     byTipo.LEVE,
+      totalVins,
+      vinsConCritica,
+      vinsConReinci,
       byTecnico: Object.values(byTecnico).sort((a,b) => b.total - a.total).slice(0,20),
-      byVin:     Object.values(byVin).sort((a,b) => b.total - a.total).slice(0,20),
+      byVin:     vinValues.sort((a,b) => b.CRITICA - a.CRITICA || b.total - a.total).slice(0,20),
     };
 
     return res.json({ ok: true, items, summary, _queryMs: queryMs });
