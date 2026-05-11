@@ -1,5 +1,5 @@
 // public/js/views/supervisor/sup-incidencias-report.js
-// Reporte global de incidencias — agrupado por categoría (categoria → grado)
+// Reporte global de incidencias — agrupado por categoría → grado
 // ===========================================================================
 
 let _getJSON    = null;
@@ -7,7 +7,7 @@ let _escape     = null;
 let _activeType = "ALL";
 let _loading    = false;
 
-// ── Categorias conocidas (mismo set que sup-incidencias.js) ─────────────────
+// ── Categorías conocidas ────────────────────────────────────────────────────────────────
 const INC_CATEGORIAS = new Set([
   "FALTA MARCAR AJUSTAR COMPONENTES","CABLEADO","CINTILLOS","MANGUERA","CAÑERIA",
   "REDUCTOR","FILTRO DE GAS","SENSOR MAP","EMULACIÓN INVERTIDA","CONECTORES INVERTIDOS",
@@ -23,7 +23,6 @@ function parseCategoria_(nota) {
   const first = (nl === -1 ? s : s.slice(0, nl)).trim();
   return INC_CATEGORIAS.has(first.toUpperCase()) ? first.toUpperCase() : "Sin categoría";
 }
-
 function parseExtra_(nota) {
   const s = String(nota || "").trim();
   if (!s) return "";
@@ -34,7 +33,7 @@ function parseExtra_(nota) {
   return INC_CATEGORIAS.has(first.toUpperCase()) ? rest : s;
 }
 
-// ── helpers ──────────────────────────────────────────────────────────────────
+// ── helpers ───────────────────────────────────────────────────────────────────────
 function pad2_(n) { return String(n).padStart(2, "0"); }
 function todayStr_() {
   const d = new Date();
@@ -49,58 +48,72 @@ function fmtDateTime_(iso) {
   const d = new Date(iso);
   if (isNaN(d)) return "—";
   return new Intl.DateTimeFormat("es-PE", {
-    day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
+    day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit",
   }).format(d);
 }
 
-// CRITICA=red, MODERADA=orange, LEVE=yellow
+// ── Paleta de colores  (saturados, claramente distintos) ──────────────────────────
+// CRITICA  = rojo vivo   #ef4444
+// MODERADA = naranja vivo #f97316  (claramente ≠ rojo)
+// LEVE     = ámbar/dorado  #eab308  (claramente ≠ naranja)
 const GRADE = [
-  { key:"CRITICA",  icon:"🔴", label:"CRÍTICA",
-    color:"rgba(248,113,113,1)", dimColor:"rgba(248,113,113,.75)",
-    bg:"rgba(248,113,113,.12)",  border:"rgba(248,113,113,.4)" },
-  { key:"MODERADA", icon:"🟠", label:"MODERADA",
-    color:"rgba(251,146,60,1)",  dimColor:"rgba(251,146,60,.75)",
-    bg:"rgba(251,146,60,.12)",   border:"rgba(251,146,60,.4)" },
-  { key:"LEVE",     icon:"🟡", label:"LEVE",
-    color:"rgba(250,204,21,1)",  dimColor:"rgba(250,204,21,.75)",
-    bg:"rgba(250,204,21,.12)",   border:"rgba(250,204,21,.4)" },
+  { key:"CRITICA",  abbr:"C", label:"CRÍTICA",
+    color:"#ef4444", dimC:"rgba(239,68,68,.7)",
+    bg:"rgba(239,68,68,.15)", border:"rgba(239,68,68,.5)", barBg:"rgba(239,68,68,.9)" },
+  { key:"MODERADA", abbr:"M", label:"MODERADA",
+    color:"#f97316", dimC:"rgba(249,115,22,.7)",
+    bg:"rgba(249,115,22,.15)", border:"rgba(249,115,22,.5)", barBg:"rgba(249,115,22,.9)" },
+  { key:"LEVE",     abbr:"L", label:"LEVE",
+    color:"#eab308", dimC:"rgba(234,179,8,.7)",
+    bg:"rgba(234,179,8,.15)",  border:"rgba(234,179,8,.45)", barBg:"rgba(234,179,8,.9)" },
 ];
 const GRADE_MAP = Object.fromEntries(GRADE.map(g => [g.key, g]));
 
-function gradeTag_(tipo) {
-  const g = GRADE_MAP[tipo] || { icon:"⚪", label:tipo,
-    color:"var(--muted)", bg:"rgba(148,163,184,.12)", border:"rgba(148,163,184,.3)" };
-  return "<span style=\"background:" + g.bg + ";border:1px solid " + g.border
-    + ";color:" + g.color + ";border-radius:5px;padding:1px 7px;font-size:.72em;"
-    + "font-weight:900;letter-spacing:.4px;white-space:nowrap;\">"
-    + g.icon + " " + g.label + "</span>";
+// Chip coloreado tipo [C 4]  mucho más legible que emoji
+function chip_(abbr, count, g) {
+  return "<span style=\"display:inline-flex;align-items:center;gap:2px;"
+    + "background:" + g.bg + ";border:1px solid " + g.border + ";color:" + g.color
+    + ";border-radius:5px;padding:1px 6px;font-size:.72em;font-weight:900;"
+    + "letter-spacing:.3px;white-space:nowrap;\">"
+    + abbr + " <b>" + count + "</b></span>";
 }
 
-// stacked progress bar C/M/L
-function stackedBar_(C, M, L) {
+// Barra proporcional C/M/L
+function stackedBar_(C, M, L, h) {
   const total = C + M + L;
   if (!total) return "";
+  h = h || 7;
   const pC = (C / total * 100).toFixed(1);
   const pM = (M / total * 100).toFixed(1);
   const pL = (L / total * 100).toFixed(1);
-  return "<div style=\"display:flex;height:6px;border-radius:4px;overflow:hidden;margin-top:4px;gap:1px;\">"
-    + (C ? "<div style=\"flex:" + pC + ";background:rgba(248,113,113,.85);border-radius:3px;\"></div>" : "")
-    + (M ? "<div style=\"flex:" + pM + ";background:rgba(251,146,60,.85);border-radius:3px;\"></div>" : "")
-    + (L ? "<div style=\"flex:" + pL + ";background:rgba(250,204,21,.85);border-radius:3px;\"></div>" : "")
+  const g  = GRADE_MAP;
+  return "<div style=\"display:flex;height:" + h + "px;border-radius:4px;overflow:hidden;margin-top:4px;\">"
+    + (C ? "<div style=\"flex:" + pC + ";background:" + g.CRITICA.barBg  + "\"></div>" : "")
+    + (M ? "<div style=\"flex:" + pM + ";background:" + g.MODERADA.barBg + "\"></div>" : "")
+    + (L ? "<div style=\"flex:" + pL + ";background:" + g.LEVE.barBg     + "\"></div>" : "")
     + "</div>";
 }
 
-// ── fetch ────────────────────────────────────────────────────────────────────
+// Chips inline (solo los que tengan valor)
+function chips_(C, M, L) {
+  return [
+    C ? chip_("C", C, GRADE_MAP.CRITICA)  : "",
+    M ? chip_("M", M, GRADE_MAP.MODERADA) : "",
+    L ? chip_("L", L, GRADE_MAP.LEVE)     : "",
+  ].filter(Boolean).join(" ");
+}
+
+// ── fetch ────────────────────────────────────────────────────────────────────────────
 async function fetchIncReport_() {
   if (_loading) return;
   _loading = true;
-  const from = String(document.getElementById("incRepFrom")?.value  || "").trim();
-  const to   = String(document.getElementById("incRepTo")?.value    || "").trim();
-  const q    = String(document.getElementById("incRepQ")?.value     || "").trim();
+  const from = String(document.getElementById("incRepFrom")?.value || "").trim();
+  const to   = String(document.getElementById("incRepTo")?.value   || "").trim();
+  const q    = String(document.getElementById("incRepQ")?.value    || "").trim();
   const elList    = document.getElementById("incRepList");
   const elKpis    = document.getElementById("incRepKpis");
   const elRanking = document.getElementById("incRepRanking");
-  if (elList)    elList.innerHTML        = "<div style=\"padding:14px;text-align:center;opacity:.55;font-size:.9em;\">Cargando...</div>";
+  if (elList)    elList.innerHTML        = "<div style=\"padding:14px;text-align:center;opacity:.5;font-size:.9em;\">Cargando...</div>";
   if (elKpis)    elKpis.style.display    = "none";
   if (elRanking) elRanking.style.display = "none";
   try {
@@ -116,14 +129,14 @@ async function fetchIncReport_() {
       return;
     }
     renderIncReport_(j);
-  } catch (e) {
+  } catch(e) {
     if (elList) elList.innerHTML = "<div style=\"padding:10px;color:var(--danger);\">Error: " + _escape(e.message) + "</div>";
   } finally {
     _loading = false;
   }
 }
 
-// ── KPI cards + risk bar ─────────────────────────────────────────────────────
+// ── KPI cards + barra de riesgo ─────────────────────────────────────────────────────
 function renderKpis_(s) {
   const el = document.getElementById("incRepKpis");
   if (!el) return;
@@ -134,41 +147,42 @@ function renderKpis_(s) {
   const score    = C * 3 + M * 2 + L;
   const maxScore = total * 3 || 1;
   const pctRisk  = Math.round(score / maxScore * 100);
-  const riskColor = pctRisk > 66 ? "rgba(248,113,113,.9)"
-    : pctRisk > 33 ? "rgba(251,146,60,.9)" : "rgba(74,222,128,.9)";
+  const riskColor = pctRisk > 66 ? "#ef4444" : pctRisk > 33 ? "#f97316" : "#4ade80";
 
-  function kpiCard(val, lbl, color, bg) {
-    return "<div style=\"flex:1 1 72px;background:" + bg + ";border:1px solid " + color
-      + ";border-radius:14px;padding:12px 10px;text-align:center;min-width:68px;\">"
-      + "<div style=\"font-size:2em;font-weight:1000;color:" + color + ";line-height:1;\">" + val + "</div>"
-      + "<div style=\"font-size:.71em;font-weight:900;letter-spacing:.5px;opacity:.85;margin-top:4px;\">" + lbl + "</div>"
+  function kpiCard(val, lbl, g) {
+    return "<div style=\"flex:1 1 70px;min-width:65px;background:" + g.bg
+      + ";border:1px solid " + g.border
+      + ";border-radius:14px;padding:14px 10px;text-align:center;\">"
+      + "<div style=\"font-size:2.1em;font-weight:1000;color:" + g.color + ";line-height:1;\">" + val + "</div>"
+      + "<div style=\"font-size:.7em;font-weight:900;letter-spacing:.6px;margin-top:5px;color:" + g.dimC + ";\">" + lbl + "</div>"
       + "</div>";
   }
 
-  const bar10 = stackedBar_(C, M, L).replace("height:6px", "height:10px").replace("margin-top:4px", "margin-top:0");
-
+  const TOTAL_G = { color:"#94a3b8", dimC:"rgba(148,163,184,.7)", bg:"rgba(148,163,184,.10)", border:"rgba(148,163,184,.35)" };
   el.innerHTML =
-    "<div style=\"display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;\">"
-    + kpiCard(total, "TOTAL",    "rgba(148,163,184,.9)", "rgba(148,163,184,.10)")
-    + kpiCard(C,     "CRÍTICA",  "rgba(248,113,113,.9)", "rgba(248,113,113,.10)")
-    + kpiCard(M,     "MODERADA", "rgba(251,146,60,.9)",  "rgba(251,146,60,.10)")
-    + kpiCard(L,     "LEVE",     "rgba(250,204,21,.9)",  "rgba(250,204,21,.10)")
+    "<div style=\"display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;\">"
+    + kpiCard(total, "TOTAL",    TOTAL_G)
+    + kpiCard(C,     "CRÍTICA",  GRADE_MAP.CRITICA)
+    + kpiCard(M,     "MODERADA", GRADE_MAP.MODERADA)
+    + kpiCard(L,     "LEVE",     GRADE_MAP.LEVE)
     + "</div>"
     + (total > 0
-      ? "<div style=\"background:rgba(255,255,255,.06);border-radius:10px;padding:8px 12px;\">"
-        + "<div style=\"display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;\">"
-        + "<span style=\"font-size:.74em;font-weight:800;letter-spacing:.5px;opacity:.7;\">ÍNDICE DE RIESGO</span>"
-        + "<span style=\"font-size:.82em;font-weight:900;color:" + riskColor + ";\">" + pctRisk + "%</span>"
+      ? "<div style=\"background:rgba(255,255,255,.055);border-radius:11px;padding:10px 14px;\">"
+        + "<div style=\"display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;\">"
+        + "<span style=\"font-size:.73em;font-weight:900;letter-spacing:.6px;opacity:.65;\">ÍNDICE DE RIESGO</span>"
+        + "<span style=\"font-size:.88em;font-weight:1000;color:" + riskColor + ";\">" + pctRisk + "%</span>"
         + "</div>"
-        + bar10
-        + "<div style=\"display:flex;justify-content:space-between;margin-top:4px;font-size:.69em;opacity:.55;\">"
-        + "<span>" + C + " crítica</span><span>" + M + " moderada</span><span>" + L + " leve</span>"
+        + stackedBar_(C, M, L, 11)
+        + "<div style=\"display:flex;justify-content:space-between;margin-top:6px;font-size:.69em;\">"
+        + "<span style=\"color:#ef4444;font-weight:700;\">" + C + " crítica</span>"
+        + "<span style=\"color:#f97316;font-weight:700;\">" + M + " moderada</span>"
+        + "<span style=\"color:#eab308;font-weight:700;\">" + L + " leve</span>"
         + "</div></div>"
       : "");
   el.style.display = "";
 }
 
-// ── Rankings: categories + tecnicos ──────────────────────────────────────────
+// ── Rankings ─────────────────────────────────────────────────────────────────────────
 function renderRanking_(catGroups, summary) {
   const el = document.getElementById("incRepRanking");
   if (!el || !summary.total) { if (el) el.style.display = "none"; return; }
@@ -180,73 +194,109 @@ function renderRanking_(catGroups, summary) {
     return { cat, C, M, L, total: C + M + L };
   }).sort((a, b) => b.C - a.C || b.total - a.total);
 
-  const maxCat = catStats[0]?.total || 1;
-
-  function rankRow(name, C, M, L, total) {
-    return "<div style=\"padding:5px 0;border-top:1px solid rgba(255,255,255,.06);\">"
-      + "<div style=\"display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;\">"
-      + "<span style=\"font-size:.79em;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:6px;\">" + _escape(name) + "</span>"
-      + "<span style=\"display:flex;gap:3px;align-items:center;flex-shrink:0;font-size:.78em;font-weight:900;\">"
-      + (C ? "<span style=\"color:rgba(248,113,113,.95);\">" + C + "🔴</span>" : "")
-      + (M ? "<span style=\"color:rgba(251,146,60,.95);\">"  + M + "🟠</span>" : "")
-      + (L ? "<span style=\"color:rgba(250,204,21,.95);\">"  + L + "🟡</span>" : "")
-      + "<span style=\"min-width:22px;text-align:right;\">" + total + "</span>"
-      + "</span></div>"
-      + stackedBar_(C, M, L)
+  // Fila de ranking: categorias
+  function catRow(name, C, M, L, total, rank) {
+    const accentColor = C ? "#ef4444" : M ? "#f97316" : "#eab308";
+    return "<div style=\"display:flex;align-items:center;gap:8px;padding:7px 0;"
+      + (rank > 0 ? "border-top:1px solid rgba(255,255,255,.06);" : "") + "\">"
+      + "<span style=\"font-size:.68em;font-weight:900;opacity:.35;min-width:16px;text-align:right;\">#" + (rank+1) + "</span>"
+      + "<div style=\"flex:1;min-width:0;\">"
+      +   "<div style=\"font-size:.8em;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;\">"
+      +     _escape(name)
+      +   "</div>"
+      +   stackedBar_(C, M, L, 5)
+      + "</div>"
+      + "<div style=\"display:flex;gap:3px;align-items:center;flex-shrink:0;\">"
+      +   chips_(C, M, L)
+      +   "<span style=\"font-size:.82em;font-weight:1000;min-width:20px;text-align:right;color:" + accentColor + ";\">" + total + "</span>"
+      + "</div>"
       + "</div>";
   }
 
-  function panel(icon, title, rows) {
-    return "<div style=\"background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.10);"
-      + "border-radius:14px;padding:12px;\">"
-      + "<div style=\"font-weight:900;font-size:.79em;letter-spacing:.6px;margin-bottom:6px;opacity:.85;\">" + icon + " " + title + "</div>"
+  // Fila de ranking: tecnicos — con borde izquierdo de color
+  function tecRow(name, C, M, L, total, rank) {
+    const borderColor = C ? "#ef4444" : M ? "#f97316" : "#eab308";
+    const initials = name.trim().split(/\s+/).slice(0,2).map(w => w[0] || "").join("").toUpperCase();
+    return "<div style=\"display:flex;align-items:center;gap:8px;padding:7px 0;"
+      + (rank > 0 ? "border-top:1px solid rgba(255,255,255,.06);" : "") + "\">"
+      + "<span style=\"font-size:.67em;font-weight:900;opacity:.3;min-width:16px;text-align:right;\">#" + (rank+1) + "</span>"
+      // mini avatar
+      + "<div style=\"flex-shrink:0;width:26px;height:26px;border-radius:50%;background:" + borderColor
+      +   ";opacity:.85;display:flex;align-items:center;justify-content:center;"
+      +   "font-size:.62em;font-weight:900;color:#000;\">" + initials + "</div>"
+      + "<div style=\"flex:1;min-width:0;\">"
+      +   "<div style=\"font-size:.8em;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;\">"
+      +     _escape(name)
+      +   "</div>"
+      +   stackedBar_(C, M, L, 5)
+      + "</div>"
+      + "<div style=\"display:flex;gap:3px;align-items:center;flex-shrink:0;\">"
+      +   chips_(C, M, L)
+      +   "<span style=\"font-size:.82em;font-weight:1000;min-width:20px;text-align:right;color:" + borderColor + ";\">" + total + "</span>"
+      + "</div>"
+      + "</div>";
+  }
+
+  const catRows = catStats.slice(0, 10).map((c, i) => catRow(c.cat, c.C, c.M, c.L, c.total, i)).join("");
+
+  let tecRows = "";
+  if (summary.byTecnico?.length) {
+    tecRows = summary.byTecnico.slice(0, 10).map((t, i) =>
+      tecRow(t.tecnico, t.CRITICA||0, t.MODERADA||0, t.LEVE||0, t.total, i)
+    ).join("");
+  }
+
+  function panel(title, rows) {
+    return "<div style=\"background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.10);"
+      + "border-radius:14px;padding:12px 14px;\">"
+      + "<div style=\"font-weight:900;font-size:.76em;letter-spacing:.7px;margin-bottom:8px;opacity:.7;border-bottom:1px solid rgba(255,255,255,.08);padding-bottom:6px;\">"
+      + title + "</div>"
       + rows
       + "</div>";
   }
 
-  const catRows = catStats.slice(0, 10).map(c => rankRow(c.cat, c.C, c.M, c.L, c.total)).join("");
-
-  let tecRows = "";
-  if (summary.byTecnico?.length) {
-    tecRows = summary.byTecnico.slice(0, 10).map(t =>
-      rankRow(t.tecnico, t.CRITICA || 0, t.MODERADA || 0, t.LEVE || 0, t.total)
-    ).join("");
-  }
-
   el.innerHTML =
     "<div style=\"display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;\">"
-    + panel("📊", "CATEGORÍAS", catRows)
-    + (tecRows ? panel("👷", "TÉCNICOS", tecRows) : "")
+    + panel("📊 CATEGORÍAS", catRows)
+    + (tecRows ? panel("👷 TÉCNICOS", tecRows) : "")
     + "</div>";
   el.style.display = "";
 }
 
-// ── incident card ─────────────────────────────────────────────────────────────
+// ── Tarjeta de incidencia individual ───────────────────────────────────────────────
 function renderCard_(it) {
-  const g      = GRADE_MAP[it.tipo] || GRADE_MAP.LEVE;
-  const extra  = parseExtra_(it.nota);
-  const hasImg = it.fotoThumbUrl || it.fotoUrl;
-  const imgSrc = it.fotoThumbUrl || it.fotoImgUrl || it.fotoUrl || "";
-  const imgFull = it.fotoImgUrl  || it.fotoUrl    || "";
-  return "<div style=\"background:rgba(255,255,255,.035);border:1px solid " + g.border
-    + ";border-left:3px solid " + g.color
-    + ";border-radius:10px;padding:8px 10px;margin-bottom:6px;display:flex;gap:8px;align-items:flex-start;\">"
+  const g       = GRADE_MAP[it.tipo] || GRADE_MAP.LEVE;
+  const extra   = parseExtra_(it.nota);
+  const hasImg  = it.fotoThumbUrl || it.fotoUrl;
+  const imgSrc  = it.fotoThumbUrl || it.fotoImgUrl || it.fotoUrl || "";
+  const imgFull = it.fotoImgUrl   || it.fotoUrl    || "";
+  return "<div style=\"background:rgba(255,255,255,.03);"
+    + "border:1px solid " + g.border + ";"
+    + "border-left:4px solid " + g.color + ";"
+    + "border-radius:10px;padding:8px 10px;margin-bottom:6px;"
+    + "display:flex;gap:8px;align-items:flex-start;\">"
     + (hasImg
-      ? "<div style=\"flex-shrink:0;\"><img src=\"" + _escape(imgSrc) + "\" alt=\"foto\" loading=\"lazy\""
-        + " style=\"width:46px;height:46px;object-fit:cover;border-radius:7px;border:1px solid rgba(255,255,255,.12);cursor:pointer;\""
-        + " onclick=\"window.open('" + _escape(imgFull) + "','_blank','noopener')\"/></div>"
+      ? "<div style=\"flex-shrink:0;\">"
+        + "<img src=\"" + _escape(imgSrc) + "\" alt=\"foto\" loading=\"lazy\""
+        + " style=\"width:44px;height:44px;object-fit:cover;border-radius:7px;"
+        + "border:1px solid rgba(255,255,255,.12);cursor:pointer;\""
+        + " onclick=\"window.open('" + _escape(imgFull) + "','_blank','noopener')\"/>"
+        + "</div>"
       : "")
     + "<div style=\"flex:1;min-width:0;\">"
-    +   "<div style=\"display:flex;gap:5px;align-items:center;flex-wrap:wrap;margin-bottom:2px;\">"
-    +     "<code style=\"font-size:.76em;opacity:.9;background:rgba(255,255,255,.07);border-radius:4px;padding:1px 5px;\">" + _escape(it.vin || "—") + "</code>"
-    +     "<span style=\"margin-left:auto;font-size:.74em;opacity:.5;flex-shrink:0;\">" + fmtDateTime_(it.fecha_hora) + "</span>"
+    +   "<div style=\"display:flex;gap:5px;align-items:center;flex-wrap:wrap;margin-bottom:3px;\">"
+    +     "<code style=\"font-size:.75em;background:rgba(255,255,255,.07);border-radius:4px;padding:1px 5px;\">"
+    +       _escape(it.vin || "—")
+    +     "</code>"
+    +     chip_(g.abbr, "", g).replace("<b></b>","").replace("abbr", g.abbr + " ").replace("gap:2px;","gap:0;")
+    +     "<span style=\"margin-left:auto;font-size:.73em;opacity:.45;flex-shrink:0;\">" + fmtDateTime_(it.fecha_hora) + "</span>"
     +   "</div>"
-    +   "<div style=\"font-weight:800;font-size:.84em;\">" + _escape(it.tecnico || "—") + "</div>"
-    +   (extra ? "<div style=\"font-size:.78em;opacity:.72;margin-top:3px;line-height:1.4;\">" + _escape(extra) + "</div>" : "")
+    +   "<div style=\"font-weight:800;font-size:.84em;color:" + g.color + ";opacity:.9;\">" + _escape(it.tecnico || "—") + "</div>"
+    +   (extra ? "<div style=\"font-size:.78em;opacity:.65;margin-top:3px;line-height:1.4;\">" + _escape(extra) + "</div>" : "")
     + "</div></div>";
 }
 
-// ── list grouped by category then grade ──────────────────────────────────────
+// ── Lista agrupada: categoría → grado ──────────────────────────────────────────────────
 function buildCatGroups_(items) {
   const cats = {};
   for (const it of items) {
@@ -263,7 +313,7 @@ function renderList_(items) {
   const el = document.getElementById("incRepList");
   if (!el) return null;
   if (!items.length) {
-    el.innerHTML = "<div style=\"padding:16px;text-align:center;opacity:.5;font-size:.88em;\">Sin incidencias para los filtros seleccionados.</div>";
+    el.innerHTML = "<div style=\"padding:18px;text-align:center;opacity:.45;font-size:.88em;\">Sin incidencias para los filtros seleccionados.</div>";
     return null;
   }
 
@@ -276,8 +326,8 @@ function renderList_(items) {
     const aCrit = aG.CRITICA?.length || 0;
     const bCrit = bG.CRITICA?.length || 0;
     if (bCrit !== aCrit) return bCrit - aCrit;
-    const aT = Object.values(aG).reduce((s, a) => s + a.length, 0);
-    const bT = Object.values(bG).reduce((s, a) => s + a.length, 0);
+    const aT = Object.values(aG).reduce((s,a)=>s+a.length,0);
+    const bT = Object.values(bG).reduce((s,a)=>s+a.length,0);
     return bT - aT;
   });
 
@@ -291,22 +341,21 @@ function renderList_(items) {
     const tot = C + M + L;
     const id  = "incCat_" + (catIdx++);
 
-    const hdrColor  = C ? "rgba(248,113,113,.9)" : M ? "rgba(251,146,60,.9)" : "rgba(250,204,21,.8)";
-    const hdrBorder = C ? "rgba(248,113,113,.35)" : M ? "rgba(251,146,60,.35)" : "rgba(250,204,21,.25)";
-
-    const miniCnts =
-        (C ? "<span style=\"color:rgba(248,113,113,.95);font-weight:900;font-size:.79em;\">" + C + "🔴</span>" : "")
-      + (M ? "<span style=\"color:rgba(251,146,60,.95); font-weight:900;font-size:.79em;\">" + M + "🟠</span>" : "")
-      + (L ? "<span style=\"color:rgba(250,204,21,.95); font-weight:900;font-size:.79em;\">" + L + "🟡</span>" : "");
+    // Color del encabezado = peor grado
+    const hdrColor  = C ? "#ef4444" : M ? "#f97316" : "#eab308";
+    const hdrBorder = C ? "rgba(239,68,68,.4)" : M ? "rgba(249,115,22,.4)" : "rgba(234,179,8,.3)";
+    const hdrBg     = C ? "rgba(239,68,68,.08)" : M ? "rgba(249,115,22,.08)" : "rgba(234,179,8,.06)";
 
     let inner = "";
-    for (const { key, icon, label, color, border } of GRADE) {
+    for (const { key, label, color, border, bg } of GRADE) {
       const grp = gg[key];
       if (!grp?.length) continue;
-      inner += "<div style=\"margin-bottom:12px;\">"
-        + "<div style=\"font-size:.75em;font-weight:900;letter-spacing:.6px;color:" + color
-        + ";padding:3px 0 6px;border-bottom:1px solid " + border + ";margin-bottom:6px;\">"
-        + icon + " " + label + " — " + grp.length
+      inner += "<div style=\"margin-bottom:14px;\">"
+        + "<div style=\"display:flex;align-items:center;gap:6px;font-size:.74em;font-weight:900;"
+        +   "letter-spacing:.6px;color:" + color + ";padding:4px 0 7px;"
+        +   "border-bottom:2px solid " + border + ";margin-bottom:8px;\">"
+        +   "<div style=\"width:8px;height:8px;border-radius:50%;background:" + color + ";flex-shrink:0;\"></div>"
+        +   label + " — " + grp.length
         + "</div>"
         + grp.map(renderCard_).join("")
         + "</div>";
@@ -314,14 +363,17 @@ function renderList_(items) {
 
     html +=
       "<div style=\"border:1px solid " + hdrBorder + ";border-radius:14px;overflow:hidden;margin-bottom:10px;\">"
+      // header toggle
       + "<button type=\"button\" data-catid=\"" + id + "\"" 
-      + " style=\"width:100%;background:rgba(255,255,255,.05);border:none;border-bottom:1px solid " + hdrBorder
-      + ";padding:9px 14px;display:flex;align-items:center;gap:8px;cursor:pointer;color:inherit;text-align:left;\">"
-      + "<span style=\"font-weight:900;font-size:.86em;letter-spacing:.4px;color:" + hdrColor + ";flex:1;\">📂 " + _escape(cat) + "</span>"
-      + "<span style=\"display:flex;gap:5px;align-items:center;\">" + miniCnts + "</span>"
-      + "<span style=\"font-size:.75em;opacity:.5;flex-shrink:0;margin-left:6px;\">" + tot + " inc.</span>"
-      + "<span class=\"inc-cat-chev\" style=\"font-size:.74em;opacity:.55;\">&#9660;</span>"
+      + " style=\"width:100%;background:" + hdrBg + ";border:none;border-bottom:1px solid " + hdrBorder
+      + ";padding:10px 14px;display:flex;align-items:center;gap:8px;cursor:pointer;color:inherit;text-align:left;\">"
+      + "<div style=\"width:10px;height:10px;border-radius:50%;background:" + hdrColor + ";flex-shrink:0;box-shadow:0 0 6px " + hdrColor + "80;\"></div>"
+      + "<span style=\"font-weight:900;font-size:.86em;letter-spacing:.4px;color:" + hdrColor + ";flex:1;\">" + _escape(cat) + "</span>"
+      + "<span style=\"display:flex;gap:4px;align-items:center;\">" + chips_(C, M, L) + "</span>"
+      + "<span style=\"font-size:.74em;opacity:.4;flex-shrink:0;margin-left:6px;\">" + tot + " inc.</span>"
+      + "<span class=\"inc-cat-chev\" style=\"font-size:.72em;opacity:.5;margin-left:4px;\">&#9660;</span>"
       + "</button>"
+      // body
       + "<div id=\"" + id + "\" style=\"padding:10px 12px;\">" + inner + "</div>"
       + "</div>";
   }
@@ -342,14 +394,14 @@ function renderList_(items) {
   return cats;
 }
 
-// ── orchestrate ──────────────────────────────────────────────────────────────
+// ── Orquestador ─────────────────────────────────────────────────────────────────────
 function renderIncReport_(j) {
   renderKpis_(j.summary);
   const cats = renderList_(j.items);
   if (cats) renderRanking_(cats, j.summary);
 }
 
-// ── bind ─────────────────────────────────────────────────────────────────────
+// ── bind ───────────────────────────────────────────────────────────────────────────
 export function bindSupIncidenciasReport_({ getJSON_user, escapeHtml }) {
   _getJSON = getJSON_user;
   _escape  = escapeHtml;
