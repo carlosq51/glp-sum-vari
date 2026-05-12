@@ -80,7 +80,6 @@ function renderLive_(container, data) {
   const allRoles = [...ORDER.filter(r => groups[r]), ...Object.keys(groups).filter(r => !ORDER.includes(r))];
 
   // ── KPI header globals ────────────────────────────────────────────────
-  const totalCarsAll = techs.filter(t => !["DESCONECTADO","SIN_ACTIVIDAD"].includes(t.estadoActivo)).reduce((s,t) => s + (Number(t.carsHoy)||0), 0);
   const countWorking = techs.filter(t => t.estadoActivo === "TRABAJANDO").length;
   const countPaused  = techs.filter(t => t.estadoActivo === "PAUSADO").length;
   const countSinIni  = techs.filter(t => t.estadoActivo === "SIN_INICIAR").length;
@@ -91,26 +90,66 @@ function renderLive_(container, data) {
     const ms = r?.updated_at ? Date.now()-new Date(r.updated_at).getTime() : 0;
     return (t.estadoActivo==="PAUSADO" && ms>40*60_000)||(t.estadoActivo==="SIN_INICIAR" && ms>60*60_000);
   }).length;
-  const totalVirtualAll = techs.filter(t => !["DESCONECTADO","SIN_ACTIVIDAD"].includes(t.estadoActivo)).reduce((s,t) => s + (Number(t.virtualHoy)||0), 0);
-  const _totAssAll = totalCarsAll + totalVirtualAll;
-  const pctCumplAll = _totAssAll > 0 ? Math.round(totalCarsAll / _totAssAll * 100) : null;
+
+  // VIN-level goals from server
+  const vsum     = data.vinsSummary || {};
+  const metaConv = vsum.metaConv || 25;
+  const metaCal  = vsum.metaCal  || 22;
+  const convDone = vsum.convDone || 0;
+  const calDone  = vsum.calDone  || 0;
+  const convActive = vsum.convActive || 0;
+  const calActive  = vsum.calActive  || 0;
+  const pctConv  = metaConv > 0 ? Math.min(Math.round(convDone / metaConv * 100), 100) : 0;
+  const pctCal   = metaCal  > 0 ? Math.min(Math.round(calDone  / metaCal  * 100), 100) : 0;
+  const convBarColor = pctConv >= 100 ? "#4ade80" : "#38bdf8";
+  const calBarColor  = pctCal  >= 100 ? "#4ade80" : "#a78bfa";
+  const convNumColor = pctConv >= 100 ? "#4ade80" : pctConv >= 70 ? "#fbbf24" : "#e2e8f0";
+  const calNumColor  = pctCal  >= 100 ? "#4ade80" : pctCal  >= 70 ? "#fbbf24" : "#e2e8f0";
 
   let html = `<div class="live-refresh-bar">
-    <span class="live-fecha small">📅 ${escapeHtml(data.fecha || "")}</span>
+    <span class="live-fecha small">\uD83D\uDCC5 ${escapeHtml(data.fecha || "")}</span>
     <span id="liveLastUpdate" class="live-last-update small">Actualizado: ${fmtHora_(new Date().toISOString())}</span>
-    <button type="button" id="btnLiveRefresh" class="live-refresh-btn" title="Actualizar ahora">↻</button>
+    <button type="button" id="btnLiveRefresh" class="live-refresh-btn" title="Actualizar ahora">\u21bb</button>
   </div>
-  <div style="display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 12px;padding:10px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;align-items:center;">
-    <span style="font-size:1.6em;font-weight:1000;color:#38bdf8;min-width:36px;line-height:1;">${fmtCars_(totalCarsAll)}</span>
-    <span style="font-size:.7em;font-weight:900;opacity:.5;letter-spacing:.5px;margin-right:8px;">CARROS HOY</span>
-    <span style="display:inline-flex;align-items:center;gap:4px;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.3);color:#4ade80;border-radius:6px;padding:2px 8px;font-size:.72em;font-weight:900;cursor:pointer;user-select:none;transition:box-shadow .15s;" data-live-filter="TRABAJANDO" title="Click para filtrar activos">&#x1F7E2; ${countWorking} activo${countWorking!==1?"s":""}</span>
-    ${countPaused > 0 ? `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);color:#fbbf24;border-radius:6px;padding:2px 8px;font-size:.72em;font-weight:900;cursor:pointer;user-select:none;transition:box-shadow .15s;" data-live-filter="PAUSADO" title="Click para filtrar pausados">&#x23F8; ${countPaused} pausado${countPaused!==1?"s":""}</span>` : ""}
-    ${countSinIni > 0 ? `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(148,163,184,.10);border:1px solid rgba(148,163,184,.3);color:#94a3b8;border-radius:6px;padding:2px 8px;font-size:.72em;font-weight:900;cursor:pointer;user-select:none;transition:box-shadow .15s;" data-live-filter="SIN_INICIAR" title="Click para filtrar sin iniciar">&#x25CB; ${countSinIni} sin ini.</span>` : ""}
-    ${countStalled > 0 ? `<span style="background:rgba(249,115,22,.15);border:1px solid rgba(249,115,22,.5);color:#fb923c;border-radius:6px;padding:2px 8px;font-size:.72em;font-weight:900;cursor:pointer;user-select:none;transition:box-shadow .15s;" data-live-filter="STALLED" title="Click para filtrar sin movimiento">&#x26A0;&#xFE0F; ${countStalled} sin mov.</span>` : ""}
-    <div style="margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
-      ${pctCumplAll !== null ? `<div style="display:flex;align-items:center;gap:5px;cursor:pointer;user-select:none;" data-live-filter="CUMPL_LOW" title="Click para ver t\u00E9cnicos con bajo cumplimiento (<50%)"><span style="font-size:.62em;opacity:.45;letter-spacing:.4px;">CUMPL.</span><div style="width:52px;height:5px;background:rgba(255,255,255,.1);border-radius:3px;overflow:hidden;"><div style="height:100%;width:${pctCumplAll}%;background:${pctCumplAll>=80?"#4ade80":pctCumplAll>=50?"#fbbf24":"#f87171"};border-radius:3px;transition:width .4s;"></div></div><span style="font-size:.8em;font-weight:1000;color:${pctCumplAll>=80?"#4ade80":pctCumplAll>=50?"#fbbf24":"#f87171"}">${pctCumplAll}%</span></div>` : ""}
-      <span style="font-size:.62em;opacity:.3;">${countTotal} t\u00E9cnico${countTotal!==1?"s":""} hoy</span>
+  <div style="margin:8px 0 12px;padding:10px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;">
+
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
+      <div style="flex:1;min-width:120px;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
+          <span style="font-size:.7em;font-weight:900;letter-spacing:.5px;color:#38bdf8;">\uD83D\uDD27 CONVERSI\u00d3N</span>
+          <span style="font-size:.88em;font-weight:1000;color:${convNumColor};">${convDone} <span style="opacity:.4;font-size:.8em;font-weight:700;">/ ${metaConv}</span></span>
+        </div>
+        <div style="height:7px;background:rgba(255,255,255,.1);border-radius:4px;overflow:hidden;">
+          <div style="height:100%;width:${pctConv}%;background:${convBarColor};border-radius:4px;transition:width .6s;"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:.62em;margin-top:2px;opacity:.4;">
+          <span>${pctConv}%</span>
+          ${convActive > 0 ? `<span>\u2699\ufe0f ${convActive} en proc.</span>` : ""}
+        </div>
+      </div>
+      <div style="flex:1;min-width:120px;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
+          <span style="font-size:.7em;font-weight:900;letter-spacing:.5px;color:#a78bfa;">\u2705 CALIDAD</span>
+          <span style="font-size:.88em;font-weight:1000;color:${calNumColor};">${calDone} <span style="opacity:.4;font-size:.8em;font-weight:700;">/ ${metaCal}</span></span>
+        </div>
+        <div style="height:7px;background:rgba(255,255,255,.1);border-radius:4px;overflow:hidden;">
+          <div style="height:100%;width:${pctCal}%;background:${calBarColor};border-radius:4px;transition:width .6s;"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:.62em;margin-top:2px;opacity:.4;">
+          <span>${pctCal}%</span>
+          ${calActive > 0 ? `<span>\u2699\ufe0f ${calActive} en proc.</span>` : ""}
+        </div>
+      </div>
     </div>
+
+    <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;border-top:1px solid rgba(255,255,255,.06);padding-top:7px;">
+      <span style="display:inline-flex;align-items:center;gap:4px;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.3);color:#4ade80;border-radius:6px;padding:2px 8px;font-size:.72em;font-weight:900;cursor:pointer;user-select:none;" data-live-filter="TRABAJANDO" title="Click para filtrar activos">&#x1F7E2; ${countWorking} activo${countWorking!==1?"s":""}</span>
+      ${countPaused > 0 ? `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);color:#fbbf24;border-radius:6px;padding:2px 8px;font-size:.72em;font-weight:900;cursor:pointer;user-select:none;" data-live-filter="PAUSADO" title="Click para filtrar pausados">&#x23F8; ${countPaused} pausado${countPaused!==1?"s":""}</span>` : ""}
+      ${countSinIni > 0 ? `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(148,163,184,.10);border:1px solid rgba(148,163,184,.3);color:#94a3b8;border-radius:6px;padding:2px 8px;font-size:.72em;font-weight:900;cursor:pointer;user-select:none;" data-live-filter="SIN_INICIAR" title="Click para filtrar sin iniciar">&#x25CB; ${countSinIni} sin ini.</span>` : ""}
+      ${countStalled > 0 ? `<span style="background:rgba(249,115,22,.15);border:1px solid rgba(249,115,22,.5);color:#fb923c;border-radius:6px;padding:2px 8px;font-size:.72em;font-weight:900;cursor:pointer;user-select:none;" data-live-filter="STALLED" title="Click para filtrar sin movimiento">&#x26A0;&#xFE0F; ${countStalled} sin mov.</span>` : ""}
+      <span style="margin-left:auto;font-size:.62em;opacity:.3;">${countTotal} t\u00e9cnico${countTotal!==1?"s":""} hoy</span>
+    </div>
+
   </div>`;
 
   for (const rol of allRoles) {

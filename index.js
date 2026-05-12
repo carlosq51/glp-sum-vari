@@ -1308,24 +1308,33 @@ app.get("/api/supervisor/live", async (req, res) => {
     // Q5: Trabajos de días anteriores que siguen ACTIVOS hoy ("virtual" — en progreso, no finalizados)
     const url5 = `${SUPABASE_URL}/rest/v1/asignaciones?select=${selectFields}&activo=eq.true&estado_actual=in.(TRABAJANDO,PAUSADO,SIN_INICIAR)&fecha_asignacion=lt.${todayStr}T00:00:00&order=updated_at.desc`;
 
-    const [resp1, resp2, resp3, resp4, resp5] = await Promise.all([
+    // Q6: Metas diarias (META_CONVERSION, META_CALIDAD) desde app_config
+    const url6 = `${SUPABASE_URL}/rest/v1/app_config?select=key,value&key=in.(META_CONVERSION,META_CALIDAD)`;
+
+    const [resp1, resp2, resp3, resp4, resp5, resp6] = await Promise.all([
       fetch(url1, { method: "GET", headers }),
       fetch(url2, { method: "GET", headers }),
       fetch(url3, { method: "GET", headers }),
       fetch(url4, { method: "GET", headers }),
       fetch(url5, { method: "GET", headers }),
+      fetch(url6, { method: "GET", headers }).catch(() => null),
     ]);
     if (!resp1.ok) {
       const text = await resp1.text().catch(() => "");
       throw new Error(`Supabase Q1: ${resp1.status} ${text.slice(0, 200)}`);
     }
-    const [raw1, raw2, allUsers, recentAsg, raw5] = await Promise.all([
+    const [raw1, raw2, allUsers, recentAsg, raw5, cfgRows] = await Promise.all([
       resp1.json(),
       resp2.json().catch(() => []),
       resp3.json().catch(() => []),
       resp4.json().catch(() => []),
       resp5.json().catch(() => []),
+      resp6 && resp6.ok ? resp6.json().catch(() => []) : Promise.resolve([]),
     ]);
+    const _cfgMap = {};
+    (cfgRows || []).forEach(r => { _cfgMap[r.key] = r.value; });
+    const metaConv = Number(_cfgMap.META_CONVERSION) || 25;
+    const metaCal  = Number(_cfgMap.META_CALIDAD)    || 22;
 
     // Mapa: user_id → último rol_trabajo conocido (para TECNICO AMBOS)
     const lastRolMap = new Map();
@@ -1355,6 +1364,31 @@ app.get("/api/supervisor/live", async (req, res) => {
     for (const asg of [...(raw1 || []), ...(raw2 || []), ...(raw5 || [])]) {
       if (!seenIds.has(asg.id)) { seenIds.add(asg.id); raw.push(asg); }
     }
+
+    // ── VIN-level summary: CONVERSION = MOTOR+TANQUE ambos FINALIZADO; CALIDAD = CALIDAD FINALIZADO ──
+    const vinConv = {}; // vin → { motorFin, tanqueFin, hasActive }
+    const vinCal  = {}; // vin → { done, active }
+    for (const asg of raw) {
+      const wo     = Array.isArray(asg.work_orders) ? asg.work_orders[0] : (asg.work_orders || {});
+      const vin    = wo.vin || "";
+      if (!vin) continue;
+      const tipoOt = (asg.tipo_ot || "").toUpperCase();
+      const rol    = (asg.rol_trabajo || "").toUpperCase();
+      const done   = asg.estado_actual === "FINALIZADO";
+      if (tipoOt === "CONVERSION") {
+        if (!vinConv[vin]) vinConv[vin] = { motorFin: false, tanqueFin: false, hasActive: false };
+        if (rol === "MOTOR")  { if (done) vinConv[vin].motorFin  = true; else vinConv[vin].hasActive = true; }
+        if (rol === "TANQUE") { if (done) vinConv[vin].tanqueFin = true; else vinConv[vin].hasActive = true; }
+      } else if (tipoOt === "CALIDAD") {
+        if (!vinCal[vin])  vinCal[vin] = { done: false, active: false };
+        if (done) vinCal[vin].done = true; else vinCal[vin].active = true;
+      }
+    }
+    const convDone   = Object.values(vinConv).filter(v => v.motorFin && v.tanqueFin).length;
+    const convActive = Object.values(vinConv).filter(v => !(v.motorFin && v.tanqueFin)).length;
+    const calDone    = Object.values(vinCal).filter(v => v.done).length;
+    const calActive  = Object.values(vinCal).filter(v => v.active && !v.done).length;
+    const vinsSummary = { convDone, convActive, calDone, calActive, metaConv, metaCal };
 
     // 2. Agrupar por user_id + rol_trabajo
     const techMap = new Map();
@@ -1459,7 +1493,7 @@ app.get("/api/supervisor/live", async (req, res) => {
     });
 
     const duration = Date.now() - t1;
-    return res.json({ ok: true, techs, fecha: todayStr, _timing: `${duration}ms` });
+    return res.json({ ok: true, techs, fecha: todayStr, vinsSummary, _timing: `${duration}ms` });
   } catch (e) {
     console.error("[GET /api/supervisor/live]", e.message);
     res.status(500).json({ ok: false, error: String(e.message || e) });

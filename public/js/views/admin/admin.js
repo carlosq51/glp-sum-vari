@@ -149,6 +149,8 @@ async function loadTab() {
       const comidaFin     = cfg.HORARIO_COMIDA_FIN       || "14:00";
       const descInicio    = cfg.HORARIO_DESCANSO_INICIO  || "16:30";
       const descFin       = cfg.HORARIO_DESCANSO_FIN     || "07:00";
+      const metaConv      = cfg.META_CONVERSION          || "25";
+      const metaCal       = cfg.META_CALIDAD             || "22";
 
       wrap.innerHTML = `
         <div class="adminConfigPanel">
@@ -225,6 +227,28 @@ async function loadTab() {
             </div>
           </div>
 
+          <!-- OBJETIVOS DIARIOS -->
+          <div class="adminConfigSection">
+            <h4 class="adminConfigTitle">Objetivos diarios de producci\u00f3n</h4>
+            <p class="small muted">
+              Metas de VINs completados por d\u00eda. Se muestran como barras de progreso en el panel LIVE.
+            </p>
+            <div class="adminHorarioGrid">
+              <label class="adminLabel adminLabelInline">
+                🔧 Conversi\u00f3n (motor+tanque)
+                <input id="cfgMetaConv" type="number" min="1" max="200" value="${escHtml(metaConv)}" style="width:100px;">
+              </label>
+              <label class="adminLabel adminLabelInline">
+                ✅ Calidad
+                <input id="cfgMetaCal" type="number" min="1" max="200" value="${escHtml(metaCal)}" style="width:100px;">
+              </label>
+            </div>
+            <div style="margin-top:14px;display:flex;gap:10px;align-items:center;">
+              <button id="btnSaveMetas" type="button" class="adminBtnOk">Guardar objetivos</button>
+              <span id="cfgMetasMsg" class="small muted"></span>
+            </div>
+          </div>
+
           <!-- FECHA CORTE MOVILIZADOR -->
           <div class="adminConfigSection">
             <h4 class="adminConfigTitle">Configuración del Movilizador</h4>
@@ -248,6 +272,7 @@ async function loadTab() {
       // --- eventos ---
       $id("btnSaveConfig")?.addEventListener("click", saveConfig_);
       $id("btnSaveHorarios")?.addEventListener("click", saveHorarios_);
+      $id("btnSaveMetas")?.addEventListener("click", saveMetas_);
       $id("btnPausarTodo")?.addEventListener("click", () => pausaMasiva_("PAUSA"));
       $id("btnReanudarTodo")?.addEventListener("click", () => pausaMasiva_("REANUDAR"));
 
@@ -288,6 +313,32 @@ async function saveConfig_() {
     const j = await resp.json();
     if (!j?.ok) throw new Error(j?.error || "Error");
     if (msgEl) { msgEl.textContent = "✔ Guardado"; msgEl.style.color = "var(--ok)"; }
+  } catch (e) {
+    if (msgEl) { msgEl.textContent = `Error: ${e.message}`; msgEl.style.color = "var(--danger)"; }
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function saveMetas_() {
+  const btn   = $id("btnSaveMetas");
+  const msgEl = $id("cfgMetasMsg");
+  const conv  = String(Number($id("cfgMetaConv")?.value) || 25);
+  const cal   = String(Number($id("cfgMetaCal")?.value)  || 22);
+  if (btn) btn.disabled = true;
+  if (msgEl) msgEl.textContent = "Guardando\u2026";
+  try {
+    const resp = await fetch("/api/admin/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ configs: [
+        { key: "META_CONVERSION", value: conv },
+        { key: "META_CALIDAD",    value: cal  },
+      ]}),
+    });
+    const j = await resp.json();
+    if (!j?.ok) throw new Error(j?.error || "Error");
+    if (msgEl) { msgEl.textContent = "\u2714 Guardado"; msgEl.style.color = "var(--ok)"; }
   } catch (e) {
     if (msgEl) { msgEl.textContent = `Error: ${e.message}`; msgEl.style.color = "var(--danger)"; }
   } finally {
