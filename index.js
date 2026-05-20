@@ -2828,6 +2828,50 @@ app.get("/api/movilizador/status", async (req, res) => {
       }
     } catch (_) { /* columna ultima_ubicacion aún no existe en vins, se omite */ }
 
+    // ─── Lista Diaria: todos los VINs del flujo de conversión del día ───
+    const allConvVins = new Set();
+    for (const wo of (convRows || [])) { if (wo.vin) allConvVins.add(wo.vin); }
+    for (const vin of convActivaMap) { allConvVins.add(vin); }
+    // Incluir también los registrados por el movilizador aunque no tengan OT aún
+    for (const [vin, t] of trasMap) {
+      if (t.estado !== "ENTREGADO_FINAL") allConvVins.add(vin);
+    }
+
+    const listDiaria = [];
+    for (const vin of allConvVins) {
+      const t = trasMap.get(vin);
+      if (t?.estado === "ENTREGADO_FINAL") continue; // ya entregado, no mostrar
+
+      let flow_status;
+      const fecha_ot = convVinMap.get(vin)?.fecha_creacion || null;
+
+      if (calidadDoneMap.has(vin)) {
+        flow_status = "LISTA_SALIDA";
+      } else if (calidadActivaMap.has(vin) || t?.estado === "ENTREGADO_CALIDAD") {
+        flow_status = "EN_REVISION";
+      } else if (t?.estado === "TRASLADADO") {
+        flow_status = "EN_ZONA";
+      } else if (convVinMap.has(vin)) {
+        flow_status = "CONVERSION_DONE";
+      } else if (convActivaMap.has(vin)) {
+        flow_status = "EN_CONVERSION";
+      } else if (t?.estado === "EN_ESPERA_CONVERSION") {
+        flow_status = "EN_ESPERA";
+      } else {
+        flow_status = "PENDIENTE_ENTRADA";
+      }
+
+      listDiaria.push({
+        vin,
+        flow_status,
+        fecha_ot,
+        registrado: !!t,
+        fecha_entrada: t?.trasladado_at || null,
+      });
+    }
+    const flowOrder = { PENDIENTE_ENTRADA: 0, EN_ESPERA: 1, EN_CONVERSION: 2, CONVERSION_DONE: 3, EN_ZONA: 4, EN_REVISION: 5, LISTA_SALIDA: 6 };
+    listDiaria.sort((a, b) => (flowOrder[a.flow_status] ?? 9) - (flowOrder[b.flow_status] ?? 9));
+
     return res.json({
       ok: true,
       fechaCorte,
@@ -2835,6 +2879,7 @@ app.get("/api/movilizador/status", async (req, res) => {
       list1,
       list2,
       list3,
+      listDiaria,
       counts: {
         list0: list0.length,
         list0_espera: list0.filter(r => !r.en_conversion).length,
@@ -2842,6 +2887,8 @@ app.get("/api/movilizador/status", async (req, res) => {
         list1: list1.length,
         list2: list2.length,
         list3: list3.length,
+        listDiaria: listDiaria.length,
+        listDiariaPendientes: listDiaria.filter(r => r.flow_status === "PENDIENTE_ENTRADA").length,
       },
     });
   } catch (e) {

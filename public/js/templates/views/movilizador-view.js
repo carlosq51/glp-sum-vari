@@ -1,6 +1,6 @@
 // =========================
 // public/js/templates/views/movilizador-view.js
-// Template HTML: vista movilizador – 3 paneles de flujo
+// Template HTML: vista movilizador – 4 tabs de flujo
 // =========================
 
 export function movilizadorView() {
@@ -16,17 +16,22 @@ export function movilizadorView() {
         </div>
       </div>
 
-      <!-- Tab bar -->
+      <!-- Tab bar – 4 pestañas -->
       <div class="movTabBar" role="tablist">
-        <button class="movTab active" data-tab="entrada" role="tab" aria-selected="true">
+        <button class="movTab active" data-tab="lista" role="tab" aria-selected="true">
+          <span class="movTabIcon">📋</span>
+          <span class="movTabLabel">Lista</span>
+          <span id="movBadgeLista" class="movBadge movBadgeWarn" style="display:none;"></span>
+        </button>
+        <button class="movTab" data-tab="ingreso" role="tab" aria-selected="false">
           <span class="movTabIcon">📥</span>
-          <span class="movTabLabel">Entrada</span>
+          <span class="movTabLabel">Ingreso</span>
           <span id="movBadge0"     class="movBadge movBadgeWarn"  style="display:none;"></span>
           <span id="movBadge0conv" class="movBadge movBadgeNote"  style="display:none;"></span>
         </button>
         <button class="movTab" data-tab="espera" role="tab" aria-selected="false">
           <span class="movTabIcon">🔧</span>
-          <span class="movTabLabel">Zona de Espera</span>
+          <span class="movTabLabel">Zona Espera</span>
           <span id="movBadge1" class="movBadge movBadgeWarn" style="display:none;"></span>
           <span id="movBadge2" class="movBadge movBadgeNote" style="display:none;"></span>
         </button>
@@ -51,8 +56,29 @@ export function movilizadorView() {
         </div>
       </div>
 
-      <!-- ── Tab: ENTRADA ── -->
-      <div class="movTabPanel" data-panel="entrada">
+      <!-- ── Tab: LISTA DIARIA ── -->
+      <div class="movTabPanel" data-panel="lista">
+
+        <div class="movListaDiariaHeader">
+          <span class="movListaDiariaTitle">Vehículos del Día</span>
+          <span id="movListaDiariaCount" class="movListaDiariaCount"></span>
+        </div>
+
+        <!-- Filtro por estado -->
+        <div class="movListaFiltros" id="movListaFiltros">
+          <button class="movFiltroBtn active" data-filtro="todos">Todos</button>
+          <button class="movFiltroBtn" data-filtro="PENDIENTE_ENTRADA">Sin ingresar</button>
+          <button class="movFiltroBtn" data-filtro="EN_ESPERA">En espera</button>
+          <button class="movFiltroBtn" data-filtro="EN_CONVERSION">Conversión</button>
+          <button class="movFiltroBtn" data-filtro="avanzados">Avanzados</button>
+        </div>
+
+        <div id="movListaDiariaBody" class="movListaDiariaBody"></div>
+
+      </div>
+
+      <!-- ── Tab: INGRESO ── -->
+      <div class="movTabPanel" data-panel="ingreso" style="display:none;">
 
         <div class="movRegBox">
           <div class="movRegTitle">Registrar Ingreso</div>
@@ -75,7 +101,7 @@ export function movilizadorView() {
           <button class="movPanelHeader" type="button" aria-expanded="true">
             <span class="movPanelIcon">🚗</span>
             <div class="movPanelTitleGroup">
-              <span class="movPanelTitle">Vehículos Ingresados</span>
+              <span class="movPanelTitle">Vehículos Ingresados Hoy</span>
               <span class="movPanelHint">En espera de conversión o en proceso</span>
             </div>
             <span class="movChevron" aria-hidden="true">▼</span>

@@ -89,6 +89,87 @@ function renderList0_(rows) {
   box.innerHTML = html;
 }
 
+// ─── Flow status config ──────────────────────────────────────────────
+
+const FLOW_CONFIG = {
+  PENDIENTE_ENTRADA: { label: "Sin ingresar",        cls: "flowPendiente",  icon: "⏳" },
+  EN_ESPERA:         { label: "En Espera Conversión", cls: "flowEspera",    icon: "🚗" },
+  EN_CONVERSION:     { label: "En Conversión",        cls: "flowConversion", icon: "🔧" },
+  CONVERSION_DONE:   { label: "Conversión Lista",     cls: "flowDone",      icon: "✅" },
+  EN_ZONA:           { label: "En Zona de Espera",    cls: "flowZona",      icon: "🕐" },
+  EN_REVISION:       { label: "En Revisión Técnica",  cls: "flowRevision",  icon: "🔍" },
+  LISTA_SALIDA:      { label: "Lista para Salir",     cls: "flowSalida",    icon: "🚀" },
+};
+
+let _listaDiariaRows = [];
+let _filtroActivo = "todos";
+
+function renderListDiaria_(rows) {
+  _listaDiariaRows = rows || [];
+
+  // Badge en la pestaña: solo PENDIENTE_ENTRADA
+  const pending = rows.filter(r => r.flow_status === "PENDIENTE_ENTRADA").length;
+  setBadge_("movBadgeLista", pending);
+
+  // Contador total
+  const countEl = document.getElementById("movListaDiariaCount");
+  if (countEl) countEl.textContent = rows.length ? `${rows.length} vehículo${rows.length !== 1 ? "s" : ""}` : "";
+
+  applyFiltroLista_(_filtroActivo);
+}
+
+function applyFiltroLista_(filtro) {
+  _filtroActivo = filtro;
+  const box = document.getElementById("movListaDiariaBody");
+  if (!box) return;
+
+  // Update filter button active state
+  document.querySelectorAll("#movListaFiltros .movFiltroBtn").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.filtro === filtro);
+  });
+
+  const rows = _listaDiariaRows;
+  let filtered;
+  if (filtro === "todos") {
+    filtered = rows;
+  } else if (filtro === "avanzados") {
+    filtered = rows.filter(r => ["EN_ZONA","EN_REVISION","LISTA_SALIDA","CONVERSION_DONE"].includes(r.flow_status));
+  } else {
+    filtered = rows.filter(r => r.flow_status === filtro);
+  }
+
+  if (!filtered.length) {
+    box.innerHTML = `<div class="movEmpty small muted">${
+      rows.length ? "Ningún vehículo en este filtro." : "No hay vehículos en la lista diaria."
+    }</div>`;
+    return;
+  }
+
+  box.innerHTML = `<div class="movCardList">
+    ${filtered.map(r => {
+      const cfg = FLOW_CONFIG[r.flow_status] || { label: r.flow_status, cls: "flowPendiente", icon: "?" };
+      const canRegister = r.flow_status === "PENDIENTE_ENTRADA";
+      return `
+        <div class="movCard movCardLista">
+          <div class="movCardTop">
+            <span class="movVin">${escapeHtml(r.vin)}</span>
+            <span class="movFlowChip ${cfg.cls}">${cfg.icon} ${cfg.label}</span>
+          </div>
+          ${r.fecha_entrada
+            ? `<div class="movCardSub small">Ingreso: ${fmtDate_(r.fecha_entrada)}</div>`
+            : r.fecha_ot
+              ? `<div class="movCardSub small muted">OT: ${fmtDate_(r.fecha_ot)}</div>`
+              : ""}
+          ${canRegister ? `
+            <button class="movBtnAction btnRegistrarDesde movBtnFull"
+              data-vin="${escapeHtml(r.vin)}" type="button">
+              📥 Registrar Ingreso ▶
+            </button>` : ""}
+        </div>`;
+    }).join("")}
+  </div>`;
+}
+
 function renderList1_(rows) {
   const box = document.getElementById("movPanel1Body");
   if (!box) return;
@@ -209,6 +290,7 @@ async function refreshAll_() {
     const j = await getJSON("/api/movilizador/status");
     if (!j?.ok) throw new Error(j?.error || "Error cargando estado");
 
+    renderListDiaria_(j.listDiaria || []);
     renderList0_(j.list0 || []);
     renderList1_(j.list1 || []);
     renderList2_(j.list2 || []);
@@ -260,6 +342,16 @@ function bindTabs_() {
       tabs.forEach(t => { t.classList.toggle("active", t === tab); t.setAttribute("aria-selected", String(t === tab)); });
       panels.forEach(p => { p.style.display = p.dataset.panel === target ? "flex" : "none"; });
     });
+  });
+}
+
+// ─── Lista diaria filtros ─────────────────────────────────────
+
+function bindFiltros_() {
+  document.getElementById("movListaFiltros")?.addEventListener("click", e => {
+    const btn = e.target.closest(".movFiltroBtn");
+    if (!btn) return;
+    applyFiltroLista_(btn.dataset.filtro || "todos");
   });
 }
 
@@ -433,6 +525,30 @@ function openGpsWithVin_(vin) {
   } catch {}
 }
 
+async function handleRegistroDesde_(vin, btn) {
+  const vinClean = String(vin || "").trim().toUpperCase();
+  if (!vinClean) return;
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Guardando…";
+  try {
+    const j = await postJSON("/api/movilizador/traslado", {
+      vin: vinClean,
+      accion: "REGISTRAR_ENTRADA",
+      usuario: getMovNombre_(),
+    });
+    if (!j?.ok) throw new Error(j?.error || "Error al guardar");
+    const statusEl = document.getElementById("movStatus");
+    if (statusEl) statusEl.textContent = `✓ ${vinClean} ingresado.`;
+    await refreshAll_();
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = original;
+    const statusEl = document.getElementById("movStatus");
+    if (statusEl) statusEl.textContent = `Error: ${e.message}`;
+  }
+}
+
 async function handleRegistro_(vin, accion, btnId) {
   const btn = document.getElementById(btnId);
   if (!btn) return;
@@ -536,10 +652,14 @@ export function init() {
     } else if (btn.classList.contains("btnConfirmarSalida")) {
       // Confirmar salida: registra ENTREGAR_FINAL + abre app GPS de registro
       handleAction_(vin, "ENTREGAR_FINAL", btn, openGpsWithVin_).catch(() => {});
+    } else if (btn.classList.contains("btnRegistrarDesde")) {
+      // Registrar ingreso desde la lista diaria
+      handleRegistroDesde_(vin, btn).catch(() => {});
     }
   });
 
   bindTabs_();
+  bindFiltros_();
   bindPanelToggles_();
 }
 
