@@ -248,6 +248,21 @@ async function handleAction_(vin, accion, btn, onSuccess) {
   }
 }
 
+// ─── Tab switching ────────────────────────────────────────────
+
+function bindTabs_() {
+  const tabs   = document.querySelectorAll("#viewMOVILIZADOR .movTab");
+  const panels = document.querySelectorAll("#viewMOVILIZADOR .movTabPanel");
+
+  tabs.forEach(tab => {
+    tab.addEventListener("click", () => {
+      const target = tab.dataset.tab;
+      tabs.forEach(t => { t.classList.toggle("active", t === tab); t.setAttribute("aria-selected", String(t === tab)); });
+      panels.forEach(p => { p.style.display = p.dataset.panel === target ? "flex" : "none"; });
+    });
+  });
+}
+
 // ─── Panel toggle ─────────────────────────────────────────────────────
 
 function bindPanelToggles_() {
@@ -524,6 +539,7 @@ export function init() {
     }
   });
 
+  bindTabs_();
   bindPanelToggles_();
 }
 

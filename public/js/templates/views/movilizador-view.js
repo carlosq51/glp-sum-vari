@@ -16,7 +16,28 @@ export function movilizadorView() {
         </div>
       </div>
 
-      <!-- QR Modal (movilizador) -->
+      <!-- Tab bar -->
+      <div class="movTabBar" role="tablist">
+        <button class="movTab active" data-tab="entrada" role="tab" aria-selected="true">
+          <span class="movTabIcon">📥</span>
+          <span class="movTabLabel">Entrada</span>
+          <span id="movBadge0"     class="movBadge movBadgeWarn"  style="display:none;"></span>
+          <span id="movBadge0conv" class="movBadge movBadgeNote"  style="display:none;"></span>
+        </button>
+        <button class="movTab" data-tab="espera" role="tab" aria-selected="false">
+          <span class="movTabIcon">🔧</span>
+          <span class="movTabLabel">Zona de Espera</span>
+          <span id="movBadge1" class="movBadge movBadgeWarn" style="display:none;"></span>
+          <span id="movBadge2" class="movBadge movBadgeNote" style="display:none;"></span>
+        </button>
+        <button class="movTab" data-tab="salida" role="tab" aria-selected="false">
+          <span class="movTabIcon">📤</span>
+          <span class="movTabLabel">Salida</span>
+          <span id="movBadge3" class="movBadge movBadgeOk" style="display:none;"></span>
+        </button>
+      </div>
+
+      <!-- QR Modal -->
       <div id="movQrModal" class="modal" aria-hidden="true" style="display:none;">
         <div class="modalBox">
           <div class="modalHead">
@@ -30,20 +51,9 @@ export function movilizadorView() {
         </div>
       </div>
 
-      <!-- ══════════════════════════════════════ -->
-      <!-- SECCIÓN 1: ENTRADA                     -->
-      <!-- ══════════════════════════════════════ -->
-      <div class="movSection movSectionEntrada">
-        <div class="movSectionHeader">
-          <span class="movSectionIcon">📥</span>
-          <span class="movSectionTitle">Entrada</span>
-          <div class="movSectionBadges">
-            <span id="movBadge0"     class="movBadge movBadgeWarn" aria-label="En espera"    style="display:none;"></span>
-            <span id="movBadge0conv" class="movBadge movBadgeNote" aria-label="En conversión" style="display:none;"></span>
-          </div>
-        </div>
+      <!-- ── Tab: ENTRADA ── -->
+      <div class="movTabPanel" data-panel="entrada">
 
-        <!-- Registro de Entrada -->
         <div class="movRegBox">
           <div class="movRegTitle">Registrar Ingreso</div>
           <div class="movRegHint">Marca el vehículo como <strong>En Espera Conversión</strong></div>
@@ -61,7 +71,6 @@ export function movilizadorView() {
           </button>
         </div>
 
-        <!-- Lista: En Espera de Conversión + En Conversión -->
         <div class="movPanel open" id="movPanel0">
           <button class="movPanelHeader" type="button" aria-expanded="true">
             <span class="movPanelIcon">🚗</span>
@@ -73,22 +82,12 @@ export function movilizadorView() {
           </button>
           <div id="movPanel0Body" class="movPanelBody"></div>
         </div>
+
       </div>
 
-      <!-- ══════════════════════════════════════ -->
-      <!-- SECCIÓN 2: ZONA DE ESPERA              -->
-      <!-- ══════════════════════════════════════ -->
-      <div class="movSection movSectionEspera">
-        <div class="movSectionHeader">
-          <span class="movSectionIcon">🔧</span>
-          <span class="movSectionTitle">Zona de Espera</span>
-          <div class="movSectionBadges">
-            <span id="movBadge1" class="movBadge movBadgeWarn" aria-label="Pendientes traslado" style="display:none;"></span>
-            <span id="movBadge2" class="movBadge movBadgeNote" aria-label="En espera/revisión"  style="display:none;"></span>
-          </div>
-        </div>
+      <!-- ── Tab: ZONA DE ESPERA ── -->
+      <div class="movTabPanel" data-panel="espera" style="display:none;">
 
-        <!-- Panel 1: Conversión Finalizada → mover a zona de espera -->
         <div class="movPanel open" id="movPanel1">
           <button class="movPanelHeader" type="button" aria-expanded="true">
             <span class="movPanelIcon">⚙️</span>
@@ -101,7 +100,6 @@ export function movilizadorView() {
           <div id="movPanel1Body" class="movPanelBody"></div>
         </div>
 
-        <!-- Panel 2: En zona de espera / En revisión técnica -->
         <div class="movPanel open" id="movPanel2">
           <button class="movPanelHeader" type="button" aria-expanded="true">
             <span class="movPanelIcon">🕐</span>
@@ -113,21 +111,12 @@ export function movilizadorView() {
           </button>
           <div id="movPanel2Body" class="movPanelBody"></div>
         </div>
+
       </div>
 
-      <!-- ══════════════════════════════════════ -->
-      <!-- SECCIÓN 3: SALIDA                      -->
-      <!-- ══════════════════════════════════════ -->
-      <div class="movSection movSectionSalida">
-        <div class="movSectionHeader">
-          <span class="movSectionIcon">📤</span>
-          <span class="movSectionTitle">Salida</span>
-          <div class="movSectionBadges">
-            <span id="movBadge3" class="movBadge movBadgeOk" aria-label="Listos para salir" style="display:none;"></span>
-          </div>
-        </div>
+      <!-- ── Tab: SALIDA ── -->
+      <div class="movTabPanel" data-panel="salida" style="display:none;">
 
-        <!-- Panel 3: Revisión técnica finalizada → confirmar salida -->
         <div class="movPanel open" id="movPanel3">
           <button class="movPanelHeader" type="button" aria-expanded="true">
             <span class="movPanelIcon">✅</span>
@@ -139,6 +128,7 @@ export function movilizadorView() {
           </button>
           <div id="movPanel3Body" class="movPanelBody"></div>
         </div>
+
       </div>
 
     </div>

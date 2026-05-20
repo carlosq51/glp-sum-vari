@@ -10,9 +10,6 @@ service-account.json
 # Google Apps Script (contiene credenciales hardcodeadas)
 gas/
 
-# Build output (puede contener keys compiladas)
-dist/
-
 # Logs
 npm-debug.log*
 yarn-debug.log*
