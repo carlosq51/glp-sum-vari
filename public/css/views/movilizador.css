@@ -469,6 +469,141 @@
 }
 
 
+/* ─── Secciones visuales ENTRADA / ZONA DE ESPERA / SALIDA ─── */
+.movSection {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  border: 2px solid var(--codeLine);
+  background: rgba(0,0,0,.10);
+}
+
+/* remove outer margin from panels nested inside a section */
+.movSection .movPanel {
+  margin-bottom: 0;
+}
+
+.movSectionHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 12px;
+  border-bottom: var(--border-w) solid rgba(255,255,255,.12);
+  margin-bottom: 2px;
+}
+
+.movSectionIcon {
+  font-size: 1.2em;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.movSectionTitle {
+  flex: 1;
+  font-weight: var(--fw-extrabold);
+  font-size: 1.05rem;
+  letter-spacing: .6px;
+  text-transform: uppercase;
+}
+
+.movSectionBadges {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+/* ---- Accent colours per section ---- */
+.movSectionEntrada {
+  border-color: rgba(250,204,21,.35);
+}
+.movSectionEntrada .movSectionTitle {
+  color: var(--warn, #facc15);
+}
+
+.movSectionEspera {
+  border-color: rgba(96,165,250,.35);
+}
+.movSectionEspera .movSectionTitle {
+  color: var(--note, #60a5fa);
+}
+
+.movSectionSalida {
+  border-color: rgba(34,197,94,.35);
+}
+.movSectionSalida .movSectionTitle {
+  color: var(--ok, #4ade80);
+}
+
+/* Day theme */
+:root[data-theme="day"] .movSection {
+  background: rgba(79,70,229,.04);
+}
+:root[data-theme="day"] .movSectionHeader {
+  border-bottom-color: rgba(15,23,42,.12);
+}
+:root[data-theme="day"] .movSectionTitle        { color: #0f172a; }
+:root[data-theme="day"] .movSectionEntrada      { border-color: rgba(202,138,4,.45); }
+:root[data-theme="day"] .movSectionEspera       { border-color: rgba(59,130,246,.35); }
+:root[data-theme="day"] .movSectionSalida       { border-color: rgba(22,163,74,.4); }
+:root[data-theme="day"] .movSectionEntrada .movSectionTitle { color: #854d0e; }
+:root[data-theme="day"] .movSectionEspera  .movSectionTitle { color: #1d4ed8; }
+:root[data-theme="day"] .movSectionSalida  .movSectionTitle { color: #16a34a; }
+
+/* ─── Destino card row (sección SALIDA) ─── */
+.movDestino {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radiusSm);
+  background: rgba(34,197,94,.08);
+  border: 1px solid rgba(34,197,94,.22);
+  font-size: var(--fs-sm);
+}
+
+.movDestinoVacio {
+  background: rgba(255,255,255,.04);
+  border-color: rgba(255,255,255,.10);
+}
+
+.movDestinoLabel {
+  font-weight: var(--fw-bold);
+  color: var(--ok, #4ade80);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.movDestinoVacio .movDestinoLabel {
+  color: rgba(240,244,255,.5);
+}
+
+.movDestinoValue {
+  font-weight: var(--fw-extrabold);
+  color: #ffffff;
+  letter-spacing: .2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:root[data-theme="day"] .movDestino          { background: rgba(22,163,74,.07); border-color: rgba(22,163,74,.22); }
+:root[data-theme="day"] .movDestinoLabel     { color: #16a34a; }
+:root[data-theme="day"] .movDestinoValue     { color: #0f172a; }
+:root[data-theme="day"] .movDestinoVacio     { background: rgba(15,23,42,.04); border-color: rgba(15,23,42,.12); }
+
+/* ─── Botón confirmar salida ─── */
+.btnConfirmarSalida {
+  background: rgba(34,197,94,.18);
+  color: var(--ok, #4ade80);
+  border: 1px solid rgba(34,197,94,.35);
+}
+
+.btnConfirmarSalida:hover:not(:disabled) {
+  background: rgba(34,197,94,.28);
+}
+
 /* ─── Mobile ─── */
 @media (max-width: 520px) {
   .movPanelHeader {

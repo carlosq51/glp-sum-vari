@@ -165,7 +165,7 @@ function renderList3_(rows) {
   setBadge_("movBadge3", rows.length);
 
   if (!rows.length) {
-    box.innerHTML = `<div class="movEmpty small muted">No hay vehículos listos para trasladar a otras áreas.</div>`;
+    box.innerHTML = `<div class="movEmpty small muted">No hay vehículos con revisión técnica finalizada.</div>`;
     return;
   }
 
@@ -177,9 +177,19 @@ function renderList3_(rows) {
             <span class="movVin">${escapeHtml(r.vin)}</span>
             <span class="movCardDate">${fmtDate_(r.fecha_calidad)}</span>
           </div>
-          <button class="movBtnAction btnEntregarFinal movBtnFull"
+          ${r.destino
+            ? `<div class="movDestino">
+                <span class="movDestinoLabel">Salida a:</span>
+                <span class="movDestinoValue">${escapeHtml(r.destino)}</span>
+              </div>`
+            : `<div class="movDestino movDestinoVacio">
+                <span class="movDestinoLabel">Destino:</span>
+                <span class="muted small">pendiente de asignación</span>
+              </div>`
+          }
+          <button class="movBtnAction btnConfirmarSalida movBtnFull"
             data-vin="${escapeHtml(r.vin)}" type="button">
-            Trasladar ▶
+            Confirmar Salida ▶
           </button>
         </div>
       `).join("")}
@@ -217,7 +227,7 @@ async function refreshAll_() {
 
 // ─── Actions ──────────────────────────────────────────────────────────
 
-async function handleAction_(vin, accion, btn) {
+async function handleAction_(vin, accion, btn, onSuccess) {
   btn.disabled = true;
   const originalText = btn.textContent;
   btn.textContent = "Guardando…";
@@ -228,6 +238,7 @@ async function handleAction_(vin, accion, btn) {
       usuario: getMovNombre_(),
     });
     if (!j?.ok) throw new Error(j?.error || "Error al guardar");
+    if (onSuccess) onSuccess(vin);
     await refreshAll_();
   } catch (e) {
     btn.disabled = false;
@@ -375,14 +386,13 @@ async function openMovQr_(target) {
       msgEl: msg,
       onDecoded: async (code) => {
         await closeMovQr_();
-        const inputId = movQrTarget_ === "entrada" ? "movVinEntrada" : "movVinSalida";
-        const btnId   = movQrTarget_ === "entrada" ? "btnMovRegistrarEntrada" : "btnMovRegistrarSalida";
-        const inp = document.getElementById(inputId);
+        // Only entrada target is used now
+        const inp = document.getElementById("movVinEntrada");
         if (inp) {
           inp.value = code;
           inp.dispatchEvent(new Event("input"));
         }
-        const btn = document.getElementById(btnId);
+        const btn = document.getElementById("btnMovRegistrarEntrada");
         if (btn) btn.disabled = code.length < 7;
       },
     });
@@ -467,40 +477,31 @@ export function init() {
     refreshAll_().catch(() => {});
   });
 
-  // VIN Autocomplete for Entrada / Salida
+  // VIN Autocomplete for Entrada
   createVinAc_("movVinEntrada", "movVinEntradaSuggest", () => {});
-  createVinAc_("movVinSalida", "movVinSalidaSuggest", () => {});
 
   // QR scanner buttons
   document.getElementById("btnMovQrEntrada")?.addEventListener("click", () => openMovQr_("entrada").catch(() => {}));
-  document.getElementById("btnMovQrSalida")?.addEventListener("click",  () => openMovQr_("salida").catch(() => {}));
   document.getElementById("btnMovCloseQr")?.addEventListener("click",   () => closeMovQr_().catch(() => {}));
   document.getElementById("movQrModal")?.addEventListener("click", e => {
     if (e.target === document.getElementById("movQrModal")) closeMovQr_().catch(() => {});
   });
 
-  // Registration buttons
+  // Registro de Entrada button
   document.getElementById("btnMovRegistrarEntrada")?.addEventListener("click", () => {
     const vin = document.getElementById("movVinEntrada")?.value?.trim().toUpperCase() || "";
     if (vin.length >= 7) handleRegistro_(vin, "REGISTRAR_ENTRADA", "btnMovRegistrarEntrada").catch(() => {});
   });
 
-  document.getElementById("btnMovRegistrarSalida")?.addEventListener("click", () => {
-    const vin = document.getElementById("movVinSalida")?.value?.trim().toUpperCase() || "";
-    if (vin.length >= 7) handleRegistro_(vin, "REGISTRAR_SALIDA", "btnMovRegistrarSalida").catch(() => {});
-  });
-
-  // Close autocomplete dropdowns on outside click
+  // Close autocomplete dropdown on outside click
   if (!document.body.dataset.movVinDocBound) {
     document.body.dataset.movVinDocBound = "1";
     document.addEventListener("click", e => {
       const wraps = document.querySelectorAll("#viewMOVILIZADOR .vinWrap");
       const inside = [...wraps].some(w => w.contains(e.target));
       if (!inside) {
-        ["movVinEntradaSuggest", "movVinSalidaSuggest"].forEach(id => {
-          const el = document.getElementById(id);
-          if (el) { el.classList.add("hidden"); el.innerHTML = ""; }
-        });
+        const el = document.getElementById("movVinEntradaSuggest");
+        if (el) { el.classList.add("hidden"); el.innerHTML = ""; }
       }
     });
   }
@@ -517,6 +518,9 @@ export function init() {
       handleAction_(vin, "ENTREGAR_CALIDAD", btn).catch(() => {});
     } else if (btn.classList.contains("btnEntregarFinal")) {
       handleAction_(vin, "ENTREGAR_FINAL", btn).catch(() => {});
+    } else if (btn.classList.contains("btnConfirmarSalida")) {
+      // Confirmar salida: registra ENTREGAR_FINAL + abre app GPS de registro
+      handleAction_(vin, "ENTREGAR_FINAL", btn, openGpsWithVin_).catch(() => {});
     }
   });
 

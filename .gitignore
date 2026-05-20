@@ -4,6 +4,15 @@ node_modules/
 # Variables de entorno (SECRETOS)
 .env
 
+# Google Service Account (NUNCA subir a git)
+service-account.json
+
+# Google Apps Script (contiene credenciales hardcodeadas)
+gas/
+
+# Build output (puede contener keys compiladas)
+dist/
+
 # Logs
 npm-debug.log*
 yarn-debug.log*

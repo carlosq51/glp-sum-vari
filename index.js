@@ -2803,9 +2803,30 @@ app.get("/api/movilizador/status", async (req, res) => {
         vin,
         fecha_calidad: wo.fecha_creacion || wo.created_at,
         trasladado_por: t?.trasladado_por || "",
+        destino: "",  // enriquecido abajo si la columna existe en vins
       });
     }
     list3.sort((a, b) => new Date(b.fecha_calidad) - new Date(a.fecha_calidad));
+
+    // Enriquecer list3 con ultima_ubicacion desde tabla vins (fallback silencioso)
+    try {
+      if (list3.length > 0) {
+        const vinList = list3.map(r => `"${r.vin}"`).join(",");
+        const destiResp = await fetch(
+          `${SUPABASE_URL}/rest/v1/vins?vin=in.(${vinList})&select=vin,ultima_ubicacion`,
+          { method: "GET", headers }
+        );
+        if (destiResp.ok) {
+          const destiRows = await destiResp.json();
+          if (Array.isArray(destiRows)) {
+            const destiMap = new Map(destiRows.map(r => [r.vin, r.ultima_ubicacion || ""]));
+            for (const item of list3) {
+              item.destino = destiMap.get(item.vin) || "";
+            }
+          }
+        }
+      }
+    } catch (_) { /* columna ultima_ubicacion aún no existe en vins, se omite */ }
 
     return res.json({
       ok: true,
