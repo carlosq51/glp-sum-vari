@@ -102,6 +102,7 @@ const FLOW_CONFIG = {
 };
 
 let _listaDiariaRows = [];
+let _list3Rows = [];
 let _filtroActivo = "todos";
 
 function renderListDiaria_(rows) {
@@ -241,6 +242,7 @@ function renderList2_(rows) {
 }
 
 function renderList3_(rows) {
+  _list3Rows = rows || [];
   const box = document.getElementById("movPanel3Body");
   if (!box) return;
   setBadge_("movBadge3", rows.length);
@@ -477,6 +479,7 @@ function createVinAc_(inputId, suggestId, onPick) {
 
 const movScanner_ = createScanner("movQrReader");
 let movQrTarget_ = null; // "entrada" | "salida"
+let _salidaQrDismiss = null;
 
 function movQrModal_() { return document.getElementById("movQrModal"); }
 
@@ -492,18 +495,68 @@ async function openMovQr_(target) {
       mode: "QR",
       msgEl: msg,
       onDecoded: async (code) => {
+        const tgt = movQrTarget_;
         await closeMovQr_();
-        // Only entrada target is used now
-        const inp = document.getElementById("movVinEntrada");
-        if (inp) {
-          inp.value = code;
-          inp.dispatchEvent(new Event("input"));
+        if (tgt === "salida") {
+          showSalidaQrResult_(code);
+        } else {
+          // entrada
+          const inp = document.getElementById("movVinEntrada");
+          if (inp) {
+            inp.value = code;
+            inp.dispatchEvent(new Event("input"));
+          }
+          const btn = document.getElementById("btnMovRegistrarEntrada");
+          if (btn) btn.disabled = code.length < 7;
         }
-        const btn = document.getElementById("btnMovRegistrarEntrada");
-        if (btn) btn.disabled = code.length < 7;
       },
     });
   } catch { /* mensaje ya mostrado en msgEl */ }
+}
+
+// ─── Salida QR result ───────────────────────────────────────────────────
+
+function showSalidaQrResult_(vin) {
+  const vinClean = String(vin || "").trim().toUpperCase();
+  const panel = document.getElementById("movSalidaQrResult");
+  if (!panel) return;
+
+  const row = _list3Rows.find(r => r.vin === vinClean);
+
+  const vinEl = document.getElementById("movSalidaQrResultVin");
+  if (vinEl) vinEl.textContent = vinClean;
+
+  const destEl = document.getElementById("movSalidaQrResultDestino");
+  if (destEl) {
+    if (row?.destino) {
+      destEl.textContent = `📍 Sale a: ${row.destino}`;
+      destEl.className = "movSalidaQrResultDestino movSalidaQrDestinoOk";
+    } else if (row) {
+      destEl.textContent = "⏳ Destino pendiente de asignación";
+      destEl.className = "movSalidaQrResultDestino movSalidaQrDestinoWait";
+    } else {
+      destEl.textContent = "❌ VIN no encontrado en la lista de salida";
+      destEl.className = "movSalidaQrResultDestino movSalidaQrDestinoErr";
+    }
+  }
+
+  const confirmBtn = document.getElementById("btnMovConfirmarSalidaQr");
+  if (confirmBtn) {
+    confirmBtn.dataset.vin = vinClean;
+    confirmBtn.style.display = row ? "" : "none";
+  }
+
+  panel.style.display = "block";
+
+  // Auto-dismiss after 15 s
+  clearTimeout(_salidaQrDismiss);
+  _salidaQrDismiss = setTimeout(() => closeSalidaQrResult_(), 15_000);
+}
+
+function closeSalidaQrResult_() {
+  clearTimeout(_salidaQrDismiss);
+  const panel = document.getElementById("movSalidaQrResult");
+  if (panel) panel.style.display = "none";
 }
 
 async function closeMovQr_() {
@@ -613,9 +666,19 @@ export function init() {
 
   // QR scanner buttons
   document.getElementById("btnMovQrEntrada")?.addEventListener("click", () => openMovQr_("entrada").catch(() => {}));
+  document.getElementById("btnMovQrSalida")?.addEventListener("click",  () => openMovQr_("salida").catch(() => {}));
   document.getElementById("btnMovCloseQr")?.addEventListener("click",   () => closeMovQr_().catch(() => {}));
   document.getElementById("movQrModal")?.addEventListener("click", e => {
     if (e.target === document.getElementById("movQrModal")) closeMovQr_().catch(() => {});
+  });
+  document.getElementById("btnMovCloseSalidaQr")?.addEventListener("click", () => closeSalidaQrResult_());
+
+  // Confirmar salida desde resultado QR (delegado al handler existente)
+  document.getElementById("btnMovConfirmarSalidaQr")?.addEventListener("click", function () {
+    const vin = this.dataset.vin;
+    if (!vin) return;
+    closeSalidaQrResult_();
+    handleAction_(vin, "ENTREGAR_FINAL", this, openGpsWithVin_).catch(() => {});
   });
 
   // Registro de Entrada button

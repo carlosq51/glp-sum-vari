@@ -143,6 +143,28 @@ export function movilizadorView() {
       <!-- ── Tab: SALIDA ── -->
       <div class="movTabPanel" data-panel="salida" style="display:none;">
 
+        <!-- QR Buscar en Salida -->
+        <div class="movSalidaQrBar">
+          <button id="btnMovQrSalida" type="button" class="movQrBtn movSalidaQrBtnMain" title="Escanear QR para localizar vehículo">
+            📷 Escanear QR
+          </button>
+        </div>
+
+        <!-- Resultado de búsqueda por QR -->
+        <div id="movSalidaQrResult" class="movSalidaQrResult" style="display:none;" aria-live="polite">
+          <div class="movSalidaQrResultTop">
+            <div>
+              <div class="movSalidaQrResultVin" id="movSalidaQrResultVin"></div>
+              <div class="movSalidaQrResultDestino" id="movSalidaQrResultDestino"></div>
+            </div>
+            <button id="btnMovCloseSalidaQr" type="button" class="movQrResultClose" title="Cerrar">✕</button>
+          </div>
+          <button id="btnMovConfirmarSalidaQr" type="button"
+            class="movBtnAction btnConfirmarSalida movBtnFull" data-vin="">
+            Confirmar Salida ▶
+          </button>
+        </div>
+
         <div class="movPanel open" id="movPanel3">
           <button class="movPanelHeader" type="button" aria-expanded="true">
             <span class="movPanelIcon">✅</span>
