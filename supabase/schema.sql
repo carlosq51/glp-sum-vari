@@ -248,6 +248,26 @@ ALTER TABLE eventos          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE incidencias      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE solicitudes_ramal ENABLE ROW LEVEL SECURITY;
 
+-- ────────────────────────────────────────────
+--  MIGRATION v2: numero_ot en work_orders
+--  Ejecutar en Supabase SQL Editor una sola vez:
+--
+--    ALTER TABLE work_orders
+--      ADD COLUMN IF NOT EXISTS numero_ot TEXT NOT NULL DEFAULT '';
+--    CREATE INDEX IF NOT EXISTS idx_wo_ot
+--      ON work_orders (numero_ot) WHERE numero_ot <> '';
+--
+-- ────────────────────────────────────────────
+ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS numero_ot TEXT NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS idx_wo_ot ON work_orders (numero_ot) WHERE numero_ot <> '';
+
+-- ────────────────────────────────────────────
+--  MIGRATION v3: ultima_ubicacion en vins
+--  Ejecutar en Supabase SQL Editor una sola vez:
+-- ────────────────────────────────────────────
+ALTER TABLE vins ADD COLUMN IF NOT EXISTS ultima_ubicacion TEXT NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS idx_vins_ubicacion ON vins (ultima_ubicacion) WHERE ultima_ubicacion <> '';
+
 -- Políticas permisivas para el service_role (backend)
 -- Tu API de Apps Script o backend usará la service_role key
 CREATE POLICY "service_full_access" ON vins             FOR ALL USING (true) WITH CHECK (true);

@@ -260,19 +260,22 @@ function renderList3_(rows) {
             <span class="movVin">${escapeHtml(r.vin)}</span>
             <span class="movCardDate">${fmtDate_(r.fecha_calidad)}</span>
           </div>
-          ${r.destino
-            ? `<div class="movDestino">
-                <span class="movDestinoLabel">Salida a:</span>
-                <span class="movDestinoValue">${escapeHtml(r.destino)}</span>
-              </div>`
-            : `<div class="movDestino movDestinoVacio">
-                <span class="movDestinoLabel">Destino:</span>
-                <span class="muted small">pendiente de asignación</span>
-              </div>`
+          ${!r.tiene_ot
+            ? `<div class="movOtWarn small">⚠️ Falta #OT — registre en ASIGNACIONES (col E) antes de confirmar</div>`
+            : r.destino
+              ? `<div class="movDestino">
+                  <span class="movDestinoLabel">Salida a:</span>
+                  <span class="movDestinoValue">${escapeHtml(r.destino)}</span>
+                </div>`
+              : `<div class="movDestino movDestinoVacio">
+                  <span class="movDestinoLabel">Destino:</span>
+                  <span class="muted small">pendiente de asignación</span>
+                </div>`
           }
           <button class="movBtnAction btnConfirmarSalida movBtnFull"
-            data-vin="${escapeHtml(r.vin)}" type="button">
-            Confirmar Salida ▶
+            data-vin="${escapeHtml(r.vin)}" type="button"
+            ${!r.tiene_ot ? 'disabled title="Registre el #OT en ASIGNACIONES primero"' : ''}>
+            ${r.tiene_ot ? 'Confirmar Salida ▶' : '🔒 Sin #OT'}
           </button>
         </div>
       `).join("")}

@@ -2644,7 +2644,18 @@ app.get("/api/movilizador/status", async (req, res) => {
     const fechaCorte = cfgRows[0]?.value || "";
 
     // 2. CONVERSION FINALIZADO
-    let convUrl = `${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CONVERSION&estado_general=eq.FINALIZADO&select=vin,fecha_creacion,created_at,asignaciones(updated_at,estado_actual,rol_trabajo)`;
+    // OT válida: contiene '#' (ej: #7213) o es puramente numérica (ej: 7213)
+    // Inválida: formato fecha (02-06), texto libre, vacío
+    const isValidOT = (ot) => {
+      if (!ot) return false;
+      const s = String(ot).trim();
+      if (!s) return false;
+      if (s.includes('#')) return true;       // #7213, OT#7213, etc.
+      if (/^\d+$/.test(s)) return true;       // 7213, 12345
+      return false;                            // 02-06, texto, etc.
+    };
+
+    let convUrl = `${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CONVERSION&estado_general=eq.FINALIZADO&select=vin,fecha_creacion,created_at,numero_ot,asignaciones(updated_at,estado_actual,rol_trabajo)`;
     if (fechaCorte) convUrl += `&created_at=gte.${fechaCorte}T00:00:00`;
     convUrl += `&order=fecha_creacion.asc`;
     const convResp = await fetch(convUrl, { method: "GET", headers });
@@ -2696,13 +2707,20 @@ app.get("/api/movilizador/status", async (req, res) => {
 
     // ─── Lista 1: conversión finalizada + sin traslado (o en EN_ESPERA_CONVERSION) + sin OT de CALIDAD
     const convVinMap = new Map();
+    // convAllMap: todos los CONVERSION FINALIZADO para lookup de numero_ot (incluye list3 VINs)
+    const convAllMap = new Map();
     for (const wo of (convRows || [])) {
-      if (!wo.vin || calidadDoneMap.has(wo.vin) || calidadActivaMap.has(wo.vin)) continue;
+      if (!wo.vin) continue;
+      const prev = convAllMap.get(wo.vin);
+      if (!prev || new Date(wo.fecha_creacion) > new Date(prev.fecha_creacion)) {
+        convAllMap.set(wo.vin, wo);
+      }
+      if (calidadDoneMap.has(wo.vin) || calidadActivaMap.has(wo.vin)) continue;
       const trasEntry = trasMap.get(wo.vin);
       // Excluir solo si ya fue trasladado/entregado (no si está en espera de conversión)
       if (trasEntry && trasEntry.estado !== "EN_ESPERA_CONVERSION") continue;
-      const prev = convVinMap.get(wo.vin);
-      if (!prev || new Date(wo.fecha_creacion) > new Date(prev.fecha_creacion)) {
+      const prev2 = convVinMap.get(wo.vin);
+      if (!prev2 || new Date(wo.fecha_creacion) > new Date(prev2.fecha_creacion)) {
         convVinMap.set(wo.vin, wo);
       }
     }
@@ -2804,6 +2822,7 @@ app.get("/api/movilizador/status", async (req, res) => {
         fecha_calidad: wo.fecha_creacion || wo.created_at,
         trasladado_por: t?.trasladado_por || "",
         destino: "",  // enriquecido abajo si la columna existe en vins
+        tiene_ot: isValidOT(convAllMap.get(vin)?.numero_ot),
       });
     }
     list3.sort((a, b) => new Date(b.fecha_calidad) - new Date(a.fecha_calidad));
@@ -2910,6 +2929,23 @@ app.post("/api/movilizador/traslado", async (req, res) => {
     const headers = supabaseHeaders_();
     const now = new Date().toISOString();
     const userName = String(usuario || "").trim();
+    const vinNorm = String(vin || "").trim().toUpperCase();
+
+    // ── Validación #OT antes de confirmar salida final ──────────────────
+    if (accion === "ENTREGAR_FINAL") {
+      const otCheckResp = await fetch(
+        `${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CONVERSION&vin=eq.${encodeURIComponent(vinNorm)}&estado_general=eq.FINALIZADO&select=id,numero_ot&order=fecha_creacion.desc&limit=1`,
+        { method: "GET", headers }
+      );
+      const otCheckRows = otCheckResp.ok ? await otCheckResp.json() : [];
+      if (!isValidOT(otCheckRows[0]?.numero_ot)) {
+        return res.status(400).json({
+          ok: false,
+          error: "❌ #OT no registrado: registre el número de OT en ASIGNACIONES (columna E) antes de confirmar la salida del vehículo."
+        });
+      }
+    }
+    // ────────────────────────────────────────────────────────────────────
 
     const data = accion === "TRASLADAR"
       ? { vin, estado: "TRASLADADO", trasladado_at: now, trasladado_por: userName }
