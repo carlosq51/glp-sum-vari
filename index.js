@@ -2948,23 +2948,28 @@ app.post("/api/movilizador/traslado", async (req, res) => {
     // ────────────────────────────────────────────────────────────────────
 
     const data = accion === "TRASLADAR"
-      ? { vin, estado: "TRASLADADO", trasladado_at: now, trasladado_por: userName }
+      ? { vin: vinNorm, estado: "TRASLADADO", trasladado_at: now, trasladado_por: userName }
       : accion === "ENTREGAR_CALIDAD"
-        ? { vin, estado: "ENTREGADO_CALIDAD", entregado_at: now, entregado_por: userName }
+        ? { vin: vinNorm, estado: "ENTREGADO_CALIDAD", entregado_at: now, entregado_por: userName }
         : accion === "REGISTRAR_ENTRADA"
-          ? { vin, estado: "EN_ESPERA_CONVERSION", trasladado_at: now, trasladado_por: userName }
+          ? { vin: vinNorm, estado: "EN_ESPERA_CONVERSION", trasladado_at: now, trasladado_por: userName }
           : accion === "REGISTRAR_SALIDA"
-            ? { vin, estado: "TRASLADADO", trasladado_at: now, trasladado_por: userName }
-            : { vin, estado: "ENTREGADO_FINAL", entregado_at: now, entregado_por: userName };
+            ? { vin: vinNorm, estado: "TRASLADADO", trasladado_at: now, trasladado_por: userName }
+            : { vin: vinNorm, estado: "ENTREGADO_FINAL", entregado_at: now, entregado_por: userName };
 
-    const resp = await fetch(`${SUPABASE_URL}/rest/v1/movilizador_traslados`, {
+    const resp = await fetch(`${SUPABASE_URL}/rest/v1/movilizador_traslados?on_conflict=vin`, {
       method: "POST",
-      headers: { ...headers, "Prefer": "resolution=merge-duplicates,return=representation" },
+      headers: { ...headers, "Prefer": "resolution=merge-duplicates,return=minimal" },
       body: JSON.stringify(data),
     });
     if (!resp.ok) {
       const text = await resp.text().catch(() => "");
-      throw new Error(`Supabase: ${resp.status} ${text.slice(0, 200)}`);
+      console.error("[MOVILIZADOR_TRASLADO_SUPABASE]", resp.status, text);
+      return res.status(resp.status >= 400 && resp.status < 500 ? resp.status : 502).json({
+        ok: false,
+        error: `No se pudo guardar el traslado (${resp.status}).`,
+        detail: text.slice(0, 500),
+      });
     }
     return res.json({ ok: true });
   } catch (e) {
