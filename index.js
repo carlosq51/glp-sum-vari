@@ -2973,76 +2973,48 @@ app.post("/api/movilizador/traslado", async (req, res) => {
   }
 });
 
-// -----------------------------------------------------------------
 // GET /api/supervisor/lista-pendientes
-// VINs activos agrupados por quién debe actuar: movilizador o técnico
+// VINs de LISTA DIARIA que el movilizador aun no ha registrado en GLP
 app.get("/api/supervisor/lista-pendientes", async (req, res) => {
   try {
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const headers = supabaseHeaders_();
 
-    const [trasResp, convActivaResp, calFinalResp, vinsResp] = await Promise.all([
+    const [listaResp, trasResp, vinsResp] = await Promise.all([
+      fetch(`${SUPABASE_URL}/rest/v1/lista_diaria_activa?select=vin,fecha_asignacion&order=fecha_asignacion.asc,vin.asc`, { method: "GET", headers }),
       fetch(`${SUPABASE_URL}/rest/v1/movilizador_traslados?select=vin,estado`, { method: "GET", headers }),
-      fetch(`${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CONVERSION&estado_general=in.(PENDIENTE,EN%20PROCESO,TRABAJANDO)&select=vin,estado_general,numero_ot,fecha_creacion`, { method: "GET", headers }),
-      fetch(`${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CALIDAD&estado_general=eq.FINALIZADO&select=vin&order=fecha_creacion.desc`, { method: "GET", headers }),
       fetch(`${SUPABASE_URL}/rest/v1/vins?ultima_ubicacion=neq.&select=vin,ultima_ubicacion`, { method: "GET", headers }),
     ]);
 
-    const trasRows      = trasResp.ok      ? await trasResp.json()      : [];
-    const convActRows   = convActivaResp.ok ? await convActivaResp.json() : [];
-    const calFinalRows  = calFinalResp.ok  ? await calFinalResp.json()  : [];
-    const vinsRows      = vinsResp.ok      ? await vinsResp.json()      : [];
+    const listaRows = listaResp.ok ? await listaResp.json() : [];
+    const trasRows  = trasResp.ok  ? await trasResp.json()  : [];
+    const vinsRows  = vinsResp.ok  ? await vinsResp.json()  : [];
 
-    // Maps
-    const trasMap = new Map();          // vin → estado
-    for (const t of (trasRows || []))   { if (t.vin) trasMap.set(t.vin, t.estado); }
+    const registradoMap = new Map();  // vin → estado traslado
+    for (const t of (trasRows || [])) { if (t.vin) registradoMap.set(t.vin, t.estado); }
 
-    const convActivaMap = new Map();    // vin → work_order
-    for (const wo of (convActRows || [])) { if (wo.vin && !convActivaMap.has(wo.vin)) convActivaMap.set(wo.vin, wo); }
+    const ubicMap = new Map();
+    for (const v of (vinsRows || [])) { if (v.vin) ubicMap.set(v.vin, v.ultima_ubicacion || ""); }
 
-    const calFinalSet = new Set();      // vins con calidad FINALIZADO
-    for (const wo of (calFinalRows || [])) { if (wo.vin) calFinalSet.add(wo.vin); }
+    const sin_registrar  = [];  // en lista diaria, movilizador NO los ha traido
+    const en_proceso     = [];  // movilizador ya los registró (EN_ESPERA o TRASLADADO)
 
-    const ubicMap = new Map();          // vin → ultima_ubicacion
-    for (const v of (vinsRows || []))  { if (v.vin) ubicMap.set(v.vin, v.ultima_ubicacion || ""); }
-
-    // Conjunto de VINs entregados (ya fuera del flujo)
-    const entregadoSet = new Set();
-    for (const [vin, estado] of trasMap) {
-      if (estado === "ENTREGADO_FINAL") entregadoSet.add(vin);
-    }
-
-    // VINs activos = movilizador (no entregado) + conversion activa
-    const allVins = new Set([
-      ...[...trasMap.keys()].filter(v => !entregadoSet.has(v)),
-      ...convActivaMap.keys(),
-    ]);
-    // Incluir VINs con calidad FINALIZADO no entregados
-    for (const vin of calFinalSet) {
-      if (!entregadoSet.has(vin)) allVins.add(vin);
-    }
-
-    const sin_ot = [], en_proceso = [], pendiente_entrega = [];
-
-    for (const vin of allVins) {
-      const conv = convActivaMap.get(vin);
+    for (const row of (listaRows || [])) {
+      const estado = registradoMap.get(row.vin) || null;
       const item = {
-        vin,
-        ubicacion:   ubicMap.get(vin) || "",
-        numero_ot:   conv?.numero_ot  || "",
-        estado_conv: conv?.estado_general || "",
+        vin:    row.vin,
+        fecha:  row.fecha_asignacion,
+        ubicacion: ubicMap.get(row.vin) || "",
+        estado_traslado: estado || "",
       };
-      if (calFinalSet.has(vin))  pendiente_entrega.push(item);
-      else if (conv)             en_proceso.push(item);
-      else                       sin_ot.push(item);
+      if (!estado || estado === "ENTREGADO_FINAL") {
+        if (!estado) sin_registrar.push(item);  // no registrado aun
+      } else {
+        en_proceso.push(item);
+      }
     }
 
-    // Ordenar por VIN
-    [sin_ot, en_proceso, pendiente_entrega].forEach(arr =>
-      arr.sort((a, b) => a.vin.localeCompare(b.vin))
-    );
-
-    return res.json({ ok: true, sin_ot, en_proceso, pendiente_entrega });
+    return res.json({ ok: true, sin_registrar, en_proceso });
   } catch (e) {
     console.error("[LISTA_PENDIENTES]", e.message);
     return res.status(500).json({ ok: false, error: String(e.message || e) });

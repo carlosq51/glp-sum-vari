@@ -387,38 +387,33 @@ async function fetchListaPendientes_() {
 }
 
 function renderListaPendientes_(data, box) {
-  const { sin_ot = [], en_proceso = [], pendiente_entrega = [] } = data;
+  const { sin_registrar = [], en_proceso = [] } = data;
 
-  const cardsHtml = (items, emptyMsg) => {
-    if (!items.length)
-      return `<div class="small muted" style="padding:6px 4px;">${emptyMsg}</div>`;
-    return items.map(r => `
-      <div style="display:flex; align-items:center; gap:8px; padding:6px 4px; border-bottom:1px solid rgba(255,255,255,.07);">
-        <span style="font-weight:700; font-size:.9rem; flex:0 0 auto;">${escapeHtml(r.vin)}</span>
-        ${r.ubicacion
-          ? `<span class="small" style="opacity:.7; flex:1;">${escapeHtml(r.ubicacion)}</span>`
-          : `<span style="flex:1;"></span>`}
-        ${r.numero_ot
-          ? `<span class="small" style="opacity:.6;">#${escapeHtml(r.numero_ot)}</span>`
-          : ''}
-      </div>
-    `).join("");
-  };
+  const vinRow = (r) => `
+    <div style="display:flex; align-items:center; gap:8px; padding:7px 4px; border-bottom:1px solid rgba(255,255,255,.07);">
+      <span style="font-weight:700; font-size:.9rem; flex:0 0 auto; font-family:monospace;">${escapeHtml(r.vin)}</span>
+      ${r.ubicacion
+        ? `<span class="small" style="flex:1; opacity:.65;">${escapeHtml(r.ubicacion)}</span>`
+        : `<span style="flex:1;"></span>`}
+      <span class="small" style="opacity:.45;">${r.fecha || ""}</span>
+    </div>
+  `;
 
-  const section = (color, icon, label, count, items, emptyMsg) => `
+  const section = (bg, icon, label, items, emptyMsg) => `
     <div style="margin-bottom:14px;">
-      <div style="padding:6px 10px; border-radius:8px; background:${color}; font-weight:700; font-size:.85rem; margin-bottom:4px;">
-        ${icon} ${label} <span style="opacity:.7;">(${count})</span>
+      <div style="padding:6px 10px; border-radius:8px; background:${bg}; font-weight:700; font-size:.85rem; margin-bottom:2px;">
+        ${icon} ${label} <span style="opacity:.65;">(${items.length})</span>
       </div>
-      ${cardsHtml(items, emptyMsg)}
+      ${items.length
+        ? items.map(vinRow).join("")
+        : `<div class="small muted" style="padding:6px 4px;">${emptyMsg}</div>`}
     </div>
   `;
 
   box.innerHTML = `
     <div style="margin-top:10px;">
-      ${section("rgba(0,175,255,.18)",  "🔵", "Pendiente entrega — movilizador",  pendiente_entrega.length, pendiente_entrega, "Sin pendientes para movilizador.")}
-      ${section("rgba(0,220,80,.15)",   "🟢", "En conversión — técnico",           en_proceso.length,        en_proceso,        "Sin conversiones activas.")}
-      ${section("rgba(255,200,0,.13)",  "🟡", "Sin OT / Zona de espera",           sin_ot.length,            sin_ot,            "Sin vehículos en espera.")}
+      ${section("rgba(255,80,80,.18)", "🔴", "Falta traer a GLP — sin registrar", sin_registrar, "Todos los carros ya fueron registrados ✔️")}
+      ${section("rgba(0,175,255,.15)", "🔵", "Ya en GLP — en proceso",             en_proceso,    "Sin carros en proceso.")}
     </div>
   `;
 }

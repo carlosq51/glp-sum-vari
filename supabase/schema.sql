@@ -268,6 +268,19 @@ CREATE INDEX IF NOT EXISTS idx_wo_ot ON work_orders (numero_ot) WHERE numero_ot 
 ALTER TABLE vins ADD COLUMN IF NOT EXISTS ultima_ubicacion TEXT NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS idx_vins_ubicacion ON vins (ultima_ubicacion) WHERE ultima_ubicacion <> '';
 
+-- ────────────────────────────────────────────
+--  MIGRATION v4: lista_diaria_activa
+--  VINs activos en LISTA DIARIA (sincronizado desde GAS cada 10 min)
+--  Ejecutar en Supabase SQL Editor:
+-- ────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS lista_diaria_activa (
+  vin              TEXT        PRIMARY KEY,
+  fecha_asignacion DATE        NOT NULL DEFAULT CURRENT_DATE,
+  created_at       TIMESTAMPTZ DEFAULT now()
+);
+ALTER TABLE lista_diaria_activa ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "service_full_access" ON lista_diaria_activa FOR ALL USING (true) WITH CHECK (true);
+
 -- Políticas permisivas para el service_role (backend)
 -- Tu API de Apps Script o backend usará la service_role key
 CREATE POLICY "service_full_access" ON vins             FOR ALL USING (true) WITH CHECK (true);
