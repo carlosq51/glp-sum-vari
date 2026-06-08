@@ -387,33 +387,33 @@ async function fetchListaPendientes_() {
 }
 
 function renderListaPendientes_(data, box) {
-  const { sin_registrar = [], en_proceso = [] } = data;
+  const { sin_registrar = [] } = data;
 
-  const vinRow = (r) => `
-    <div style="display:flex; align-items:center; gap:8px; padding:7px 4px; border-bottom:1px solid rgba(255,255,255,.07);">
-      <span style="font-weight:700; font-size:.9rem; flex:0 0 auto; font-family:monospace;">${escapeHtml(r.vin)}</span>
-      ${r.ubicacion
-        ? `<span class="small" style="flex:1; opacity:.65;">${escapeHtml(r.ubicacion)}</span>`
-        : `<span style="flex:1;"></span>`}
-      <span class="small" style="opacity:.45;">${r.fecha || ""}</span>
-    </div>
-  `;
-
-  const section = (bg, icon, label, items, emptyMsg) => `
-    <div style="margin-bottom:14px;">
-      <div style="padding:6px 10px; border-radius:8px; background:${bg}; font-weight:700; font-size:.85rem; margin-bottom:2px;">
-        ${icon} ${label} <span style="opacity:.65;">(${items.length})</span>
-      </div>
-      ${items.length
-        ? items.map(vinRow).join("")
-        : `<div class="small muted" style="padding:6px 4px;">${emptyMsg}</div>`}
-    </div>
-  `;
+  if (!sin_registrar.length) {
+    box.innerHTML = `
+      <div style="margin-top:16px; text-align:center; padding:20px 0;">
+        <div style="font-size:1.4rem;">✅</div>
+        <div class="small" style="margin-top:8px;">Todos los carros ya fueron registrados en GLP.</div>
+      </div>`;
+    return;
+  }
 
   box.innerHTML = `
-    <div style="margin-top:10px;">
-      ${section("rgba(255,80,80,.18)", "🔴", "Falta traer a GLP — sin registrar", sin_registrar, "Todos los carros ya fueron registrados ✔️")}
-      ${section("rgba(0,175,255,.15)", "🔵", "Ya en GLP — en proceso",             en_proceso,    "Sin carros en proceso.")}
+    <div style="margin-top:6px;">
+      <div style="margin-bottom:10px; font-size:.82rem; opacity:.6;">
+        ${sin_registrar.length} carro${sin_registrar.length !== 1 ? "s" : ""} por registrar en GLP
+      </div>
+      ${sin_registrar.map(r => `
+        <div style="display:flex; align-items:center; gap:8px; padding:8px 4px; border-bottom:1px solid rgba(255,255,255,.07);">
+          <span style="font-weight:700; font-size:.92rem; flex:0 0 auto; font-family:monospace; letter-spacing:.03em;">
+            ${escapeHtml(r.vin)}
+          </span>
+          ${r.ubicacion
+            ? `<span class="small" style="flex:1; opacity:.6; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(r.ubicacion)}</span>`
+            : `<span style="flex:1;"></span>`}
+          <span class="small" style="opacity:.4; flex:0 0 auto;">${r.fecha || ""}</span>
+        </div>
+      `).join("")}
     </div>
   `;
 }
