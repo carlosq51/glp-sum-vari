@@ -186,6 +186,17 @@ function buildSupabaseQuery_(filter = {}) {
   return parts.length ? ("?" + parts.join("&")) : "";
 }
 
+// OT valida: contiene '#' (ej: #7213) o es puramente numerica (ej: 7213).
+// Invalida: formato fecha (02-06), texto libre, vacio.
+function isValidOT_(ot) {
+  if (!ot) return false;
+  const s = String(ot).trim();
+  if (!s) return false;
+  if (s.includes("#")) return true;
+  if (/^\d+$/.test(s)) return true;
+  return false;
+}
+
 async function supabaseGet_(table, filter = {}, opts = {}) {
   // Si el filtro est� vac�o y permitimos cache, intentar desde cache
   if (Object.keys(filter).length === 0 && opts.useCache !== false) {
@@ -2644,16 +2655,6 @@ app.get("/api/movilizador/status", async (req, res) => {
     const fechaCorte = cfgRows[0]?.value || "";
 
     // 2. CONVERSION FINALIZADO
-    // OT válida: contiene '#' (ej: #7213) o es puramente numérica (ej: 7213)
-    // Inválida: formato fecha (02-06), texto libre, vacío
-    const isValidOT = (ot) => {
-      if (!ot) return false;
-      const s = String(ot).trim();
-      if (!s) return false;
-      if (s.includes('#')) return true;       // #7213, OT#7213, etc.
-      if (/^\d+$/.test(s)) return true;       // 7213, 12345
-      return false;                            // 02-06, texto, etc.
-    };
 
     let convUrl = `${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CONVERSION&estado_general=eq.FINALIZADO&select=vin,fecha_creacion,created_at,numero_ot,asignaciones(updated_at,estado_actual,rol_trabajo)`;
     if (fechaCorte) convUrl += `&created_at=gte.${fechaCorte}T00:00:00`;
@@ -2822,7 +2823,7 @@ app.get("/api/movilizador/status", async (req, res) => {
         fecha_calidad: wo.fecha_creacion || wo.created_at,
         trasladado_por: t?.trasladado_por || "",
         destino: "",  // enriquecido abajo si la columna existe en vins
-        tiene_ot: isValidOT(convAllMap.get(vin)?.numero_ot),
+        tiene_ot: isValidOT_(convAllMap.get(vin)?.numero_ot),
       });
     }
     list3.sort((a, b) => new Date(b.fecha_calidad) - new Date(a.fecha_calidad));
@@ -2938,7 +2939,7 @@ app.post("/api/movilizador/traslado", async (req, res) => {
         { method: "GET", headers }
       );
       const otCheckRows = otCheckResp.ok ? await otCheckResp.json() : [];
-      if (!isValidOT(otCheckRows[0]?.numero_ot)) {
+      if (!isValidOT_(otCheckRows[0]?.numero_ot)) {
         return res.status(400).json({
           ok: false,
           error: "❌ #OT no registrado: registre el número de OT en ASIGNACIONES (columna E) antes de confirmar la salida del vehículo."
