@@ -619,11 +619,13 @@ async function handleAction_(vin, accion, btn, onSuccess) {
     if (!j?.ok) throw new Error(j?.error || "Error al guardar");
     if (onSuccess) onSuccess(vin);
     await refreshAll_();
+    return true;
   } catch (e) {
     btn.disabled = false;
     btn.textContent = originalText;
     const statusEl = document.getElementById("movStatus");
     if (statusEl) statusEl.textContent = `Error: ${e.message}`;
+    return false;
   }
 }
 
@@ -866,13 +868,57 @@ async function closeMovQr_() {
 
 // ─── GPS + Registro ────────────────────────────────────────────────────
 
-function openGpsWithVin_(vin) {
-  // Try passing VIN via query param (GPS app may support it)
-  window.open(`${GPS_URL}?vin=${encodeURIComponent(vin)}`, "_blank", "noopener,noreferrer");
-  // Also copy VIN to clipboard for manual paste
+function getGpsUrl_(vin) {
+  return `${GPS_URL}?vin=${encodeURIComponent(vin)}`;
+}
+
+function copyVinToClipboard_(vin) {
   try {
     navigator.clipboard.writeText(vin).catch(() => {});
   } catch {}
+}
+
+function prepareGpsWindow_(vin) {
+  copyVinToClipboard_(vin);
+  const popup = window.open("about:blank", "_blank");
+  if (!popup) return null;
+
+  try {
+    popup.opener = null;
+    popup.document.title = "Registrando salida...";
+    popup.document.body.innerHTML = "<p style=\"font-family:system-ui,sans-serif;padding:16px;\">Guardando salida...</p>";
+  } catch {}
+
+  return popup;
+}
+
+function openGpsWithVin_(vin, popup) {
+  const url = getGpsUrl_(vin);
+  copyVinToClipboard_(vin);
+
+  if (popup && !popup.closed) {
+    try {
+      popup.location.replace(url);
+      return;
+    } catch {}
+  }
+
+  const opened = window.open(url, "_blank", "noopener,noreferrer");
+  if (!opened) window.location.href = url;
+}
+
+async function handleConfirmarSalida_(vin, btn) {
+  const vinClean = String(vin || "").trim().toUpperCase();
+  if (!vinClean) return;
+
+  const popup = prepareGpsWindow_(vinClean);
+  const ok = await handleAction_(vinClean, "ENTREGAR_FINAL", btn, () => {
+    openGpsWithVin_(vinClean, popup);
+  });
+
+  if (!ok && popup && !popup.closed) {
+    try { popup.close(); } catch {}
+  }
 }
 
 async function handleRegistroDesde_(vin, btn) {
@@ -1001,7 +1047,7 @@ export function init() {
     const vin = this.dataset.vin;
     if (!vin) return;
     closeSalidaQrResult_();
-    handleAction_(vin, "ENTREGAR_FINAL", this, openGpsWithVin_).catch(() => {});
+    handleConfirmarSalida_(vin, this).catch(() => {});
   });
 
   // Pendientes: QR confirm + cancel
@@ -1060,7 +1106,7 @@ export function init() {
       handleAction_(vin, "ENTREGAR_FINAL", btn).catch(() => {});
     } else if (btn.classList.contains("btnConfirmarSalida")) {
       // Confirmar salida: registra ENTREGAR_FINAL + abre app GPS de registro
-      handleAction_(vin, "ENTREGAR_FINAL", btn, openGpsWithVin_).catch(() => {});
+      handleConfirmarSalida_(vin, btn).catch(() => {});
     } else if (btn.classList.contains("btnRegistrarDesde")) {
       // Registrar ingreso desde la lista diaria
       handleRegistroDesde_(vin, btn).catch(() => {});
