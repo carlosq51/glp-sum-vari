@@ -1297,6 +1297,26 @@
 :root[data-theme="day"] .movOfflineBanner { background: rgba(251,146,60,.1); border-color: rgba(251,146,60,.35); color: #9a3412; }
 :root[data-theme="day"] .movPendientesQrCard { background: rgba(251,191,36,.08); border-color: rgba(251,191,36,.4); }
 
+.movDownloadBtnSaved {
+  border-color: rgba(74,222,128,.45);
+  background: rgba(74,222,128,.1);
+  color: #4ade80;
+}
+
+.movCacheBanner {
+  background: rgba(251,146,60,.16);
+  border: 1px solid rgba(251,146,60,.38);
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-size: var(--fs-xs);
+  color: #fb923c;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+:root[data-theme="day"] .movDownloadBtnSaved { background: rgba(22,163,74,.1); border-color: rgba(22,163,74,.4); color: #15803d; }
+:root[data-theme="day"] .movCacheBanner { background: rgba(251,146,60,.1); border-color: rgba(251,146,60,.35); color: #9a3412; }
+
 /* ─── Salida: barra de escaneo QR ─── */
 .movSalidaQrBar {
   padding: 4px 0 10px;

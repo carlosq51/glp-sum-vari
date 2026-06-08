@@ -66,7 +66,7 @@ export function movilizadorView() {
               class="movVinInput" autocomplete="off" autocapitalize="characters" spellcheck="false" />
           </div>
           <button id="btnMovQrPendientes" type="button" class="movQrBtn" title="Escanear QR">📷</button>
-          <button id="btnMovDescargarLista" type="button" class="movDownloadBtn" title="Guardar lista local">⬇️</button>
+          <button id="btnMovGuardarLista" type="button" class="movDownloadBtn" title="Guardar lista en el celular">💾</button>
         </div>
 
         <!-- QR result card -->
@@ -81,6 +81,9 @@ export function movilizadorView() {
             <button id="btnMovPendientesCancelarQr" type="button" class="movBtnCancelSm">✕ No</button>
           </div>
         </div>
+
+        <!-- Banner: lista cacheada (sin internet) -->
+        <div id="movCacheBanner" class="movCacheBanner" style="display:none;"></div>
 
         <!-- Offline sync banner -->
         <div id="movOfflineBanner" class="movOfflineBanner" style="display:none;">

@@ -16,6 +16,7 @@ let pollTimer = null;
 const POLL_MS = 30_000;
 const GPS_URL = "https://gps-ubicaciones-app.vercel.app/";
 const OFFLINE_KEY = "glp_mov_offline_q";
+const LISTA_CACHE_KEY = "glp_mov_lista_cache";
 
 let _pendientesRows = [];
 let _pendientesFiltro = "";
@@ -93,7 +94,47 @@ function renderList0_(rows) {
   box.innerHTML = html;
 }
 
-// ─── Offline queue ───────────────────────────────────────────────────
+// ─── Lista cache (localStorage) ─────────────────────────────────────
+
+function saveListaCache_(rows) {
+  try {
+    localStorage.setItem(LISTA_CACHE_KEY, JSON.stringify({ rows, savedAt: new Date().toISOString() }));
+  } catch {}
+}
+
+function loadListaCache_() {
+  try { return JSON.parse(localStorage.getItem(LISTA_CACHE_KEY) || "null"); } catch { return null; }
+}
+
+function showCacheBanner_(savedAt) {
+  const banner = document.getElementById("movCacheBanner");
+  if (!banner) return;
+  const d = savedAt ? new Date(savedAt) : null;
+  const label = d ? d.toLocaleString("es-PE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "?";
+  banner.style.display = "";
+  banner.textContent = `📶 Sin conexión — mostrando lista guardada el ${label}`;
+}
+
+function hideCacheBanner_() {
+  const banner = document.getElementById("movCacheBanner");
+  if (banner) banner.style.display = "none";
+}
+
+function updateGuardarBtn_(savedAt) {
+  const btn = document.getElementById("btnMovGuardarLista");
+  if (!btn) return;
+  if (savedAt) {
+    const d = new Date(savedAt);
+    const t = d.toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" });
+    btn.title = `Lista guardada a las ${t}`;
+    btn.classList.add("movDownloadBtnSaved");
+  } else {
+    btn.title = "Guardar lista en el celular";
+    btn.classList.remove("movDownloadBtnSaved");
+  }
+}
+
+// ─── Offline queue ─────────────────────────────────────
 
 function getOfflineQueue_() {
   try { return JSON.parse(localStorage.getItem(OFFLINE_KEY) || "[]"); } catch { return []; }
@@ -538,6 +579,9 @@ async function refreshAll_() {
     if (!j?.ok) throw new Error(j?.error || "Error cargando estado");
 
     renderPendientesRegistrar_(jPend?.sin_registrar || []);
+    saveListaCache_(jPend?.sin_registrar || []);
+    hideCacheBanner_();
+    updateGuardarBtn_(new Date().toISOString());
     renderList0_(j.list0 || []);
     renderList1_(j.list1 || []);
     renderList2_(j.list2 || []);
@@ -548,7 +592,13 @@ async function refreshAll_() {
       statusEl.textContent = `Actualizado ${t.toLocaleTimeString("es-PE")}`;
     }
   } catch (e) {
-    if (statusEl) statusEl.textContent = e.message || "Error";
+    // Si falla la red, cargar la lista desde caché
+    const cache = loadListaCache_();
+    if (cache?.rows) {
+      renderPendientesRegistrar_(cache.rows);
+      showCacheBanner_(cache.savedAt);
+    }
+    if (statusEl) statusEl.textContent = navigator.onLine ? (e.message || "Error") : "📶 Sin conexión";
   } finally {
     if (refreshBtn) refreshBtn.disabled = false;
   }
@@ -916,13 +966,30 @@ export function init() {
   document.getElementById("btnMovQrSalida")?.addEventListener("click",     () => openMovQr_("salida").catch(() => {}));
   document.getElementById("btnMovQrPendientes")?.addEventListener("click", () => openMovQr_("pendientes").catch(() => {}));
 
-  // Búsqueda en la lista de pendientes
+  // Guardar lista en caché del celular
+  document.getElementById("btnMovGuardarLista")?.addEventListener("click", () => {
+    if (!_pendientesRows.length) {
+      const s = document.getElementById("movStatus");
+      if (s) s.textContent = "Sin datos para guardar.";
+      return;
+    }
+    saveListaCache_(_pendientesRows);
+    updateGuardarBtn_(new Date().toISOString());
+    const s = document.getElementById("movStatus");
+    if (s) s.textContent = `💾 Lista guardada (${_pendientesRows.length} VINs) — disponible sin conexión.`;
+  });
+
+  // Al abrir: cargar cache si existe
+  const initCache = loadListaCache_();
+  if (initCache?.rows?.length) {
+    renderPendientesRegistrar_(initCache.rows);
+    updateGuardarBtn_(initCache.savedAt);
+  }
   document.getElementById("movPendientesSearch")?.addEventListener("input", e => {
     applyPendientesFiltro_(e.target.value);
   });
 
-  // Descargar lista local
-  document.getElementById("btnMovDescargarLista")?.addEventListener("click", downloadListaPendientes_);
+
   document.getElementById("btnMovCloseQr")?.addEventListener("click",   () => closeMovQr_().catch(() => {}));
   document.getElementById("movQrModal")?.addEventListener("click", e => {
     if (e.target === document.getElementById("movQrModal")) closeMovQr_().catch(() => {});
