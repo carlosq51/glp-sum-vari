@@ -2973,6 +2973,31 @@ app.post("/api/movilizador/traslado", async (req, res) => {
   }
 });
 
+// GET /api/movilizador/pendientes  (misma lógica, accesible al movilizador)
+app.get("/api/movilizador/pendientes", async (req, res) => {
+  try {
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const headers = supabaseHeaders_();
+    const [listaResp, trasResp, vinsResp] = await Promise.all([
+      fetch(`${SUPABASE_URL}/rest/v1/lista_diaria_activa?select=vin,fecha_asignacion&order=fecha_asignacion.asc,vin.asc`, { method: "GET", headers }),
+      fetch(`${SUPABASE_URL}/rest/v1/movilizador_traslados?select=vin,estado`, { method: "GET", headers }),
+      fetch(`${SUPABASE_URL}/rest/v1/vins?ultima_ubicacion=neq.&select=vin,ultima_ubicacion`, { method: "GET", headers }),
+    ]);
+    const listaRows = listaResp.ok ? await listaResp.json() : [];
+    const trasRows  = trasResp.ok  ? await trasResp.json()  : [];
+    const vinsRows  = vinsResp.ok  ? await vinsResp.json()  : [];
+    const registrado = new Set((trasRows || []).map(t => t.vin));
+    const ubicMap    = new Map((vinsRows || []).map(v => [v.vin, v.ultima_ubicacion || ""]));
+    const sin_registrar = (listaRows || [])
+      .filter(r => !registrado.has(r.vin))
+      .map(r => ({ vin: r.vin, fecha: r.fecha_asignacion, ubicacion: ubicMap.get(r.vin) || "" }));
+    return res.json({ ok: true, sin_registrar });
+  } catch (e) {
+    console.error("[MOV_PENDIENTES]", e.message);
+    return res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
 // GET /api/supervisor/lista-pendientes
 // VINs de LISTA DIARIA que el movilizador aun no ha registrado en GLP
 app.get("/api/supervisor/lista-pendientes", async (req, res) => {

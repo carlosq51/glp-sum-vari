@@ -59,6 +59,39 @@ export function movilizadorView() {
       <!-- ── Tab: LISTA DIARIA ── -->
       <div class="movTabPanel" data-panel="lista">
 
+        <!-- ── Por registrar en GLP (lista_diaria_activa) ── -->
+        <div class="movPendientesBox">
+          <div class="movPendientesHdr">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span class="movPendientesTitle">⏳ Por registrar en GLP</span>
+              <span id="movBadgePendientes" class="movBadge movBadgeWarn" style="display:none;"></span>
+            </div>
+            <button id="btnMovQrPendientes" type="button" class="movQrBtn" title="Escanear QR para buscar en la lista">📷 QR</button>
+          </div>
+
+          <!-- QR result card -->
+          <div id="movPendientesQrCard" class="movPendientesQrCard" style="display:none;">
+            <div class="movPendientesQrTop">
+              <span id="movPendientesQrVin" class="movVin" style="font-size:1rem;"></span>
+              <span id="movPendientesQrUbic" class="small muted"></span>
+            </div>
+            <div class="movPendientesQrMsg" id="movPendientesQrMsg"></div>
+            <div class="movPendientesConfirmBtns" id="movPendientesQrConfirmBtns" style="display:none;">
+              <button id="btnMovPendientesConfirmarQr" class="movBtnFull movBtnEntrada" type="button" data-vin="">✅ Confirmar ingreso</button>
+              <button id="btnMovPendientesCancelarQr" type="button" class="movBtnCancelSm">✕ No</button>
+            </div>
+          </div>
+
+          <!-- Offline sync banner -->
+          <div id="movOfflineBanner" class="movOfflineBanner" style="display:none;">
+            📶 <strong><span id="movOfflineCount">0</span></strong> registro(s) guardados sin conexión &mdash; se sincronizarán cuando haya internet
+          </div>
+
+          <div id="movPendientesBody" class="movPendientesBody"></div>
+        </div>
+
+        <div class="movListaSep"></div>
+
         <div class="movListaDiariaHeader">
           <span class="movListaDiariaTitle">Vehículos del Día</span>
           <span id="movListaDiariaCount" class="movListaDiariaCount"></span>

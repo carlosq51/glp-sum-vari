@@ -15,6 +15,9 @@ import { createScanner } from "../../core/qr-scanner.js";
 let pollTimer = null;
 const POLL_MS = 30_000;
 const GPS_URL = "https://gps-ubicaciones-app.vercel.app/";
+const OFFLINE_KEY = "glp_mov_offline_q";
+
+let _pendientesRows = [];
 
 // ─── Helpers ──────────────────────────────────────────────────────────
 
@@ -87,6 +90,183 @@ function renderList0_(rows) {
 
   html += `</div>`;
   box.innerHTML = html;
+}
+
+// ─── Offline queue ───────────────────────────────────────────────────
+
+function getOfflineQueue_() {
+  try { return JSON.parse(localStorage.getItem(OFFLINE_KEY) || "[]"); } catch { return []; }
+}
+function saveOfflineQueue_(q) {
+  try { localStorage.setItem(OFFLINE_KEY, JSON.stringify(q)); } catch {}
+}
+function addToOfflineQueue_(vin) {
+  const q = getOfflineQueue_();
+  if (!q.find(i => i.vin === vin))
+    q.push({ vin, accion: "REGISTRAR_ENTRADA", usuario: getMovNombre_(), ts: Date.now() });
+  saveOfflineQueue_(q);
+  updateOfflineBanner_();
+}
+function removeFromOfflineQueue_(vin) {
+  saveOfflineQueue_(getOfflineQueue_().filter(i => i.vin !== vin));
+  updateOfflineBanner_();
+}
+function updateOfflineBanner_() {
+  const q = getOfflineQueue_();
+  const banner = document.getElementById("movOfflineBanner");
+  const countEl = document.getElementById("movOfflineCount");
+  if (!banner) return;
+  banner.style.display = q.length ? "" : "none";
+  if (countEl) countEl.textContent = String(q.length);
+}
+async function drainOfflineQueue_() {
+  const q = getOfflineQueue_();
+  if (!q.length || !navigator.onLine) return;
+  const synced = [];
+  for (const item of q) {
+    try {
+      const j = await postJSON("/api/movilizador/traslado", { vin: item.vin, accion: item.accion, usuario: item.usuario });
+      if (j?.ok) synced.push(item.vin);
+    } catch { /* keep for next retry */ }
+  }
+  if (synced.length) {
+    saveOfflineQueue_(getOfflineQueue_().filter(i => !synced.includes(i.vin)));
+    updateOfflineBanner_();
+  }
+}
+
+// ─── Pendientes por registrar ────────────────────────────────────────
+
+function renderPendientesRegistrar_(rows) {
+  _pendientesRows = rows || [];
+  updateOfflineBanner_();
+  const box = document.getElementById("movPendientesBody");
+  if (!box) return;
+
+  // Badge en tab Lista
+  setBadge_("movBadgePendientes", _pendientesRows.length);
+
+  if (!_pendientesRows.length) {
+    box.innerHTML = `<div class="movEmpty small muted" style="padding:10px 0;">✅ Todos los carros ya están registrados.</div>`;
+    return;
+  }
+
+  box.innerHTML = _pendientesRows.map(r => `
+    <div class="movPendienteCard" id="movPCard_${escapeHtml(r.vin)}">
+      <div class="movPendienteTop">
+        <span class="movVin" style="font-family:monospace;">${escapeHtml(r.vin)}</span>
+        ${r.ubicacion ? `<span class="small" style="opacity:.6;flex:1;">${escapeHtml(r.ubicacion)}</span>` : ""}
+        <span class="small" style="opacity:.38;">${r.fecha || ""}</span>
+      </div>
+      <div class="movPendienteConfirmRow" id="movPConfirm_${escapeHtml(r.vin)}" style="display:none;">
+        <span class="small" style="opacity:.75;">¿Confirmar ingreso a GLP?</span>
+        <div style="display:flex;gap:6px;margin-top:5px;">
+          <button class="movBtnFull movBtnEntrada movBtnConfirmarIngreso" data-vin="${escapeHtml(r.vin)}" type="button" style="flex:1;">✅ Sí, confirmar</button>
+          <button class="movBtnCancelSm movBtnCancelarIngreso" data-vin="${escapeHtml(r.vin)}" type="button">✕</button>
+        </div>
+      </div>
+      <button class="movBtnRegistrarPendiente movBtnFull" data-vin="${escapeHtml(r.vin)}" type="button">
+        📥 Registrar ingreso ▶
+      </button>
+    </div>
+  `).join("");
+}
+
+function showPendienteConfirmRow_(vin) {
+  const row = document.getElementById(`movPConfirm_${vin}`);
+  const btn = document.querySelector(`#movPCard_${vin} .movBtnRegistrarPendiente`);
+  if (row) row.style.display = "";
+  if (btn) btn.style.display = "none";
+  // Auto-cancel after 8 s if user doesn't act
+  setTimeout(() => hidePendienteConfirmRow_(vin), 8000);
+}
+
+function hidePendienteConfirmRow_(vin) {
+  const row = document.getElementById(`movPConfirm_${vin}`);
+  const btn = document.querySelector(`#movPCard_${vin} .movBtnRegistrarPendiente`);
+  if (row) row.style.display = "none";
+  if (btn) btn.style.display = "";
+}
+
+async function confirmarIngresoPendiente_(vin) {
+  const vinClean = String(vin || "").trim().toUpperCase();
+  if (!vinClean) return;
+
+  const btnConfirm = document.querySelector(`.movBtnConfirmarIngreso[data-vin="${CSS.escape(vinClean)}"]`);
+  const statusEl = document.getElementById("movStatus");
+
+  if (btnConfirm) { btnConfirm.disabled = true; btnConfirm.textContent = "Guardando…"; }
+
+  if (!navigator.onLine) {
+    addToOfflineQueue_(vinClean);
+    hidePendienteConfirmRow_(vinClean);
+    if (statusEl) statusEl.textContent = `📶 Sin conexión — ${vinClean} guardado localmente.`;
+    if (btnConfirm) { btnConfirm.disabled = false; btnConfirm.textContent = "✅ Sí, confirmar"; }
+    return;
+  }
+
+  try {
+    const j = await postJSON("/api/movilizador/traslado", {
+      vin: vinClean,
+      accion: "REGISTRAR_ENTRADA",
+      usuario: getMovNombre_(),
+    });
+    if (!j?.ok) throw new Error(j?.error || "Error al guardar");
+    removeFromOfflineQueue_(vinClean);
+    if (statusEl) statusEl.textContent = `✓ ${vinClean} registrado en GLP.`;
+    await refreshAll_();
+  } catch (e) {
+    // Network failure → save offline
+    if (!navigator.onLine || /fetch|network|failed/i.test(e.message)) {
+      addToOfflineQueue_(vinClean);
+      hidePendienteConfirmRow_(vinClean);
+      if (statusEl) statusEl.textContent = `📶 Sin conexión — ${vinClean} guardado localmente.`;
+      if (btnConfirm) { btnConfirm.disabled = false; btnConfirm.textContent = "✅ Sí, confirmar"; }
+    } else {
+      if (btnConfirm) { btnConfirm.disabled = false; btnConfirm.textContent = "✅ Sí, confirmar"; }
+      if (statusEl) statusEl.textContent = `Error: ${e.message}`;
+    }
+  }
+}
+
+// QR for pendientes: show result card
+function showPendientesQrCard_(vin) {
+  const vinClean = String(vin || "").trim().toUpperCase();
+  const card = document.getElementById("movPendientesQrCard");
+  const vinEl = document.getElementById("movPendientesQrVin");
+  const ubicEl = document.getElementById("movPendientesQrUbic");
+  const msgEl = document.getElementById("movPendientesQrMsg");
+  const confirmBtns = document.getElementById("movPendientesQrConfirmBtns");
+  const confirmBtn = document.getElementById("btnMovPendientesConfirmarQr");
+  if (!card) return;
+
+  const found = _pendientesRows.find(r => r.vin === vinClean);
+
+  if (vinEl) vinEl.textContent = vinClean;
+  if (ubicEl) ubicEl.textContent = found?.ubicacion || "";
+  if (msgEl) msgEl.textContent = found ? "" : "⚠️ Este VIN no está en la lista de pendientes.";
+  if (confirmBtns) confirmBtns.style.display = found ? "" : "none";
+  if (confirmBtn) confirmBtn.dataset.vin = vinClean;
+
+  card.style.display = "";
+
+  // Scroll to card
+  setTimeout(() => card.scrollIntoView({ behavior: "smooth", block: "nearest" }), 80);
+}
+
+function hidePendientesQrCard_() {
+  const card = document.getElementById("movPendientesQrCard");
+  if (card) card.style.display = "none";
+}
+
+async function confirmarIngresoPendienteQr_() {
+  const btn = document.getElementById("btnMovPendientesConfirmarQr");
+  const vin = btn?.dataset?.vin;
+  if (!vin) return;
+  hidePendientesQrCard_();
+  // Re-use the same confirm logic; pass a temporary button element
+  const tmpBtn = { disabled: false, textContent: "" };
+  await confirmarIngresoPendiente_(vin);
 }
 
 // ─── Flow status config ──────────────────────────────────────────────
@@ -292,9 +472,16 @@ async function refreshAll_() {
     if (statusEl) statusEl.textContent = "Actualizando…";
     if (refreshBtn) refreshBtn.disabled = true;
 
-    const j = await getJSON("/api/movilizador/status");
+    // Drain offline queue first (if online)
+    await drainOfflineQueue_();
+
+    const [j, jPend] = await Promise.all([
+      getJSON("/api/movilizador/status"),
+      getJSON("/api/movilizador/pendientes"),
+    ]);
     if (!j?.ok) throw new Error(j?.error || "Error cargando estado");
 
+    renderPendientesRegistrar_(jPend?.sin_registrar || []);
     renderListDiaria_(j.listDiaria || []);
     renderList0_(j.list0 || []);
     renderList1_(j.list1 || []);
@@ -502,6 +689,8 @@ async function openMovQr_(target) {
         await closeMovQr_();
         if (tgt === "salida") {
           showSalidaQrResult_(code);
+        } else if (tgt === "pendientes") {
+          showPendientesQrCard_(code);
         } else {
           // entrada
           const inp = document.getElementById("movVinEntrada");
@@ -668,8 +857,9 @@ export function init() {
   createVinAc_("movVinEntrada", "movVinEntradaSuggest", () => {});
 
   // QR scanner buttons
-  document.getElementById("btnMovQrEntrada")?.addEventListener("click", () => openMovQr_("entrada").catch(() => {}));
-  document.getElementById("btnMovQrSalida")?.addEventListener("click",  () => openMovQr_("salida").catch(() => {}));
+  document.getElementById("btnMovQrEntrada")?.addEventListener("click",    () => openMovQr_("entrada").catch(() => {}));
+  document.getElementById("btnMovQrSalida")?.addEventListener("click",     () => openMovQr_("salida").catch(() => {}));
+  document.getElementById("btnMovQrPendientes")?.addEventListener("click", () => openMovQr_("pendientes").catch(() => {}));
   document.getElementById("btnMovCloseQr")?.addEventListener("click",   () => closeMovQr_().catch(() => {}));
   document.getElementById("movQrModal")?.addEventListener("click", e => {
     if (e.target === document.getElementById("movQrModal")) closeMovQr_().catch(() => {});
@@ -683,6 +873,29 @@ export function init() {
     closeSalidaQrResult_();
     handleAction_(vin, "ENTREGAR_FINAL", this, openGpsWithVin_).catch(() => {});
   });
+
+  // Pendientes: QR confirm + cancel
+  document.getElementById("btnMovPendientesConfirmarQr")?.addEventListener("click", () =>
+    confirmarIngresoPendienteQr_().catch(() => {})
+  );
+  document.getElementById("btnMovPendientesCancelarQr")?.addEventListener("click", hidePendientesQrCard_);
+
+  // Pendientes: delegación para botones en la lista
+  document.getElementById("viewMOVILIZADOR")?.addEventListener("click", e => {
+    const btn = e.target.closest(".movBtnRegistrarPendiente");
+    if (btn) { showPendienteConfirmRow_(btn.dataset.vin); return; }
+    const conf = e.target.closest(".movBtnConfirmarIngreso");
+    if (conf) { confirmarIngresoPendiente_(conf.dataset.vin).catch(() => {}); return; }
+    const canc = e.target.closest(".movBtnCancelarIngreso");
+    if (canc) { hidePendienteConfirmRow_(canc.dataset.vin); return; }
+  });
+
+  // Auto-sync cuando recupera conexión
+  window.addEventListener("online", () => {
+    drainOfflineQueue_().then(() => refreshAll_()).catch(() => {});
+  });
+
+  updateOfflineBanner_();
 
   // Registro de Entrada button
   document.getElementById("btnMovRegistrarEntrada")?.addEventListener("click", () => {
