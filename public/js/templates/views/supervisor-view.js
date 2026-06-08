@@ -4,12 +4,13 @@ export function supervisorView() {
     <div id="viewSUPERVISOR" class="card" style="display:none;">
       <h3>Supervisor</h3>
 
-      <!-- Pestañas principales: REPORTE / LIVE / UBICACIONES / INCIDENCIAS -->
+      <!-- Pestañas principales: REPORTE / LIVE / UBICACIONES / INCIDENCIAS / LISTA -->
       <div class="sup-tab-row">
         <button type="button" class="btn sup-tab" data-suptab="REPORTE">📊 REPORTE</button>
         <button type="button" class="btn sup-tab active" data-suptab="LIVE">🔴 LIVE</button>
         <button type="button" class="btn sup-tab" data-suptab="UBICACIONES">📍 UBIC.</button>
         <button type="button" class="btn sup-tab" data-suptab="INCIDENCIAS">⚠️ INCID.</button>
+        <button type="button" class="btn sup-tab" data-suptab="LISTA">📋 LISTA</button>
       </div>
 
       <!-- ══════════════════════════════════════════════
@@ -195,6 +196,17 @@ export function supervisorView() {
 
         <!-- Lista de incidencias -->
         <div id="incRepList" style="margin-top:10px;"></div>
+      </div>
+
+      <!-- ══════════════════════════════════════════════
+           PANEL LISTA — VINs pendientes por movilizador o técnico
+      ══════════════════════════════════════════════ -->
+      <div id="supPanelLista" style="display:none;">
+        <div style="margin-top:8px; display:flex; justify-content:space-between; align-items:center;">
+          <span class="small muted">VINs activos pendientes de acción</span>
+          <button id="btnListaRefresh" class="btn3" type="button">🔄 Actualizar</button>
+        </div>
+        <div id="supPanelListaBox"></div>
       </div>
     </div>
   `;

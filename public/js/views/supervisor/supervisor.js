@@ -288,10 +288,12 @@ export function init() {
       const panelLive        = document.getElementById("supPanelLive");
       const panelUbicaciones = document.getElementById("supPanelUbicaciones");
       const panelIncidencias = document.getElementById("supPanelIncidencias");
+      const panelLista       = document.getElementById("supPanelLista");
       if (panelReporte)     panelReporte.style.display     = tab === "REPORTE"     ? "" : "none";
       if (panelLive)        panelLive.style.display        = tab === "LIVE"        ? "" : "none";
       if (panelUbicaciones) panelUbicaciones.style.display = tab === "UBICACIONES" ? "" : "none";
       if (panelIncidencias) panelIncidencias.style.display = tab === "INCIDENCIAS" ? "" : "none";
+      if (panelLista)       panelLista.style.display       = tab === "LISTA"       ? "" : "none";
 
       if (tab === "LIVE") {
         exitUbicaciones_();
@@ -305,6 +307,11 @@ export function init() {
         exitLive_();
         exitUbicaciones_();
         enterIncReport_();
+      } else if (tab === "LISTA") {
+        exitLive_();
+        exitUbicaciones_();
+        exitIncReport_();
+        fetchListaPendientes_().catch(() => {});
       } else {
         exitLive_();
         exitUbicaciones_();
@@ -355,6 +362,65 @@ export function init() {
   bindSupLive_();
   bindSupUbicaciones_();
   bindSupIncidenciasReport_({ getJSON_user, escapeHtml });
+
+  document.getElementById("btnListaRefresh")?.addEventListener("click", () =>
+    fetchListaPendientes_().catch(() => {})
+  );
+}
+
+// ── LISTA PENDIENTES ────────────────────────────────────────────────────
+
+async function fetchListaPendientes_() {
+  const box = document.getElementById("supPanelListaBox");
+  if (!box) return;
+  box.innerHTML = '<div class="small muted" style="margin-top:12px;">Cargando...</div>';
+  try {
+    const j = await getJSON_user("/api/supervisor/lista-pendientes", "Cargando lista...");
+    if (!j?.ok) {
+      box.innerHTML = `<div class="small muted">Error: ${escapeHtml(j?.error || "?")}</div>`;
+      return;
+    }
+    renderListaPendientes_(j, box);
+  } catch (e) {
+    box.innerHTML = `<div class="small muted">Error al cargar: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function renderListaPendientes_(data, box) {
+  const { sin_ot = [], en_proceso = [], pendiente_entrega = [] } = data;
+
+  const cardsHtml = (items, emptyMsg) => {
+    if (!items.length)
+      return `<div class="small muted" style="padding:6px 4px;">${emptyMsg}</div>`;
+    return items.map(r => `
+      <div style="display:flex; align-items:center; gap:8px; padding:6px 4px; border-bottom:1px solid rgba(255,255,255,.07);">
+        <span style="font-weight:700; font-size:.9rem; flex:0 0 auto;">${escapeHtml(r.vin)}</span>
+        ${r.ubicacion
+          ? `<span class="small" style="opacity:.7; flex:1;">${escapeHtml(r.ubicacion)}</span>`
+          : `<span style="flex:1;"></span>`}
+        ${r.numero_ot
+          ? `<span class="small" style="opacity:.6;">#${escapeHtml(r.numero_ot)}</span>`
+          : ''}
+      </div>
+    `).join("");
+  };
+
+  const section = (color, icon, label, count, items, emptyMsg) => `
+    <div style="margin-bottom:14px;">
+      <div style="padding:6px 10px; border-radius:8px; background:${color}; font-weight:700; font-size:.85rem; margin-bottom:4px;">
+        ${icon} ${label} <span style="opacity:.7;">(${count})</span>
+      </div>
+      ${cardsHtml(items, emptyMsg)}
+    </div>
+  `;
+
+  box.innerHTML = `
+    <div style="margin-top:10px;">
+      ${section("rgba(0,175,255,.18)",  "🔵", "Pendiente entrega — movilizador",  pendiente_entrega.length, pendiente_entrega, "Sin pendientes para movilizador.")}
+      ${section("rgba(0,220,80,.15)",   "🟢", "En conversión — técnico",           en_proceso.length,        en_proceso,        "Sin conversiones activas.")}
+      ${section("rgba(255,200,0,.13)",  "🟡", "Sin OT / Zona de espera",           sin_ot.length,            sin_ot,            "Sin vehículos en espera.")}
+    </div>
+  `;
 }
 
 export function enter() {
@@ -373,9 +439,11 @@ export function enter() {
   const panelReporte     = document.getElementById("supPanelReporte");
   const panelLive        = document.getElementById("supPanelLive");
   const panelIncidencias = document.getElementById("supPanelIncidencias");
+  const panelLista       = document.getElementById("supPanelLista");
   if (panelReporte)     panelReporte.style.display     = "none";
   if (panelLive)        panelLive.style.display        = "";
   if (panelIncidencias) panelIncidencias.style.display = "none";
+  if (panelLista)       panelLista.style.display       = "none";
   enterLive_();
 }
 
