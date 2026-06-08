@@ -18,6 +18,7 @@ const GPS_URL = "https://gps-ubicaciones-app.vercel.app/";
 const OFFLINE_KEY = "glp_mov_offline_q";
 
 let _pendientesRows = [];
+let _pendientesFiltro = "";
 
 // ─── Helpers ──────────────────────────────────────────────────────────
 
@@ -140,18 +141,42 @@ async function drainOfflineQueue_() {
 function renderPendientesRegistrar_(rows) {
   _pendientesRows = rows || [];
   updateOfflineBanner_();
-  const box = document.getElementById("movPendientesBody");
-  if (!box) return;
 
-  // Badge en tab Lista
+  // Badge en la tab Lista
+  setBadge_("movBadgeLista", _pendientesRows.length);
   setBadge_("movBadgePendientes", _pendientesRows.length);
 
-  if (!_pendientesRows.length) {
-    box.innerHTML = `<div class="movEmpty small muted" style="padding:10px 0;">✅ Todos los carros ya están registrados.</div>`;
+  // Re-aplicar filtro de búsqueda actual
+  applyPendientesFiltro_(_pendientesFiltro);
+}
+
+function renderPendientesBody_(filtered) {
+  const box = document.getElementById("movPendientesBody");
+  const subHdr = document.getElementById("movPendientesSubHdr");
+
+  const total = _pendientesRows.length;
+  const showing = filtered.length;
+
+  if (subHdr) {
+    if (!total) {
+      subHdr.textContent = "";
+    } else if (_pendientesFiltro && showing !== total) {
+      subHdr.textContent = `${showing} resultado${showing !== 1 ? "s" : ""} de ${total} pendiente${total !== 1 ? "s" : ""}`;
+    } else {
+      subHdr.textContent = `${total} vehículo${total !== 1 ? "s" : ""} por registrar`;
+    }
+  }
+
+  if (!box) return;
+
+  if (!filtered.length) {
+    box.innerHTML = `<div class="movEmpty small muted" style="padding:14px 0;">${
+      total ? "⚠️ Ningún VIN coincide con la búsqueda." : "✅ Todos los carros ya están registrados."
+    }</div>`;
     return;
   }
 
-  box.innerHTML = _pendientesRows.map(r => `
+  box.innerHTML = filtered.map(r => `
     <div class="movPendienteCard" id="movPCard_${escapeHtml(r.vin)}">
       <div class="movPendienteTop">
         <span class="movVin" style="font-family:monospace;">${escapeHtml(r.vin)}</span>
@@ -170,6 +195,37 @@ function renderPendientesRegistrar_(rows) {
       </button>
     </div>
   `).join("");
+}
+
+function applyPendientesFiltro_(q) {
+  _pendientesFiltro = String(q || "").toUpperCase().trim();
+  const filtered = _pendientesFiltro
+    ? _pendientesRows.filter(r =>
+        r.vin.includes(_pendientesFiltro) ||
+        (r.ubicacion || "").toUpperCase().includes(_pendientesFiltro)
+      )
+    : _pendientesRows;
+  renderPendientesBody_(filtered);
+}
+
+function downloadListaPendientes_() {
+  if (!_pendientesRows.length) {
+    const s = document.getElementById("movStatus");
+    if (s) s.textContent = "Sin datos para descargar.";
+    return;
+  }
+  const lines = ["VIN,FECHA,UBICACION"];
+  for (const r of _pendientesRows) {
+    lines.push(`${r.vin},${r.fecha || ""},"${(r.ubicacion || "").replace(/"/g, "'")}"`);
+  }
+  const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8" });
+  const url  = URL.createObjectURL(blob);
+  const a    = Object.assign(document.createElement("a"), {
+    href: url,
+    download: `pendientes_glp_${new Date().toISOString().slice(0, 10)}.csv`,
+  });
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function showPendienteConfirmRow_(vin) {
@@ -482,7 +538,6 @@ async function refreshAll_() {
     if (!j?.ok) throw new Error(j?.error || "Error cargando estado");
 
     renderPendientesRegistrar_(jPend?.sin_registrar || []);
-    renderListDiaria_(j.listDiaria || []);
     renderList0_(j.list0 || []);
     renderList1_(j.list1 || []);
     renderList2_(j.list2 || []);
@@ -860,6 +915,14 @@ export function init() {
   document.getElementById("btnMovQrEntrada")?.addEventListener("click",    () => openMovQr_("entrada").catch(() => {}));
   document.getElementById("btnMovQrSalida")?.addEventListener("click",     () => openMovQr_("salida").catch(() => {}));
   document.getElementById("btnMovQrPendientes")?.addEventListener("click", () => openMovQr_("pendientes").catch(() => {}));
+
+  // Búsqueda en la lista de pendientes
+  document.getElementById("movPendientesSearch")?.addEventListener("input", e => {
+    applyPendientesFiltro_(e.target.value);
+  });
+
+  // Descargar lista local
+  document.getElementById("btnMovDescargarLista")?.addEventListener("click", downloadListaPendientes_);
   document.getElementById("btnMovCloseQr")?.addEventListener("click",   () => closeMovQr_().catch(() => {}));
   document.getElementById("movQrModal")?.addEventListener("click", e => {
     if (e.target === document.getElementById("movQrModal")) closeMovQr_().catch(() => {});

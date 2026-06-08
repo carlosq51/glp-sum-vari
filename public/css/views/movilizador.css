@@ -1113,6 +1113,44 @@
   .movFiltroBtn { font-size: 11px; padding: 4px 9px; }
 }
 
+/* ─── Barra búsqueda + QR + descarga (tab Lista) ─── */
+.movSearchRow {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.movSearchRow .vinWrap { flex: 1; min-width: 0; }
+
+.movDownloadBtn {
+  flex-shrink: 0;
+  height: 38px;
+  width: 38px;
+  border-radius: var(--radiusSm);
+  border: 1px solid rgba(255,255,255,.2);
+  background: rgba(255,255,255,.07);
+  color: var(--text);
+  font-size: 1.1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background .16s;
+}
+.movDownloadBtn:hover { background: rgba(255,255,255,.14); }
+
+.movPendientesSubHdr {
+  font-size: var(--fs-xs);
+  color: rgba(240,244,255,.42);
+  font-weight: 600;
+  margin-bottom: 4px;
+  min-height: 16px;
+}
+
+:root[data-theme="day"] .movDownloadBtn { background: rgba(79,70,229,.07); border-color: rgba(15,23,42,.15); }
+:root[data-theme="day"] .movDownloadBtn:hover { background: rgba(79,70,229,.14); }
+:root[data-theme="day"] .movPendientesSubHdr { color: rgba(15,23,42,.4); }
+
 /* ══════════════════════════════════════════════════════════════
    POR REGISTRAR EN GLP – sección en tab Lista
    ══════════════════════════════════════════════════════════════ */

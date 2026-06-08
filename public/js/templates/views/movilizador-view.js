@@ -56,57 +56,42 @@ export function movilizadorView() {
         </div>
       </div>
 
-      <!-- ── Tab: LISTA DIARIA ── -->
+      <!-- ── Tab: LISTA ── -->
       <div class="movTabPanel" data-panel="lista">
 
-        <!-- ── Por registrar en GLP (lista_diaria_activa) ── -->
-        <div class="movPendientesBox">
-          <div class="movPendientesHdr">
-            <div style="display:flex;align-items:center;gap:8px;">
-              <span class="movPendientesTitle">⏳ Por registrar en GLP</span>
-              <span id="movBadgePendientes" class="movBadge movBadgeWarn" style="display:none;"></span>
-            </div>
-            <button id="btnMovQrPendientes" type="button" class="movQrBtn" title="Escanear QR para buscar en la lista">📷 QR</button>
+        <!-- Barra de búsqueda + QR + Descargar -->
+        <div class="movSearchRow">
+          <div class="vinWrap" style="flex:1;">
+            <input id="movPendientesSearch" type="search" placeholder="Buscar VIN…"
+              class="movVinInput" autocomplete="off" autocapitalize="characters" spellcheck="false" />
           </div>
-
-          <!-- QR result card -->
-          <div id="movPendientesQrCard" class="movPendientesQrCard" style="display:none;">
-            <div class="movPendientesQrTop">
-              <span id="movPendientesQrVin" class="movVin" style="font-size:1rem;"></span>
-              <span id="movPendientesQrUbic" class="small muted"></span>
-            </div>
-            <div class="movPendientesQrMsg" id="movPendientesQrMsg"></div>
-            <div class="movPendientesConfirmBtns" id="movPendientesQrConfirmBtns" style="display:none;">
-              <button id="btnMovPendientesConfirmarQr" class="movBtnFull movBtnEntrada" type="button" data-vin="">✅ Confirmar ingreso</button>
-              <button id="btnMovPendientesCancelarQr" type="button" class="movBtnCancelSm">✕ No</button>
-            </div>
-          </div>
-
-          <!-- Offline sync banner -->
-          <div id="movOfflineBanner" class="movOfflineBanner" style="display:none;">
-            📶 <strong><span id="movOfflineCount">0</span></strong> registro(s) guardados sin conexión &mdash; se sincronizarán cuando haya internet
-          </div>
-
-          <div id="movPendientesBody" class="movPendientesBody"></div>
+          <button id="btnMovQrPendientes" type="button" class="movQrBtn" title="Escanear QR">📷</button>
+          <button id="btnMovDescargarLista" type="button" class="movDownloadBtn" title="Guardar lista local">⬇️</button>
         </div>
 
-        <div class="movListaSep"></div>
-
-        <div class="movListaDiariaHeader">
-          <span class="movListaDiariaTitle">Vehículos del Día</span>
-          <span id="movListaDiariaCount" class="movListaDiariaCount"></span>
+        <!-- QR result card -->
+        <div id="movPendientesQrCard" class="movPendientesQrCard" style="display:none;">
+          <div class="movPendientesQrTop">
+            <span id="movPendientesQrVin" class="movVin" style="font-size:1rem;font-family:monospace;"></span>
+            <span id="movPendientesQrUbic" class="small muted"></span>
+          </div>
+          <div class="movPendientesQrMsg" id="movPendientesQrMsg"></div>
+          <div class="movPendientesConfirmBtns" id="movPendientesQrConfirmBtns" style="display:none;">
+            <button id="btnMovPendientesConfirmarQr" class="movBtnFull movBtnEntrada" type="button" data-vin="">✅ Confirmar ingreso</button>
+            <button id="btnMovPendientesCancelarQr" type="button" class="movBtnCancelSm">✕ No</button>
+          </div>
         </div>
 
-        <!-- Filtro por estado -->
-        <div class="movListaFiltros" id="movListaFiltros">
-          <button class="movFiltroBtn active" data-filtro="todos">Todos</button>
-          <button class="movFiltroBtn" data-filtro="PENDIENTE_ENTRADA">Sin ingresar</button>
-          <button class="movFiltroBtn" data-filtro="EN_ESPERA">En espera</button>
-          <button class="movFiltroBtn" data-filtro="EN_CONVERSION">Conversión</button>
-          <button class="movFiltroBtn" data-filtro="avanzados">Avanzados</button>
+        <!-- Offline sync banner -->
+        <div id="movOfflineBanner" class="movOfflineBanner" style="display:none;">
+          📶 <strong><span id="movOfflineCount">0</span></strong> registro(s) guardados sin conexión &mdash; se sincronizarán cuando haya internet
         </div>
 
-        <div id="movListaDiariaBody" class="movListaDiariaBody"></div>
+        <!-- Contador -->
+        <div id="movPendientesSubHdr" class="movPendientesSubHdr"></div>
+
+        <!-- Lista de VINs pendientes -->
+        <div id="movPendientesBody" class="movPendientesBody"></div>
 
       </div>
 
