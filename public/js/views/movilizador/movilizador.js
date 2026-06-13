@@ -842,7 +842,13 @@ function showSalidaQrResult_(vin) {
   const confirmBtn = document.getElementById("btnMovConfirmarSalidaQr");
   if (confirmBtn) {
     confirmBtn.dataset.vin = vinClean;
-    confirmBtn.style.display = row ? "" : "none";
+    if (!row) {
+      confirmBtn.style.display = "none";
+    } else {
+      confirmBtn.style.display = "";
+      confirmBtn.disabled = !row.tiene_ot;
+      confirmBtn.textContent = row.tiene_ot ? "Confirmar Salida ▶" : "🔒 Sin #OT — regístralo en ASIGNACIONES (col E)";
+    }
   }
 
   panel.style.display = "block";
@@ -1041,6 +1047,18 @@ export function init() {
     if (e.target === document.getElementById("movQrModal")) closeMovQr_().catch(() => {});
   });
   document.getElementById("btnMovCloseSalidaQr")?.addEventListener("click", () => closeSalidaQrResult_());
+
+  // Búsqueda manual de VIN en tab Salida
+  document.getElementById("movSalidaSearch")?.addEventListener("keydown", e => {
+    if (e.key !== "Enter") return;
+    const vin = e.target.value.trim().toUpperCase();
+    if (vin) showSalidaQrResult_(vin);
+  });
+  document.getElementById("movSalidaSearch")?.addEventListener("input", e => {
+    const vin = e.target.value.trim().toUpperCase();
+    if (!vin) closeSalidaQrResult_();
+    else if (_list3Rows.some(r => r.vin === vin)) showSalidaQrResult_(vin);
+  });
 
   // Confirmar salida desde resultado QR (delegado al handler existente)
   document.getElementById("btnMovConfirmarSalidaQr")?.addEventListener("click", function () {

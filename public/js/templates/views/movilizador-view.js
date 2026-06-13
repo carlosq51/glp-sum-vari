@@ -164,11 +164,14 @@ export function movilizadorView() {
       <!-- ── Tab: SALIDA ── -->
       <div class="movTabPanel" data-panel="salida" style="display:none;">
 
-        <!-- QR Buscar en Salida -->
-        <div class="movSalidaQrBar">
-          <button id="btnMovQrSalida" type="button" class="movQrBtn movSalidaQrBtnMain" title="Escanear QR para localizar vehículo">
-            📷 Escanear QR
-          </button>
+        <!-- Búsqueda + QR -->
+        <div class="movSearchRow">
+          <div class="vinWrap" style="flex:1; min-width:0;">
+            <input id="movSalidaSearch" type="text" class="movVinInput"
+              placeholder="Buscar VIN..." autocomplete="off"
+              autocapitalize="characters" spellcheck="false" />
+          </div>
+          <button id="btnMovQrSalida" type="button" class="movQrBtn" title="Escanear QR">📷</button>
         </div>
 
         <!-- Resultado de búsqueda por QR -->
