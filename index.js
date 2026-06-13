@@ -27,6 +27,7 @@ app.get("/env-config.js", (_req, res) => {
     `window.__ENV__=${JSON.stringify({
       VITE_SUPABASE_URL: process.env.VITE_SUPABASE_URL || "",
       VITE_SUPABASE_ANON_KEY: process.env.VITE_SUPABASE_ANON_KEY || "",
+      R2_PUBLIC_URL: process.env.R2_PUBLIC_URL || "",
     })};`
   );
 });

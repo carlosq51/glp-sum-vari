@@ -97,8 +97,8 @@ export async function fileToB64Compressed(file) {
       im.src = imgURL;
     });
 
-    const maxW = 960;
-    const quality = 0.65;
+    const maxW = 800;
+    const quality = 0.55;
 
     let w = img.naturalWidth || img.width || 0;
     let h = img.naturalHeight || img.height || 0;

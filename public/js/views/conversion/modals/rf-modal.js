@@ -72,7 +72,17 @@ async function rfOpenSoldadura_() {
 
   try {
     const today = new Date().toISOString().slice(0, 10);
-    const res = await postJSON("/api/uploader/proxy", { action: "getStatus", vin: RF.vin, dateStr: today });
+    let res = await postJSON("/api/uploader/proxy", { action: "getStatus", vin: RF.vin, dateStr: today });
+    // Si no hay fotos en el mes actual, buscar en el mes anterior
+    const hasSoldPhotos = Object.values(res?.status || {})
+      .some((v, _, arr) => arr.some(Boolean));
+    if (!hasSoldPhotos) {
+      const prev = new Date();
+      prev.setMonth(prev.getMonth() - 1);
+      const prevStr = prev.toISOString().slice(0, 10);
+      const res2 = await postJSON("/api/uploader/proxy", { action: "getStatus", vin: RF.vin, dateStr: prevStr });
+      if (Object.values(res2?.status || {}).some(Boolean)) res = res2;
+    }
     const previews = res?.previews || {};
     const status   = res?.status   || {};
 

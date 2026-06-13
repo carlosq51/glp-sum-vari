@@ -62,9 +62,44 @@ const emojiChar_ = {
 // --------------------------
 // HTML del popup
 // --------------------------
-function driveThumb_(fileId) {
-  if (!fileId) return "";
-  return `https://drive.google.com/thumbnail?id=${fileId}&sz=w600`;
+// R2: foto_file_id contiene "/" (ej. "incidencias/2026-01/abc.jpg")
+// Drive (legacy): solo el fileId sin "/"
+function buildFotoHtml_(inc) {
+  // Preferir URLs pre-construidas por el backend (cuando vienen del endpoint)
+  const thumbUrl = inc.fotoThumbUrl || inc.fotoImgUrl || (() => {
+    const fileId = String(inc.foto_file_id || inc.fotoFileId || "").trim();
+    if (!fileId) return "";
+    if (fileId.includes("/")) {
+      const base = (window.__ENV__?.R2_PUBLIC_URL || "").replace(/\/$/, "");
+      return base ? `${base}/${fileId}` : "";
+    }
+    return `https://drive.google.com/thumbnail?id=${fileId}&sz=w600`;
+  })();
+
+  if (!thumbUrl) return "";
+
+  const isR2 = !thumbUrl.includes("drive.google");
+  const fotoUrl = inc.fotoUrl || thumbUrl;
+
+  return `
+    <div class="incAlertPhoto">
+      ${isR2
+        ? `<img src="${escapeHtml(thumbUrl)}" alt="Foto de la incidencia"
+               loading="lazy"
+               style="width:100%; max-width:280px; height:auto; border-radius:10px;
+                      border:1px solid rgba(255,255,255,.18); display:block;"
+               onerror="this.closest('.incAlertPhoto').style.display='none'" />`
+        : `<a href="${escapeHtml(fotoUrl)}" target="_blank" rel="noopener">
+             <img src="${escapeHtml(thumbUrl)}" alt="Foto de la incidencia"
+                  loading="lazy"
+                  style="width:140px; height:auto; border-radius:10px;
+                         border:1px solid rgba(255,255,255,.18);"
+                  onerror="this.closest('.incAlertPhoto').style.display='none'" />
+           </a>
+           <div class="small" style="opacity:.75; margin-top:4px;">(clic para abrir en Drive)</div>`
+      }
+    </div>
+  `;
 }
 
 function buildHTML_(inc) {
@@ -72,10 +107,9 @@ function buildHTML_(inc) {
   const vin     = String(inc.vin  || "\u2014").toUpperCase();
   const nota    = String(inc.nota || "").trim();
   const reg     = String(inc._regDisplay || inc.registrado_por || inc.calidad_email || "Calidad").trim();
-  const fileId  = String(inc.foto_file_id || inc.fotoFileId || "").trim();
   const meta    = tipoMeta_[tipo] || tipoMeta_.LEVE;
   const em      = emojiChar_[tipo] || emojiChar_.LEVE;
-  const thumbUrl = driveThumb_(fileId);
+  const fotoHtml = buildFotoHtml_(inc);
 
   return `
     <div id="${POPUP_ID}" class="incAlertOverlay" role="alertdialog" aria-modal="true"
@@ -99,12 +133,7 @@ function buildHTML_(inc) {
             <span class="incAlertLbl">Nota</span>
             <span class="incAlertVal">${escapeHtml(nota)}</span>
           </div>` : ""}
-          ${thumbUrl ? `
-          <div class="incAlertPhoto">
-            <img src="${thumbUrl}" alt="Foto de la incidencia"
-                 loading="lazy"
-                 onerror="this.closest('.incAlertPhoto').style.display='none'" />
-          </div>` : ""}
+          ${fotoHtml}
         </div>
         <div class="incAlertFooter">
           <div class="incAlertFooterNote">

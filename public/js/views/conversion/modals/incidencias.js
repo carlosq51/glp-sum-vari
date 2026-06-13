@@ -122,8 +122,8 @@ async function imageFileToUploadPayload_(file) {
       im.src = objectUrl;
     });
 
-    const maxW = 960;
-    const maxH = 960;
+    const maxW = 800;
+    const maxH = 800;
 
     let width = img.naturalWidth || img.width || 0;
     let height = img.naturalHeight || img.height || 0;
@@ -153,7 +153,7 @@ async function imageFileToUploadPayload_(file) {
 
     let outDataUrl;
     try {
-      outDataUrl = canvas.toDataURL("image/jpeg", 0.65);
+      outDataUrl = canvas.toDataURL("image/jpeg", 0.55);
     } catch (err) {
       throw new Error(`Error generando imagen comprimida: ${err?.message || err}`);
     }
