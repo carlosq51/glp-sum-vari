@@ -21,7 +21,7 @@ import { calculateKPIs_ } from "./sup-kpis.js";
 import { renderKPIsPanel_ } from "./sup-kpis-render.js";
 
 import { bindSupIncidencias_ } from "./sup-incidencias.js";
-import { bindSupQR_ } from "./sup-qr.js";
+import { bindSupQR_, openSupQR_ } from "./sup-qr.js";
 import { bindSupNameSuggest_ } from "./sup-name-suggest.js";
 import { bindSupVinSuggest_ } from "./sup-vin-suggest.js";
 import { bindSupQuickDates_ } from "./sup-quick-dates.js";
@@ -400,12 +400,15 @@ export function init() {
 
   document.getElementById("btnSupValidarBuscar")?.addEventListener("click", fetchVinValidar_);
 
-  // QR para validar — reutiliza el canal del QR existente del supervisor
+  // QR para validar — usa el scanner real del supervisor
   document.getElementById("btnSupValidarQr")?.addEventListener("click", () => {
-    const qrMod = document.getElementById("supQrModal") || document.getElementById("qrModal");
-    if (!qrMod) return;
-    qrMod.dataset.qrTarget = "supValidar";
-    qrMod.classList.add("show");
+    openSupQR_({
+      onDecodedDone: (code) => {
+        const inp = document.getElementById("supValidarVin");
+        if (inp) inp.value = code;
+        fetchVinValidar_();
+      },
+    }).catch(() => {});
   });
 }
 
