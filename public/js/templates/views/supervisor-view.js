@@ -185,6 +185,7 @@ export function supervisorView() {
           <div style="display:flex; gap:8px; margin-top:8px; align-items:center;">
             <input id="incRepQ" type="text" placeholder="Buscar por VIN, técnico o nota..." autocomplete="off" style="flex:1;" />
             <button id="btnIncRepApply" type="button" class="btn">Buscar</button>
+            <button id="btnIncRepExport" type="button" class="btn3" title="Descargar CSV">⬇️ CSV</button>
           </div>
         </div>
 

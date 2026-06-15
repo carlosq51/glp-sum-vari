@@ -62,12 +62,23 @@ export function calculateKPIs_(items, track = "CONVERSION", isIndividual = false
   );
 
   if (finalizados.length === 0) {
+    const stateCountEmpty = {
+      finalizado: 0,
+      enProceso: items.filter(it => {
+        const s = String(it.estado || "").toUpperCase();
+        return s === "TRABAJANDO" || s === "PAUSADO";
+      }).length,
+      sinIniciar: items.filter(it =>
+        String(it.estado || "").toUpperCase() === "SIN_INICIAR"
+      ).length,
+    };
     return {
       isIndividual,
       totalVins: 0,
       totalItems: 0,
       totalDias: 0,
       carrosPorDia: 0,
+      stateCount: stateCountEmpty,
       // Individual stats (para búsqueda por persona)
       individual: {
         count: 0,
@@ -243,6 +254,18 @@ export function calculateKPIs_(items, track = "CONVERSION", isIndividual = false
     };
   });
 
+  // === PARTE 5: Conteo de estados (incluye WIP) ===
+  const stateCount = {
+    finalizado: items.filter(it => isFinalizado_(it.estado)).length,
+    enProceso: items.filter(it => {
+      const s = String(it.estado || "").toUpperCase();
+      return s === "TRABAJANDO" || s === "PAUSADO";
+    }).length,
+    sinIniciar: items.filter(it =>
+      String(it.estado || "").toUpperCase() === "SIN_INICIAR"
+    ).length,
+  };
+
   return {
     isIndividual,
     track,
@@ -256,6 +279,7 @@ export function calculateKPIs_(items, track = "CONVERSION", isIndividual = false
     outliers: outliers,
     outlierPct: outlierPct,
     byModel: byModel,
+    stateCount,
   };
 }
 

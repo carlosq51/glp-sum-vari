@@ -795,6 +795,8 @@ async function openMovQr_(target) {
         const tgt = movQrTarget_;
         await closeMovQr_();
         if (tgt === "salida") {
+          const salidaInp = document.getElementById("movSalidaVinSearch");
+          if (salidaInp) salidaInp.value = String(code || "").toUpperCase();
           showSalidaQrResult_(code);
         } else if (tgt === "pendientes") {
           showPendientesQrCard_(code);
@@ -862,6 +864,8 @@ function closeSalidaQrResult_() {
   clearTimeout(_salidaQrDismiss);
   const panel = document.getElementById("movSalidaQrResult");
   if (panel) panel.style.display = "none";
+  const inp = document.getElementById("movSalidaVinSearch");
+  if (inp) inp.value = "";
 }
 
 async function closeMovQr_() {
@@ -1013,6 +1017,9 @@ export function init() {
   // VIN Autocomplete for Entrada
   createVinAc_("movVinEntrada", "movVinEntradaSuggest", () => {});
 
+  // VIN Autocomplete for Salida
+  createVinAc_("movSalidaVinSearch", "movSalidaVinSuggest", (vin) => showSalidaQrResult_(vin));
+
   // QR scanner buttons
   document.getElementById("btnMovQrEntrada")?.addEventListener("click",    () => openMovQr_("entrada").catch(() => {}));
   document.getElementById("btnMovQrSalida")?.addEventListener("click",     () => openMovQr_("salida").catch(() => {}));
@@ -1047,18 +1054,6 @@ export function init() {
     if (e.target === document.getElementById("movQrModal")) closeMovQr_().catch(() => {});
   });
   document.getElementById("btnMovCloseSalidaQr")?.addEventListener("click", () => closeSalidaQrResult_());
-
-  // Búsqueda manual de VIN en tab Salida
-  document.getElementById("movSalidaSearch")?.addEventListener("keydown", e => {
-    if (e.key !== "Enter") return;
-    const vin = e.target.value.trim().toUpperCase();
-    if (vin) showSalidaQrResult_(vin);
-  });
-  document.getElementById("movSalidaSearch")?.addEventListener("input", e => {
-    const vin = e.target.value.trim().toUpperCase();
-    if (!vin) closeSalidaQrResult_();
-    else if (_list3Rows.some(r => r.vin === vin)) showSalidaQrResult_(vin);
-  });
 
   // Confirmar salida desde resultado QR (delegado al handler existente)
   document.getElementById("btnMovConfirmarSalidaQr")?.addEventListener("click", function () {
@@ -1104,8 +1099,10 @@ export function init() {
       const wraps = document.querySelectorAll("#viewMOVILIZADOR .vinWrap");
       const inside = [...wraps].some(w => w.contains(e.target));
       if (!inside) {
-        const el = document.getElementById("movVinEntradaSuggest");
-        if (el) { el.classList.add("hidden"); el.innerHTML = ""; }
+        ["movVinEntradaSuggest", "movSalidaVinSuggest"].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) { el.classList.add("hidden"); el.innerHTML = ""; }
+        });
       }
     });
   }

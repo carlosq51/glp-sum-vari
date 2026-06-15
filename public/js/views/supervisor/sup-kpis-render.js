@@ -27,11 +27,12 @@ export function renderKPIsPanel_(kpis, techName = "", track = "CONVERSION") {
   return `
     <h4 class="sup-kpis-title">${title}</h4>
     <div class="sup-kpis-grid">
-      ${isIndividual 
-        ? renderIndividualKPIs_(kpis, track, techName) 
+      ${isIndividual
+        ? renderIndividualKPIs_(kpis, track, techName)
         : (isConversion ? renderConversionKPIs_(kpis) : renderGeneralKPIs_(kpis, track))
       }
       ${renderCarrosPorDiaKPI_(kpis)}
+      ${renderStateCountKPI_(kpis, track)}
       ${renderModelKPIs_(kpis)}
       ${renderOutliersKPI_(kpis, track)}
     </div>
@@ -208,6 +209,46 @@ function renderOutliersKPI_(kpis, track) {
         ${kpis.outliers} <span class="kpi-badge-inline ${outlierClass}">${kpis.outlierPct.toFixed(1)}%</span>
       </div>
       <div class="kpi-detail-compact">VINs: ${kpis.totalVins} | Total: ${kpis.totalItems}</div>
+    </div>
+  `;
+}
+
+/**
+ * Renderiza card de estado del trabajo: Terminados | En proceso | Sin iniciar
+ */
+function renderStateCountKPI_(kpis, track) {
+  const sc = kpis.stateCount;
+  if (!sc) return "";
+
+  const total = sc.finalizado + sc.enProceso + sc.sinIniciar;
+  if (total === 0) return "";
+
+  const isCalidad = track === "CALIDAD";
+  const itemLabel = isCalidad ? "inspección" : "asignación";
+
+  const rows = [
+    { icon: "🏁", label: "Terminados",  val: sc.finalizado,  color: "#4ade80" },
+    { icon: "⚙️", label: "En proceso",  val: sc.enProceso,   color: "#fbbf24" },
+    { icon: "⭕", label: "Sin iniciar", val: sc.sinIniciar,  color: "#94a3b8" },
+  ];
+
+  const rowsHtml = rows
+    .filter(r => r.val > 0)
+    .map(r => `
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:4px 0; border-bottom:1px solid rgba(255,255,255,.06);">
+        <span style="font-size:.8em; color:rgba(255,255,255,.7);">${r.icon} ${r.label}</span>
+        <span style="font-weight:900; font-size:1.05em; color:${r.color};">${r.val}</span>
+      </div>`)
+    .join("");
+
+  return `
+    <div class="sup-kpi-card compact-kpi" style="grid-column: span 1;">
+      <div class="kpi-header-compact" style="margin-bottom:8px;">
+        <span class="kpi-icon-small">📋</span>
+        <span class="kpi-label-small">Estado del trabajo</span>
+      </div>
+      ${rowsHtml}
+      <div style="margin-top:6px; font-size:.68em; opacity:.45;">${total} ${itemLabel}${total !== 1 ? "s" : ""} en total</div>
     </div>
   `;
 }

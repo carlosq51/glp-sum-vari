@@ -2,19 +2,16 @@
 // Reporte global de incidencias — agrupado por categoría → grado
 // ===========================================================================
 
+import { INC_TITULOS } from "../../templates/modals/incidencias-modal.js";
+
 let _getJSON    = null;
 let _escape     = null;
 let _activeType = "ALL";
 let _loading    = false;
+let _lastItems  = [];
 
-// ── Categorías conocidas ─────────────────────────────────────────────────────────
-const INC_CATEGORIAS = new Set([
-  "FALTA MARCAR AJUSTAR COMPONENTES","CABLEADO","CINTILLOS","MANGUERA","CAÑERIA",
-  "REDUCTOR","FILTRO DE GAS","SENSOR MAP","EMULACIÓN INVERTIDA","CONECTORES INVERTIDOS",
-  "DOCUMENTO OT INCOMPLETA","PERFORACIÓN INCORRECTA","GRAPAS","FUGA DE GAS",
-  "TOMA DE CARGA","TANQUE MAL INSTALADO","DAÑO ESTÉTICO","SIN PINTURA O ANTICORROSIVO",
-  "TANQUE SIN GAS","OTRO",
-]);
+// ── Categorías conocidas (fuente única: incidencias-modal.js) ───────────────
+const INC_CATEGORIAS = new Set(INC_TITULOS);
 
 function parseCategoria_(nota) {
   const s = String(nota || "").trim();
@@ -536,10 +533,38 @@ function renderTrend_(items) {
   el.innerHTML += trendHtml;
 }
 
+function exportCsv_() {
+  if (!_lastItems.length) return;
+  const headers = ["Fecha", "VIN", "Técnico", "Tipo", "Categoría", "Nota extra", "Foto URL"];
+  const rows = _lastItems.map(it => [
+    it.fecha_hora ? new Date(it.fecha_hora).toLocaleString("es-PE") : "",
+    it.vin        || "",
+    it.tecnico    || "",
+    it.tipo       || "",
+    parseCategoria_(it.nota),
+    parseExtra_(it.nota),
+    it.fotoUrl || it.fotoImgUrl || "",
+  ]);
+  const csv = [headers, ...rows]
+    .map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(","))
+    .join("\r\n");
+  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+  const url  = URL.createObjectURL(blob);
+  const a    = Object.assign(document.createElement("a"), {
+    href: url,
+    download: `incidencias_${new Date().toISOString().slice(0, 10)}.csv`,
+  });
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 function renderIncReport_(j) {
+  _lastItems = Array.isArray(j.items) ? j.items : [];
   renderKpis_(j.summary);
-  renderTrend_(j.items);
-  const cats = renderList_(j.items);
+  renderTrend_(_lastItems);
+  const cats = renderList_(_lastItems);
   if (cats) renderRanking_(cats, j.summary);
 }
 
@@ -582,6 +607,7 @@ export function bindSupIncidenciasReport_({ getJSON_user, escapeHtml }) {
   document.getElementById("incRepQ")?.addEventListener("keydown", e => {
     if (e.key === "Enter") fetchIncReport_();
   });
+  document.getElementById("btnIncRepExport")?.addEventListener("click", exportCsv_);
 }
 
 export function enterIncReport_() {

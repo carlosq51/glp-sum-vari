@@ -4,6 +4,7 @@
 // =========================
 
 import { getIncidencias, supabaseEnabled } from "../../core/supabase-client.js";
+import { INC_TITULOS } from "../../templates/modals/incidencias-modal.js";
 
 export function openSupIncModal_() {
   const m = document.getElementById("supIncModal");
@@ -41,13 +42,7 @@ export async function fetchIncidencias_(vin, conversionId, { getJSON_user }) {
   return r;
 }
 
-const INC_TITULOS_CONOCIDOS = new Set([
-  "FALTA MARCAR AJUSTAR COMPONENTES","CABLEADO","CINTILLOS","MANGUERA","CAÑERIA",
-  "REDUCTOR","FILTRO DE GAS","SENSOR MAP","EMULACIÓN INVERTIDA","CONECTORES INVERTIDOS",
-  "DOCUMENTO OT INCOMPLETA","PERFORACIÓN INCORRECTA","GRAPAS","FUGA DE GAS",
-  "TOMA DE CARGA","TANQUE MAL INSTALADO","DAÑO ESTÉTICO","SIN PINTURA O ANTICORROSIVO",
-  "TANQUE SIN GAS","OTRO",
-]);
+const INC_TITULOS_CONOCIDOS = new Set(INC_TITULOS);
 
 function parseNota_(raw) {
   const s = String(raw || "").trim();
@@ -95,7 +90,7 @@ export function renderIncidencias_(j, ctx, { escapeHtml, fmtShort_ }) {
     const tipo = String(it.tipo || "").toUpperCase();
     const tecnico = it.tecnico || "-";
     const rawNota = it.nota || "";
-    const fecha = it.fecha || "";
+    const fecha = it.fecha_hora || it.fecha || "";
     const { titulo, extra } = parseNota_(rawNota);
 
     const hasFoto = !!(it.fotoThumbUrl || it.fotoUrl || it.fotoImgUrl);

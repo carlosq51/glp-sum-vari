@@ -10,6 +10,60 @@ function isFin_(estado) {
   return isFinalizado_(estado);
 }
 
+// Target times per role in milliseconds
+const TARGET_MS = {
+  MOTOR: 3 * 3_600_000,
+  TANQUE: 3 * 3_600_000,
+  TANQUERO: 3 * 3_600_000,
+  CONVERSION: 3 * 3_600_000,
+  TECNICO: 3 * 3_600_000,
+  CALIDAD: 50 * 60_000,
+  RAMAL: 40 * 60_000,
+  RAMALERO: 40 * 60_000,
+};
+
+function realElapsedMs_(it) {
+  let ms = Number(it?.tiempo_ms ?? 0);
+  if (String(it?.estado || "").toUpperCase() === "TRABAJANDO" && it?.running_since) {
+    const delta = Date.now() - new Date(it.running_since).getTime();
+    if (delta > 0 && delta < 24 * 3_600_000) ms += delta;
+  }
+  return Math.max(0, ms);
+}
+
+function renderProgressBar_(it) {
+  const estado = String(it?.estado || "").toUpperCase();
+  const rol = String(it?.rol || it?.rolTrabajo || "MOTOR").toUpperCase();
+  const targetMs = TARGET_MS[rol] || TARGET_MS.MOTOR;
+  const ms = realElapsedMs_(it);
+
+  if (isFin_(estado)) {
+    const durMs = durationMsFromItem_(it) || ms;
+    return `
+      <div style="display:flex; align-items:center; gap:6px; margin-top:6px;">
+        <div style="flex:1; height:5px; background:rgba(255,255,255,.1); border-radius:3px; overflow:hidden;">
+          <div style="height:100%; width:100%; background:#4ade80; border-radius:3px;"></div>
+        </div>
+        <span style="font-size:.7em; color:#4ade80; font-weight:700; white-space:nowrap;">✓ ${durMs ? fmtDur_(durMs) : "—"}</span>
+      </div>`;
+  }
+
+  if (!ms) return "";
+
+  const pct = Math.min(Math.round(ms / targetMs * 100), 99);
+  const isOver = ms > targetMs;
+  const barColor = isOver ? "#f87171" : pct >= 60 ? "#fbbf24" : "#38bdf8";
+  const statusDot = estado === "TRABAJANDO" ? `<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#4ade80;margin-right:3px;animation:livePulse 1.4s ease-in-out infinite;"></span>` : `<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#f59e0b;margin-right:3px;"></span>`;
+
+  return `
+    <div style="display:flex; align-items:center; gap:6px; margin-top:6px;">
+      <div style="flex:1; height:5px; background:rgba(255,255,255,.1); border-radius:3px; overflow:hidden;">
+        <div style="height:100%; width:${pct}%; background:${barColor}; border-radius:3px; transition:width .4s;"></div>
+      </div>
+      <span style="font-size:.7em; color:${barColor}; font-weight:700; white-space:nowrap;">${statusDot}${pct}% · ${fmtDur_(ms)}</span>
+    </div>`;
+}
+
 export function renderAvgCard_(avgCardEl, {
   stats,
   techName,
@@ -144,9 +198,10 @@ export function renderRowGroup_(row, { escapeHtml, fmtShort_ }) {
       </div>
 
       <div class="card" style="margin-top:10px; border:1px solid rgba(255,255,255,.14);">
-        <div class="small" style="font-weight:900;">MOTOR: ${escapeHtml(motorWho)}</div>
+        <div class="small" style="font-weight:900;">🔧 MOTOR: ${escapeHtml(motorWho)}</div>
+        ${motor ? renderProgressBar_(motor) : ""}
         <div class="small" style="margin-top:6px;"><b>Duración:</b> ${escapeHtml(motorDur)}</div>
-        <div class="small" style="margin-top:6px;">
+        <div class="small" style="margin-top:4px;">
           <b>Inicio:</b> ${escapeHtml(motorIni)}${motorFin ? ` &nbsp;|&nbsp; <b>Fin:</b> ${escapeHtml(motorFin)}` : ""}
         </div>
         ${motor && String(motor.estado||'').toUpperCase() === 'TRABAJANDO' ? `
@@ -162,9 +217,10 @@ export function renderRowGroup_(row, { escapeHtml, fmtShort_ }) {
       </div>
 
       <div class="card" style="margin-top:10px; border:1px solid rgba(255,255,255,.14);">
-        <div class="small" style="font-weight:900;">TANQUE: ${escapeHtml(tanqueWho)}</div>
+        <div class="small" style="font-weight:900;">⛽ TANQUE: ${escapeHtml(tanqueWho)}</div>
+        ${tanque ? renderProgressBar_(tanque) : ""}
         <div class="small" style="margin-top:6px;"><b>Duración:</b> ${escapeHtml(tanqueDur)}</div>
-        <div class="small" style="margin-top:6px;">
+        <div class="small" style="margin-top:4px;">
           <b>Inicio:</b> ${escapeHtml(tanqueIni)}${tanqueFin ? ` &nbsp;|&nbsp; <b>Fin:</b> ${escapeHtml(tanqueFin)}` : ""}
         </div>
         ${tanque && String(tanque.estado||'').toUpperCase() === 'TRABAJANDO' ? `
@@ -225,6 +281,8 @@ export function renderRowNormal_(it, { escapeHtml, fmtShort_ }) {
         <div class="small"><b>Trabajo:</b> ${escapeHtml(vinOrTipo)}</div>
         <div class="pill small"><b>${escapeHtml(it?.estado || "")}</b></div>
       </div>
+
+      ${renderProgressBar_(it)}
 
       <div class="small" style="margin-top:6px;">
         <b>Duración:</b> ${escapeHtml(durTxtItem)}

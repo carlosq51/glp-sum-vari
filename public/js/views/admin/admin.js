@@ -131,9 +131,154 @@ const TABLE_MAP = {
   incidencias: "incidencias",
 };
 
+// ─── Reasignar técnico ───────────────────────────────────────────────
+async function loadReasignarPanel_() {
+  const wrap = $id("reasignarResults");
+  if (!wrap) return;
+
+  const vin = ($id("reasignarVinInput")?.value || "").trim().toUpperCase();
+  if (!vin) return;
+
+  wrap.innerHTML = `<div class="small muted" style="padding:12px;">Buscando asignaciones…</div>`;
+
+  try {
+    const [asgResp, usrResp] = await Promise.all([
+      fetch(`/api/admin/asignaciones?vin=${encodeURIComponent(vin)}`),
+      fetch("/api/admin/usuarios-activos"),
+    ]);
+    const asgData = asgResp.ok ? await asgResp.json() : { ok: false };
+    const usrData = usrResp.ok ? await usrResp.json() : { ok: false };
+
+    if (!asgData.ok) { wrap.innerHTML = `<div class="small" style="color:var(--danger);padding:12px;">${escHtml(asgData.error || "Error al buscar")}</div>`; return; }
+
+    const asgs = asgData.asignaciones || [];
+    const usuarios = usrData.usuarios || [];
+
+    if (!asgs.length) {
+      wrap.innerHTML = `<div class="adminEmpty small muted">Sin asignaciones activas para VIN <strong>${escHtml(vin)}</strong>.</div>`;
+      return;
+    }
+
+    const usrOpts = usuarios.map(u => `<option value="${escHtml(u.id)}">${escHtml(u.nombre)} (${escHtml(u.especialidad)})</option>`).join("");
+
+    const rows = asgs.map(a => `
+      <tr data-asgid="${escHtml(a.id)}">
+        <td><span class="adminBadge">${escHtml(a.tipo_ot)}</span></td>
+        <td>${escHtml(a.rol_trabajo)}</td>
+        <td id="reasigTecnico-${escHtml(a.id)}">${escHtml(a.tecnico_nombre)}</td>
+        <td><span class="adminBadge${a.estado_actual === "TRABAJANDO" ? " adminBadgeOk" : ""}">${escHtml(a.estado_actual)}</span></td>
+        <td>
+          <div id="reasigCtrl-${escHtml(a.id)}" class="reasigCtrl">
+            <button class="adminBtnEdit adminRowBtn btnReasignarTecnico" data-asgid="${escHtml(a.id)}" title="Cambiar técnico">✏️ Cambiar</button>
+          </div>
+        </td>
+      </tr>
+      <tr id="reasigRow-${escHtml(a.id)}" style="display:none;">
+        <td colspan="5">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:6px 0;">
+            <select id="reasigSelect-${escHtml(a.id)}" class="adminInput" style="flex:1;min-width:160px;">
+              ${usrOpts}
+            </select>
+            <button class="adminBtnOk btnConfirmarReasignar" data-asgid="${escHtml(a.id)}" style="height:36px;">Confirmar</button>
+            <button class="adminBtnGhost btnCancelarReasignar" data-asgid="${escHtml(a.id)}" style="height:36px;">Cancelar</button>
+            <span id="reasigMsg-${escHtml(a.id)}" class="small muted"></span>
+          </div>
+        </td>
+      </tr>
+    `).join("");
+
+    wrap.innerHTML = `
+      <div class="adminTableScroll">
+        <table class="adminTable">
+          <thead><tr><th>Tipo OT</th><th>Rol</th><th>Técnico actual</th><th>Estado</th><th>Acción</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    `;
+
+    wrap.querySelectorAll(".btnReasignarTecnico").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const id = btn.dataset.asgid;
+        const row = $id(`reasigRow-${id}`);
+        if (row) row.style.display = row.style.display === "none" ? "" : "none";
+      });
+    });
+
+    wrap.querySelectorAll(".btnCancelarReasignar").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const row = $id(`reasigRow-${btn.dataset.asgid}`);
+        if (row) row.style.display = "none";
+      });
+    });
+
+    wrap.querySelectorAll(".btnConfirmarReasignar").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const id = btn.dataset.asgid;
+        const sel = $id(`reasigSelect-${id}`);
+        const msgEl = $id(`reasigMsg-${id}`);
+        const userId = sel?.value;
+        if (!userId) return;
+
+        btn.disabled = true;
+        if (msgEl) msgEl.textContent = "Guardando…";
+        try {
+          const resp = await fetch(`/api/admin/asignaciones/${encodeURIComponent(id)}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ user_id: userId }),
+          });
+          const j = await resp.json();
+          if (!j?.ok) throw new Error(j?.error || "Error");
+
+          const nombreNuevo = usuarios.find(u => u.id === userId)?.nombre || userId;
+          const tecEl = $id(`reasigTecnico-${id}`);
+          if (tecEl) tecEl.textContent = nombreNuevo;
+          const row = $id(`reasigRow-${id}`);
+          if (row) row.style.display = "none";
+          if (msgEl) { msgEl.textContent = ""; }
+          msg("Técnico actualizado correctamente.");
+        } catch (e) {
+          if (msgEl) { msgEl.textContent = `Error: ${e.message}`; msgEl.style.color = "var(--danger)"; }
+          btn.disabled = false;
+        }
+      });
+    });
+
+  } catch (e) {
+    wrap.innerHTML = `<div class="small" style="color:var(--danger);padding:12px;">${escHtml(e.message)}</div>`;
+  }
+}
+
 async function loadTab() {
   const wrap = $id("adminTableContent");
   if (!wrap) return;
+
+  // ─── Tab Reasignar ────────────────────────────────────────────────
+  if (S.tab === "reasignar") {
+    $id("adminToolbar") && ($id("adminToolbar").style.display = "none");
+    wrap.innerHTML = `
+      <div class="adminConfigPanel">
+        <div class="adminConfigSection">
+          <h4 class="adminConfigTitle">Reasignar técnico</h4>
+          <p class="small muted">Busca un VIN para ver sus asignaciones activas y cambiar el técnico asignado (CONVERSION o CALIDAD).</p>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <input id="reasignarVinInput" type="text" class="adminInput"
+              placeholder="Ingresa VIN…"
+              autocomplete="off" autocapitalize="characters" spellcheck="false"
+              style="flex:1;min-width:160px;max-width:280px;" />
+            <button id="btnReasignarBuscar" type="button" class="adminBtnOk">Buscar</button>
+          </div>
+          <div id="reasignarResults" style="margin-top:16px;"></div>
+        </div>
+      </div>
+    `;
+
+    $id("btnReasignarBuscar")?.addEventListener("click", () => loadReasignarPanel_());
+    $id("reasignarVinInput")?.addEventListener("keydown", e => {
+      if (e.key === "Enter") loadReasignarPanel_();
+    });
+    return;
+  }
 
   // ─── Tab Configuración ─────────────────────────────────────────────
   if (S.tab === "config") {

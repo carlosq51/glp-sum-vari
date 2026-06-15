@@ -2639,6 +2639,108 @@ app.post("/api/admin/pausa-masiva", async (req, res) => {
   }
 });
 
+// GET /api/admin/asignaciones?vin=XXX
+// Devuelve asignaciones activas para un VIN con nombres de técnicos
+app.get("/api/admin/asignaciones", async (req, res) => {
+  try {
+    const vin = String(req.query.vin || "").trim().toUpperCase();
+    if (!vin) return res.status(400).json({ ok: false, error: "VIN requerido" });
+
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const headers = supabaseHeaders_();
+
+    // 1. Work orders para este VIN
+    const woResp = await fetch(
+      `${SUPABASE_URL}/rest/v1/work_orders?vin=eq.${encodeURIComponent(vin)}&select=id,tipo_ot,estado_general,numero_ot`,
+      { method: "GET", headers }
+    );
+    if (!woResp.ok) throw new Error(`Supabase work_orders: ${woResp.status}`);
+    const wos = await woResp.json();
+    if (!wos.length) return res.json({ ok: true, asignaciones: [], work_orders: [] });
+
+    const woIds = wos.map(w => w.id).join(",");
+    const woMap = Object.fromEntries(wos.map(w => [w.id, w]));
+
+    // 2. Asignaciones activas para esos work_orders
+    const asgResp = await fetch(
+      `${SUPABASE_URL}/rest/v1/asignaciones?work_order_id=in.(${encodeURIComponent(woIds)})&activo=eq.true&select=*`,
+      { method: "GET", headers }
+    );
+    if (!asgResp.ok) throw new Error(`Supabase asignaciones: ${asgResp.status}`);
+    const asgs = await asgResp.json();
+
+    if (!asgs.length) return res.json({ ok: true, asignaciones: [], work_orders: wos });
+
+    // 3. Usuarios para esos user_ids
+    const userIds = [...new Set(asgs.map(a => a.user_id))].join(",");
+    const usrResp = await fetch(
+      `${SUPABASE_URL}/rest/v1/usuarios?id=in.(${encodeURIComponent(userIds)})&select=id,nombre,email`,
+      { method: "GET", headers }
+    );
+    const usrs = usrResp.ok ? await usrResp.json() : [];
+    const userMap = Object.fromEntries(usrs.map(u => [u.id, u]));
+
+    const result = asgs.map(a => ({
+      ...a,
+      tecnico_nombre: userMap[a.user_id]?.nombre || "—",
+      tecnico_email:  userMap[a.user_id]?.email  || "—",
+      tipo_ot:        woMap[a.work_order_id]?.tipo_ot        || a.tipo_ot,
+      estado_general: woMap[a.work_order_id]?.estado_general,
+      numero_ot:      woMap[a.work_order_id]?.numero_ot,
+    }));
+
+    return res.json({ ok: true, asignaciones: result, work_orders: wos });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
+// PATCH /api/admin/asignaciones/:id  body: { user_id }
+app.patch("/api/admin/asignaciones/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { user_id } = req.body || {};
+    if (!id || !user_id) return res.status(400).json({ ok: false, error: "id y user_id requeridos" });
+
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const headers = supabaseHeaders_();
+
+    const resp = await fetch(
+      `${SUPABASE_URL}/rest/v1/asignaciones?id=eq.${encodeURIComponent(id)}`,
+      {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ user_id, updated_at: new Date().toISOString() }),
+      }
+    );
+    if (!resp.ok) {
+      const txt = await resp.text().catch(() => "");
+      throw new Error(`Supabase PATCH: ${resp.status} ${txt.slice(0, 200)}`);
+    }
+    return res.json({ ok: true });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
+// GET /api/admin/usuarios-activos
+// Lista de técnicos activos para picker de reasignación
+app.get("/api/admin/usuarios-activos", async (req, res) => {
+  try {
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const headers = supabaseHeaders_();
+    const resp = await fetch(
+      `${SUPABASE_URL}/rest/v1/usuarios?activo=eq.true&select=id,nombre,email,especialidad&order=nombre.asc`,
+      { method: "GET", headers }
+    );
+    if (!resp.ok) throw new Error(`Supabase: ${resp.status}`);
+    const usuarios = await resp.json();
+    return res.json({ ok: true, usuarios });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
 // ─── MOVILIZADOR STATUS ───────────────────────────────────────────────
 // GET /api/movilizador/status
 // Devuelve las 3 listas del flujo movilizador + fecha_corte activa

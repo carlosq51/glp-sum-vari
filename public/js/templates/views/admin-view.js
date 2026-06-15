@@ -18,6 +18,7 @@ export function adminView() {
         <button class="adminTab" data-tab="vins" role="tab">VINs</button>
         <button class="adminTab" data-tab="ots" role="tab">OTs</button>
         <button class="adminTab" data-tab="incidencias" role="tab">Incidencias</button>
+        <button class="adminTab" data-tab="reasignar" role="tab">🔄 Reasignar</button>
         <button class="adminTab" data-tab="config" role="tab">⚙ Configuración</button>
       </div>
 
