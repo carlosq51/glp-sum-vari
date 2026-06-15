@@ -288,12 +288,12 @@ export function init() {
       const panelLive        = document.getElementById("supPanelLive");
       const panelUbicaciones = document.getElementById("supPanelUbicaciones");
       const panelIncidencias = document.getElementById("supPanelIncidencias");
-      const panelLista       = document.getElementById("supPanelLista");
+      const panelValidar     = document.getElementById("supPanelValidar");
       if (panelReporte)     panelReporte.style.display     = tab === "REPORTE"     ? "" : "none";
       if (panelLive)        panelLive.style.display        = tab === "LIVE"        ? "" : "none";
       if (panelUbicaciones) panelUbicaciones.style.display = tab === "UBICACIONES" ? "" : "none";
       if (panelIncidencias) panelIncidencias.style.display = tab === "INCIDENCIAS" ? "" : "none";
-      if (panelLista)       panelLista.style.display       = tab === "LISTA"       ? "" : "none";
+      if (panelValidar)     panelValidar.style.display     = tab === "VALIDAR"     ? "" : "none";
 
       if (tab === "LIVE") {
         exitUbicaciones_();
@@ -307,11 +307,10 @@ export function init() {
         exitLive_();
         exitUbicaciones_();
         enterIncReport_();
-      } else if (tab === "LISTA") {
+      } else if (tab === "VALIDAR") {
         exitLive_();
         exitUbicaciones_();
         exitIncReport_();
-        fetchListaPendientes_().catch(() => {});
       } else {
         exitLive_();
         exitUbicaciones_();
@@ -363,58 +362,129 @@ export function init() {
   bindSupUbicaciones_();
   bindSupIncidenciasReport_({ getJSON_user, escapeHtml });
 
-  document.getElementById("btnListaRefresh")?.addEventListener("click", () =>
-    fetchListaPendientes_().catch(() => {})
-  );
+  // ── VALIDAR VIN ──────────────────────────────────────────────────────
+  const supValidarInp = document.getElementById("supValidarVin");
+  const supValidarBox = document.getElementById("supValidarVinSuggest");
+
+  supValidarInp?.addEventListener("input", async () => {
+    const q = (supValidarInp.value || "").trim();
+    if (q.length < 2) { supValidarBox?.classList.add("hidden"); if (supValidarBox) supValidarBox.innerHTML = ""; return; }
+    try {
+      const j = await getJSON_user(`/api/vin-suggest?q=${encodeURIComponent(q)}&limit=8`, "");
+      if (!j?.ok || !j.items?.length) { supValidarBox?.classList.add("hidden"); return; }
+      if (supValidarBox) {
+        supValidarBox.innerHTML = j.items.map(it =>
+          `<div class="vinSuggestItem" data-vin="${escapeHtml(it.vin)}">`
+          + `<span class="vinSuggestVin">${escapeHtml(it.vin)}</span>`
+          + (it.modelo ? `<span class="vinSuggestMod">${escapeHtml(it.modelo)}</span>` : "")
+          + `</div>`
+        ).join("");
+        supValidarBox.classList.remove("hidden");
+      }
+    } catch { supValidarBox?.classList.add("hidden"); }
+  });
+
+  supValidarBox?.addEventListener("click", e => {
+    const item = e.target.closest("[data-vin]");
+    if (!item) return;
+    if (supValidarInp) supValidarInp.value = item.dataset.vin;
+    supValidarBox.classList.add("hidden");
+    supValidarBox.innerHTML = "";
+    fetchVinValidar_();
+  });
+
+  supValidarInp?.addEventListener("keydown", e => {
+    if (e.key === "Enter") { supValidarBox?.classList.add("hidden"); fetchVinValidar_(); }
+    if (e.key === "Escape") { supValidarBox?.classList.add("hidden"); if (supValidarBox) supValidarBox.innerHTML = ""; }
+  });
+
+  document.getElementById("btnSupValidarBuscar")?.addEventListener("click", fetchVinValidar_);
+
+  // QR para validar — reutiliza el canal del QR existente del supervisor
+  document.getElementById("btnSupValidarQr")?.addEventListener("click", () => {
+    const qrMod = document.getElementById("supQrModal") || document.getElementById("qrModal");
+    if (!qrMod) return;
+    qrMod.dataset.qrTarget = "supValidar";
+    qrMod.classList.add("show");
+  });
 }
 
-// ── LISTA PENDIENTES ────────────────────────────────────────────────────
+// ── VALIDAR VIN ──────────────────────────────────────────────────────────────
 
-async function fetchListaPendientes_() {
-  const box = document.getElementById("supPanelListaBox");
+async function fetchVinValidar_() {
+  const vin = String(document.getElementById("supValidarVin")?.value || "").trim().toUpperCase();
+  const box = document.getElementById("supValidarResult");
   if (!box) return;
-  box.innerHTML = '<div class="small muted" style="margin-top:12px;">Cargando...</div>';
+  if (!vin) { box.innerHTML = `<div class="small muted">Ingresa un VIN para validar.</div>`; return; }
+  box.innerHTML = `<div class="small muted">Buscando…</div>`;
   try {
-    const j = await getJSON_user("/api/supervisor/lista-pendientes", "Cargando lista...");
-    if (!j?.ok) {
-      box.innerHTML = `<div class="small muted">Error: ${escapeHtml(j?.error || "?")}</div>`;
-      return;
-    }
-    renderListaPendientes_(j, box);
+    const j = await getJSON_user(`/api/vin-validar?vin=${encodeURIComponent(vin)}`, "Validando VIN…");
+    renderVinValidar_(j);
   } catch (e) {
-    box.innerHTML = `<div class="small muted">Error al cargar: ${escapeHtml(e.message)}</div>`;
+    box.innerHTML = `<div class="small" style="color:var(--danger);">⚠️ ${escapeHtml(e.message)}</div>`;
   }
 }
 
-function renderListaPendientes_(data, box) {
-  const { sin_registrar = [] } = data;
+function renderVinValidar_(j) {
+  const box = document.getElementById("supValidarResult");
+  if (!box) return;
 
-  if (!sin_registrar.length) {
+  if (!j?.ok) {
+    box.innerHTML = `<div class="small" style="color:var(--danger);">⚠️ ${escapeHtml(j?.error || "Error")}</div>`;
+    return;
+  }
+
+  if (!j.found) {
     box.innerHTML = `
-      <div style="margin-top:16px; text-align:center; padding:20px 0;">
-        <div style="font-size:1.4rem;">✅</div>
-        <div class="small" style="margin-top:8px;">Todos los carros ya fueron registrados en GLP.</div>
+      <div style="text-align:center; padding:28px 0;">
+        <div style="font-size:2.6rem;">❌</div>
+        <div style="font-weight:900; margin-top:10px; color:#f87171; font-size:1.05em;">VIN NO REGISTRADO</div>
+        <div class="small muted" style="margin-top:6px;">Este vehículo no está en el sistema de conversión.</div>
       </div>`;
     return;
   }
 
+  const v = j.vin;
+  const wos = j.workOrders || [];
+
+  const woHtml = wos.length
+    ? wos.map(wo => {
+        const asgs = (wo.asignaciones || []).filter(a => a.activo);
+        const estadoPill = estado => {
+          const s = String(estado || "").toUpperCase();
+          const color = s === "FINALIZADO" ? "#4ade80" : s === "TRABAJANDO" ? "#60a5fa" : s === "PAUSADO" ? "#fbbf24" : "#94a3b8";
+          return `<span style="font-size:.72em;font-weight:900;color:${color};">${escapeHtml(estado || "—")}</span>`;
+        };
+        return `
+          <div style="margin-top:8px;padding:8px 10px;background:rgba(255,255,255,.04);border-radius:10px;border:1px solid rgba(255,255,255,.10);">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+              <span style="font-weight:900;font-size:.85em;">${escapeHtml(wo.tipo_ot || "OT")}</span>
+              <span class="small muted">${wo.fecha_creacion ? new Date(wo.fecha_creacion).toLocaleDateString("es-PE") : ""}</span>
+            </div>
+            ${asgs.length
+              ? asgs.map(a => `
+                  <div class="small" style="padding:2px 0;opacity:.85;">
+                    <b>${escapeHtml(a.rol_trabajo || "")}</b> — ${escapeHtml(a.usuarios?.nombre || "?")} ${estadoPill(a.estado_actual)}
+                  </div>`).join("")
+              : `<div class="small muted">Sin asignaciones activas.</div>`}
+          </div>`;
+      }).join("")
+    : `<div class="small muted" style="margin-top:8px;">Sin órdenes de trabajo.</div>`;
+
   box.innerHTML = `
-    <div style="margin-top:6px;">
-      <div style="margin-bottom:10px; font-size:.82rem; opacity:.6;">
-        ${sin_registrar.length} carro${sin_registrar.length !== 1 ? "s" : ""} por registrar en GLP
-      </div>
-      ${sin_registrar.map(r => `
-        <div style="display:flex; align-items:center; gap:8px; padding:8px 4px; border-bottom:1px solid rgba(255,255,255,.07);">
-          <span style="font-weight:700; font-size:.92rem; flex:0 0 auto; font-family:monospace; letter-spacing:.03em;">
-            ${escapeHtml(r.vin)}
-          </span>
-          ${r.ubicacion
-            ? `<span class="small" style="flex:1; opacity:.6; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(r.ubicacion)}</span>`
-            : `<span style="flex:1;"></span>`}
-          <span class="small" style="opacity:.4; flex:0 0 auto;">${r.fecha || ""}</span>
-        </div>
-      `).join("")}
+    <div style="text-align:center;padding:14px 0 8px;">
+      <div style="font-size:2.6rem;">✅</div>
+      <div style="font-weight:900;margin-top:6px;color:#4ade80;font-size:1.05em;">VIN REGISTRADO</div>
     </div>
+    <div style="background:rgba(74,222,128,.07);border:1px solid rgba(74,222,128,.25);border-radius:14px;padding:14px 16px;margin-top:4px;">
+      <div style="font-family:monospace;font-size:1.1em;font-weight:900;letter-spacing:.05em;">${escapeHtml(v.vin)}</div>
+      ${v.modelo   ? `<div class="small" style="margin-top:5px;opacity:.75;">Modelo: <b>${escapeHtml(v.modelo)}</b></div>` : ""}
+      ${v.cliente  ? `<div class="small" style="opacity:.75;">Cliente: <b>${escapeHtml(v.cliente)}</b></div>` : ""}
+      ${v.reductor_asignado ? `<div class="small" style="opacity:.75;">Reductor: <b>${escapeHtml(v.reductor_asignado)}</b></div>` : ""}
+      ${v.tanque_asignado   ? `<div class="small" style="opacity:.75;">Tanque: <b>${escapeHtml(v.tanque_asignado)}</b></div>` : ""}
+    </div>
+    <div style="margin-top:14px;font-weight:900;font-size:.76em;opacity:.55;letter-spacing:.6px;">ÓRDENES DE TRABAJO</div>
+    ${woHtml}
   `;
 }
 
@@ -434,11 +504,11 @@ export function enter() {
   const panelReporte     = document.getElementById("supPanelReporte");
   const panelLive        = document.getElementById("supPanelLive");
   const panelIncidencias = document.getElementById("supPanelIncidencias");
-  const panelLista       = document.getElementById("supPanelLista");
+  const panelValidar     = document.getElementById("supPanelValidar");
   if (panelReporte)     panelReporte.style.display     = "none";
   if (panelLive)        panelLive.style.display        = "";
   if (panelIncidencias) panelIncidencias.style.display = "none";
-  if (panelLista)       panelLista.style.display       = "none";
+  if (panelValidar)     panelValidar.style.display     = "none";
   enterLive_();
 }
 

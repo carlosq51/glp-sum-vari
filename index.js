@@ -3155,6 +3155,42 @@ app.get("/api/supervisor/lista-pendientes", async (req, res) => {
   }
 });
 
+// GET /api/vin-validar — Verifica si un VIN está registrado para conversión
+app.get("/api/vin-validar", async (req, res) => {
+  try {
+    const vin = String(req.query.vin || "").trim().toUpperCase();
+    if (!vin) return res.json({ ok: false, error: "VIN requerido" });
+
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const headers = supabaseHeaders_();
+
+    // 1. Buscar VIN en tabla vins
+    const vinResp = await fetch(
+      `${SUPABASE_URL}/rest/v1/vins?vin=eq.${encodeURIComponent(vin)}&select=vin,modelo,cliente,reductor_asignado,tanque_asignado`,
+      { method: "GET", headers }
+    );
+    const vins = vinResp.ok ? await vinResp.json() : [];
+
+    if (!vins?.length) {
+      return res.json({ ok: true, found: false, vin: null, workOrders: [] });
+    }
+
+    // 2. Buscar work orders con sus asignaciones activas
+    const woResp = await fetch(
+      `${SUPABASE_URL}/rest/v1/work_orders?vin=eq.${encodeURIComponent(vin)}`
+      + `&select=id,tipo_ot,fecha_creacion,asignaciones(id,rol_trabajo,estado_actual,activo,usuarios(nombre))`
+      + `&order=fecha_creacion.desc&limit=5`,
+      { method: "GET", headers }
+    );
+    const workOrders = woResp.ok ? await woResp.json() : [];
+
+    return res.json({ ok: true, found: true, vin: vins[0], workOrders: workOrders || [] });
+  } catch (e) {
+    console.error("[GET /api/vin-validar]", e.message);
+    return res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
 // -----------------------------------------------------------------
 
 app.listen(PORT, "0.0.0.0", () => {

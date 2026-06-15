@@ -10,7 +10,7 @@ export function supervisorView() {
         <button type="button" class="btn sup-tab active" data-suptab="LIVE">🔴 LIVE</button>
         <button type="button" class="btn sup-tab" data-suptab="UBICACIONES">📍 UBIC.</button>
         <button type="button" class="btn sup-tab" data-suptab="INCIDENCIAS">⚠️ INCID.</button>
-        <button type="button" class="btn sup-tab" data-suptab="LISTA">📋 LISTA</button>
+        <button type="button" class="btn sup-tab" data-suptab="VALIDAR">🔍 VALIDAR</button>
       </div>
 
       <!-- ══════════════════════════════════════════════
@@ -200,14 +200,27 @@ export function supervisorView() {
       </div>
 
       <!-- ══════════════════════════════════════════════
-           PANEL LISTA — VINs pendientes por movilizador o técnico
+           PANEL VALIDAR — Verificar si un VIN está registrado
       ══════════════════════════════════════════════ -->
-      <div id="supPanelLista" style="display:none;">
-        <div style="margin-top:8px; display:flex; justify-content:space-between; align-items:center;">
-          <span class="small muted">VINs activos pendientes de acción</span>
-          <button id="btnListaRefresh" class="btn3" type="button">🔄 Actualizar</button>
+      <div id="supPanelValidar" style="display:none;">
+        <div style="margin-top:10px;">
+          <p class="small muted" style="margin-bottom:12px;">Verifica si un vehículo está registrado en el sistema para conversión.</p>
+
+          <div class="supVinRow">
+            <div class="supVinWrap">
+              <input id="supValidarVin" type="text" placeholder="Buscar VIN…"
+                autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" />
+              <div id="supValidarVinSuggest" class="vinSuggest hidden" role="listbox"></div>
+            </div>
+            <button id="btnSupValidarQr" type="button" title="Escanear QR con cámara">📷</button>
+          </div>
+
+          <button id="btnSupValidarBuscar" type="button" class="btn" style="margin-top:10px; width:100%;">
+            🔍 Validar VIN
+          </button>
+
+          <div id="supValidarResult" style="margin-top:14px;"></div>
         </div>
-        <div id="supPanelListaBox"></div>
       </div>
     </div>
   `;
