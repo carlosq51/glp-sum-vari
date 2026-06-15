@@ -12,7 +12,11 @@
   border: var(--border-w) solid var(--surfaceLine);
 }
 
-/* Forzar ancho completo al vídeo */
+/* Forzar ancho completo al vídeo y altura automática */
 .qrReader video,
 [id^="qrReader"] video,
-[id$="QrReader"] video { width: 100% !important; }
+[id$="QrReader"] video {
+  width: 100% !important;
+  height: auto !important;
+  display: block;
+}
