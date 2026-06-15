@@ -199,6 +199,20 @@ export function supervisorView() {
         <div id="incRepList" style="margin-top:10px;"></div>
       </div>
 
+      <!-- QR Modal exclusivo de VALIDAR -->
+      <div id="supValidarQrModal" class="modal" aria-hidden="true" style="display:none;">
+        <div class="modalBox">
+          <div class="modalHead">
+            <div class="modalTitle">Escanear QR — Validar VIN</div>
+            <button id="btnSupValidarCloseQr" type="button" title="Cerrar">✕</button>
+          </div>
+          <div class="modalBody">
+            <div id="supValidarQrReader"></div>
+            <div id="supValidarQrMsg" class="small" style="margin-top:10px;"></div>
+          </div>
+        </div>
+      </div>
+
       <!-- ══════════════════════════════════════════════
            PANEL VALIDAR — Verificar si un VIN está registrado
       ══════════════════════════════════════════════ -->
@@ -206,11 +220,13 @@ export function supervisorView() {
         <div style="margin-top:10px;">
           <p class="small muted" style="margin-bottom:12px;">Verifica si un vehículo está registrado en el sistema para conversión.</p>
 
-          <div class="supVinWrap" style="position:relative; width:100%;">
-            <input id="supValidarVin" type="text" placeholder="Buscar VIN…"
-              autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false"
-              style="width:100%;" />
-            <div id="supValidarVinSuggest" class="vinSuggest hidden" role="listbox"></div>
+          <div class="supVinRow">
+            <div class="supVinWrap">
+              <input id="supValidarVin" type="text" placeholder="Buscar VIN…"
+                autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" />
+              <div id="supValidarVinSuggest" class="vinSuggest hidden" role="listbox"></div>
+            </div>
+            <button id="btnSupValidarQr" type="button" title="Escanear QR">📷</button>
           </div>
 
           <button id="btnSupValidarBuscar" type="button" class="btn" style="margin-top:10px; width:100%;">

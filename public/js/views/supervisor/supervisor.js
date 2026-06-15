@@ -30,10 +30,43 @@ import { bindSupLive_, enterLive_, exitLive_ } from "./sup-live.js";
 import { bindSupUbicaciones_, enterUbicaciones_, exitUbicaciones_ } from "./sup-ubicaciones.js";
 import { bindSupIncidenciasReport_, enterIncReport_, exitIncReport_ } from "./sup-incidencias-report.js";
 
+import { createScanner } from "../../core/qr-scanner.js";
+
 let supTrack = "CONVERSION";
 let supTimer = null;
 let supActiveTab_ = "LIVE"; // "REPORTE" | "LIVE"
 let _lastReportItems_ = [];
+
+// ── Scanner exclusivo de VALIDAR (no comparte qrReader con sup/conv) ─────────
+const supValidarScanner_ = createScanner("supValidarQrReader");
+
+async function openSupValidarQr_() {
+  const modal = document.getElementById("supValidarQrModal");
+  if (!modal) return;
+  modal.style.display = "flex";
+  modal.classList.add("show");
+  const msg = document.getElementById("supValidarQrMsg");
+  try {
+    await supValidarScanner_.start({
+      mode: "QR",
+      msgEl: msg,
+      onDecoded: async (code) => {
+        await closeSupValidarQr_();
+        const inp = document.getElementById("supValidarVin");
+        if (inp) inp.value = code;
+        fetchVinValidar_();
+      },
+    });
+  } catch { /* mensaje ya mostrado en msgEl */ }
+}
+
+async function closeSupValidarQr_() {
+  await supValidarScanner_.stop().catch(() => {});
+  const modal = document.getElementById("supValidarQrModal");
+  if (!modal) return;
+  modal.classList.remove("show");
+  modal.style.display = "none";
+}
 
 function setSupTrack_(t) {
   supTrack = (t === "CALIDAD" || t === "RAMAL") ? t : "CONVERSION";
@@ -399,6 +432,17 @@ export function init() {
   });
 
   document.getElementById("btnSupValidarBuscar")?.addEventListener("click", fetchVinValidar_);
+
+  document.getElementById("btnSupValidarQr")?.addEventListener("click", () =>
+    openSupValidarQr_().catch(() => {})
+  );
+  document.getElementById("btnSupValidarCloseQr")?.addEventListener("click", () =>
+    closeSupValidarQr_().catch(() => {})
+  );
+  document.getElementById("supValidarQrModal")?.addEventListener("click", e => {
+    if (e.target === document.getElementById("supValidarQrModal"))
+      closeSupValidarQr_().catch(() => {});
+  });
 }
 
 // ── VALIDAR VIN ──────────────────────────────────────────────────────────────
