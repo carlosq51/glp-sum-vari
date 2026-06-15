@@ -6,6 +6,16 @@
 /* global Html5Qrcode, Html5QrcodeSupportedFormats */
 
 /**
+ * Detecta iOS (iPhone/iPad/iPod, incluido iPad con iPadOS que reporta MacIntel).
+ */
+function isIOS_() {
+  return (
+    /iPad|iPhone|iPod/i.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  );
+}
+
+/**
  * Normaliza el texto escaneado: elimina espacios y convierte a mayúsculas.
  * @param {string} text
  * @returns {string}
@@ -15,46 +25,80 @@ export function normalizeScanText(text) {
 }
 
 /**
- * Configuraciones de escaneo predeterminadas por modo.
+ * Configuraciones de escaneo predeterminadas por modo y plataforma.
+ *
+ * iOS Safari: usa qrbox relativo al viewfinder (función) para adaptarse a la
+ * alta resolución de cámara del iPhone 13+ y deshabilita BarcodeDetector API
+ * (nativa de Chromium) que no existe en WebKit.
+ *
+ * Android/Desktop: qrbox fijo, mayor fps, sin restricciones.
+ *
  * @param {"QR"|"BAR"} mode
- * @returns {{ fps: number, qrbox: object, formatsToSupport: number[] }}
+ * @returns {{ fps: number, qrbox: object|function, formatsToSupport: number[], experimentalFeatures: object }}
  */
 export function getScanConfig(mode) {
   const isBar = mode === "BAR";
+  const ios = isIOS_();
+
+  // En iOS, el viewfinder puede tener resolución muy alta (iPhone 13 → 4K).
+  // Un qrbox fijo de 300×300 px queda microscópico respecto al frame real,
+  // haciendo imposible la lectura. Usamos una función que recibe las dimensiones
+  // reales del contenedor y retorna el 70 % del lado menor.
+  const qrboxFn = (w, h) => {
+    const side = Math.floor(Math.min(w, h) * (isBar ? 0.55 : 0.70));
+    return isBar ? { width: side, height: Math.floor(side * 1.8) } : { width: side, height: side };
+  };
+
+  const barFormats = [
+    Html5QrcodeSupportedFormats.CODE_128,
+    Html5QrcodeSupportedFormats.CODE_39,
+    Html5QrcodeSupportedFormats.EAN_13,
+    Html5QrcodeSupportedFormats.EAN_8,
+    Html5QrcodeSupportedFormats.UPC_A,
+    Html5QrcodeSupportedFormats.UPC_E,
+    Html5QrcodeSupportedFormats.ITF,
+    Html5QrcodeSupportedFormats.CODABAR,
+  ];
+
   return {
-    fps: isBar ? 8 : 10,
-    qrbox: isBar ? { width: 160, height: 320 } : { width: 300, height: 300 },
-    formatsToSupport: isBar
-      ? [
-          Html5QrcodeSupportedFormats.CODE_128,
-          Html5QrcodeSupportedFormats.CODE_39,
-          Html5QrcodeSupportedFormats.EAN_13,
-          Html5QrcodeSupportedFormats.EAN_8,
-          Html5QrcodeSupportedFormats.UPC_A,
-          Html5QrcodeSupportedFormats.UPC_E,
-          Html5QrcodeSupportedFormats.ITF,
-          Html5QrcodeSupportedFormats.CODABAR,
-        ]
-      : [Html5QrcodeSupportedFormats.QR_CODE],
-    // experimentalFeatures desactivado: useBarCodeDetectorIfSupported
-    // causa fallos en Android Chrome e iOS Safari con ciertos QR codes.
-    // Se usa el motor ZXing de html5-qrcode que es más confiable.
+    fps: ios ? 6 : (isBar ? 8 : 10),
+    // iOS siempre usa función relativa; Android puede usar función o fijo
+    qrbox: ios ? qrboxFn : (isBar ? { width: 200, height: 360 } : qrboxFn),
+    formatsToSupport: isBar ? barFormats : [Html5QrcodeSupportedFormats.QR_CODE],
+    // BarcodeDetector API no existe en Safari/WebKit → deshabilitarla evita
+    // que html5-qrcode rompa silenciosamente en iOS.
+    experimentalFeatures: { useBarCodeDetectorIfSupported: false },
   };
 }
 
 /**
- * Intenta abrir la cámara con fallback progresivo (3 intentos):
- *   1. facingMode: { exact: "environment" }
- *   2. facingMode: "environment"
- *   3. Lista de dispositivos → selecciona cámara trasera
+ * Estrategia de apertura de cámara según plataforma:
+ *
+ * iOS Safari: { exact: "environment" } casi siempre falla con
+ * OverconstrainedError. Ir directo a "environment" sin exact, luego "user".
+ *
+ * Android/Desktop: intentos progresivos como antes.
  *
  * @param {Html5Qrcode} instance
- * @param {object} config  – config de Html5Qrcode (fps, qrbox, etc.)
- * @param {function} onDecoded – callback al decodificar
+ * @param {object} config
+ * @param {function} onDecoded
  * @returns {Promise<void>}
  */
 export async function startCameraWithFallback(instance, config, onDecoded) {
-  // Intento 1: exact environment
+  if (isIOS_()) {
+    // iOS: evitar { exact: "environment" } — genera OverconstrainedError en Safari
+    try {
+      await instance.start({ facingMode: "environment" }, config, onDecoded, () => {});
+      return;
+    } catch { /* fallback */ }
+
+    // Último recurso iOS: cámara frontal
+    await instance.start({ facingMode: "user" }, config, onDecoded, () => {});
+    return;
+  }
+
+  // ── Android / Desktop ────────────────────────────────────────────────────
+  // Intento 1: exact environment (funciona en la mayoría de Android Chrome)
   try {
     await instance.start(
       { facingMode: { exact: "environment" } },
@@ -63,24 +107,15 @@ export async function startCameraWithFallback(instance, config, onDecoded) {
       () => {}
     );
     return;
-  } catch {
-    /* fallback */
-  }
+  } catch { /* fallback */ }
 
-  // Intento 2: environment sin exact (iOS Safari acepta esto)
+  // Intento 2: environment sin exact
   try {
-    await instance.start(
-      { facingMode: "environment" },
-      config,
-      onDecoded,
-      () => {}
-    );
+    await instance.start({ facingMode: "environment" }, config, onDecoded, () => {});
     return;
-  } catch {
-    /* fallback */
-  }
+  } catch { /* fallback */ }
 
-  // Intento 3: lista de cámaras → elegir trasera
+  // Intento 3: lista de dispositivos → elegir cámara trasera por label
   try {
     const devices = await Html5Qrcode.getCameras();
     if (devices && devices.length > 0) {
@@ -90,17 +125,10 @@ export async function startCameraWithFallback(instance, config, onDecoded) {
       await instance.start(cameraId, config, onDecoded, () => {});
       return;
     }
-  } catch {
-    /* fallback */
-  }
+  } catch { /* fallback */ }
 
-  // Intento 4: cámara frontal como último recurso (al menos funciona en iOS)
-  await instance.start(
-    { facingMode: "user" },
-    config,
-    onDecoded,
-    () => {}
-  );
+  // Intento 4: cámara frontal como último recurso
+  await instance.start({ facingMode: "user" }, config, onDecoded, () => {});
 }
 
 /**

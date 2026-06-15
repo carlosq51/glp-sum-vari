@@ -199,20 +199,6 @@ export function supervisorView() {
         <div id="incRepList" style="margin-top:10px;"></div>
       </div>
 
-      <!-- QR Modal exclusivo de VALIDAR -->
-      <div id="supValidarQrModal" class="modal" aria-hidden="true" style="display:none;">
-        <div class="modalBox">
-          <div class="modalHead">
-            <div class="modalTitle">Escanear QR — Validar VIN</div>
-            <button id="btnSupValidarCloseQr" type="button" title="Cerrar">✕</button>
-          </div>
-          <div class="modalBody">
-            <div id="supValidarQrReader"></div>
-            <div id="supValidarQrMsg" class="small" style="margin-top:10px;"></div>
-          </div>
-        </div>
-      </div>
-
       <!-- ══════════════════════════════════════════════
            PANEL VALIDAR — Verificar si un VIN está registrado
       ══════════════════════════════════════════════ -->
@@ -234,6 +220,25 @@ export function supervisorView() {
           </button>
 
           <div id="supValidarResult" style="margin-top:14px;"></div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// QR modal exclusivo del tab VALIDAR — fuera de viewSUPERVISOR para evitar
+// el bug de WebKit donde position:fixed en un padre display:none infla el scroll
+export function supValidarQrModalTemplate() {
+  return `
+    <div id="supValidarQrModal" class="modal" aria-hidden="true" style="display:none;">
+      <div class="modalBox">
+        <div class="modalHead">
+          <div class="modalTitle">Escanear QR — Validar VIN</div>
+          <button id="btnSupValidarCloseQr" type="button" title="Cerrar">✕</button>
+        </div>
+        <div class="modalBody">
+          <div id="supValidarQrReader"></div>
+          <div id="supValidarQrMsg" class="small" style="margin-top:10px;"></div>
         </div>
       </div>
     </div>
