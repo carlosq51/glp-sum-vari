@@ -4,6 +4,7 @@
 
 .qrReader,
 [id^="qrReader"],
+[id$="QrReader"],
 #qrReader,
 #qrReader_conf {
   border-radius: var(--radius);
@@ -13,4 +14,5 @@
 
 /* Forzar ancho completo al vídeo */
 .qrReader video,
-[id^="qrReader"] video { width: 100% !important; }
+[id^="qrReader"] video,
+[id$="QrReader"] video { width: 100% !important; }
