@@ -13,7 +13,12 @@ import { getVinSuggest } from "../../core/supabase-client.js";
 import { createScanner } from "../../core/qr-scanner.js";
 
 let pollTimer = null;
+let otRecheckTimer = null;
 const POLL_MS = 30_000;
+const OT_RECHECK_MS = 8 * 60 * 1000; // 8 min — re-valida VINs que siguen sin OT
+
+// VINs del panel salida que aún no tienen OT según el último render
+let _vinsSinOT_ = new Set();
 const GPS_URL = "https://gps-ubicaciones-app.vercel.app/";
 const OFFLINE_KEY = "glp_mov_offline_q";
 const LISTA_CACHE_KEY = "glp_mov_lista_cache";
@@ -520,6 +525,8 @@ function renderList2_(rows) {
 
 function renderList3_(rows) {
   _list3Rows = rows || [];
+  // Actualizar el set de VINs sin OT para que el re-validador de 8 min los recoja
+  _vinsSinOT_ = new Set((rows || []).filter(r => !r.tiene_ot).map(r => r.vin));
   const box = document.getElementById("movPanel3Body");
   if (!box) return;
   setBadge_("movBadge3", rows.length);
@@ -998,13 +1005,29 @@ async function handleRegistro_(vin, accion, btnId) {
 
 // ─── Poll ─────────────────────────────────────────────────────────────
 
+// Re-valida solo los VINs que siguen con "falta OT" sin hacer un refresh completo.
+// Si alguno ya tiene OT en la DB, dispara un refreshAll_ para actualizar el panel.
+async function revalidarOTFaltante_() {
+  if (!_vinsSinOT_.size) return;
+  try {
+    const vinsParam = [..._vinsSinOT_].join(",");
+    const j = await getJSON(`/api/movilizador/revalidate-ot?vins=${encodeURIComponent(vinsParam)}`);
+    if (j?.ok && j.vins_con_ot?.length) {
+      // Al menos un VIN ya tiene OT — refrescar para que el panel lo muestre
+      await refreshAll_();
+    }
+  } catch { /* silencioso, el próximo ciclo lo reintentará */ }
+}
+
 function startPoll_() {
   stopPoll_();
-  pollTimer = setInterval(() => refreshAll_().catch(() => {}), POLL_MS);
+  pollTimer      = setInterval(() => refreshAll_().catch(() => {}), POLL_MS);
+  otRecheckTimer = setInterval(() => revalidarOTFaltante_().catch(() => {}), OT_RECHECK_MS);
 }
 
 function stopPoll_() {
-  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  if (pollTimer)      { clearInterval(pollTimer);      pollTimer      = null; }
+  if (otRecheckTimer) { clearInterval(otRecheckTimer); otRecheckTimer = null; }
 }
 
 // ─── Public API ───────────────────────────────────────────────────────

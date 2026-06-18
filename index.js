@@ -3107,6 +3107,53 @@ app.get("/api/movilizador/pendientes", async (req, res) => {
   }
 });
 
+// GET /api/movilizador/revalidate-ot?vins=VIN1,VIN2,...
+// Consulta ligera: dado un set de VINs sin OT, devuelve cuáles ya tienen OT válida.
+// Usado por el re-validador de 8 min del frontend para actualizar el estado sin
+// llamar al endpoint completo /status.
+app.get("/api/movilizador/revalidate-ot", async (req, res) => {
+  try {
+    const raw = String(req.query.vins || "").trim();
+    if (!raw) return res.json({ ok: true, vins_con_ot: [] });
+
+    const vins = raw.split(",")
+      .map(v => v.trim().toUpperCase())
+      .filter(Boolean)
+      .slice(0, 50); // máx 50 VINs por llamada
+
+    if (!vins.length) return res.json({ ok: true, vins_con_ot: [] });
+
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const headers = supabaseHeaders_();
+
+    const vinFilter = vins.map(v => encodeURIComponent(v)).join(",");
+    const resp = await fetch(
+      `${SUPABASE_URL}/rest/v1/work_orders` +
+      `?tipo_ot=eq.CONVERSION&estado_general=eq.FINALIZADO` +
+      `&vin=in.(${vinFilter})` +
+      `&select=vin,numero_ot`,
+      { method: "GET", headers }
+    );
+    const rows = resp.ok ? await resp.json() : [];
+
+    // Para cada VIN tomar la fila con OT válida (puede haber varias OTs por VIN)
+    const vins_con_ot = [];
+    const seen = new Set();
+    for (const row of (rows || [])) {
+      if (!row.vin || seen.has(row.vin)) continue;
+      if (isValidOT_(row.numero_ot)) {
+        vins_con_ot.push(row.vin);
+        seen.add(row.vin);
+      }
+    }
+
+    return res.json({ ok: true, vins_con_ot });
+  } catch (e) {
+    console.error("[MOV_REVALIDATE_OT]", e.message);
+    return res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
 // GET /api/supervisor/lista-pendientes
 // VINs de LISTA DIARIA que el movilizador aun no ha registrado en GLP
 app.get("/api/supervisor/lista-pendientes", async (req, res) => {
