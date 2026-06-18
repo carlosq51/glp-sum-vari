@@ -2931,6 +2931,30 @@ app.get("/api/movilizador/status", async (req, res) => {
     }
     list3.sort((a, b) => new Date(b.fecha_calidad) - new Date(a.fecha_calidad));
 
+    // Fallback sin-fecha para VINs sin OT: el convAllMap aplica fechaCorte sobre created_at,
+    // por lo que WOs de conversión anteriores al corte quedan fuera aunque tengan numero_ot.
+    // Esta consulta adicional (sin filtro de fecha) cubre esos casos.
+    try {
+      const sinOT = list3.filter(r => !r.tiene_ot);
+      if (sinOT.length > 0) {
+        const vinList = sinOT.map(r => `"${r.vin}"`).join(",");
+        const otFallbackResp = await fetch(
+          `${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CONVERSION&estado_general=eq.FINALIZADO&vin=in.(${vinList})&select=vin,numero_ot&order=fecha_creacion.desc`,
+          { method: "GET", headers }
+        );
+        if (otFallbackResp.ok) {
+          const otFallbackRows = await otFallbackResp.json();
+          const otFallbackMap = new Map();
+          for (const row of (otFallbackRows || [])) {
+            if (row.vin && !otFallbackMap.has(row.vin)) otFallbackMap.set(row.vin, row.numero_ot);
+          }
+          for (const item of list3) {
+            if (!item.tiene_ot) item.tiene_ot = isValidOT_(otFallbackMap.get(item.vin));
+          }
+        }
+      }
+    } catch (_) { /* silencioso */ }
+
     // Enriquecer list3 con ultima_ubicacion desde tabla vins (fallback silencioso)
     try {
       if (list3.length > 0) {
