@@ -2940,10 +2940,11 @@ app.get("/api/movilizador/status", async (req, res) => {
     const list3 = [];
     for (const [vin, wo] of calidadDoneMap) {
       if (entregadoFinalSet.has(vin)) continue;
+      const tL3 = trasMap.get(vin);
       list3.push({
         vin,
         fecha_calidad: wo.fecha_creacion || wo.created_at,
-        trasladado_por: t?.trasladado_por || "",
+        trasladado_por: tL3?.trasladado_por || "",
         destino: "",  // enriquecido abajo si la columna existe en vins
         tiene_ot: isValidOT_(convAllMap.get(vin)?.numero_ot),
       });
