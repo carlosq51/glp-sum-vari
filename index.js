@@ -2765,9 +2765,12 @@ app.get("/api/movilizador/status", async (req, res) => {
     const convResp = await fetch(convUrl, { method: "GET", headers });
     const convRows = convResp.ok ? await convResp.json() : [];
 
-    // 3. Traslados movilizador
+    // 3. Traslados movilizador — solo estados activos (excluye ENTREGADO_FINAL).
+    // La tabla acumula un registro por VIN histórico; sin filtro, Supabase trunca
+    // a 1000 filas y VINs "viejos" desaparecen del trasMap aunque tengan estado activo.
+    // Los ENTREGADO_FINAL se chequean por separado en list3 (ver abajo).
     const trasResp = await fetch(
-      `${SUPABASE_URL}/rest/v1/movilizador_traslados?select=vin,estado,trasladado_at,trasladado_por,entregado_at,entregado_por`,
+      `${SUPABASE_URL}/rest/v1/movilizador_traslados?estado=neq.ENTREGADO_FINAL&select=vin,estado,trasladado_at,trasladado_por,entregado_at,entregado_por`,
       { method: "GET", headers }
     );
     const trasRows = trasResp.ok ? await trasResp.json() : [];
@@ -2916,11 +2919,27 @@ app.get("/api/movilizador/status", async (req, res) => {
     }
     list2.sort((a, b) => new Date(a.trasladado_at || 0) - new Date(b.trasladado_at || 0));
 
+    // Consulta targeted: qué VINs de calidadDoneMap ya fueron entregados (ENTREGADO_FINAL).
+    // No usamos trasMap para esto porque trasMap excluye ENTREGADO_FINAL (ver query arriba).
+    let entregadoFinalSet = new Set();
+    if (calidadDoneMap.size > 0) {
+      try {
+        const calVinList = [...calidadDoneMap.keys()].map(v => `"${v}"`).join(",");
+        const efResp = await fetch(
+          `${SUPABASE_URL}/rest/v1/movilizador_traslados?estado=eq.ENTREGADO_FINAL&vin=in.(${calVinList})&select=vin`,
+          { method: "GET", headers }
+        );
+        if (efResp.ok) {
+          const efRows = await efResp.json();
+          entregadoFinalSet = new Set((efRows || []).map(r => r.vin));
+        }
+      } catch (_) { /* silencioso */ }
+    }
+
     // ─── Lista 3: calidad finalizada (con o sin traslado registrado, excluye ENTREGADO_FINAL)
     const list3 = [];
     for (const [vin, wo] of calidadDoneMap) {
-      const t = trasMap.get(vin);
-      if (t?.estado === "ENTREGADO_FINAL") continue;
+      if (entregadoFinalSet.has(vin)) continue;
       list3.push({
         vin,
         fecha_calidad: wo.fecha_creacion || wo.created_at,
@@ -2980,14 +2999,15 @@ app.get("/api/movilizador/status", async (req, res) => {
     for (const wo of (convRows || [])) { if (wo.vin) allConvVins.add(wo.vin); }
     for (const vin of convActivaMap) { allConvVins.add(vin); }
     // Incluir también los registrados por el movilizador aunque no tengan OT aún
-    for (const [vin, t] of trasMap) {
-      if (t.estado !== "ENTREGADO_FINAL") allConvVins.add(vin);
+    // (trasMap ya excluye ENTREGADO_FINAL, así que todos sus VINs son activos)
+    for (const [vin] of trasMap) {
+      allConvVins.add(vin);
     }
 
     const listDiaria = [];
     for (const vin of allConvVins) {
       const t = trasMap.get(vin);
-      if (t?.estado === "ENTREGADO_FINAL") continue; // ya entregado, no mostrar
+      if (entregadoFinalSet.has(vin)) continue; // ya entregado, no mostrar
 
       let flow_status;
       const fecha_ot = convVinMap.get(vin)?.fecha_creacion || null;
