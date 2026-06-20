@@ -39,6 +39,7 @@ import { initVinAutocomplete_ } from "./ui/conversion-vin-autocomplete.js";
 import { checkPendingAlerts_, getMyNombre_ } from "./modals/incidencia-alert.js";
 import { requestNotifPermission } from "./modals/ramal-alert.js";
 import { initConversionQR_ } from "./ui/conversion-qr.js";
+import { initTecValidar_ } from "./ui/conversion-validar.js";
 
 // --------------------------
 // TICK CLOCK
@@ -147,6 +148,7 @@ export function init() {
   initEstadoUI_();
   initVinAutocomplete_();
   initConversionQR_();
+  initTecValidar_();
 
   initIncidenciasUI_();
   initConformidadUI_();

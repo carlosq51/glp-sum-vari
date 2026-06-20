@@ -63,3 +63,8 @@ h4 { margin: 0 0 var(--gap-sm);  font-size: var(--fs-body); font-weight: var(--f
   outline: var(--border-w-lg) solid var(--focusRing);
   outline-offset: 2px;
 }
+
+/* ─── Details / Summary ─── */
+#tecValidarDetails summary::-webkit-details-marker { display: none; }
+#tecValidarDetails summary { outline: none; }
+#tecValidarDetails[open] summary { color: var(--text); }

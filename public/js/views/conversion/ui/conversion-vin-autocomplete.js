@@ -19,7 +19,7 @@ import { syncNow } from "../data/conversion-sync.js";
 // --------------------------
 // VIN AUTOCOMPLETE
 // --------------------------
-const VIN_AC = { MIN_CHARS: 1, LIMIT: 12, DEBOUNCE_MS: 200 };
+const VIN_AC = { MIN_CHARS: 3, LIMIT: 12, DEBOUNCE_MS: 200 };
 
 let vinAcTimer = null;
 let vinAcItems = [];

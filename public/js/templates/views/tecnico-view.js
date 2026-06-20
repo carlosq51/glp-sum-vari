@@ -12,6 +12,22 @@ export function tecnicoView() {
       <div class="card">
         <h3>Técnico (Conversión)</h3>
 
+        <!-- Validar VIN (uso excepcional) -->
+        <details id="tecValidarDetails" style="margin-bottom:12px; margin-top:6px;">
+          <summary style="cursor:pointer; font-size:.77em; color:var(--muted); user-select:none; list-style:none; padding:3px 0;">
+            🔍 Validar VIN
+          </summary>
+          <div style="margin-top:10px;">
+            <input id="tecValidarVin" type="text" placeholder="Buscar VIN…"
+              autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false"
+              style="width:100%; margin-bottom:8px;" />
+            <button id="btnTecValidar" type="button" class="btn" style="width:100%; font-size:.82em; padding:9px;">
+              Validar
+            </button>
+            <div id="tecValidarResult" style="margin-top:12px;"></div>
+          </div>
+        </details>
+
         <div class="fullStack" style="margin-top:10px;">
           <div class="vinRow3">
             <div class="vinWrap">
