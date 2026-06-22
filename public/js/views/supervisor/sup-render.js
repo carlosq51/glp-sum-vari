@@ -71,6 +71,10 @@ export function renderAvgCard_(avgCardEl, {
   tanqueCount,
   finalizedCount,
   isHistorical,
+  supTrack,
+  vinEnProceso,
+  vinSinCalidad,
+  vinEnCalidad,
   escapeHtml
 }) {
   if (!avgCardEl) return;
@@ -79,6 +83,36 @@ export function renderAvgCard_(avgCardEl, {
   const modeBadge = isHistorical
     ? `<span style="font-size:.68em;font-weight:800;background:rgba(99,102,241,.22);border:1px solid rgba(99,102,241,.45);color:#a5b4fc;border-radius:5px;padding:2px 7px;letter-spacing:.4px;">📅 HISTÓRICO · por fecha de cierre</span>`
     : `<span style="font-size:.68em;font-weight:800;background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.35);color:#86efac;border-radius:5px;padding:2px 7px;letter-spacing:.4px;">🔴 HOY · en tiempo real</span>`;
+
+  // Bloque de contadores de estado (solo para CONVERSION y CALIDAD)
+  let estadoCountersHtml = "";
+  if (supTrack === "CONVERSION" && (vinEnProceso || vinSinCalidad)) {
+    estadoCountersHtml = `
+      <div style="margin-top:14px; padding-top:12px; border-top:1px solid rgba(255,255,255,.08);">
+        <div class="small" style="opacity:.55; letter-spacing:.5px; margin-bottom:8px;">ESTADO ACTUAL DEL PERÍODO</div>
+        <div class="row" style="gap:10px; flex-wrap:wrap;">
+          <div style="flex:1; min-width:120px; padding:10px 12px; background:rgba(96,165,250,.10); border:1px solid rgba(96,165,250,.30); border-radius:12px; text-align:center;">
+            <div style="font-size:1.5em; font-weight:1000; color:#60a5fa;">${vinEnProceso}</div>
+            <div class="small" style="margin-top:3px; opacity:.8;">En conversión</div>
+          </div>
+          <div style="flex:1; min-width:120px; padding:10px 12px; background:rgba(251,191,36,.10); border:1px solid rgba(251,191,36,.30); border-radius:12px; text-align:center;">
+            <div style="font-size:1.5em; font-weight:1000; color:#fbbf24;">${vinSinCalidad}</div>
+            <div class="small" style="margin-top:3px; opacity:.8;">Sin calidad</div>
+          </div>
+        </div>
+      </div>`;
+  } else if (supTrack === "CALIDAD" && vinEnCalidad) {
+    estadoCountersHtml = `
+      <div style="margin-top:14px; padding-top:12px; border-top:1px solid rgba(255,255,255,.08);">
+        <div class="small" style="opacity:.55; letter-spacing:.5px; margin-bottom:8px;">ESTADO ACTUAL DEL PERÍODO</div>
+        <div class="row" style="gap:10px; flex-wrap:wrap;">
+          <div style="flex:1; min-width:120px; padding:10px 12px; background:rgba(52,211,153,.10); border:1px solid rgba(52,211,153,.30); border-radius:12px; text-align:center;">
+            <div style="font-size:1.5em; font-weight:1000; color:#34d399;">${vinEnCalidad}</div>
+            <div class="small" style="margin-top:3px; opacity:.8;">En calidad</div>
+          </div>
+        </div>
+      </div>`;
+  }
 
   if (stats?.used > 0) {
     const nameUp = String(techName || "TÉCNICO").toUpperCase();
@@ -133,6 +167,8 @@ export function renderAvgCard_(avgCardEl, {
           </div>
         </div>
 
+        ${estadoCountersHtml}
+
         <div class="small" style="margin-top:12px; opacity:.75;">
           ${isHistorical
             ? "Producción contada por <b>fecha de cierre</b> — el carro aparece en el día que se terminó."
@@ -145,6 +181,7 @@ export function renderAvgCard_(avgCardEl, {
       <div class="card" style="border:1px solid rgba(255,255,255,.14); border-radius:18px; padding:14px;">
         <div style="margin-bottom:8px;">${modeBadge}</div>
         <div class="small">Sin FINALIZADOS con tiempo válido.</div>
+        ${estadoCountersHtml}
       </div>
     `;
   }

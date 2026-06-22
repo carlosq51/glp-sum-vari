@@ -239,6 +239,40 @@ function renderSupervisor_(j) {
     ? finalizedCount
     : finalizedCount.toFixed(1);
 
+  // -------- contadores de estado actual --------
+  // Para CONVERSION: agrupar por VIN y calcular qué roles están finalizados o en proceso
+  let vinEnProceso = 0;       // técnicos actualmente trabajando (algún rol TRABAJANDO)
+  let vinSinCalidad = 0;      // MOTOR + TANQUE finalizados, listos para calidad
+  let vinEnCalidad = 0;       // OT CALIDAD en TRABAJANDO (track CALIDAD)
+
+  if (supTrack === "CONVERSION") {
+    const vinStatus = new Map(); // vin → { motorFin, tanqueFin, anyWorking }
+    for (const it of list) {
+      const vin = String(it.vin || "").trim();
+      if (!vin) continue;
+      const rol = String(it.rol || it.rolTrabajo || "").toUpperCase();
+      const est = String(it.estado || "").toUpperCase();
+      const isMotor  = rol === "MOTOR" || rol === "TECNICO" || rol === "CONVERSION";
+      const isTanque = rol === "TANQUE" || rol === "TANQUERO";
+      if (!vinStatus.has(vin)) vinStatus.set(vin, { motorFin: false, tanqueFin: false, anyWorking: false });
+      const s = vinStatus.get(vin);
+      if (isMotor  && est === "FINALIZADO") s.motorFin  = true;
+      if (isTanque && est === "FINALIZADO") s.tanqueFin = true;
+      if ((isMotor || isTanque) && est === "TRABAJANDO") s.anyWorking = true;
+    }
+    for (const [, s] of vinStatus) {
+      if (s.anyWorking)              vinEnProceso++;
+      if (s.motorFin && s.tanqueFin) vinSinCalidad++;
+    }
+  } else if (supTrack === "CALIDAD") {
+    const vinCalidad = new Set();
+    for (const it of list) {
+      const est = String(it.estado || "").toUpperCase();
+      if (est === "TRABAJANDO") vinCalidad.add(String(it.vin || "").trim());
+    }
+    vinEnCalidad = vinCalidad.size;
+  }
+
   renderAvgCard_(avgCard, {
     stats,
     techName,
@@ -246,6 +280,10 @@ function renderSupervisor_(j) {
     tanqueCount: Math.round(tanqueCount * 2) / 2,
     finalizedCount: finalizedCountDisplay,
     isHistorical,
+    supTrack,
+    vinEnProceso,
+    vinSinCalidad,
+    vinEnCalidad,
     escapeHtml,
   });
 
