@@ -269,6 +269,16 @@ ALTER TABLE vins ADD COLUMN IF NOT EXISTS ultima_ubicacion TEXT NOT NULL DEFAULT
 CREATE INDEX IF NOT EXISTS idx_vins_ubicacion ON vins (ultima_ubicacion) WHERE ultima_ubicacion <> '';
 
 -- ────────────────────────────────────────────
+--  MIGRATION v4b: fecha_sin_calidad en work_orders
+--  Fecha en que ambos técnicos (motor+tanque) finalizaron la conversión,
+--  sin esperar la aprobación de calidad.
+--  Ejecutar en Supabase SQL Editor:
+-- ────────────────────────────────────────────
+ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS fecha_sin_calidad TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS idx_wo_fecha_sin_cal ON work_orders (fecha_sin_calidad)
+  WHERE fecha_sin_calidad IS NOT NULL;
+
+-- ────────────────────────────────────────────
 --  MIGRATION v4: lista_diaria_activa
 --  VINs activos en LISTA DIARIA (sincronizado desde GAS cada 10 min)
 --  Ejecutar en Supabase SQL Editor:

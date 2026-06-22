@@ -888,7 +888,13 @@ app.post("/api/evento", async (req, res) => {
           ? "FINALIZADO"
           : (motor || tanque) ? "EN PROCESO" : "PENDIENTE";
 
-        await supabasePatch_("work_orders", { id: workOrderId }, { estado_general: estadoGeneral });
+        const woPatch = { estado_general: estadoGeneral };
+        // Registrar fecha en que el último técnico (motor o tanque) finalizó.
+        // Solo se escribe la primera vez (cuando transiciona a FINALIZADO).
+        if (estadoGeneral === "FINALIZADO") {
+          woPatch.fecha_sin_calidad = new Date().toISOString();
+        }
+        await supabasePatch_("work_orders", { id: workOrderId }, woPatch);
         console.log(`[EVENTO] estado_general actualizado: ${estadoGeneral} (motor=${motor}, tanque=${tanque})`);
       } catch (err) {
         console.warn("[EVENTO] No se pudo actualizar estado_general:", err.message);
