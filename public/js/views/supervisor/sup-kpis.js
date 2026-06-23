@@ -43,7 +43,21 @@ function detectModel_(modeloStr, vin = "") {
  * @param {Boolean} isIndividual - Si es búsqueda por persona individual
  * @returns {Object} Objeto con todos los KPIs calculados
  */
-export function calculateKPIs_(items, track = "CONVERSION", isIndividual = false) {
+// Devuelve el número de días del filtro, o null si no hay filtro explícito.
+function filterDayCount_(dateRange) {
+  const { from, to, month } = dateRange || {};
+  if (from && to) {
+    const diffMs = new Date(to + "T12:00:00") - new Date(from + "T12:00:00");
+    return Math.max(1, Math.round(diffMs / 86400000) + 1);
+  }
+  if (month) {
+    const [y, m] = month.split("-").map(Number);
+    return new Date(y, m, 0).getDate(); // días del mes
+  }
+  return null;
+}
+
+export function calculateKPIs_(items, track = "CONVERSION", isIndividual = false, dateRange = null) {
   const isRamal = track === "RAMAL";
   const isConversion = track === "CONVERSION";
   const isCalidad = track === "CALIDAD";
@@ -111,28 +125,26 @@ export function calculateKPIs_(items, track = "CONVERSION", isIndividual = false
 
   // === PARTE 1: Contar VINs únicos y días de trabajo ===
   const vinsUnicos = new Set();
+  const FMT_PERU_ = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Lima" });
   const diasUnicos = new Set();
-  
+
   finalizados.forEach(it => {
     const vin = String(it.vin || "").trim();
     if (vin) vinsUnicos.add(vin);
-    
-    // Extraer fecha (día) del timestamp - intentar varios campos
-    const ts = it.timestamp_finalizado || it.finished_at || it.fecha_finalizacion || 
-               it.timestamp_inicio || it.created_at || it.running_since || 
-               it.fecha_creacion || it.fecha_asignacion;
-    
+
+    // Usar hora Perú para la fecha del día (evita cortes a las 7 PM con UTC)
+    const ts = it.updated_at || it.timestamp_finalizado || it.fecha_asignacion;
     if (ts) {
-      const fecha = new Date(ts);
-      if (!isNaN(fecha.getTime())) {
-        const diaKey = fecha.toISOString().split('T')[0]; // YYYY-MM-DD
-        diasUnicos.add(diaKey);
-      }
+      try { diasUnicos.add(FMT_PERU_.format(new Date(ts))); } catch (_) {}
     }
   });
 
+  // totalDias: primero desde el filtro explícito del usuario; si no hay filtro, desde los resultados
+  const filterDias = filterDayCount_(dateRange);
+  const totalDias = filterDias ?? diasUnicos.size;
+
   // Calcular carros por día
-  const carrosPorDia = diasUnicos.size > 0 ? vinsUnicos.size / diasUnicos.size : 0;
+  const carrosPorDia = totalDias > 0 ? vinsUnicos.size / totalDias : 0;
 
   // === PARTE 2: Calcular estadísticas robustas ===
   function calcRobustStats(itemsList, targetHours) {
@@ -271,7 +283,7 @@ export function calculateKPIs_(items, track = "CONVERSION", isIndividual = false
     track,
     totalVins: vinsUnicos.size,
     totalItems: finalizados.length,
-    totalDias: diasUnicos.size,
+    totalDias: totalDias,
     carrosPorDia: carrosPorDia,
     individual: individualStats,
     motor: motorStats,

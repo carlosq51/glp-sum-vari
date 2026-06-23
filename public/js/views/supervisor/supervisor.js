@@ -246,12 +246,13 @@ function renderSupervisor_(j) {
         const startPeru = _peruOf_(it.fecha_asignacion || it.fecha_inicio);
         const endPeru   = _peruOf_(it.updated_at);
         if (startPeru && endPeru && startPeru !== endPeru) {
-          // Cross-day FINALIZADO: ½ si el rango no cubre ambos días
+          // Cross-day FINALIZADO: el badge SIEMPRE se muestra (informativo).
+          // El peso depende de si el rango cubre ambos días.
+          it._esMedioCarro = true;
           const coversStart = !fromInputVal || fromInputVal <= startPeru;
           const coversEnd   = !toInputVal   || toInputVal   >= endPeru;
           if (!(coversStart && coversEnd)) {
             peso = 0.5;
-            it._esMedioCarro = true;
           }
         }
       } else {
@@ -311,7 +312,8 @@ function renderSupervisor_(j) {
   const kpisPanel = document.getElementById("supKPIsPanel");
   const btnVerKPIs = document.getElementById("btnVerKPIs");
   if (kpisPanel) {
-    const kpis = calculateKPIs_(list, supTrack, hasTechFilter);
+    const monthInputVal = String(document.getElementById("supMonth")?.value || "").trim();
+    const kpis = calculateKPIs_(list, supTrack, hasTechFilter, { from: fromInputVal, to: toInputVal, month: monthInputVal });
     const kpisInner = renderKPIsPanel_(kpis, hasTechFilter ? techName : "", supTrack);
     kpisPanel.innerHTML = kpisInner;
     if (kpisInner) {
