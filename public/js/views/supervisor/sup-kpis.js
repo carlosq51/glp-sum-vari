@@ -43,19 +43,6 @@ function detectModel_(modeloStr, vin = "") {
  * @param {Boolean} isIndividual - Si es búsqueda por persona individual
  * @returns {Object} Objeto con todos los KPIs calculados
  */
-// Devuelve el número de días del filtro, o null si no hay filtro explícito.
-function filterDayCount_(dateRange) {
-  const { from, to, month } = dateRange || {};
-  if (from && to) {
-    const diffMs = new Date(to + "T12:00:00") - new Date(from + "T12:00:00");
-    return Math.max(1, Math.round(diffMs / 86400000) + 1);
-  }
-  if (month) {
-    const [y, m] = month.split("-").map(Number);
-    return new Date(y, m, 0).getDate(); // días del mes
-  }
-  return null;
-}
 
 export function calculateKPIs_(items, track = "CONVERSION", isIndividual = false, dateRange = null) {
   const isRamal = track === "RAMAL";
@@ -139,9 +126,8 @@ export function calculateKPIs_(items, track = "CONVERSION", isIndividual = false
     }
   });
 
-  // totalDias: primero desde el filtro explícito del usuario; si no hay filtro, desde los resultados
-  const filterDias = filterDayCount_(dateRange);
-  const totalDias = filterDias ?? diasUnicos.size;
+  // totalDias: solo días CON al menos un carro finalizado (días vacíos/domingos se excluyen)
+  const totalDias = diasUnicos.size;
 
   // Calcular carros por día
   const carrosPorDia = totalDias > 0 ? vinsUnicos.size / totalDias : 0;
