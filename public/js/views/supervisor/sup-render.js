@@ -187,11 +187,29 @@ export function renderRowGroup_(row, { escapeHtml, fmtShort_ }) {
   const tanqueDur = tanque ? (durationMsFromItem_(tanque) ? fmtDur_(durationMsFromItem_(tanque)) : "-") : "-";
 
   const motorIni = motor ? fmtShort_(motor.fecha_inicio || motor.fecha_asignacion || "") : "";
-  const motorFin = (motor && isFin_(motor.estado)) ? fmtShort_(motor.updated_at || "") : "";
+  const motorFinTs = (motor && isFin_(motor.estado)) ? fmtShort_(motor.updated_at || "") : "";
   const tanqueIni = tanque ? fmtShort_(tanque.fecha_inicio || tanque.fecha_asignacion || "") : "";
-  const tanqueFin = (tanque && isFin_(tanque.estado)) ? fmtShort_(tanque.updated_at || "") : "";
+  const tanqueFinTs = (tanque && isFin_(tanque.estado)) ? fmtShort_(tanque.updated_at || "") : "";
 
   const cidAny = String(motor?.workId || tanque?.workId || "").trim();
+
+  // Etiqueta descriptiva: indica qué rol falta cuando el grupo no está completo
+  const motorOk  = isFin_(motor?.estado);
+  const tanqueOk = isFin_(tanque?.estado);
+  let estadoLabel, estadoColor;
+  if (motorOk && tanqueOk) {
+    estadoLabel = "✅ FINALIZADO";
+    estadoColor = "rgba(34,197,94,.25)";
+  } else if (motorOk && !tanqueOk) {
+    estadoLabel = "⚙️ EN PROCESO · falta TANQUE";
+    estadoColor = "rgba(251,191,36,.2)";
+  } else if (!motorOk && tanqueOk) {
+    estadoLabel = "⚙️ EN PROCESO · falta MOTOR";
+    estadoColor = "rgba(251,191,36,.2)";
+  } else {
+    estadoLabel = "⏳ " + (row.estado || "EN PROCESO");
+    estadoColor = "rgba(255,255,255,.07)";
+  }
 
   return `
     <div class="card" style="margin-top:10px;${isCrossDay ? ' border-left: 3px solid rgba(251,191,36,.55);' : ''}">
@@ -201,8 +219,9 @@ export function renderRowGroup_(row, { escapeHtml, fmtShort_ }) {
       </div>
 
       <div class="row space-between" style="margin-top:8px; gap:10px;">
-        <div class="small"><b>Estado:</b> ${escapeHtml(row.estado || "-")}</div>
-        <div class="pill small"><b>${escapeHtml(row.estado || "")}</b></div>
+        <div class="small" style="padding:4px 10px;border-radius:8px;background:${estadoColor};font-weight:700;">
+          ${escapeHtml(estadoLabel)}
+        </div>
       </div>
 
       <div class="card" style="margin-top:10px; border:1px solid rgba(255,255,255,.14);">
@@ -210,7 +229,7 @@ export function renderRowGroup_(row, { escapeHtml, fmtShort_ }) {
         ${motor ? renderProgressBar_(motor) : ""}
         <div class="small" style="margin-top:6px;"><b>Duración:</b> ${escapeHtml(motorDur)}</div>
         <div class="small" style="margin-top:4px;">
-          <b>Inicio:</b> ${escapeHtml(motorIni)}${motorFin ? ` &nbsp;|&nbsp; <b>Fin:</b> ${escapeHtml(motorFin)}` : ""}
+          <b>Inicio:</b> ${escapeHtml(motorIni)}${motorFinTs ? ` &nbsp;|&nbsp; <b>Fin:</b> ${escapeHtml(motorFinTs)}` : ""}
         </div>
         ${motor && String(motor.estado||'').toUpperCase() === 'TRABAJANDO' ? `
         <button type="button" class="btn3" style="margin-top:8px;width:100%;"
@@ -229,7 +248,7 @@ export function renderRowGroup_(row, { escapeHtml, fmtShort_ }) {
         ${tanque ? renderProgressBar_(tanque) : ""}
         <div class="small" style="margin-top:6px;"><b>Duración:</b> ${escapeHtml(tanqueDur)}</div>
         <div class="small" style="margin-top:4px;">
-          <b>Inicio:</b> ${escapeHtml(tanqueIni)}${tanqueFin ? ` &nbsp;|&nbsp; <b>Fin:</b> ${escapeHtml(tanqueFin)}` : ""}
+          <b>Inicio:</b> ${escapeHtml(tanqueIni)}${tanqueFinTs ? ` &nbsp;|&nbsp; <b>Fin:</b> ${escapeHtml(tanqueFinTs)}` : ""}
         </div>
         ${tanque && String(tanque.estado||'').toUpperCase() === 'TRABAJANDO' ? `
         <button type="button" class="btn3" style="margin-top:8px;width:100%;"
@@ -270,7 +289,8 @@ export function renderRowNormal_(it, { escapeHtml, fmtShort_ }) {
   const rol = String(it?.rol || it?.rolTrabajo || "").toUpperCase() || "-";
   const isRamal = rol === "RAMALERO" || rol === "RAMAL";
   const vinOrTipo = isRamal ? `RAMAL: ${it?.tipoRamal || "-"}` : (it?.vin || "-");
-  const isCrossDay = !!it?.crossDay;
+  const isCrossDay   = !!it?.crossDay;
+  const isMedioCarro = !!it?._esMedioCarro;
 
   const vinCard = String(it?.vin || "").trim().toUpperCase();
   const conversionIdCard = String(it?.workId || it?.conversionId || it?.conversion_id || "").trim();
@@ -279,10 +299,11 @@ export function renderRowNormal_(it, { escapeHtml, fmtShort_ }) {
   const durTxtItem = durMsItem ? fmtDur_(durMsItem) : "-";
 
   return `
-    <div class="card" style="margin-top:10px;${isCrossDay ? ' border-left: 3px solid rgba(251,191,36,.55);' : ''}">
+    <div class="card" style="margin-top:10px;${isCrossDay || isMedioCarro ? ' border-left: 3px solid rgba(251,191,36,.55);' : ''}">
       <div style="font-weight:900;">
         ${escapeHtml(who)} <span class="small">(${escapeHtml(rol)})</span>
-        ${isCrossDay ? `<span class="live-half-badge" title="Iniciado el día anterior">½ día ant.</span>` : ""}
+        ${isCrossDay   ? `<span class="live-half-badge" title="Iniciado el día anterior">½ día ant.</span>` : ""}
+        ${isMedioCarro ? `<span class="live-half-badge" title="Finalizado el día anterior al corte — cuenta 0.5">½ carro</span>` : ""}
       </div>
 
       <div class="row space-between" style="margin-top:8px; gap:10px;">

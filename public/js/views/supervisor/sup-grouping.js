@@ -43,10 +43,21 @@ export function groupByVinForUI_(rows) {
     const estT = String(g.tanque?.estado || "").toUpperCase();
     const ests = [estM, estT].filter(Boolean);
 
-    if (ests.includes("FINALIZADO") || ests.includes("FIN") || ests.includes("COMPLETADO")) g.estado = "FINALIZADO";
-    else if (ests.includes("TRABAJANDO")) g.estado = "TRABAJANDO";
-    else if (ests.includes("PAUSADO")) g.estado = "PAUSADO";
-    else g.estado = ests[0] || "SIN_DATO";
+    const motorFin  = estM === "FINALIZADO" || estM === "FIN" || estM === "COMPLETADO";
+    const tanqueFin = estT === "FINALIZADO" || estT === "FIN" || estT === "COMPLETADO";
+
+    // FINALIZADO solo cuando los DOS roles están terminados
+    if (g.motor && g.tanque && motorFin && tanqueFin) {
+      g.estado = "FINALIZADO";
+    } else if (motorFin || tanqueFin) {
+      g.estado = "EN_PROCESO";
+    } else if (ests.includes("TRABAJANDO")) {
+      g.estado = "TRABAJANDO";
+    } else if (ests.includes("PAUSADO")) {
+      g.estado = "PAUSADO";
+    } else {
+      g.estado = ests[0] || "SIN_DATO";
+    }
 
     const t1 = Date.parse(String(it.updated_at || "")) || 0;
     const t2 = Date.parse(String(it.fecha_asignacion || it.fecha_inicio || "")) || 0;

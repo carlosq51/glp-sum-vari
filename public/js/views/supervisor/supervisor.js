@@ -203,38 +203,56 @@ function renderSupervisor_(j) {
   //   durMs,
   // });
 
-  // -------- contadores rol (solo FINALIZADOS) --------
+  // -------- contadores rol (modo general vs técnico) --------
   const techName = rawTechName || "Técnico";
   let motorCount = 0;
   let tanqueCount = 0;
+  let finalizedCount = 0;
 
-  // Contar VINs únicos finalizados con peso:
-  // - crossDay = true  → 0.5 (empezó día anterior)
-  // - crossDay = false → 1.0
-  const vinsFinalizados = new Map(); // vin → peso acumulado (max 1.0)
+  // Fecha de corte para regla de medio carro (solo modo técnico)
+  const toInputVal = String(document.getElementById("supTo")?.value || "").trim();
+  const cutoffMs   = toInputVal ? new Date(toInputVal + "T00:00:00").getTime() : null;
+  const prevDayMs  = cutoffMs   ? cutoffMs - 24 * 3600 * 1000 : null;
 
-  for (const it of list) {
-    if (!isFinalizado_(it.estado)) continue;
-
-    const rol = String(it.rol || it.rolTrabajo || "").toUpperCase();
-    const peso = it.crossDay ? 0.5 : 1.0;
-
-    if (rol === "TANQUE" || rol === "TANQUERO") tanqueCount += peso;
-    else if (rol === "MOTOR") motorCount += peso;
-    else if (rol === "TECNICO" || rol === "CONVERSION") motorCount += peso;
-
-    // Acumular peso por VIN (tope en 1.0 para no exceder)
-    const vin = String(it.vin || "").trim();
-    if (vin) {
-      const prev = vinsFinalizados.get(vin) || 0;
-      vinsFinalizados.set(vin, Math.min(1.0, prev + peso));
+  if (!hasTechFilter && supTrack === "CONVERSION") {
+    // MODO GENERAL: contar desde grupos (un carro = MOTOR Y TANQUE ambos listos)
+    for (const grupo of uiList) {
+      if (grupo._kind !== "group") continue;
+      if (isFinalizado_(grupo.motor?.estado))  motorCount++;
+      if (isFinalizado_(grupo.tanque?.estado)) tanqueCount++;
+      if (grupo.estado === "FINALIZADO")       finalizedCount++;
     }
+  } else {
+    // MODO TÉCNICO: contar por ítem con medio carro
+    // Regla medio carro: si se finalizó el día anterior al corte → 0.5
+    const vinsFinalizados = new Map();
+
+    for (const it of list) {
+      if (!isFinalizado_(it.estado)) continue;
+
+      const rol = String(it.rol || it.rolTrabajo || "").toUpperCase();
+
+      let peso = 1.0;
+      if (prevDayMs !== null && cutoffMs !== null) {
+        const updMs = it.updated_at ? new Date(it.updated_at).getTime() : 0;
+        if (updMs >= prevDayMs && updMs < cutoffMs) {
+          peso = 0.5;
+          it._esMedioCarro = true;
+        }
+      }
+
+      if (rol === "TANQUE" || rol === "TANQUERO")                          tanqueCount += peso;
+      else if (rol === "MOTOR" || rol === "TECNICO" || rol === "CONVERSION") motorCount += peso;
+
+      const vin = String(it.vin || "").trim();
+      if (vin) {
+        const prev = vinsFinalizados.get(vin) || 0;
+        vinsFinalizados.set(vin, Math.min(1.0, prev + peso));
+      }
+    }
+    finalizedCount = [...vinsFinalizados.values()].reduce((s, v) => s + v, 0);
   }
 
-  // Suma ponderada de VINs (puede ser decimal, ej: 4.5)
-  // - Histórico: crossDay siempre false → todos peso 1.0 → total = nº VINs exacto
-  // - Hoy: cross-day items cuentan 0.5 (½ carro del día anterior)
-  const finalizedCount = [...vinsFinalizados.values()].reduce((s, v) => s + v, 0);
   const finalizedCountDisplay = Number.isInteger(finalizedCount)
     ? finalizedCount
     : finalizedCount.toFixed(1);
