@@ -1114,7 +1114,8 @@ async function handleSupervisorReport_(payload, res) {
     const lastDay = new Date(y, m, 0).getDate();
     effectiveTo = effectiveTo || `${month}-${String(lastDay).padStart(2, "0")}`;
   }
-  const todayStr = new Date().toISOString().slice(0, 10);
+  // Fecha actual en hora Perú (UTC-5) para que "hoy" coincida con el horario local
+  const todayStr = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Lima" }).format(new Date());
 
   // ¿Es un rango puramente histórico? (el día final es antes de hoy)
   // Si es histórico → usamos fecha de CIERRE (updated_at) como criterio de producción.
@@ -1303,8 +1304,10 @@ app.get("/api/supervisor/live", async (req, res) => {
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const headers = supabaseHeaders_();
 
-    const todayStr = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+    // Fecha actual en hora Perú (UTC-5) para que el LIVE funcione hasta medianoche local
+    const todayStr = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Lima" }).format(new Date());
+    const thirtyDaysAgo = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Lima" })
+      .format(new Date(Date.now() - 30 * 24 * 3600 * 1000));
 
     const selectFields =
       `id,work_order_id,user_id,tipo_ot,rol_trabajo,estado_actual,running_since,tiempo_trab_ms,fecha_asignacion,updated_at,activo,` +
@@ -1873,7 +1876,7 @@ app.post("/api/fin-prerequisites", async (req, res) => {
 
     // 2) Fotos de soldadura en R2
     if (vin) {
-      const today = dateStr || new Date().toISOString().slice(0, 10);
+      const today = dateStr || new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Lima" }).format(new Date());
       try {
         const r2 = await r2GetStatus({ vin, dateStr: today });
         const s = r2.status || {};
