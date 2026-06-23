@@ -44,7 +44,7 @@ function detectModel_(modeloStr, vin = "") {
  * @returns {Object} Objeto con todos los KPIs calculados
  */
 
-export function calculateKPIs_(items, track = "CONVERSION", isIndividual = false, dateRange = null) {
+export function calculateKPIs_(items, track = "CONVERSION", isIndividual = false, dateRange = null, overrideTotalVins = null) {
   const isRamal = track === "RAMAL";
   const isConversion = track === "CONVERSION";
   const isCalidad = track === "CALIDAD";
@@ -129,8 +129,12 @@ export function calculateKPIs_(items, track = "CONVERSION", isIndividual = false
   // totalDias: solo días CON al menos un carro finalizado (días vacíos/domingos se excluyen)
   const totalDias = diasUnicos.size;
 
+  // totalVins: usar el valor ya calculado en supervisor.js (aplica lógica de ½ y ambos-roles)
+  // para que coincida exactamente con el número mostrado en "FINALIZADOS"
+  const totalVins = overrideTotalVins != null ? Number(overrideTotalVins) : vinsUnicos.size;
+
   // Calcular carros por día
-  const carrosPorDia = totalDias > 0 ? vinsUnicos.size / totalDias : 0;
+  const carrosPorDia = totalDias > 0 ? totalVins / totalDias : 0;
 
   // === PARTE 2: Calcular estadísticas robustas ===
   function calcRobustStats(itemsList, targetHours) {
@@ -267,7 +271,7 @@ export function calculateKPIs_(items, track = "CONVERSION", isIndividual = false
   return {
     isIndividual,
     track,
-    totalVins: vinsUnicos.size,
+    totalVins: totalVins,
     totalItems: finalizados.length,
     totalDias: totalDias,
     carrosPorDia: carrosPorDia,

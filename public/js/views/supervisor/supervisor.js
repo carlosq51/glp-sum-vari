@@ -313,7 +313,7 @@ function renderSupervisor_(j) {
   const btnVerKPIs = document.getElementById("btnVerKPIs");
   if (kpisPanel) {
     const monthInputVal = String(document.getElementById("supMonth")?.value || "").trim();
-    const kpis = calculateKPIs_(list, supTrack, hasTechFilter, { from: fromInputVal, to: toInputVal, month: monthInputVal });
+    const kpis = calculateKPIs_(list, supTrack, hasTechFilter, { from: fromInputVal, to: toInputVal, month: monthInputVal }, finalizedCount);
     const kpisInner = renderKPIsPanel_(kpis, hasTechFilter ? techName : "", supTrack);
     kpisPanel.innerHTML = kpisInner;
     if (kpisInner) {
