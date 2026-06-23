@@ -1129,51 +1129,63 @@ async function handleSupervisorReport_(payload, res) {
     `usuarios(id,nombre,email),` +
     `work_orders(id,vin,tipo_ot,tipo_ramal,fecha_creacion,estado_general)`;
 
+  // ── Límites UTC equivalentes a un día en hora Perú (UTC-5, sin DST) ────────
+  // Medianoche Lima = 05:00 UTC ; fin del día Lima = 04:59:59 UTC del día siguiente
+  function _peruDayStart_(d) { return `${d}T05:00:00`; }
+  function _peruDayEnd_(d) {
+    const dt = new Date(d + "T12:00:00");
+    dt.setDate(dt.getDate() + 1);
+    return `${dt.toISOString().slice(0, 10)}T04:59:59`;
+  }
+
   let urlMain, urlCrossFin = null, urlCrossActive = null;
 
   if (isHistorical) {
     // ── MODO HISTÓRICO: producción por fecha de cierre ──────────────────────
-    // Una sola query: FINALIZADO donde updated_at cae en el rango.
-    // Incluye naturalmente trabajos cross-day (empezaron antes del rango
-    // pero terminaron dentro). Todos son carros completos, sin ½.
+    // Filtramos updated_at con límites en hora Perú para no perder items
+    // finalizados entre las 7 PM y medianoche Lima (cuyo UTC ya es el día siguiente).
+    const toDay = effectiveTo || effectiveFrom;
     urlMain = `${SUPABASE_URL}/rest/v1/asignaciones?` +
       `select=${selectFields}` +
       `&${tipoOtFilter}` +
       `&activo=eq.true` +
       `&estado_actual=eq.FINALIZADO` +
-      `&updated_at=gte.${effectiveFrom}T00:00:00` +
-      (effectiveTo ? `&updated_at=lte.${effectiveTo}T23:59:59` : `&updated_at=lte.${effectiveFrom}T23:59:59`) +
+      `&updated_at=gte.${_peruDayStart_(effectiveFrom)}` +
+      `&updated_at=lte.${_peruDayEnd_(toDay)}` +
       `&order=updated_at.desc`;
     // No Q2 ni Q5: ya están incluidos en Q1 por el filtro updated_at
   } else {
     // ── MODO HOY / RANGO ACTUAL: igual que LIVE ──────────────────────────────
-    // Q1: asignaciones iniciadas dentro del rango
+    // Q1: asignaciones iniciadas dentro del rango (límites en hora Perú)
     urlMain = `${SUPABASE_URL}/rest/v1/asignaciones?` +
       `select=${selectFields}` +
       `&${tipoOtFilter}` +
       `&activo=eq.true`;
 
-    if (effectiveFrom) urlMain += `&fecha_asignacion=gte.${effectiveFrom}T00:00:00`;
-    if (effectiveTo)   urlMain += `&fecha_asignacion=lte.${effectiveTo}T23:59:59`;
+    if (effectiveFrom) urlMain += `&fecha_asignacion=gte.${_peruDayStart_(effectiveFrom)}`;
+    if (effectiveTo)   urlMain += `&fecha_asignacion=lte.${_peruDayEnd_(effectiveTo)}`;
     if (month && !from && !to) {
-      urlMain += `&fecha_asignacion=gte.${month}-01T00:00:00`;
+      urlMain += `&fecha_asignacion=gte.${month}-01T05:00:00`;
       const [y, m] = month.split("-").map(Number);
       const lastDay = new Date(y, m, 0).getDate();
-      urlMain += `&fecha_asignacion=lte.${month}-${String(lastDay).padStart(2, "0")}T23:59:59`;
+      const lastDayStr = `${month}-${String(lastDay).padStart(2, "0")}`;
+      urlMain += `&fecha_asignacion=lte.${_peruDayEnd_(lastDayStr)}`;
     }
     urlMain += `&order=updated_at.desc`;
 
     // Q2: finalizados dentro del rango pero iniciados ANTES (cross-day fin)
+    // Usamos límite Perú: items que terminen entre las 7 PM-medianoche Lima
+    // tienen UTC del día siguiente, por eso la frontera es T05:00:00.
     if (effectiveFrom) {
       urlCrossFin = `${SUPABASE_URL}/rest/v1/asignaciones?` +
         `select=${selectFields}` +
         `&${tipoOtFilter}` +
         `&activo=eq.true` +
         `&estado_actual=eq.FINALIZADO` +
-        `&updated_at=gte.${effectiveFrom}T00:00:00` +
-        `&fecha_asignacion=lt.${effectiveFrom}T00:00:00` +
+        `&updated_at=gte.${_peruDayStart_(effectiveFrom)}` +
+        `&fecha_asignacion=lt.${_peruDayStart_(effectiveFrom)}` +
         `&order=updated_at.desc`;
-      if (effectiveTo) urlCrossFin += `&updated_at=lte.${effectiveTo}T23:59:59`;
+      if (effectiveTo) urlCrossFin += `&updated_at=lte.${_peruDayEnd_(effectiveTo)}`;
     }
 
     // Q5: aún activos pero iniciados ANTES del rango (cross-day activo)
@@ -1183,7 +1195,7 @@ async function handleSupervisorReport_(payload, res) {
         `&${tipoOtFilter}` +
         `&activo=eq.true` +
         `&estado_actual=in.(TRABAJANDO,PAUSADO,SIN_INICIAR)` +
-        `&fecha_asignacion=lt.${effectiveFrom}T00:00:00` +
+        `&fecha_asignacion=lt.${_peruDayStart_(effectiveFrom)}` +
         `&order=updated_at.desc`;
     }
   }
