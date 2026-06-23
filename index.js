@@ -1200,13 +1200,32 @@ async function handleSupervisorReport_(payload, res) {
     }
   }
 
+  // Q_histStart: en modo histórico + búsqueda de técnico específico, traer también
+  // los items que EMPEZARON en el rango pero terminaron FUERA de él (o siguen activos).
+  // Estos son los "½ carro del día de inicio" que el frontend pesa como 0.5.
+  // Filtro: fecha_asignacion en rango Y (no FINALIZADO O updated_at > fin del rango).
+  let urlHistStart = null;
+  if (isHistorical && q && effectiveFrom) {
+    const toDay = effectiveTo || effectiveFrom;
+    const rangeEnd = _peruDayEnd_(toDay);
+    urlHistStart = `${SUPABASE_URL}/rest/v1/asignaciones?` +
+      `select=${selectFields}` +
+      `&${tipoOtFilter}` +
+      `&activo=eq.true` +
+      `&fecha_asignacion=gte.${_peruDayStart_(effectiveFrom)}` +
+      `&fecha_asignacion=lte.${rangeEnd}` +
+      `&or=(estado_actual.neq.FINALIZADO,updated_at.gt.${rangeEnd})` +
+      `&order=updated_at.desc`;
+  }
+
   const fetches = [
     fetch(urlMain, { method: "GET", headers }),
     urlCrossFin    ? fetch(urlCrossFin,    { method: "GET", headers }) : Promise.resolve(null),
     urlCrossActive ? fetch(urlCrossActive, { method: "GET", headers }) : Promise.resolve(null),
+    urlHistStart   ? fetch(urlHistStart,   { method: "GET", headers }) : Promise.resolve(null),
   ];
 
-  const [resp, respCrossFin, respCrossActive] = await Promise.all(fetches);
+  const [resp, respCrossFin, respCrossActive, respHistStart] = await Promise.all(fetches);
 
   if (!resp.ok) {
     const text = await resp.text().catch(() => "");
@@ -1214,21 +1233,27 @@ async function handleSupervisorReport_(payload, res) {
     return res.status(500).json({ ok: false, error: `Supabase: ${resp.status}` });
   }
 
-  const [rawMain, rawCrossFin, rawCrossActive] = await Promise.all([
+  const [rawMain, rawCrossFin, rawCrossActive, rawHistStart] = await Promise.all([
     resp.json(),
     respCrossFin    ? respCrossFin.json().catch(() => [])    : [],
     respCrossActive ? respCrossActive.json().catch(() => []) : [],
+    respHistStart   ? respHistStart.json().catch(() => [])   : [],
   ]);
 
   // Merge deduplicando por id; marcar cross-day
-  // - Histórico: _crossDay siempre false (todos son carros completos por fecha de cierre)
-  // - Hoy: cross-day true para items de Q2/Q5 (empezaron antes del rango)
+  // - Histórico Q1: items cerrados dentro del rango (_crossDay: false)
+  // - Histórico Q_histStart: items iniciados en el rango pero cerrados fuera (_crossDay: true → ½ carro)
+  // - Live Q2/Q5: cross-day clásico
   const seenIds = new Set();
   const raw = [];
   for (const asg of (rawMain || [])) {
     if (!seenIds.has(asg.id)) { seenIds.add(asg.id); raw.push({ ...asg, _crossDay: false }); }
   }
-  if (!isHistorical) {
+  if (isHistorical) {
+    for (const asg of (rawHistStart || [])) {
+      if (!seenIds.has(asg.id)) { seenIds.add(asg.id); raw.push({ ...asg, _crossDay: true }); }
+    }
+  } else {
     for (const asg of [...(rawCrossFin || []), ...(rawCrossActive || [])]) {
       if (!seenIds.has(asg.id)) { seenIds.add(asg.id); raw.push({ ...asg, _crossDay: true }); }
     }

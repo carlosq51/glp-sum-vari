@@ -209,18 +209,13 @@ function renderSupervisor_(j) {
   let tanqueCount = 0;
   let finalizedCount = 0;
 
-  // Fecha de corte para regla de medio carro (solo modo técnico)
-  // Comparamos fechas en hora Perú para evitar falsos positivos por UTC
-  const toInputVal = String(document.getElementById("supTo")?.value || "").trim();
-  const _fmtPeru_  = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Lima" });
-  const _peruOf_   = (iso) => iso ? _fmtPeru_.format(new Date(iso)) : null;
-  const _prevDay_  = (dateStr) => {
-    if (!dateStr) return null;
-    const d = new Date(dateStr + "T12:00:00"); // mediodía para evitar problemas de DST
-    d.setDate(d.getDate() - 1);
-    return _fmtPeru_.format(d);
-  };
-  const prevDayPeru = _prevDay_(toInputVal); // YYYY-MM-DD en Perú, o null
+  // ── Helpers de timezone Perú (UTC-5) ─────────────────────────────────
+  const _fmtPeru_ = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Lima" });
+  const _peruOf_  = (iso) => (iso ? _fmtPeru_.format(new Date(iso)) : null);
+
+  // Rango de búsqueda actual (en fechas Perú tal como el usuario las escribió)
+  const fromInputVal = String(document.getElementById("supFrom")?.value || "").trim();
+  const toInputVal   = String(document.getElementById("supTo")?.value || "").trim();
 
   if (!hasTechFilter && supTrack === "CONVERSION") {
     // MODO GENERAL: contar desde grupos (un carro = MOTOR Y TANQUE ambos listos)
@@ -231,22 +226,38 @@ function renderSupervisor_(j) {
       if (grupo.estado === "FINALIZADO")       finalizedCount++;
     }
   } else {
-    // MODO TÉCNICO: contar por ítem con medio carro
-    // Regla medio carro: si se finalizó el día anterior al corte → 0.5
+    // MODO TÉCNICO: contar por ítem con regla de medio carro
+    // Un ítem es "cross-day" cuando startPeru != endPeru (días Perú distintos).
+    // Si el rango de búsqueda cubre AMBOS días → peso 1.0
+    // Si cubre solo uno → peso 0.5 (½ carro) + badge
     const vinsFinalizados = new Map();
 
     for (const it of list) {
-      if (!isFinalizado_(it.estado)) continue;
+      const esFin = isFinalizado_(it.estado);
+      // En modo técnico también contamos items activos/pausados que vienen
+      // del backend como _crossDay:true (empezaron en el rango pero no
+      // terminaron aún, o terminaron fuera del rango) → siempre ½
+      if (!esFin && !it.crossDay) continue;
 
       const rol = String(it.rol || it.rolTrabajo || "").toUpperCase();
 
       let peso = 1.0;
-      if (prevDayPeru) {
-        const itemPeruDate = _peruOf_(it.updated_at);
-        if (itemPeruDate && itemPeruDate === prevDayPeru) {
-          peso = 0.5;
-          it._esMedioCarro = true;
+      if (esFin) {
+        const startPeru = _peruOf_(it.fecha_asignacion || it.fecha_inicio);
+        const endPeru   = _peruOf_(it.updated_at);
+        if (startPeru && endPeru && startPeru !== endPeru) {
+          // Cross-day FINALIZADO: ½ si el rango no cubre ambos días
+          const coversStart = !fromInputVal || fromInputVal <= startPeru;
+          const coversEnd   = !toInputVal   || toInputVal   >= endPeru;
+          if (!(coversStart && coversEnd)) {
+            peso = 0.5;
+            it._esMedioCarro = true;
+          }
         }
+      } else {
+        // No-FINALIZADO con crossDay flag: siempre ½
+        peso = 0.5;
+        it._esMedioCarro = true;
       }
 
       if (rol === "TANQUE" || rol === "TANQUERO")                          tanqueCount += peso;
