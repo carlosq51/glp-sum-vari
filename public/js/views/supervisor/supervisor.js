@@ -210,9 +210,17 @@ function renderSupervisor_(j) {
   let finalizedCount = 0;
 
   // Fecha de corte para regla de medio carro (solo modo técnico)
+  // Comparamos fechas en hora Perú para evitar falsos positivos por UTC
   const toInputVal = String(document.getElementById("supTo")?.value || "").trim();
-  const cutoffMs   = toInputVal ? new Date(toInputVal + "T00:00:00").getTime() : null;
-  const prevDayMs  = cutoffMs   ? cutoffMs - 24 * 3600 * 1000 : null;
+  const _fmtPeru_  = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Lima" });
+  const _peruOf_   = (iso) => iso ? _fmtPeru_.format(new Date(iso)) : null;
+  const _prevDay_  = (dateStr) => {
+    if (!dateStr) return null;
+    const d = new Date(dateStr + "T12:00:00"); // mediodía para evitar problemas de DST
+    d.setDate(d.getDate() - 1);
+    return _fmtPeru_.format(d);
+  };
+  const prevDayPeru = _prevDay_(toInputVal); // YYYY-MM-DD en Perú, o null
 
   if (!hasTechFilter && supTrack === "CONVERSION") {
     // MODO GENERAL: contar desde grupos (un carro = MOTOR Y TANQUE ambos listos)
@@ -233,9 +241,9 @@ function renderSupervisor_(j) {
       const rol = String(it.rol || it.rolTrabajo || "").toUpperCase();
 
       let peso = 1.0;
-      if (prevDayMs !== null && cutoffMs !== null) {
-        const updMs = it.updated_at ? new Date(it.updated_at).getTime() : 0;
-        if (updMs >= prevDayMs && updMs < cutoffMs) {
+      if (prevDayPeru) {
+        const itemPeruDate = _peruOf_(it.updated_at);
+        if (itemPeruDate && itemPeruDate === prevDayPeru) {
           peso = 0.5;
           it._esMedioCarro = true;
         }

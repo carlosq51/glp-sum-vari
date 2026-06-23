@@ -3,25 +3,23 @@
 // FECHAS RÁPIDAS: AYER / HOY / ESTE MES
 // =========================
 
-function pad2_(n) { return String(n).padStart(2, "0"); }
+const FMT_DATE_  = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Lima" });
+const FMT_MONTH_ = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Lima", year: "numeric", month: "2-digit" });
 
-function toDateInput_(d) {
-  const y = d.getFullYear();
-  const m = pad2_(d.getMonth() + 1);
-  const day = pad2_(d.getDate());
-  return `${y}-${m}-${day}`;
+// Devuelve YYYY-MM-DD en hora Perú
+function peruDate_(offsetDays = 0) {
+  return FMT_DATE_.format(new Date(Date.now() + offsetDays * 86_400_000));
 }
 
-function toMonthInput_(d) {
-  const y = d.getFullYear();
-  const m = pad2_(d.getMonth() + 1);
-  return `${y}-${m}`;
+// Devuelve YYYY-MM en hora Perú
+function peruMonth_() {
+  const s = FMT_MONTH_.format(new Date()); // e.g. "2026-06"
+  return s.slice(0, 7);
 }
 
 export function bindSupQuickDates_({ onApply }) {
   document.getElementById("btnSupHoy")?.addEventListener("click", () => {
-    const now = new Date();
-    const s = toDateInput_(now);
+    const s = peruDate_(0);
 
     const fromEl = document.getElementById("supFrom");
     const toEl   = document.getElementById("supTo");
@@ -35,9 +33,7 @@ export function bindSupQuickDates_({ onApply }) {
   });
 
   document.getElementById("btnSupAyer")?.addEventListener("click", () => {
-    const d = new Date();
-    d.setDate(d.getDate() - 1);
-    const s = toDateInput_(d);
+    const s = peruDate_(-1);
 
     const fromEl = document.getElementById("supFrom");
     const toEl   = document.getElementById("supTo");
@@ -51,8 +47,7 @@ export function bindSupQuickDates_({ onApply }) {
   });
 
   document.getElementById("btnSupEsteMes")?.addEventListener("click", () => {
-    const now = new Date();
-    const m = toMonthInput_(now);
+    const m = peruMonth_();
 
     const mEl = document.getElementById("supMonth");
     if (mEl) mEl.value = m;
