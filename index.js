@@ -3333,56 +3333,67 @@ app.get("/api/vin-validar", async (req, res) => {
 // Devuelve compañeros libres (especialidad par) + VINs disponibles para la especialidad dada
 app.get("/api/tecnico/cola", async (req, res) => {
   try {
-    const esp = String(req.query.especialidad || "").toUpperCase().trim(); // MOTOR | TANQUE
+    const esp = String(req.query.especialidad || "").toUpperCase().trim();
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const headers = supabaseHeaders_();
     if (!headers) throw new Error("Supabase no configurado");
 
     const pairEsp = esp === "MOTOR" ? "TANQUE" : esp === "TANQUE" ? "MOTOR" : null;
 
-    // ── 1. Compañeros libres (especialidad par, sin OT activa) ─────────
+    // ── 1. Compañeros libres ───────────────────────────────────────────
     let companeros = [];
     if (pairEsp) {
       const [rComp, rBusy] = await Promise.all([
         fetch(`${SUPABASE_URL}/rest/v1/usuarios?rol=eq.TECNICO&especialidad=eq.${pairEsp}&activo=eq.true&select=id,nombre`, { method: "GET", headers }),
         fetch(`${SUPABASE_URL}/rest/v1/asignaciones?rol_trabajo=eq.${pairEsp}&activo=eq.true&estado_actual=neq.FINALIZADO&select=user_id`, { method: "GET", headers }),
       ]);
-      const allPairs  = rComp.ok  ? await rComp.json()  : [];
-      const busyRows  = rBusy.ok  ? await rBusy.json()  : [];
-      const busyIds   = new Set(busyRows.map(a => a.user_id));
+      const allPairs = rComp.ok ? await rComp.json() : [];
+      const busyIds  = new Set((rBusy.ok ? await rBusy.json() : []).map(a => a.user_id));
       companeros = allPairs.filter(u => !busyIds.has(u.id)).map(u => ({ nombre: u.nombre }));
     }
 
-    // ── 2. Work-orders CONVERSION EN PROCESO ──────────────────────────
-    const rWO = await fetch(
-      `${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CONVERSION&estado_general=eq.EN%20PROCESO&select=id,vin&limit=100`,
-      { method: "GET", headers }
-    );
-    const wos = rWO.ok ? await rWO.json() : [];
-
+    // ── 2. VINs en proceso: par activo pero mi especialidad libre ──────
     let vins = [];
-
-    if (esp === "MOTOR") {
-      // VINs sin asignación MOTOR activa
-      const rAct = await fetch(
-        `${SUPABASE_URL}/rest/v1/asignaciones?rol_trabajo=eq.MOTOR&activo=eq.true&estado_actual=neq.FINALIZADO&select=work_order_id`,
-        { method: "GET", headers }
-      );
-      const actIds = new Set((rAct.ok ? await rAct.json() : []).map(a => a.work_order_id));
-      vins = wos.filter(w => !actIds.has(w.id)).map(w => ({ vin: w.vin }));
-
-    } else if (esp === "TANQUE") {
-      // VINs donde MOTOR ya finalizó pero TANQUE no tiene asignación activa
-      const [rMotFin, rTanqAct] = await Promise.all([
-        fetch(`${SUPABASE_URL}/rest/v1/asignaciones?rol_trabajo=eq.MOTOR&estado_actual=eq.FINALIZADO&select=work_order_id`, { method: "GET", headers }),
-        fetch(`${SUPABASE_URL}/rest/v1/asignaciones?rol_trabajo=eq.TANQUE&activo=eq.true&estado_actual=neq.FINALIZADO&select=work_order_id`, { method: "GET", headers }),
+    if (pairEsp) {
+      const [rPairAct, rMyAct] = await Promise.all([
+        fetch(`${SUPABASE_URL}/rest/v1/asignaciones?rol_trabajo=eq.${pairEsp}&activo=eq.true&estado_actual=neq.FINALIZADO&select=work_order_id,estado_actual,usuarios(nombre),work_orders(id,vin)`, { method: "GET", headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/asignaciones?rol_trabajo=eq.${esp}&activo=eq.true&estado_actual=neq.FINALIZADO&select=work_order_id`, { method: "GET", headers }),
       ]);
-      const motorFinIds = new Set((rMotFin.ok ? await rMotFin.json() : []).map(a => a.work_order_id));
-      const tanqActIds  = new Set((rTanqAct.ok ? await rTanqAct.json() : []).map(a => a.work_order_id));
-      vins = wos.filter(w => motorFinIds.has(w.id) && !tanqActIds.has(w.id)).map(w => ({ vin: w.vin }));
+      const pairRows = rPairAct.ok ? await rPairAct.json() : [];
+      const myActIds = new Set((rMyAct.ok ? await rMyAct.json() : []).map(a => a.work_order_id));
+      vins = pairRows
+        .filter(a => a.work_orders?.vin && !myActIds.has(a.work_order_id))
+        .map(a => ({
+          vin:     a.work_orders.vin,
+          tecnico: a.usuarios?.nombre || "—",
+          estado:  a.estado_actual || "",
+        }));
     }
 
-    return res.json({ ok: true, companeros, vins, especialidad: esp, pairEsp: pairEsp || null });
+    // ── 3. Fallback: VINs sin convertir ───────────────────────────────
+    let vinsFallback = [];
+    if (!vins.length) {
+      const rPend = await fetch(
+        `${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CONVERSION&estado_general=eq.PENDIENTE&select=vin&limit=30&order=created_at.asc`,
+        { method: "GET", headers }
+      );
+      const pendRows = rPend.ok ? await rPend.json() : [];
+      if (pendRows.length) {
+        vinsFallback = pendRows.map(w => ({ vin: w.vin, tecnico: "Sin asignar", estado: "PENDIENTE" }));
+      } else {
+        const rMovil = await fetch(
+          `${SUPABASE_URL}/rest/v1/movilizador_traslados?estado=neq.ENTREGADO_FINAL&select=vin,estado,trasladado_por&limit=30&order=trasladado_at.asc`,
+          { method: "GET", headers }
+        );
+        vinsFallback = (rMovil.ok ? await rMovil.json() : []).map(t => ({
+          vin:     t.vin,
+          tecnico: t.trasladado_por || "Movilizador",
+          estado:  t.estado || "EN ESPERA",
+        }));
+      }
+    }
+
+    return res.json({ ok: true, companeros, vins, vinsFallback, fallbackUsed: !vins.length, especialidad: esp, pairEsp: pairEsp || null });
   } catch (e) {
     console.error("[GET /api/tecnico/cola]", e.message);
     res.status(500).json({ ok: false, error: String(e.message || e) });

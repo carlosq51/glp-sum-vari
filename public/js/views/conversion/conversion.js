@@ -141,38 +141,50 @@ async function loadTecCola_() {
     const esp  = String(CORE.state.currentProfile?.especialidad || "").toUpperCase();
     const pair = esp === "MOTOR" ? "TANQUE" : esp === "TANQUE" ? "MOTOR" : "";
     const j    = await getJSON(`/api/tecnico/cola?especialidad=${encodeURIComponent(esp)}`);
-    if (!j?.ok) throw new Error(j?.error || "Error al cargar cola");
+    if (!j?.ok) throw new Error(j?.error || "Error");
 
     let html = "";
 
     // Compañeros libres
-    if (pair) {
-      html += `<div class="tecColaSection">
-        <div class="tecColaSectionTitle">🤝 Compañeros de ${pair} libres</div>`;
-      if (!j.companeros?.length) {
-        html += `<div class="small muted tecColaEmpty">No hay compañeros disponibles ahora.</div>`;
-      } else {
-        html += j.companeros.map(c =>
-          `<div class="tecColaChip">👤 ${escapeHtml(c.nombre)}</div>`
-        ).join("");
-      }
-      html += `</div>`;
+    if (pair && j.companeros?.length) {
+      html += `
+        <div class="tecColaSection">
+          <div class="tecColaSectionTitle">🤝 ${pair} libres ahora (${j.companeros.length})</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;">
+            ${j.companeros.map(c => `<div class="tecColaChip">👤 ${escapeHtml(c.nombre)}</div>`).join("")}
+          </div>
+        </div>`;
     }
 
-    // VINs disponibles
-    html += `<div class="tecColaSection">
-      <div class="tecColaSectionTitle">🚘 VINs disponibles para ${esp || "ti"}</div>`;
-    if (!j.vins?.length) {
-      html += `<div class="small muted tecColaEmpty">No hay VINs disponibles en este momento.</div>`;
+    // VINs table
+    const rows = j.vins?.length ? j.vins : (j.vinsFallback || []);
+    const title = j.fallbackUsed
+      ? `🚘 VINs en cola de ingreso`
+      : `🚘 En proceso de ${pair} — disponibles para ${esp}`;
+
+    html += `<div class="tecColaSection"><div class="tecColaSectionTitle">${title}</div>`;
+
+    if (!rows.length) {
+      html += `<div class="small muted tecColaEmpty">No hay VINs disponibles ahora.</div>`;
     } else {
-      html += j.vins.map(v =>
-        `<div class="tecColaVinRow">
-          <span class="tecColaVin">${escapeHtml(v.vin)}</span>
-        </div>`
-      ).join("");
+      html += `<div class="tecColaTable">
+        <div class="tecColaTableHead">
+          <span>VIN</span><span>Técnico</span><span>Estado</span>
+        </div>
+        ${rows.map(v => {
+          const est = String(v.estado || "").toUpperCase();
+          const estClass = est === "TRABAJANDO" ? "tecEst--trab"
+                         : est === "PAUSADO"   ? "tecEst--paus"
+                         : "tecEst--pend";
+          return `<div class="tecColaTableRow">
+            <span class="tecColaVin">${escapeHtml(v.vin)}</span>
+            <span class="small tecColaTecnico">${escapeHtml(v.tecnico || "—")}</span>
+            <span class="tecColaEst ${estClass}">${escapeHtml(v.estado || "—")}</span>
+          </div>`;
+        }).join("")}
+      </div>`;
     }
     html += `</div>`;
-
     box.innerHTML = html;
   } catch (e) {
     box.innerHTML = `<div class="small" style="color:var(--danger);">Error: ${e.message}</div>`;
@@ -188,57 +200,108 @@ async function loadTecRendimiento_() {
     const email   = String(emailEl?.value || "").trim().toLowerCase();
     if (!email) throw new Error("No hay sesión activa");
 
-    const j = await getJSON(`/api/mis-finalizadas?email=${encodeURIComponent(email)}`);
-    if (!j?.ok) throw new Error(j?.error || "Error al cargar rendimiento");
+    const [jRend, jCfg] = await Promise.all([
+      getJSON(`/api/mis-finalizadas?email=${encodeURIComponent(email)}`),
+      getJSON("/api/admin/config"),
+    ]);
+    if (!jRend?.ok) throw new Error(jRend?.error || "Error al cargar rendimiento");
 
-    const items = Array.isArray(j.items) ? j.items : [];
-    const hoy   = new Date().toDateString();
-    const semanaMs = 7 * 24 * 60 * 60 * 1000;
-    const cutSem = Date.now() - semanaMs;
+    const meta  = Number(jCfg?.config?.META_CONVERSION || 25);
+    const items = Array.isArray(jRend.items) ? jRend.items : [];
+
+    const msDay  = 86400000;
+    const hoy    = new Date().toDateString();
+    const cutSem = Date.now() - 7  * msDay;
+    const cutMes = Date.now() - 30 * msDay;
 
     const hoyItems = items.filter(it => new Date(it.updated_at || it.fecha_creacion || 0).toDateString() === hoy);
-    const semItems = items.filter(it => new Date(it.updated_at || it.fecha_creacion || 0).getTime() >= cutSem);
-    const avgMs    = items.length
-      ? items.reduce((s, it) => s + (Number(it.tiempo_trab_ms) || 0), 0) / items.length
-      : 0;
+    const semItems = items.filter(it => +new Date(it.updated_at || it.fecha_creacion || 0) >= cutSem);
+    const fmtTime  = ms => { const h = Math.floor(ms/3600000), m = Math.floor((ms%3600000)/60000); return h ? `${h}h ${m}m` : `${m}m`; };
+    const avgMs    = items.length ? items.reduce((s, it) => s + (Number(it.tiempo_trab_ms) || 0), 0) / items.length : 0;
 
-    const fmtTime = ms => {
-      const h = Math.floor(ms / 3600000);
-      const m = Math.floor((ms % 3600000) / 60000);
-      return h ? `${h}h ${m}m` : `${m}m`;
-    };
+    // SVG circle progress
+    const pct   = Math.min((hoyItems.length / meta) * 100, 100);
+    const r = 44, cx = 54, cy = 54, circ = 2 * Math.PI * r;
+    const fill  = circ * (pct / 100);
+    const color = pct >= 100 ? "#10b981" : pct >= 60 ? "#f59e0b" : "#60a5fa";
+
+    function renderList(filtered) {
+      if (!filtered.length) return `<div class="small muted" style="padding:8px 0;">Sin registros en este período.</div>`;
+      return filtered.slice(0, 30).map(it => `
+        <div class="tecRendRow">
+          <span class="tecRendVin">${escapeHtml(it.vin || "")}</span>
+          <span class="tecRendRole small">${escapeHtml(it.rol_trabajo || it.rolTrabajo || "")}</span>
+          <span class="small muted">${fmtShort_(it.updated_at || it.fecha_creacion)}</span>
+          ${it.tiempo_trab_ms ? `<span class="small muted" style="margin-left:auto;">${fmtTime(Number(it.tiempo_trab_ms))}</span>` : ""}
+        </div>`).join("");
+    }
 
     box.innerHTML = `
-      <div class="tecRendGrid">
-        <div class="tecRendStat">
-          <div class="tecRendNum">${hoyItems.length}</div>
-          <div class="tecRendLabel">Hoy</div>
-        </div>
-        <div class="tecRendStat">
-          <div class="tecRendNum">${semItems.length}</div>
-          <div class="tecRendLabel">Esta semana</div>
-        </div>
-        <div class="tecRendStat">
-          <div class="tecRendNum">${items.length}</div>
-          <div class="tecRendLabel">Total</div>
-        </div>
-        <div class="tecRendStat">
-          <div class="tecRendNum">${avgMs ? fmtTime(avgMs) : "—"}</div>
-          <div class="tecRendLabel">Tiempo prom.</div>
+      <!-- KPI hero -->
+      <div class="sup-kpis-panel" style="margin-bottom:16px;">
+        <div class="sup-kpis-title">📊 Mi rendimiento</div>
+        <div style="display:flex;align-items:center;justify-content:center;gap:24px;flex-wrap:wrap;">
+          <div style="text-align:center;">
+            <svg viewBox="0 0 108 108" width="108" height="108">
+              <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="rgba(255,255,255,.15)" stroke-width="12"/>
+              <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${color}" stroke-width="12"
+                stroke-dasharray="${fill.toFixed(1)} ${(circ-fill).toFixed(1)}" stroke-linecap="round"
+                transform="rotate(-90 ${cx} ${cy})"/>
+              <text x="${cx}" y="${cy - 6}" text-anchor="middle" fill="#fff" font-size="20" font-weight="700">${hoyItems.length}</text>
+              <text x="${cx}" y="${cy + 14}" text-anchor="middle" fill="rgba(255,255,255,.7)" font-size="10">de ${meta}</text>
+            </svg>
+            <div style="color:rgba(255,255,255,.8);font-size:12px;margin-top:4px;">Meta del día</div>
+          </div>
+          <div class="sup-kpis-grid" style="flex:1;min-width:200px;">
+            <div class="sup-kpi-card">
+              <div class="kpi-header"><span class="kpi-icon">☀️</span><span class="kpi-label">Hoy</span></div>
+              <div class="kpi-value">${hoyItems.length}</div>
+              <div class="kpi-bar"><div class="kpi-bar-fill ${pct>=100?"positive":pct>=60?"warning":"negative"}" style="width:${pct.toFixed(0)}%"></div></div>
+            </div>
+            <div class="sup-kpi-card">
+              <div class="kpi-header"><span class="kpi-icon">📅</span><span class="kpi-label">Semana</span></div>
+              <div class="kpi-value">${semItems.length}</div>
+            </div>
+            <div class="sup-kpi-card">
+              <div class="kpi-header"><span class="kpi-icon">🏆</span><span class="kpi-label">Total</span></div>
+              <div class="kpi-value">${items.length}</div>
+            </div>
+            <div class="sup-kpi-card">
+              <div class="kpi-header"><span class="kpi-icon">⏱</span><span class="kpi-label">Prom.</span></div>
+              <div class="kpi-value-small">${avgMs ? fmtTime(avgMs) : "—"}</div>
+            </div>
+          </div>
         </div>
       </div>
-      <div class="tecRendHistTitle">Últimas conversiones</div>
-      ${items.length === 0
-        ? `<div class="small muted">Aún no tienes conversiones finalizadas.</div>`
-        : items.slice(0, 20).map(it => `
-          <div class="tecRendRow">
-            <span class="tecRendVin">${escapeHtml(it.vin || "")}</span>
-            <span class="tecRendRole small">${escapeHtml(it.rol_trabajo || it.rolTrabajo || "")}</span>
-            <span class="small muted">${fmtShort_(it.updated_at || it.fecha_creacion)}</span>
-          </div>`
-        ).join("")
-      }
+
+      <!-- Filtros -->
+      <div class="tecFilterRow" style="margin-bottom:12px;">
+        <div class="tecFilterPills" id="tecRendFilters">
+          <button class="tecFilterPill active" data-filter="hoy">Hoy</button>
+          <button class="tecFilterPill" data-filter="semana">Semana</button>
+          <button class="tecFilterPill" data-filter="mes">Mes</button>
+          <button class="tecFilterPill" data-filter="todo">Todo</button>
+        </div>
+      </div>
+
+      <div class="tecRendHistTitle">Historial</div>
+      <div id="tecRendList">${renderList(hoyItems)}</div>
     `;
+
+    // Bind filter pills
+    box.querySelector("#tecRendFilters")?.addEventListener("click", e => {
+      const btn = e.target.closest(".tecFilterPill");
+      if (!btn) return;
+      box.querySelectorAll(".tecFilterPill").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      const f = btn.dataset.filter;
+      const filtered = f === "hoy"    ? hoyItems
+                     : f === "semana" ? semItems
+                     : f === "mes"    ? items.filter(it => +new Date(it.updated_at || it.fecha_creacion || 0) >= cutMes)
+                     : items;
+      box.querySelector("#tecRendList").innerHTML = renderList(filtered);
+    });
+
   } catch (e) {
     box.innerHTML = `<div class="small" style="color:var(--danger);">Error: ${e.message}</div>`;
   }
@@ -254,24 +317,80 @@ async function loadTecIncidencias_() {
     if (!email) throw new Error("No hay sesión activa");
 
     const j = await getJSON(`/api/incidencias/by-tecnico?email=${encodeURIComponent(email)}&days=90`);
-    if (!j?.ok) throw new Error(j?.error || "Error al cargar incidencias");
+    if (!j?.ok) throw new Error(j?.error || "Error");
 
-    const items = Array.isArray(j.items) ? j.items : [];
-    if (!items.length) {
-      box.innerHTML = `<div class="small muted">No tienes incidencias registradas en los últimos 90 días.</div>`;
+    const all    = Array.isArray(j.items) ? j.items : [];
+    const msDay  = 86400000;
+    const hoy    = new Date().toDateString();
+    const cutSem = Date.now() - 7  * msDay;
+    const cutMes = Date.now() - 30 * msDay;
+
+    // Unique tipos
+    const tipos = [...new Set(all.map(it => it.tipo).filter(Boolean))].sort();
+
+    function renderInc(filtered) {
+      if (!filtered.length) return `<div class="small muted" style="padding:8px 0;">Sin incidencias en este período.</div>`;
+      return filtered.map(it => `
+        <div class="tecIncRow">
+          <div class="tecIncTop">
+            <span class="tecIncVin">${escapeHtml(it.vin || "")}</span>
+            <span class="tecIncTipo small">${escapeHtml(it.tipo || "")}</span>
+            <span class="small muted">${fmtShort_(it.fecha_hora)}</span>
+          </div>
+          ${it.nota ? `<div class="small muted" style="margin-top:3px;">${escapeHtml(it.nota)}</div>` : ""}
+        </div>`).join("");
+    }
+
+    if (!all.length) {
+      box.innerHTML = `<div class="small muted">Sin incidencias en los últimos 90 días.</div>`;
       return;
     }
 
-    box.innerHTML = items.map(it => `
-      <div class="tecIncRow">
-        <div class="tecIncTop">
-          <span class="tecIncVin">${escapeHtml(it.vin || "")}</span>
-          <span class="tecIncTipo small">${escapeHtml(it.tipo || "")}</span>
-          <span class="small muted">${fmtShort_(it.fecha_hora)}</span>
+    box.innerHTML = `
+      <div class="tecFilterRow" style="margin-bottom:4px;">
+        <div class="tecFilterPills" id="tecIncDateFilters">
+          <button class="tecFilterPill active" data-filter="todo">Todo</button>
+          <button class="tecFilterPill" data-filter="mes">Mes</button>
+          <button class="tecFilterPill" data-filter="semana">Semana</button>
+          <button class="tecFilterPill" data-filter="hoy">Hoy</button>
         </div>
-        ${it.nota ? `<div class="small muted" style="margin-top:3px;">${escapeHtml(it.nota)}</div>` : ""}
       </div>
-    `).join("");
+      ${tipos.length > 1 ? `
+      <div style="margin-bottom:12px;">
+        <select id="tecIncTipoFilter" style="background:var(--glass);border:1px solid var(--surfaceLine);border-radius:var(--radiusSm);padding:6px 10px;color:var(--text);font-size:var(--fs-sm);width:100%;">
+          <option value="">Todos los tipos</option>
+          ${tipos.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join("")}
+        </select>
+      </div>` : ""}
+      <div id="tecIncList">${renderInc(all)}</div>
+    `;
+
+    let activeDateFilter = "todo";
+    let activeTipoFilter = "";
+
+    function applyFilters() {
+      let filtered = [...all];
+      if (activeDateFilter === "hoy")    filtered = filtered.filter(it => new Date(it.fecha_hora).toDateString() === hoy);
+      if (activeDateFilter === "semana") filtered = filtered.filter(it => +new Date(it.fecha_hora) >= cutSem);
+      if (activeDateFilter === "mes")    filtered = filtered.filter(it => +new Date(it.fecha_hora) >= cutMes);
+      if (activeTipoFilter)              filtered = filtered.filter(it => it.tipo === activeTipoFilter);
+      box.querySelector("#tecIncList").innerHTML = renderInc(filtered);
+    }
+
+    box.querySelector("#tecIncDateFilters")?.addEventListener("click", e => {
+      const btn = e.target.closest(".tecFilterPill");
+      if (!btn) return;
+      box.querySelectorAll("#tecIncDateFilters .tecFilterPill").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      activeDateFilter = btn.dataset.filter;
+      applyFilters();
+    });
+
+    box.querySelector("#tecIncTipoFilter")?.addEventListener("change", e => {
+      activeTipoFilter = e.target.value;
+      applyFilters();
+    });
+
   } catch (e) {
     box.innerHTML = `<div class="small" style="color:var(--danger);">Error: ${e.message}</div>`;
   }

@@ -26,14 +26,6 @@ export function tecnicoView() {
           <span class="adminDetailTitle">🔧 Mi OT</span>
         </div>
 
-        <!-- Buscar VIN (abre modal con suggest + cámara) -->
-        <button id="btnTecBuscar" type="button"
-          style="background:none;border:none;color:var(--muted);font-size:.77em;cursor:pointer;
-                 padding:3px 0;margin-bottom:12px;display:inline-flex;align-items:center;
-                 gap:5px;text-decoration:underline;text-decoration-style:dotted;">
-          🔍 Buscar VIN
-        </button>
-
         <div class="fullStack">
           <div class="vinRow3">
             <div class="vinWrap">
@@ -100,6 +92,7 @@ export function tecnicoView() {
       <button id="btnNotaOnly" style="display:none;"></button>
       <button id="btnEnviar" style="display:none;"></button>
       <button id="btnVerMisInc" style="display:none;"></button>
+      <button id="btnTecBuscar" style="display:none;"></button>
 
       <div id="debugWrap" class="debug-hidden">
         <h3 style="margin-top:14px;">Respuesta</h3>

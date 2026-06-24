@@ -112,6 +112,23 @@
 .tecIncVin   { font-weight: var(--fw-bold); font-family: monospace; }
 .tecIncTipo  { background: var(--pillBg); border-radius: 4px; padding: 2px 6px; }
 
+/* ─── Cola table ─── */
+.tecColaTable       { border: 1px solid var(--surfaceLine); border-radius: var(--radius); overflow: hidden; }
+.tecColaTableHead   { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; padding: 8px 12px; background: var(--glass); font-size: var(--fs-xs); font-weight: var(--fw-extrabold); color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+.tecColaTableRow    { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--surfaceLine); align-items: center; }
+.tecColaTecnico     { color: var(--muted); }
+.tecColaEst         { padding: 3px 8px; border-radius: 999px; font-size: var(--fs-xs); font-weight: var(--fw-bold); white-space: nowrap; }
+.tecEst--trab       { background: rgba(16,185,129,.2); color: #6ee7b7; border: 1px solid rgba(16,185,129,.4); }
+.tecEst--paus       { background: rgba(245,158,11,.2); color: #fcd34d; border: 1px solid rgba(245,158,11,.4); }
+.tecEst--pend       { background: rgba(148,163,184,.15); color: var(--muted); border: 1px solid var(--surfaceLine); }
+
+/* ─── Filter pills ─── */
+.tecFilterRow       { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tecFilterPills     { display: flex; gap: 6px; flex-wrap: wrap; }
+.tecFilterPill      { padding: 5px 12px; border-radius: 999px; border: 1px solid var(--surfaceLine); background: var(--glass); color: var(--muted); font-size: var(--fs-xs); font-weight: var(--fw-bold); cursor: pointer; transition: background var(--dur-fast), color var(--dur-fast), border-color var(--dur-fast); }
+.tecFilterPill:hover { background: var(--pillBg); color: var(--text); }
+.tecFilterPill.active { background: var(--btnBg); border-color: transparent; color: var(--btnText); }
+
 /* ─── Cabecera cartillas técnico ─── */
 .tecCardsHeader {
   display: flex;
