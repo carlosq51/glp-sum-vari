@@ -46,7 +46,8 @@ async function rSugFetch_(q) {
   try {
     const r = await fetch(`/api/vin-suggest?q=${encodeURIComponent(q)}&limit=10`);
     const j = r.ok ? await r.json() : {};
-    return Array.isArray(j?.items) ? j.items : [];
+    const items = Array.isArray(j?.items) ? j.items : [];
+    return items.map(it => (typeof it === "string" ? it : it?.vin || "")).filter(Boolean);
   } catch { return []; }
 }
 

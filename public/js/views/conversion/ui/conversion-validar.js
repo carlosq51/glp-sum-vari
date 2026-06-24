@@ -38,7 +38,8 @@ function bSugRender_() {
 async function bSugFetch_(q) {
   try {
     const j = await getJSON(`/api/vin-suggest?q=${encodeURIComponent(q)}&limit=10`);
-    return Array.isArray(j?.items) ? j.items : [];
+    const items = Array.isArray(j?.items) ? j.items : [];
+    return items.map(it => (typeof it === "string" ? it : it?.vin || "")).filter(Boolean);
   } catch { return []; }
 }
 
