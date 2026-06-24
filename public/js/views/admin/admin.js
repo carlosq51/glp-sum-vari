@@ -9,6 +9,63 @@ import {
   supabasePatch,
   supabaseDelete,
 } from "../../core/supabase-client.js";
+import { createScanner } from "../../core/qr-scanner.js";
+
+// ─── Scanners para QR en Admin ────────────────────────────────────────
+const adminVinScanner_     = createScanner("adminVinQrReader");
+const reasignarScanner_    = createScanner("reasignarQrReader");
+
+// ─── Mini vinSuggest para Reasignar ──────────────────────────────────
+let rSugTimer_  = null;
+let rSugItems_  = [];
+let rSugIdx_    = -1;
+
+function rSugBox_()   { return $id("reasignarVinSuggest"); }
+function rSugInput_() { return $id("reasignarVinInput"); }
+
+function rSugHide_() {
+  const box = rSugBox_();
+  if (box) { box.classList.add("hidden"); box.innerHTML = ""; }
+  rSugItems_ = []; rSugIdx_ = -1;
+}
+
+function rSugRender_() {
+  const box = rSugBox_();
+  if (!box) return;
+  if (!rSugItems_.length) { rSugHide_(); return; }
+  box.innerHTML = rSugItems_.map((vin, i) =>
+    `<div class="vsItem ${i === rSugIdx_ ? "active" : ""}" data-idx="${i}" role="option"
+       aria-selected="${i === rSugIdx_}">
+       <div class="vsVin">${vin}</div>
+     </div>`
+  ).join("");
+  box.classList.remove("hidden");
+}
+
+async function rSugFetch_(q) {
+  try {
+    const r = await fetch(`/api/vin-suggest?q=${encodeURIComponent(q)}&limit=10`);
+    const j = r.ok ? await r.json() : {};
+    return Array.isArray(j?.items) ? j.items : [];
+  } catch { return []; }
+}
+
+function rSugOnInput_() {
+  const q = String(rSugInput_()?.value || "").trim().toUpperCase();
+  if (q.length < 3) { rSugHide_(); return; }
+  clearTimeout(rSugTimer_);
+  rSugTimer_ = setTimeout(async () => {
+    rSugItems_ = await rSugFetch_(q);
+    rSugIdx_ = -1;
+    rSugRender_();
+  }, 220);
+}
+
+function rSugPick_(vin) {
+  rSugHide_();
+  const inp = rSugInput_();
+  if (inp) { inp.value = vin; loadReasignarPanel_(); }
+}
 
 // ─── State ───────────────────────────────────────────────────────────
 const S = {
@@ -261,21 +318,57 @@ async function loadTab() {
         <div class="adminConfigSection">
           <h4 class="adminConfigTitle">Reasignar técnico</h4>
           <p class="small muted">Busca un VIN para ver sus asignaciones activas y cambiar el técnico asignado (CONVERSION o CALIDAD).</p>
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-            <input id="reasignarVinInput" type="text" class="adminInput"
-              placeholder="Ingresa VIN…"
-              autocomplete="off" autocapitalize="characters" spellcheck="false"
-              style="flex:1;min-width:160px;max-width:280px;" />
-            <button id="btnReasignarBuscar" type="button" class="adminBtnOk">Buscar</button>
+          <div style="position:relative;">
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <input id="reasignarVinInput" type="text" class="adminInput"
+                placeholder="Ingresa VIN o escanea QR…"
+                autocomplete="off" autocapitalize="characters" spellcheck="false"
+                style="flex:1;min-width:160px;max-width:260px;" />
+              <button id="btnReasignarQr" type="button" class="adminBtnGhost" title="Escanear QR" style="padding:6px 12px;">📷</button>
+              <button id="btnReasignarBuscar" type="button" class="adminBtnOk">Buscar</button>
+            </div>
+            <div id="reasignarVinSuggest" class="vinSuggest hidden" role="listbox"
+              style="max-width:280px;"></div>
           </div>
+          <div id="reasignarQrReader" style="margin-top:8px;max-width:340px;"></div>
           <div id="reasignarResults" style="margin-top:16px;"></div>
         </div>
       </div>
     `;
 
-    $id("btnReasignarBuscar")?.addEventListener("click", () => loadReasignarPanel_());
+    $id("btnReasignarBuscar")?.addEventListener("click", () => { rSugHide_(); loadReasignarPanel_(); });
+    $id("reasignarVinInput")?.addEventListener("input", rSugOnInput_);
     $id("reasignarVinInput")?.addEventListener("keydown", e => {
-      if (e.key === "Enter") loadReasignarPanel_();
+      if (e.key === "Enter") {
+        e.preventDefault();
+        const pick = rSugIdx_ >= 0 ? rSugItems_[rSugIdx_] : null;
+        if (pick) { rSugPick_(pick); return; }
+        rSugHide_(); loadReasignarPanel_();
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        rSugIdx_ = Math.min(rSugIdx_ + 1, rSugItems_.length - 1); rSugRender_();
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        rSugIdx_ = Math.max(rSugIdx_ - 1, -1); rSugRender_();
+      }
+    });
+    $id("reasignarVinSuggest")?.addEventListener("click", e => {
+      const item = e.target.closest(".vsItem");
+      if (item) rSugPick_(rSugItems_[parseInt(item.dataset.idx, 10)]);
+    });
+    $id("btnReasignarQr")?.addEventListener("click", async () => {
+      try {
+        await reasignarScanner_.start({
+          mode: "QR",
+          onDecoded: async code => {
+            await reasignarScanner_.stop().catch(() => {});
+            const inp = rSugInput_();
+            if (inp) inp.value = code;
+            rSugHide_();
+            loadReasignarPanel_();
+          },
+        });
+      } catch {}
     });
     return;
   }
@@ -569,8 +662,19 @@ function formUsuario(r = {}) {
 }
 
 function formVin(r = {}) {
+  const isNew = !r.vin;
   return `
-    <label class="adminLabel">VIN<input id="fVin" type="text" value="${escHtml(r.vin || "")}" placeholder="17 caracteres" ${r.vin ? "readonly" : ""}></label>
+    <label class="adminLabel">VIN
+      <div style="display:flex;gap:6px;align-items:center;">
+        <input id="fVin" type="text" value="${escHtml(r.vin || "")}" placeholder="17 caracteres"
+          ${r.vin ? "readonly" : ""}
+          autocomplete="off" autocapitalize="characters" spellcheck="false"
+          style="flex:1;min-width:0;" />
+        ${isNew ? `<button id="btnAdminVinQr" type="button" class="adminBtnGhost"
+          style="flex:0 0 auto;padding:6px 10px;" title="Escanear QR">📷</button>` : ""}
+      </div>
+    </label>
+    ${isNew ? `<div id="adminVinQrReader" style="margin-top:-4px;margin-bottom:8px;"></div>` : ""}
     <label class="adminLabel">Modelo<input id="fModelo" type="text" value="${escHtml(r.modelo || "")}"></label>
     <label class="adminLabel">DUA<input id="fDua" type="text" value="${escHtml(r.dua || "")}"></label>
     <label class="adminLabel">Cliente<input id="fCliente" type="text" value="${escHtml(r.cliente || "")}"></label>
@@ -688,11 +792,32 @@ function openModal(titleText, formHtml) {
   modal.classList.add("show");
   modal.removeAttribute("aria-hidden");
   document.body.classList.add("modal-open");
-  // focus first input
-  setTimeout(() => $id("adminModalBody").querySelector("input,select,textarea")?.focus(), 80);
+  setTimeout(() => {
+    $id("adminModalBody").querySelector("input,select,textarea")?.focus();
+    bindModalExtras_();
+  }, 80);
+}
+
+function bindModalExtras_() {
+  // Cámara QR para el campo VIN en "Nuevo VIN"
+  if (S.tab === "vins" && !S.editId) {
+    $id("btnAdminVinQr")?.addEventListener("click", async () => {
+      try {
+        await adminVinScanner_.start({
+          mode: "QR",
+          onDecoded: async code => {
+            await adminVinScanner_.stop().catch(() => {});
+            const inp = $id("fVin");
+            if (inp && !inp.readOnly) inp.value = code;
+          },
+        });
+      } catch {}
+    });
+  }
 }
 
 function closeModal() {
+  adminVinScanner_.stop().catch(() => {});
   const modal = $id("adminModal");
   modal.classList.remove("show");
   modal.setAttribute("aria-hidden", "true");
