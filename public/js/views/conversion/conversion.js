@@ -282,14 +282,17 @@ async function loadTecRendimiento_() {
     const fill  = circ * (pct / 100);
     const color = pct >= 100 ? "#10b981" : pct >= 60 ? "#f59e0b" : "#60a5fa";
 
-    // Team comparison (week)
-    const avgSemana  = jEquipo?.avgSemana  || 0;
-    const totalTeam  = jEquipo?.totalTecnicos || 0;
-    const diff       = semItems.length - avgSemana;
-    const compClass  = diff >= 0 ? "tecRendCompPos" : "tecRendCompNeg";
-    const compLabel  = diff >= 0
-      ? `▲ +${Math.abs(diff).toFixed(1)} por encima del equipo`
-      : `▼ ${Math.abs(diff).toFixed(1)} por debajo del equipo`;
+    // Fair team comparison: daily rate (conv / days worked) vs. active techs only
+    const avgDailyRate  = jEquipo?.avgDailyRate  || 0;
+    const activeTechs   = jEquipo?.activeTechs   || 0;
+    const totalTechs    = jEquipo?.totalTechs    || 0;
+    const userWorkDays  = new Set(semItems.map(it => it.updated_at?.split("T")[0]).filter(Boolean)).size;
+    const userDailyRate = userWorkDays ? Math.round((semItems.length / userWorkDays) * 10) / 10 : 0;
+    const rateDiff      = userDailyRate - avgDailyRate;
+    const compClass     = rateDiff >= 0 ? "tecRendCompPos" : "tecRendCompNeg";
+    const compLabel     = rateDiff >= 0
+      ? `▲ +${Math.abs(rateDiff).toFixed(1)} conv./día por encima`
+      : `▼ ${Math.abs(rateDiff).toFixed(1)} conv./día por debajo`;
 
     function renderHistogram(filtered) {
       const byHour = new Array(24).fill(0);
@@ -376,13 +379,13 @@ async function loadTecRendimiento_() {
         </div>
       </div>
 
-      <!-- Comparativa de equipo (semana) -->
-      ${jEquipo?.ok ? `
+      <!-- Comparativa de equipo (tasa diaria, solo técnicos activos) -->
+      ${jEquipo?.ok && activeTechs > 0 ? `
       <div class="tecRendComp">
         <div class="tecRendCompIcon">👥</div>
         <div class="tecRendCompBody">
-          <div class="tecRendCompMain">Esta semana: <b>${semItems.length}</b> conversiones</div>
-          <div class="tecRendCompSub">Prom. equipo: ${avgSemana} conv. · ${totalTeam} técnico${totalTeam !== 1 ? "s" : ""}</div>
+          <div class="tecRendCompMain">Tu ritmo: <b>${userDailyRate} conv./día</b> (${userWorkDays} día${userWorkDays !== 1 ? "s" : ""} trabajado${userWorkDays !== 1 ? "s" : ""})</div>
+          <div class="tecRendCompSub">Equipo activo: ${avgDailyRate} conv./día · ${activeTechs} de ${totalTechs} técnicos</div>
         </div>
         <div class="tecRendCompDiff ${compClass}">${compLabel}</div>
       </div>` : ""}

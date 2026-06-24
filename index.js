@@ -1,6 +1,6 @@
 import express from "express";
 import dotenv from "dotenv";
-import { existsSync } from "fs";
+import { existsSync, readFileSync, writeFileSync } from "fs";
 import {
   r2UploadOne,
   r2UploadFalla,
@@ -3401,14 +3401,15 @@ app.get("/api/tecnico/cola", async (req, res) => {
 });
 
 // ── GET /api/tecnico/equipo-stats ────────────────────────────────────────────
+// Compara por tasa diaria (conv / días trabajados) solo entre técnicos activos
+// para una comparación justa (excluye inactivos con 0 conversiones).
 app.get("/api/tecnico/equipo-stats", async (req, res) => {
   try {
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const esp = String(req.query.especialidad || "").toUpperCase();
     if (!["MOTOR", "TANQUE"].includes(esp))
-      return res.json({ ok: true, avgSemana: 0, totalTecnicos: 0 });
+      return res.json({ ok: true, avgDailyRate: 0, activeTechs: 0, totalTechs: 0 });
 
-    // Monday of current week
     const now = new Date();
     const day = now.getDay();
     const daysBack = day === 0 ? 6 : day - 1;
@@ -3420,18 +3421,149 @@ app.get("/api/tecnico/equipo-stats", async (req, res) => {
       { method: "GET", headers: supabaseHeaders_() }
     );
     const users = rUsers.ok ? await rUsers.json() : [];
-    if (!users.length) return res.json({ ok: true, avgSemana: 0, totalTecnicos: 0 });
+    if (!users.length) return res.json({ ok: true, avgDailyRate: 0, activeTechs: 0, totalTechs: 0 });
 
+    // Fetch with updated_at so we can count distinct working days per tech
     const rFin = await fetch(
-      `${SUPABASE_URL}/rest/v1/asignaciones?rol_trabajo=eq.${esp}&estado_actual=eq.FINALIZADO&updated_at=gte.${encodeURIComponent(mondaySince)}&select=user_id&limit=5000`,
+      `${SUPABASE_URL}/rest/v1/asignaciones?rol_trabajo=eq.${esp}&estado_actual=eq.FINALIZADO&updated_at=gte.${encodeURIComponent(mondaySince)}&select=user_id,updated_at&limit=5000`,
       { method: "GET", headers: supabaseHeaders_() }
     );
     const finRows = rFin.ok ? await rFin.json() : [];
 
-    const avgSemana = users.length
-      ? Math.round((finRows.length / users.length) * 10) / 10
+    // Group by user: count finalizadas + distinct working days
+    const byUser = {};
+    for (const row of finRows) {
+      if (!byUser[row.user_id]) byUser[row.user_id] = { count: 0, days: new Set() };
+      byUser[row.user_id].count++;
+      if (row.updated_at) byUser[row.user_id].days.add(row.updated_at.split("T")[0]);
+    }
+
+    // Daily rate per active tech (only those with >= 1 conversion this week)
+    const rates = Object.values(byUser).map(u => u.count / Math.max(u.days.size, 1));
+    const activeTechs = rates.length;
+    const avgDailyRate = activeTechs
+      ? Math.round((rates.reduce((s, r) => s + r, 0) / activeTechs) * 10) / 10
       : 0;
-    return res.json({ ok: true, avgSemana, totalTecnicos: users.length, totalSemana: finRows.length });
+    const medianDailyRate = activeTechs
+      ? (() => { const s = [...rates].sort((a,b) => a-b); const m = Math.floor(s.length/2); return s.length % 2 ? s[m] : (s[m-1]+s[m])/2; })()
+      : 0;
+
+    return res.json({
+      ok: true,
+      avgDailyRate,
+      medianDailyRate: Math.round(medianDailyRate * 10) / 10,
+      activeTechs,
+      totalTechs: users.length,
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e.message) });
+  }
+});
+
+// ── POST /api/ml/train-vin-model ──────────────────────────────────────────────
+// Entrena el modelo de inferencia de modelo vehicular desde la base de VINs.
+// Estrategia: tabla de frecuencia por prefijo VIN (posiciones 1-9, 1-8, ..., 1-3).
+// Dos VINs con el mismo prefijo de 9 chars son el mismo modelo/variante.
+const VIN_MODEL_PATH = "./vin-model.json";
+
+app.post("/api/ml/train-vin-model", async (req, res) => {
+  try {
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    // Fetch all VINs with known modelo
+    let offset = 0, allVins = [];
+    while (true) {
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/vins?modelo=not.is.null&select=vin,modelo&limit=1000&offset=${offset}`,
+        { method: "GET", headers: supabaseHeaders_() }
+      );
+      if (!r.ok) break;
+      const batch = await r.json();
+      if (!Array.isArray(batch) || !batch.length) break;
+      allVins.push(...batch);
+      if (batch.length < 1000) break;
+      offset += 1000;
+    }
+
+    if (!allVins.length) return res.json({ ok: false, error: "Sin VINs con modelo conocido" });
+
+    // Build prefix frequency table for lengths 3-9
+    const prefixes = {};
+    for (let len = 3; len <= 9; len++) prefixes[len] = {};
+
+    for (const { vin, modelo } of allVins) {
+      if (!vin || !modelo || vin.length < 3) continue;
+      for (let len = 3; len <= Math.min(9, vin.length); len++) {
+        const key = vin.slice(0, len).toUpperCase();
+        if (!prefixes[len][key]) prefixes[len][key] = {};
+        prefixes[len][key][modelo] = (prefixes[len][key][modelo] || 0) + 1;
+      }
+    }
+
+    // Count unique models and prefixes
+    const uniqueModels = new Set(allVins.map(v => v.modelo)).size;
+    const model = {
+      trained_at: new Date().toISOString(),
+      total_vins: allVins.length,
+      unique_models: uniqueModels,
+      prefixes,
+    };
+    writeFileSync(VIN_MODEL_PATH, JSON.stringify(model));
+
+    return res.json({ ok: true, total_vins: allVins.length, unique_models: uniqueModels });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e.message) });
+  }
+});
+
+// ── GET /api/ml/infer-vin-model?vin=XYZ ──────────────────────────────────────
+app.get("/api/ml/infer-vin-model", (req, res) => {
+  try {
+    const vin = String(req.query.vin || "").trim().toUpperCase();
+    if (vin.length < 3) return res.json({ ok: false, error: "VIN demasiado corto" });
+    if (!existsSync(VIN_MODEL_PATH))
+      return res.json({ ok: false, error: "Modelo no entrenado aún. Ejecuta el entrenamiento primero." });
+
+    const model = JSON.parse(readFileSync(VIN_MODEL_PATH, "utf8"));
+    const prefixes = model.prefixes || {};
+
+    // Longest-prefix match: try 9 chars down to 3
+    for (let len = Math.min(9, vin.length); len >= 3; len--) {
+      const key = vin.slice(0, len);
+      const dist = prefixes[len]?.[key];
+      if (!dist) continue;
+
+      const total = Object.values(dist).reduce((s, c) => s + c, 0);
+      const [bestModel, bestCount] = Object.entries(dist).sort((a, b) => b[1] - a[1])[0];
+      const confidence = Math.round((bestCount / total) * 100);
+      return res.json({
+        ok: true,
+        vin,
+        modelo: bestModel,
+        confidence,
+        match_len: len,
+        candidates: Object.entries(dist)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 3)
+          .map(([m, c]) => ({ modelo: m, count: c, pct: Math.round(c/total*100) })),
+      });
+    }
+
+    return res.json({ ok: true, vin, modelo: null, confidence: 0, match_len: 0, candidates: [] });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e.message) });
+  }
+});
+
+// ── GET /api/vins-sin-modelo ──────────────────────────────────────────────────
+app.get("/api/vins-sin-modelo", async (req, res) => {
+  try {
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/vins?modelo=is.null&select=vin,cliente&limit=200&order=vin.asc`,
+      { method: "GET", headers: supabaseHeaders_() }
+    );
+    const items = r.ok ? await r.json() : [];
+    return res.json({ ok: true, items });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e.message) });
   }

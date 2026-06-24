@@ -515,6 +515,21 @@ async function loadTab() {
             </div>
           </div>
 
+          <!-- MODELO VIN (IA) -->
+          <div class="adminConfigSection">
+            <h4 class="adminConfigTitle">🤖 Inferencia de modelo vehicular</h4>
+            <p class="small muted">
+              Entrena el modelo con los VINs existentes en la base de datos que ya tienen modelo conocido.
+              Luego podrás inferir el modelo para VINs sin información, usando coincidencia de prefijos VIN (WMI + VDS).
+            </p>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+              <button id="btnTrainVinModel" type="button" class="adminBtnOk">Entrenar modelo</button>
+              <button id="btnInferVins" type="button" class="adminBtnOk" style="background:var(--glass);border:1px solid var(--surfaceLine);">Ver VINs sin modelo</button>
+              <span id="mlMsg" class="small muted"></span>
+            </div>
+            <div id="mlResult" style="margin-top:12px;"></div>
+          </div>
+
         </div>
       `;
 
@@ -522,6 +537,58 @@ async function loadTab() {
       $id("btnSaveConfig")?.addEventListener("click", saveConfig_);
       $id("btnSaveHorarios")?.addEventListener("click", saveHorarios_);
       $id("btnSaveMetas")?.addEventListener("click", saveMetas_);
+
+      $id("btnTrainVinModel")?.addEventListener("click", async () => {
+        const msg = $id("mlMsg");
+        const res = $id("mlResult");
+        msg.textContent = "Entrenando…";
+        res.innerHTML = "";
+        try {
+          const r = await fetch("/api/ml/train-vin-model", { method: "POST" });
+          const j = await r.json();
+          if (j.ok) {
+            msg.textContent = `✅ Modelo entrenado: ${j.total_vins} VINs · ${j.unique_models} modelos distintos`;
+          } else {
+            msg.textContent = `⚠️ ${j.error}`;
+          }
+        } catch (e) { msg.textContent = `Error: ${e.message}`; }
+      });
+
+      $id("btnInferVins")?.addEventListener("click", async () => {
+        const res = $id("mlResult");
+        const msg = $id("mlMsg");
+        msg.textContent = "Buscando VINs sin modelo…";
+        res.innerHTML = `<div class="small muted">Cargando…</div>`;
+        try {
+          const SUPABASE_URL = "/api"; // use own backend
+          const r = await fetch("/api/vins-sin-modelo");
+          const j = await r.json();
+          if (!j?.ok) { res.innerHTML = `<div class="small" style="color:var(--danger);">${escHtml(j?.error||"Error")}</div>`; msg.textContent=""; return; }
+          const vins = j.items || [];
+          msg.textContent = `${vins.length} VINs sin modelo`;
+          if (!vins.length) { res.innerHTML = `<div class="small muted">Todos los VINs tienen modelo asignado.</div>`; return; }
+          const rows = await Promise.all(vins.slice(0, 50).map(async v => {
+            try {
+              const ri = await fetch(`/api/ml/infer-vin-model?vin=${encodeURIComponent(v.vin)}`);
+              const ji = await ri.json();
+              return { vin: v.vin, inferred: ji.modelo, confidence: ji.confidence, candidates: ji.candidates };
+            } catch { return { vin: v.vin, inferred: null, confidence: 0 }; }
+          }));
+          res.innerHTML = `
+            <div class="adminTable" style="margin-top:10px;font-size:var(--fs-xs);">
+              <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:6px;padding:6px 10px;font-weight:var(--fw-extrabold);opacity:.6;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--surfaceLine);">
+                <span>VIN</span><span>Modelo inferido</span><span>Confianza</span>
+              </div>
+              ${rows.map(r => `
+                <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:6px;padding:6px 10px;border-bottom:1px solid var(--surfaceLine);">
+                  <span style="font-family:monospace;">${escHtml(r.vin)}</span>
+                  <span>${r.inferred ? escHtml(r.inferred) : '<span style="color:var(--muted);">Sin coincidencia</span>'}</span>
+                  <span style="color:${r.confidence >= 80 ? "#4ade80" : r.confidence >= 50 ? "#fbbf24" : "var(--muted)"};">${r.inferred ? r.confidence + "%" : "—"}</span>
+                </div>`).join("")}
+            </div>
+          `;
+        } catch (e) { res.innerHTML = `<div class="small" style="color:var(--danger);">Error: ${e.message}</div>`; msg.textContent=""; }
+      });
       $id("btnPausarTodo")?.addEventListener("click", () => pausaMasiva_("PAUSA"));
       $id("btnReanudarTodo")?.addEventListener("click", () => pausaMasiva_("REANUDAR"));
 
