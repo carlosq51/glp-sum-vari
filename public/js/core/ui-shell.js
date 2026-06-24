@@ -14,8 +14,8 @@ const MODULE_META = {
   RAMALERO:    { emoji: "🪝", label: "Ramalero",    desc: "Suministro de ramales" },
   CALIDAD:     { emoji: "✅", label: "Calidad",     desc: "Revisión y aprobación" },
   MOVILIZADOR: { emoji: "🚗", label: "Movilizador", desc: "Traslados y listas" },
-  SUPERVISOR:  { emoji: "👁️", label: "Supervisor",  desc: "Supervisión del taller" },
-  ADMIN:       { emoji: "⚙️", label: "Admin",       desc: "Administración del sistema" },
+  SUPERVISOR:  { emoji: "🎯", label: "Supervisor",  desc: "Supervisión del taller" },
+  ADMIN:       { emoji: "🛠️", label: "Admin",       desc: "Administración del sistema" },
 };
 
 export function showLoginUI(msg = "") {
@@ -67,8 +67,10 @@ export function showHubUI(mods, onPick) {
     card.dataset.mod = m;
     card.innerHTML = `
       <div class="hubCardEmoji">${meta.emoji}</div>
-      <div class="hubCardName">${meta.label}</div>
-      ${meta.desc ? `<div class="hubCardDesc">${meta.desc}</div>` : ""}
+      <div class="hubCardText">
+        <div class="hubCardName">${meta.label}</div>
+        ${meta.desc ? `<div class="hubCardDesc">${meta.desc}</div>` : ""}
+      </div>
     `;
     card.addEventListener("click", () => onPick?.(m));
     box.appendChild(card);
