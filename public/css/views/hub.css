@@ -38,10 +38,10 @@
 .hubSettingsBtn:hover  { background: var(--pillBg); }
 .hubSettingsBtn:active { transform: scale(.93); }
 
-/* ─── Grid de cartillas — 1 columna para máximo ancho horizontal ─── */
+/* ─── Grid de cartillas — 2 columnas ─── */
 .hubGrid {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 10px;
   margin-bottom: 16px;
 }
