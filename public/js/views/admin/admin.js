@@ -76,6 +76,16 @@ const S = {
   userModulos: [],
 };
 
+// ─── Metadata de secciones ───────────────────────────────────────────
+const SECTION_META = {
+  usuarios:    { emoji: "👥", label: "Usuarios",       desc: "Cuentas y permisos" },
+  vins:        { emoji: "🚘", label: "VINs",           desc: "Vehículos registrados" },
+  ots:         { emoji: "📋", label: "OTs",            desc: "Órdenes de trabajo" },
+  incidencias: { emoji: "⚠️", label: "Incidencias",    desc: "Registro de fallas" },
+  reasignar:   { emoji: "🔄", label: "Reasignar",      desc: "Cambiar técnico asignado" },
+  config:      { emoji: "⚙️", label: "Configuración",  desc: "Parámetros del sistema" },
+};
+
 // ─── Enums (mirror schema.sql) ───────────────────────────────────────
 const ROLES        = ["TECNICO","SUPERVISOR","ADMIN","CALIDAD","MOVILIZADOR","RAMALERO"];
 const ESPECIALIDADES = ["AMBOS","MOTOR","TANQUE"];
@@ -912,17 +922,52 @@ function bindTableActions() {
   });
 }
 
+// ─── Navegación cartillas ────────────────────────────────────────────
+let adminCardsInited_ = false;
+
+function showAdminCards_() {
+  reasignarScanner_.stop().catch(() => {});
+  $id("adminCards").style.display  = "block";
+  $id("adminDetail").style.display = "none";
+  msg("");
+
+  // Renderizar cartillas una sola vez
+  const grid = $id("adminCardGrid");
+  if (!grid || adminCardsInited_) return;
+  adminCardsInited_ = true;
+
+  Object.entries(SECTION_META).forEach(([key, meta]) => {
+    const card = document.createElement("button");
+    card.className = "hubCard";
+    card.dataset.section = key;
+    card.innerHTML = `
+      <div class="hubCardEmoji">${meta.emoji}</div>
+      <div class="hubCardText">
+        <div class="hubCardName">${meta.label}</div>
+        <div class="hubCardDesc">${meta.desc}</div>
+      </div>
+    `;
+    card.addEventListener("click", () => showAdminDetail_(key));
+    grid.appendChild(card);
+  });
+}
+
+function showAdminDetail_(tab) {
+  S.tab = tab;
+  $id("adminCards").style.display  = "none";
+  $id("adminDetail").style.display = "block";
+  const meta = SECTION_META[tab] || {};
+  const titleEl = $id("adminDetailTitle");
+  if (titleEl) titleEl.textContent = `${meta.emoji || ""} ${meta.label || tab}`;
+  const searchEl = $id("adminSearch");
+  if (searchEl) searchEl.value = "";
+  loadTab();
+}
+
 // ─── Public API ──────────────────────────────────────────────────────
 export function init() {
-  // Tabs
-  document.addEventListener("click", e => {
-    const tab = e.target.closest("[data-tab]");
-    if (!tab || !tab.closest("#viewADMIN")) return;
-    document.querySelectorAll(".adminTab").forEach(t => t.classList.toggle("active", t === tab));
-    S.tab = tab.dataset.tab;
-    $id("adminSearch").value = "";
-    loadTab();
-  });
+  // Volver a cartillas
+  $id("btnAdminBack")?.addEventListener("click", showAdminCards_);
 
   // Search
   $id("adminSearch")?.addEventListener("input", e => {
@@ -953,5 +998,5 @@ export function init() {
   $id("btnAdminModalSave")?.addEventListener("click", save);
 }
 
-export function enter() { CORE.state.currentModule = "ADMIN"; loadTab(); }
-export function exit() {}
+export function enter() { CORE.state.currentModule = "ADMIN"; showAdminCards_(); }
+export function exit() { reasignarScanner_.stop().catch(() => {}); }

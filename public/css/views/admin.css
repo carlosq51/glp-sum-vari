@@ -2,6 +2,44 @@
    views/admin.css — Vista Admin CRUD
    ===================================================================== */
 
+/* ── Cartillas de sección (colores de borde izquierdo) ── */
+.hubCard[data-section="usuarios"]    { border-left-color: #60a5fa; }
+.hubCard[data-section="vins"]        { border-left-color: #34d399; }
+.hubCard[data-section="ots"]         { border-left-color: #a78bfa; }
+.hubCard[data-section="incidencias"] { border-left-color: #f87171; }
+.hubCard[data-section="reasignar"]   { border-left-color: #fbbf24; }
+.hubCard[data-section="config"]      { border-left-color: #67e8f9; }
+
+/* ── Cabecera del detalle ── */
+.adminDetailHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--surfaceLine);
+}
+
+.adminBackBtn {
+  background: var(--glass);
+  border: 1px solid var(--surfaceLine);
+  border-radius: var(--radiusSm);
+  padding: 7px 12px;
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  cursor: pointer;
+  transition: background var(--dur-fast);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.adminBackBtn:hover { background: var(--pillBg); }
+
+.adminDetailTitle {
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-extrabold);
+}
+
 /* ── Header ── */
 .adminHeader {
   display: flex;

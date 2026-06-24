@@ -1,6 +1,6 @@
 // =========================
 // public/js/templates/views/admin-view.js
-// Template HTML: vista Admin – CRUD completo
+// Template HTML: vista Admin – cartillas de sección + detalle
 // =========================
 
 export function adminView() {
@@ -8,33 +8,31 @@ export function adminView() {
     <!-- ADMIN -->
     <div id="viewADMIN" class="card" style="display:none;">
 
-      <div class="adminHeader">
-        <h3>Panel Admin</h3>
+      <!-- ── Vista cartillas ── -->
+      <div id="adminCards">
+        <h3 style="margin-bottom:16px;">Panel Admin</h3>
+        <div class="hubGrid" id="adminCardGrid"></div>
       </div>
 
-      <!-- Tabs -->
-      <div class="adminTabs" role="tablist">
-        <button class="adminTab active" data-tab="usuarios" role="tab">Usuarios</button>
-        <button class="adminTab" data-tab="vins" role="tab">VINs</button>
-        <button class="adminTab" data-tab="ots" role="tab">OTs</button>
-        <button class="adminTab" data-tab="incidencias" role="tab">Incidencias</button>
-        <button class="adminTab" data-tab="reasignar" role="tab">🔄 Reasignar</button>
-        <button class="adminTab" data-tab="config" role="tab">⚙ Configuración</button>
-      </div>
+      <!-- ── Vista detalle de sección ── -->
+      <div id="adminDetail" style="display:none;">
 
-      <!-- Toolbar -->
-      <div class="adminToolbar">
-        <input id="adminSearch" type="text" placeholder="Buscar…" autocomplete="off">
-        <button id="btnAdminNuevo" type="button">+ Nuevo</button>
-      </div>
+        <div class="adminDetailHead">
+          <button id="btnAdminBack" class="adminBackBtn">← Volver</button>
+          <span id="adminDetailTitle" class="adminDetailTitle"></span>
+        </div>
 
-      <!-- Table container -->
-      <div id="adminTableWrap">
-        <div id="adminTableContent" class="adminTableContent"></div>
-      </div>
+        <div class="adminToolbar" id="adminToolbar">
+          <input id="adminSearch" type="text" placeholder="Buscar…" autocomplete="off">
+          <button id="btnAdminNuevo" type="button">+ Nuevo</button>
+        </div>
 
-      <!-- Status / feedback -->
-      <div id="adminMsg" class="adminMsg small muted"></div>
+        <div id="adminTableWrap">
+          <div id="adminTableContent" class="adminTableContent"></div>
+        </div>
+
+        <div id="adminMsg" class="adminMsg small muted"></div>
+      </div>
 
     </div>
   `;
