@@ -1,7 +1,7 @@
 import { loginView } from "../views/login-view.js";
 
 import { hubView } from "../views/hub-view.js";
-import { tecnicoView } from "../views/tecnico-view.js";
+import { tecnicoView, tecBuscarModalTemplate } from "../views/tecnico-view.js";
 import { ramaleroView } from "../views/ramalero-view.js";
 import { calidadView } from "../views/calidad-view.js";
 import { adminView, adminCrudModal } from "../views/admin-view.js";
@@ -54,6 +54,7 @@ export function appShell() {
     ${supIncModal()}
     ${liveDetailModal()}
     ${supValidarQrModalTemplate()}
+    ${tecBuscarModalTemplate()}
     ${adminCrudModal()}
   `;
 }

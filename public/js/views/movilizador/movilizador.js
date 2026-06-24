@@ -641,14 +641,29 @@ async function handleAction_(vin, accion, btn, onSuccess) {
 function bindTabs_() {
   const tabs   = document.querySelectorAll("#viewMOVILIZADOR .movTab");
   const panels = document.querySelectorAll("#viewMOVILIZADOR .movTabPanel");
+  const STOR_KEY = "movTab_active";
+
+  function activateTab_(target) {
+    tabs.forEach(t => {
+      t.classList.toggle("active", t.dataset.tab === target);
+      t.setAttribute("aria-selected", String(t.dataset.tab === target));
+    });
+    panels.forEach(p => { p.style.display = p.dataset.panel === target ? "flex" : "none"; });
+  }
 
   tabs.forEach(tab => {
     tab.addEventListener("click", () => {
       const target = tab.dataset.tab;
-      tabs.forEach(t => { t.classList.toggle("active", t === tab); t.setAttribute("aria-selected", String(t === tab)); });
-      panels.forEach(p => { p.style.display = p.dataset.panel === target ? "flex" : "none"; });
+      localStorage.setItem(STOR_KEY, target);
+      activateTab_(target);
     });
   });
+
+  // Restaurar pestaña guardada si sigue existiendo
+  const saved = localStorage.getItem(STOR_KEY);
+  if (saved && Array.from(tabs).some(t => t.dataset.tab === saved)) {
+    activateTab_(saved);
+  }
 }
 
 // ─── Lista diaria filtros ─────────────────────────────────────

@@ -12,21 +12,13 @@ export function tecnicoView() {
       <div class="card">
         <h3>Técnico (Conversión)</h3>
 
-        <!-- Validar VIN (uso excepcional) -->
-        <details id="tecValidarDetails" style="margin-bottom:12px; margin-top:6px;">
-          <summary style="cursor:pointer; font-size:.77em; color:var(--muted); user-select:none; list-style:none; padding:3px 0;">
-            🔍 Validar VIN
-          </summary>
-          <div style="margin-top:10px;">
-            <input id="tecValidarVin" type="text" placeholder="Buscar VIN…"
-              autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false"
-              style="width:100%; margin-bottom:8px;" />
-            <button id="btnTecValidar" type="button" class="btn" style="width:100%; font-size:.82em; padding:9px;">
-              Validar
-            </button>
-            <div id="tecValidarResult" style="margin-top:12px;"></div>
-          </div>
-        </details>
+        <!-- Buscar VIN (abre modal con suggest + cámara) -->
+        <button id="btnTecBuscar" type="button"
+          style="background:none;border:none;color:var(--muted);font-size:.77em;cursor:pointer;
+                 padding:3px 0;margin-bottom:12px;margin-top:6px;display:inline-flex;align-items:center;
+                 gap:5px;text-decoration:underline;text-decoration-style:dotted;">
+          🔍 Buscar VIN
+        </button>
 
         <div class="fullStack" style="margin-top:10px;">
           <div class="vinRow3">
@@ -77,6 +69,34 @@ export function tecnicoView() {
       <textarea id="nota" style="display:none;"></textarea>
       <button id="btnNotaOnly" style="display:none;"></button>
       <button id="btnEnviar" style="display:none;"></button>
+    </div>
+  `;
+}
+
+// Modal fuera de viewTECNICO para evitar bug WebKit position:fixed en padre display:none
+export function tecBuscarModalTemplate() {
+  return `
+    <div id="tecBuscarModal" class="modal" aria-hidden="true" style="display:none;">
+      <div class="modalBox">
+        <div class="modalHead">
+          <div class="modalTitle">🔍 Buscar VIN — Conversión</div>
+          <button id="btnTecBuscarClose" type="button" title="Cerrar">✕</button>
+        </div>
+        <div class="modalBody">
+          <div style="position:relative;">
+            <div style="display:flex;gap:8px;align-items:center;">
+              <input id="tecBuscarVin" type="text" placeholder="Ingresa VIN o escanea QR"
+                autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false"
+                style="flex:1;" />
+              <button id="btnTecBuscarQr" type="button" class="btn" style="flex:0 0 auto;padding:9px 14px;">📷</button>
+            </div>
+            <div id="tecBuscarSuggest" class="vinSuggest hidden" role="listbox"></div>
+          </div>
+          <div id="tecBuscarQrReader" style="margin-top:10px;"></div>
+          <div id="tecBuscarMsg" class="small" style="margin-top:10px;"></div>
+          <div id="tecBuscarResult" style="margin-top:12px;"></div>
+        </div>
+      </div>
     </div>
   `;
 }
