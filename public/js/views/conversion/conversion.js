@@ -214,9 +214,10 @@ async function loadTecRendimiento_() {
     const cutSem = Date.now() - 7  * msDay;
     const cutMes = Date.now() - 30 * msDay;
 
-    const hoyItems = items.filter(it => new Date(it.updated_at || it.fecha_creacion || 0).toDateString() === hoy);
-    const semItems = items.filter(it => +new Date(it.updated_at || it.fecha_creacion || 0) >= cutSem);
+    const hoyItems = items.filter(it => new Date(it.updated_at || 0).toDateString() === hoy);
+    const semItems = items.filter(it => +new Date(it.updated_at || 0) >= cutSem);
     const fmtTime  = ms => { const h = Math.floor(ms/3600000), m = Math.floor((ms%3600000)/60000); return h ? `${h}h ${m}m` : `${m}m`; };
+    const fmtHora  = ts => ts ? new Date(ts).toLocaleTimeString("es-PE", {hour:"2-digit", minute:"2-digit"}) : "—";
     const avgMs    = items.length ? items.reduce((s, it) => s + (Number(it.tiempo_trab_ms) || 0), 0) / items.length : 0;
 
     // SVG circle progress
@@ -227,13 +228,33 @@ async function loadTecRendimiento_() {
 
     function renderList(filtered) {
       if (!filtered.length) return `<div class="small muted" style="padding:8px 0;">Sin registros en este período.</div>`;
-      return filtered.slice(0, 30).map(it => `
+      return filtered.map(it => `
         <div class="tecRendRow">
           <span class="tecRendVin">${escapeHtml(it.vin || "")}</span>
           <span class="tecRendRole small">${escapeHtml(it.rol_trabajo || it.rolTrabajo || "")}</span>
-          <span class="small muted">${fmtShort_(it.updated_at || it.fecha_creacion)}</span>
+          <span class="small muted">${fmtShort_(it.updated_at)}</span>
+          <span class="tecRendHora small" title="Hora de fin">${fmtHora(it.updated_at)}</span>
           ${it.tiempo_trab_ms ? `<span class="small muted" style="margin-left:auto;">${fmtTime(Number(it.tiempo_trab_ms))}</span>` : ""}
         </div>`).join("");
+    }
+
+    let activePill = "hoy";
+    let activeVin  = "";
+    let activeDate = "";
+
+    function getBase() {
+      if (activePill === "hoy")    return hoyItems;
+      if (activePill === "semana") return semItems;
+      if (activePill === "mes")    return items.filter(it => +new Date(it.updated_at || 0) >= cutMes);
+      return items;
+    }
+
+    function applyRendFilters() {
+      let f = getBase();
+      if (activeVin)  f = f.filter(it => String(it.vin || "").toUpperCase().includes(activeVin.toUpperCase()));
+      if (activeDate) f = f.filter(it => it.updated_at?.startsWith(activeDate));
+      box.querySelector("#tecRendList").innerHTML = renderList(f);
+      box.querySelector("#tecRendCount").textContent = `${f.length} registros`;
     }
 
     box.innerHTML = `
@@ -274,8 +295,12 @@ async function loadTecRendimiento_() {
         </div>
       </div>
 
-      <!-- Filtros -->
-      <div class="tecFilterRow" style="margin-bottom:12px;">
+      <!-- Filtros historial -->
+      <div class="tecRendHistTitle" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <span>Historial</span>
+        <span id="tecRendCount" class="small muted">${hoyItems.length} registros</span>
+      </div>
+      <div class="tecRendSearchRow">
         <div class="tecFilterPills" id="tecRendFilters">
           <button class="tecFilterPill active" data-filter="hoy">Hoy</button>
           <button class="tecFilterPill" data-filter="semana">Semana</button>
@@ -283,23 +308,36 @@ async function loadTecRendimiento_() {
           <button class="tecFilterPill" data-filter="todo">Todo</button>
         </div>
       </div>
-
-      <div class="tecRendHistTitle">Historial</div>
+      <div class="tecRendSearchRow" style="margin-top:8px;margin-bottom:10px;">
+        <input id="tecRendVinSearch" class="tecHistSearch" placeholder="🔍 Buscar VIN…" type="text" autocomplete="off">
+        <input id="tecRendDatePick"  class="tecHistDate"   type="date" title="Filtrar por fecha específica">
+      </div>
       <div id="tecRendList">${renderList(hoyItems)}</div>
     `;
 
-    // Bind filter pills
     box.querySelector("#tecRendFilters")?.addEventListener("click", e => {
       const btn = e.target.closest(".tecFilterPill");
       if (!btn) return;
-      box.querySelectorAll(".tecFilterPill").forEach(b => b.classList.remove("active"));
+      box.querySelectorAll("#tecRendFilters .tecFilterPill").forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
-      const f = btn.dataset.filter;
-      const filtered = f === "hoy"    ? hoyItems
-                     : f === "semana" ? semItems
-                     : f === "mes"    ? items.filter(it => +new Date(it.updated_at || it.fecha_creacion || 0) >= cutMes)
-                     : items;
-      box.querySelector("#tecRendList").innerHTML = renderList(filtered);
+      activePill = btn.dataset.filter;
+      activeDate = "";
+      box.querySelector("#tecRendDatePick").value = "";
+      applyRendFilters();
+    });
+
+    box.querySelector("#tecRendVinSearch")?.addEventListener("input", e => {
+      activeVin = e.target.value.trim();
+      applyRendFilters();
+    });
+
+    box.querySelector("#tecRendDatePick")?.addEventListener("change", e => {
+      activeDate = e.target.value; // "YYYY-MM-DD"
+      if (activeDate) {
+        box.querySelectorAll("#tecRendFilters .tecFilterPill").forEach(b => b.classList.remove("active"));
+        activePill = "todo";
+      }
+      applyRendFilters();
     });
 
   } catch (e) {
@@ -316,66 +354,113 @@ async function loadTecIncidencias_() {
     const email   = String(emailEl?.value || "").trim().toLowerCase();
     if (!email) throw new Error("No hay sesión activa");
 
-    const j = await getJSON(`/api/incidencias/by-tecnico?email=${encodeURIComponent(email)}&days=90`);
+    const j = await getJSON(`/api/incidencias/by-tecnico?email=${encodeURIComponent(email)}&days=365`);
     if (!j?.ok) throw new Error(j?.error || "Error");
 
-    const all    = Array.isArray(j.items) ? j.items : [];
-    const msDay  = 86400000;
-    const hoy    = new Date().toDateString();
+    const all   = Array.isArray(j.items) ? j.items : [];
+    const msDay = 86400000;
+    const hoy   = new Date().toDateString();
     const cutSem = Date.now() - 7  * msDay;
     const cutMes = Date.now() - 30 * msDay;
 
-    // Unique tipos
-    const tipos = [...new Set(all.map(it => it.tipo).filter(Boolean))].sort();
-
-    function renderInc(filtered) {
-      if (!filtered.length) return `<div class="small muted" style="padding:8px 0;">Sin incidencias en este período.</div>`;
-      return filtered.map(it => `
-        <div class="tecIncRow">
-          <div class="tecIncTop">
-            <span class="tecIncVin">${escapeHtml(it.vin || "")}</span>
-            <span class="tecIncTipo small">${escapeHtml(it.tipo || "")}</span>
-            <span class="small muted">${fmtShort_(it.fecha_hora)}</span>
-          </div>
-          ${it.nota ? `<div class="small muted" style="margin-top:3px;">${escapeHtml(it.nota)}</div>` : ""}
-        </div>`).join("");
-    }
-
     if (!all.length) {
-      box.innerHTML = `<div class="small muted">Sin incidencias en los últimos 90 días.</div>`;
+      box.innerHTML = `<div class="small muted">Sin incidencias registradas.</div>`;
       return;
     }
 
+    function renderIncCard(it) {
+      const thumb = it.fotoThumbUrl || it.fotoImgUrl || it.fotoUrl || "";
+      const full  = it.fotoUrl || it.fotoImgUrl || "";
+      return `<div class="tecIncCard">
+        <div class="tecIncCardTop">
+          <span class="tecIncVin">${escapeHtml(it.vin || "")}</span>
+          <span class="small muted">${fmtShort_(it.fecha_hora)} ${new Date(it.fecha_hora).toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"})}</span>
+        </div>
+        ${it.nota ? `<div class="tecIncNota small">${escapeHtml(it.nota)}</div>` : ""}
+        ${thumb ? `<a href="${full || thumb}" target="_blank" rel="noopener" class="tecIncPhotoWrap">
+          <img src="${thumb}" class="tecIncThumb" alt="Foto incidencia" loading="lazy">
+          <span class="tecIncPhotoLabel small">📷 Ver foto</span>
+        </a>` : ""}
+      </div>`;
+    }
+
+    function renderDashboard(filtered) {
+      if (!filtered.length) return `<div class="small muted" style="padding:8px 0;">Sin incidencias en este período.</div>`;
+      // Group by tipo
+      const byTipo = {};
+      filtered.forEach(it => {
+        const t = it.tipo || "Sin tipo";
+        if (!byTipo[t]) byTipo[t] = [];
+        byTipo[t].push(it);
+      });
+      const sorted = Object.entries(byTipo).sort((a,b) => b[1].length - a[1].length);
+      const maxCount = sorted[0][1].length;
+
+      // Bars chart
+      const bars = sorted.map(([tipo, incs]) => {
+        const pct = (incs.length / maxCount * 100).toFixed(0);
+        return `<div class="tecIncTypeLine">
+          <span class="tecIncTypeName" title="${escapeHtml(tipo)}">${escapeHtml(tipo)}</span>
+          <div class="tecIncTypeTrack"><div class="tecIncTypeFill" style="width:${pct}%"></div></div>
+          <span class="tecIncTypeCount">${incs.length}</span>
+        </div>`;
+      }).join("");
+
+      // Expandable groups
+      const groups = sorted.map(([tipo, incs]) => `
+        <div class="tecIncGroup">
+          <button class="tecIncGroupHead" type="button">
+            <span class="tecIncGroupName">${escapeHtml(tipo)}</span>
+            <span class="tecIncGroupCount">${incs.length} caso${incs.length!==1?"s":""}</span>
+            <span class="tecIncGroupChevron">▾</span>
+          </button>
+          <div class="tecIncGroupBody">
+            ${incs.map(renderIncCard).join("")}
+          </div>
+        </div>`).join("");
+
+      return `
+        <div class="tecIncDashboard">
+          <div class="tecIncDashTitle">Distribución por tipo (${filtered.length} total)</div>
+          <div class="tecIncTypeChart">${bars}</div>
+        </div>
+        <div class="tecIncGroupsTitle">Detalle por tipo</div>
+        <div class="tecIncGroups">${groups}</div>
+      `;
+    }
+
+    // Default: este mes
+    const mesFilt = all.filter(it => +new Date(it.fecha_hora) >= cutMes);
+
     box.innerHTML = `
-      <div class="tecFilterRow" style="margin-bottom:4px;">
+      <div class="tecFilterRow" style="margin-bottom:12px;">
         <div class="tecFilterPills" id="tecIncDateFilters">
-          <button class="tecFilterPill active" data-filter="todo">Todo</button>
-          <button class="tecFilterPill" data-filter="mes">Mes</button>
-          <button class="tecFilterPill" data-filter="semana">Semana</button>
           <button class="tecFilterPill" data-filter="hoy">Hoy</button>
+          <button class="tecFilterPill" data-filter="semana">Semana</button>
+          <button class="tecFilterPill active" data-filter="mes">Este mes</button>
+          <button class="tecFilterPill" data-filter="todo">Todo</button>
         </div>
       </div>
-      ${tipos.length > 1 ? `
-      <div style="margin-bottom:12px;">
-        <select id="tecIncTipoFilter" style="background:var(--glass);border:1px solid var(--surfaceLine);border-radius:var(--radiusSm);padding:6px 10px;color:var(--text);font-size:var(--fs-sm);width:100%;">
-          <option value="">Todos los tipos</option>
-          ${tipos.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join("")}
-        </select>
-      </div>` : ""}
-      <div id="tecIncList">${renderInc(all)}</div>
+      <div id="tecIncDash">${renderDashboard(mesFilt)}</div>
     `;
 
-    let activeDateFilter = "todo";
-    let activeTipoFilter = "";
+    let activeDateFilter = "mes";
 
     function applyFilters() {
       let filtered = [...all];
       if (activeDateFilter === "hoy")    filtered = filtered.filter(it => new Date(it.fecha_hora).toDateString() === hoy);
       if (activeDateFilter === "semana") filtered = filtered.filter(it => +new Date(it.fecha_hora) >= cutSem);
       if (activeDateFilter === "mes")    filtered = filtered.filter(it => +new Date(it.fecha_hora) >= cutMes);
-      if (activeTipoFilter)              filtered = filtered.filter(it => it.tipo === activeTipoFilter);
-      box.querySelector("#tecIncList").innerHTML = renderInc(filtered);
+      box.querySelector("#tecIncDash").innerHTML = renderDashboard(filtered);
+      bindGroups_();
     }
+
+    function bindGroups_() {
+      box.querySelectorAll(".tecIncGroupHead").forEach(btn => {
+        btn.addEventListener("click", () => btn.closest(".tecIncGroup").classList.toggle("open"));
+      });
+    }
+    bindGroups_();
 
     box.querySelector("#tecIncDateFilters")?.addEventListener("click", e => {
       const btn = e.target.closest(".tecFilterPill");
@@ -383,11 +468,6 @@ async function loadTecIncidencias_() {
       box.querySelectorAll("#tecIncDateFilters .tecFilterPill").forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
       activeDateFilter = btn.dataset.filter;
-      applyFilters();
-    });
-
-    box.querySelector("#tecIncTipoFilter")?.addEventListener("change", e => {
-      activeTipoFilter = e.target.value;
       applyFilters();
     });
 

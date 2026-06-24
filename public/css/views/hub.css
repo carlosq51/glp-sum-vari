@@ -52,7 +52,8 @@
   flex-direction: row;
   align-items: center;
   gap: 16px;
-  padding: 14px 18px;
+  padding: 20px 18px;
+  min-height: 100px;
   background: var(--grad-surface);
   border: 1px solid var(--surfaceLine);
   border-left-width: 4px;
@@ -121,6 +122,44 @@
 .tecEst--trab       { background: rgba(16,185,129,.2); color: #6ee7b7; border: 1px solid rgba(16,185,129,.4); }
 .tecEst--paus       { background: rgba(245,158,11,.2); color: #fcd34d; border: 1px solid rgba(245,158,11,.4); }
 .tecEst--pend       { background: rgba(148,163,184,.15); color: var(--muted); border: 1px solid var(--surfaceLine); }
+
+/* ─── Rendimiento: búsqueda + fecha ─── */
+.tecRendSearchRow  { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.tecHistSearch     { flex: 1; min-width: 120px; background: var(--glass); border: 1px solid var(--surfaceLine); border-radius: var(--radiusSm); padding: 7px 10px; color: var(--text); font-size: var(--fs-sm); }
+.tecHistDate       { background: var(--glass); border: 1px solid var(--surfaceLine); border-radius: var(--radiusSm); padding: 7px 10px; color: var(--text); font-size: var(--fs-sm); }
+.tecRendHora       { background: var(--pillBg); border-radius: 4px; padding: 2px 5px; white-space: nowrap; }
+
+/* ─── Incidencias: dashboard chart ─── */
+.tecIncDashboard   { background: var(--glass); border: 1px solid var(--surfaceLine); border-radius: var(--radius); padding: 14px; margin-bottom: 16px; }
+.tecIncDashTitle   { font-size: var(--fs-xs); font-weight: var(--fw-extrabold); color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 12px; }
+.tecIncTypeChart   { display: flex; flex-direction: column; gap: 8px; }
+.tecIncTypeLine    { display: grid; grid-template-columns: 1fr 3fr auto; gap: 8px; align-items: center; }
+.tecIncTypeName    { font-size: var(--fs-xs); font-weight: var(--fw-bold); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tecIncTypeTrack   { height: 8px; background: var(--surfaceLine); border-radius: 999px; overflow: hidden; }
+.tecIncTypeFill    { height: 100%; background: linear-gradient(90deg, #f87171, #ef4444); border-radius: 999px; transition: width .4s ease; }
+.tecIncTypeCount   { font-size: var(--fs-xs); font-weight: var(--fw-black); color: var(--text); min-width: 24px; text-align: right; }
+
+/* ─── Incidencias: grupos expandibles ─── */
+.tecIncGroupsTitle { font-size: var(--fs-sm); font-weight: var(--fw-extrabold); margin: 8px 0; }
+.tecIncGroup       { border: 1px solid var(--surfaceLine); border-radius: var(--radius); margin-bottom: 8px; overflow: hidden; }
+.tecIncGroupHead   { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: var(--glass); cursor: pointer; width: 100%; text-align: left; border: none; color: var(--text); }
+.tecIncGroupHead:hover { background: var(--pillBg); }
+.tecIncGroupName   { font-weight: var(--fw-extrabold); font-size: var(--fs-sm); flex: 1; }
+.tecIncGroupCount  { font-size: var(--fs-xs); background: var(--pillBg); border-radius: 999px; padding: 2px 8px; color: var(--muted); }
+.tecIncGroupChevron { font-size: 14px; color: var(--muted); transition: transform .2s; }
+.tecIncGroup.open .tecIncGroupChevron { transform: rotate(180deg); }
+.tecIncGroupBody   { display: none; padding: 10px 14px; border-top: 1px solid var(--surfaceLine); }
+.tecIncGroup.open .tecIncGroupBody { display: block; }
+
+/* ─── Incidencias: tarjeta individual ─── */
+.tecIncCard        { padding: 8px 0; border-bottom: 1px solid var(--surfaceLine); }
+.tecIncCard:last-child { border-bottom: none; }
+.tecIncCardTop     { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 4px; }
+.tecIncNota        { color: var(--muted); margin: 3px 0 6px; }
+.tecIncPhotoWrap   { display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; text-decoration: none; }
+.tecIncThumb       { width: 72px; height: 72px; object-fit: cover; border-radius: var(--radiusSm); border: 1px solid var(--surfaceLine); display: block; }
+.tecIncPhotoLabel  { color: var(--muted); }
+.tecIncPhotoLabel:hover { color: var(--text); }
 
 /* ─── Filter pills ─── */
 .tecFilterRow       { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }

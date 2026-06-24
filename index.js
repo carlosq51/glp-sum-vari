@@ -527,7 +527,7 @@ app.get("/api/mis-finalizadas", async (req, res) => {
     let query = `${SUPABASE_URL}/rest/v1/asignaciones?`;
     query += `user_id=eq.${finalUserId}&estado_actual=eq.FINALIZADO`;
     query += `&select=id,work_order_id,tipo_ot,rol_trabajo,estado_actual,running_since,tiempo_trab_ms,updated_at,last_nota,user_id,usuarios!inner(id,email,nombre),work_orders(id,vin,tipo_ramal,fecha_creacion,vins(reductor_asignado,tanque_asignado))`;
-    query += `&order=updated_at.desc`;
+    query += `&order=updated_at.desc&limit=5000`;
 
     const res_data = await fetch(query, { method: "GET", headers });
     
