@@ -66,6 +66,8 @@ function showTecCards_() {
   if (greet) greet.textContent = nombre ? `Hola, ${nombre} 👋` : "Bienvenido";
   // Badge on Mi OT if there's an active OT
   updateTecMiOTBadge_();
+  // AI pairing suggestion banner
+  loadPairingSuggestion_();
 }
 
 function showTecPanel_(panelId, loader) {
@@ -111,6 +113,42 @@ async function updateColaBadge_() {
       btn.appendChild(badge);
     }
   } catch {}
+}
+
+async function loadPairingSuggestion_() {
+  const emailEl = document.getElementById("email");
+  const email   = String(emailEl?.value || "").trim().toLowerCase();
+  if (!email) return;
+
+  // Ensure banner container exists below the card grid
+  const grid = document.getElementById("tecCardGrid");
+  if (!grid) return;
+  let banner = document.getElementById("tecPairBanner");
+  if (!banner) {
+    banner = document.createElement("div");
+    banner.id = "tecPairBanner";
+    grid.after(banner);
+  }
+
+  try {
+    const j = await getJSON(`/api/ml/suggest-pair?email=${encodeURIComponent(email)}`);
+    if (!j?.ok || !j.suggestion) { banner.innerHTML = ""; return; }
+    const s = j.suggestion;
+    const reasons = s.reasons?.length ? s.reasons.join(" · ") : "";
+    banner.innerHTML = `
+      <div class="tecPairBanner">
+        <div class="tecPairIcon">💡</div>
+        <div class="tecPairBody">
+          <div class="tecPairLabel">Compañero recomendado por IA</div>
+          <div class="tecPairName">${escapeHtml(s.nombre)} <span class="tecPairEsp">${escapeHtml(s.especialidad)}</span></div>
+          ${reasons ? `<div class="tecPairReasons small">${escapeHtml(reasons)}</div>` : ""}
+        </div>
+        <div class="tecPairSim">
+          <div class="tecPairSimNum">${s.similarity}%</div>
+          <div class="small muted">similitud</div>
+        </div>
+      </div>`;
+  } catch { banner.innerHTML = ""; }
 }
 
 async function checkVinReadyNotif_() {
@@ -259,7 +297,7 @@ async function loadTecRendimiento_() {
     ]);
     if (!jRend?.ok) throw new Error(jRend?.error || "Error al cargar rendimiento");
 
-    const meta  = Number(jCfg?.config?.META_CONVERSION || 25);
+    const meta  = Number(jCfg?.config?.META_CONVERSION || 65);
     const items = Array.isArray(jRend.items) ? jRend.items : [];
 
     const msDay        = 86400000;

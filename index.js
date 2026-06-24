@@ -3554,6 +3554,158 @@ app.get("/api/ml/infer-vin-model", (req, res) => {
   }
 });
 
+// ── POST /api/ml/train-pairing ────────────────────────────────────────────────
+// Entrena el modelo de emparejamiento de técnicos por similitud de producción.
+// Algoritmo: distancia euclidiana ponderada en espacio de 5 features normalizados.
+// Features: tasa_diaria (40%), hora_pico (30%), tiempo_promedio (15%),
+//           dispersión_horaria (10%), consistencia_diaria (5%).
+const PAIRING_MODEL_PATH = "./pairing-model.json";
+
+app.post("/api/ml/train-pairing", async (req, res) => {
+  try {
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+
+    const rUsers = await fetch(
+      `${SUPABASE_URL}/rest/v1/usuarios?rol=eq.TECNICO&activo=eq.true&select=id,nombre,email,especialidad`,
+      { method: "GET", headers: supabaseHeaders_() }
+    );
+    const users = rUsers.ok ? await rUsers.json() : [];
+    if (!users.length) return res.json({ ok: false, error: "Sin técnicos activos" });
+
+    const since90 = new Date(Date.now() - 90 * 86400000).toISOString();
+    const rFin = await fetch(
+      `${SUPABASE_URL}/rest/v1/asignaciones?estado_actual=eq.FINALIZADO&updated_at=gte.${encodeURIComponent(since90)}&select=user_id,updated_at,tiempo_trab_ms&limit=5000`,
+      { method: "GET", headers: supabaseHeaders_() }
+    );
+    const finRows = rFin.ok ? await rFin.json() : [];
+
+    const byUser = {};
+    for (const row of finRows) {
+      if (!byUser[row.user_id]) byUser[row.user_id] = [];
+      byUser[row.user_id].push(row);
+    }
+
+    function computeFeatures(rows) {
+      if (rows.length < 3) return null;
+      // Daily rate
+      const byDay = {};
+      rows.forEach(r => { const d = r.updated_at?.split("T")[0]; if (d) byDay[d] = (byDay[d] || 0) + 1; });
+      const dayCounts = Object.values(byDay);
+      if (!dayCounts.length) return null;
+      const dailyRate = dayCounts.reduce((s, c) => s + c, 0) / dayCounts.length;
+      // Day-to-day consistency (coefficient of variation; lower = more consistent)
+      const dayStd = Math.sqrt(dayCounts.reduce((s, c) => s + (c - dailyRate) ** 2, 0) / dayCounts.length);
+      const consistency = dailyRate > 0 ? dayStd / dailyRate : 1;
+      // Avg conversion time (cap at 8h to exclude anomalies)
+      const times = rows.map(r => Number(r.tiempo_trab_ms)).filter(t => t > 0 && t < 28800000);
+      const avgMs = times.length ? times.reduce((s, t) => s + t, 0) / times.length : 0;
+      // Peak hour and schedule spread
+      const hours = rows.map(r => r.updated_at ? new Date(r.updated_at).getHours() : -1).filter(h => h >= 0);
+      const byHour = new Array(24).fill(0);
+      hours.forEach(h => byHour[h]++);
+      const peakHour = byHour.indexOf(Math.max(...byHour));
+      const hourMean = hours.reduce((s, h) => s + h, 0) / (hours.length || 1);
+      const hourStd = Math.sqrt(hours.reduce((s, h) => s + (h - hourMean) ** 2, 0) / (hours.length || 1));
+      return { dailyRate, consistency, avgMs, peakHour, hourStd, totalRows: rows.length, workingDays: dayCounts.length };
+    }
+
+    const techFeatures = [];
+    for (const user of users) {
+      const feats = computeFeatures(byUser[user.id] || []);
+      if (!feats) continue;
+      techFeatures.push({ id: user.id, nombre: user.nombre, email: user.email, especialidad: user.especialidad, features: feats });
+    }
+    if (!techFeatures.length) return res.json({ ok: false, error: "Sin datos suficientes para entrenar" });
+
+    // Normalize each feature to [0,1] across all techs
+    const KEYS = ["dailyRate", "avgMs", "peakHour", "hourStd", "consistency"];
+    const maxes = {};
+    for (const k of KEYS) maxes[k] = Math.max(...techFeatures.map(t => t.features[k] || 0), 1e-9);
+    for (const tech of techFeatures) {
+      tech.normalized = {};
+      for (const k of KEYS) tech.normalized[k] = (tech.features[k] || 0) / maxes[k];
+    }
+
+    writeFileSync(PAIRING_MODEL_PATH, JSON.stringify({
+      trained_at: new Date().toISOString(),
+      total_techs: techFeatures.length,
+      maxes,
+      techs: techFeatures.map(t => ({ user_id: t.id, nombre: t.nombre, email: t.email, especialidad: t.especialidad, features: t.features, normalized: t.normalized })),
+    }));
+
+    return res.json({
+      ok: true,
+      total_techs: techFeatures.length,
+      motor: techFeatures.filter(t => t.especialidad === "MOTOR").length,
+      tanque: techFeatures.filter(t => t.especialidad === "TANQUE").length,
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e.message) });
+  }
+});
+
+// ── GET /api/ml/suggest-pair?email=xxx ───────────────────────────────────────
+// Sugiere el mejor compañero de especialidad opuesta basado en similitud de producción.
+// Pesos: tasa_diaria=40%, hora_pico=30%, tiempo_conv=15%, dispersión=10%, consistencia=5%.
+// Solo devuelve sugerencia si hay un candidato claramente mejor que los demás.
+app.get("/api/ml/suggest-pair", (req, res) => {
+  try {
+    const email = String(req.query.email || "").trim().toLowerCase();
+    if (!email) return res.json({ ok: false, error: "Email requerido" });
+    if (!existsSync(PAIRING_MODEL_PATH))
+      return res.json({ ok: true, suggestion: null, reason: "model_not_trained" });
+
+    const model = JSON.parse(readFileSync(PAIRING_MODEL_PATH, "utf8"));
+    const techs = model.techs || [];
+
+    const me = techs.find(t => t.email?.toLowerCase() === email);
+    if (!me) return res.json({ ok: true, suggestion: null, reason: "not_in_model" });
+
+    const myEsp  = me.especialidad?.toUpperCase();
+    const pairEsp = myEsp === "MOTOR" ? "TANQUE" : myEsp === "TANQUE" ? "MOTOR" : null;
+    if (!pairEsp) return res.json({ ok: true, suggestion: null });
+
+    const candidates = techs.filter(t => t.especialidad?.toUpperCase() === pairEsp);
+    if (candidates.length < 2) return res.json({ ok: true, suggestion: null, reason: "not_enough_candidates" });
+
+    // Weighted Euclidean distance (weights sum to 1.0 → max possible dist = 1.0)
+    const W = { dailyRate: 0.40, peakHour: 0.30, avgMs: 0.15, hourStd: 0.10, consistency: 0.05 };
+    const dist = (a, b) => Math.sqrt(Object.entries(W).reduce((s, [k, w]) => s + w * ((a.normalized[k]||0) - (b.normalized[k]||0)) ** 2, 0));
+
+    const ranked = candidates.map(c => ({ ...c, distance: dist(me, c) })).sort((a, b) => a.distance - b.distance);
+    const best = ranked[0], second = ranked[1];
+
+    // Thresholds: best must be meaningfully closer AND within useful range
+    if (best.distance > 0.45) return res.json({ ok: true, suggestion: null, reason: "no_close_match" });
+    if (best.distance >= second.distance * 0.78)
+      return res.json({ ok: true, suggestion: null, reason: "too_similar_candidates" });
+
+    const simPct = Math.round((1 - best.distance) * 100);
+    const bF = best.features, myF = me.features;
+
+    const reasons = [];
+    if (Math.abs(myF.dailyRate - bF.dailyRate) / Math.max(myF.dailyRate, 1) < 0.25)
+      reasons.push(`ritmo similar (${bF.dailyRate.toFixed(1)} conv./día)`);
+    if (Math.abs(myF.peakHour - bF.peakHour) <= 2)
+      reasons.push(`horario coincidente (~${bF.peakHour}:00h)`);
+    if (bF.avgMs && Math.abs(myF.avgMs - bF.avgMs) / Math.max(myF.avgMs, 1) < 0.30)
+      reasons.push(`velocidad similar (${Math.round(bF.avgMs / 60000)}min/conv.)`);
+
+    return res.json({
+      ok: true,
+      suggestion: {
+        nombre: best.nombre,
+        especialidad: best.especialidad,
+        similarity: simPct,
+        features: { dailyRate: Math.round(bF.dailyRate * 10) / 10, peakHour: bF.peakHour, avgMs: Math.round(bF.avgMs / 60000) },
+        reasons,
+      },
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e.message) });
+  }
+});
+
 // ── GET /api/vins-sin-modelo ──────────────────────────────────────────────────
 app.get("/api/vins-sin-modelo", async (req, res) => {
   try {

@@ -398,7 +398,7 @@ async function loadTab() {
       const comidaFin     = cfg.HORARIO_COMIDA_FIN       || "14:00";
       const descInicio    = cfg.HORARIO_DESCANSO_INICIO  || "16:30";
       const descFin       = cfg.HORARIO_DESCANSO_FIN     || "07:00";
-      const metaConv      = cfg.META_CONVERSION          || "25";
+      const metaConv      = cfg.META_CONVERSION          || "65";
       const metaCal       = cfg.META_CALIDAD             || "22";
 
       wrap.innerHTML = `
@@ -485,7 +485,7 @@ async function loadTab() {
             <div class="adminHorarioGrid">
               <label class="adminLabel adminLabelInline">
                 🔧 Conversi\u00f3n (motor+tanque)
-                <input id="cfgMetaConv" type="number" min="1" max="200" value="${escHtml(metaConv)}" style="width:100px;">
+                <input id="cfgMetaConv" type="number" min="1" max="500" value="${escHtml(metaConv)}" style="width:100px;">
               </label>
               <label class="adminLabel adminLabelInline">
                 ✅ Calidad
@@ -519,11 +519,11 @@ async function loadTab() {
           <div class="adminConfigSection">
             <h4 class="adminConfigTitle">🤖 Inferencia de modelo vehicular</h4>
             <p class="small muted">
-              Entrena el modelo con los VINs existentes en la base de datos que ya tienen modelo conocido.
-              Luego podrás inferir el modelo para VINs sin información, usando coincidencia de prefijos VIN (WMI + VDS).
+              Entrena los modelos con datos históricos de la base de datos. El modelo de <b>emparejamiento</b> usa ~90 días de conversiones para calcular features por técnico (tasa diaria, hora pico, velocidad, consistencia) y recomienda el mejor compañero de especialidad opuesta.
             </p>
             <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-              <button id="btnTrainVinModel" type="button" class="adminBtnOk">Entrenar modelo</button>
+              <button id="btnTrainVinModel" type="button" class="adminBtnOk">🔡 Entrenar modelo VIN</button>
+              <button id="btnTrainPairing" type="button" class="adminBtnOk" style="background:rgba(167,139,250,.15);border:1px solid rgba(167,139,250,.4);">🤝 Entrenar emparejamiento</button>
               <button id="btnInferVins" type="button" class="adminBtnOk" style="background:var(--glass);border:1px solid var(--surfaceLine);">Ver VINs sin modelo</button>
               <span id="mlMsg" class="small muted"></span>
             </div>
@@ -548,6 +548,22 @@ async function loadTab() {
           const j = await r.json();
           if (j.ok) {
             msg.textContent = `✅ Modelo entrenado: ${j.total_vins} VINs · ${j.unique_models} modelos distintos`;
+          } else {
+            msg.textContent = `⚠️ ${j.error}`;
+          }
+        } catch (e) { msg.textContent = `Error: ${e.message}`; }
+      });
+
+      $id("btnTrainPairing")?.addEventListener("click", async () => {
+        const msg = $id("mlMsg");
+        const res = $id("mlResult");
+        msg.textContent = "Entrenando modelo de emparejamiento…";
+        res.innerHTML = "";
+        try {
+          const r = await fetch("/api/ml/train-pairing", { method: "POST" });
+          const j = await r.json();
+          if (j.ok) {
+            msg.textContent = `✅ Emparejamiento entrenado: ${j.total_techs} técnicos (${j.motor} MOTOR · ${j.tanque} TANQUE)`;
           } else {
             msg.textContent = `⚠️ ${j.error}`;
           }
@@ -639,7 +655,7 @@ async function saveConfig_() {
 async function saveMetas_() {
   const btn   = $id("btnSaveMetas");
   const msgEl = $id("cfgMetasMsg");
-  const conv  = String(Number($id("cfgMetaConv")?.value) || 25);
+  const conv  = String(Number($id("cfgMetaConv")?.value) || 65);
   const cal   = String(Number($id("cfgMetaCal")?.value)  || 22);
   if (btn) btn.disabled = true;
   if (msgEl) msgEl.textContent = "Guardando\u2026";
