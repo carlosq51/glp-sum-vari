@@ -219,62 +219,124 @@ async function loadTecCola_() {
   if (!box) return;
   box.innerHTML = `<div class="small muted">Cargando…</div>`;
   try {
-    const esp  = String(CORE.state.currentProfile?.especialidad || "").toUpperCase();
-    const pair = esp === "MOTOR" ? "TANQUE" : esp === "TANQUE" ? "MOTOR" : "";
-    const j    = await getJSON(`/api/tecnico/cola?especialidad=${encodeURIComponent(esp)}`);
+    const esp   = String(CORE.state.currentProfile?.especialidad || "").toUpperCase();
+    const email = String(document.getElementById("email")?.value || "").trim().toLowerCase();
+    const pair  = esp === "MOTOR" ? "TANQUE" : esp === "TANQUE" ? "MOTOR" : "";
+
+    // Real-time availability + ML ranking in parallel
+    const [j, jML] = await Promise.all([
+      getJSON(`/api/tecnico/cola?especialidad=${encodeURIComponent(esp)}`),
+      email ? getJSON(`/api/ml/suggest-pair?email=${encodeURIComponent(email)}`) : Promise.resolve(null),
+    ]);
     if (!j?.ok) throw new Error(j?.error || "Error");
+
+    const freeComps  = j.companeros || [];          // {id, nombre} - free right now
+    const mlRanked   = jML?.ranked  || [];          // [{user_id, nombre, similarity, features, reasons}]
+    const suggestion = jML?.suggestion || null;     // best single match (if clear winner)
+
+    // Merge: enrich free companions with ML data (match by id or nombre fallback)
+    const freeWithML = freeComps.map(c => {
+      const ml = mlRanked.find(r => r.user_id === c.id || r.nombre === c.nombre);
+      return { ...c, similarity: ml?.similarity ?? null, features: ml?.features ?? null, reasons: ml?.reasons ?? [], isSuggested: suggestion && (ml?.user_id === suggestion.user_id || ml?.nombre === suggestion.nombre) };
+    }).sort((a, b) => {
+      if (a.isSuggested !== b.isSuggested) return a.isSuggested ? -1 : 1;
+      if (a.similarity !== null && b.similarity !== null) return b.similarity - a.similarity;
+      return a.similarity !== null ? -1 : 1;
+    });
 
     let html = "";
 
-    // Compañeros libres
-    if (pair && j.companeros?.length) {
-      html += `
-        <div class="tecColaSection">
-          <div class="tecColaSectionTitle">🤝 ${pair} libres ahora (${j.companeros.length})</div>
-          <div style="display:flex;flex-wrap:wrap;gap:6px;">
-            ${j.companeros.map(c => `<div class="tecColaChip">👤 ${escapeHtml(c.nombre)}</div>`).join("")}
-          </div>
-        </div>`;
+    // ── SECTION 1: Free companions ranked by ML ──────────────────────────
+    if (pair) {
+      html += `<div class="tecColaSection">
+        <div class="tecColaSectionTitle">🤝 ${pair} libres — ordenados por afinidad (${freeWithML.length})</div>`;
+
+      if (!freeWithML.length) {
+        html += `<div class="tecColaEmpty small muted">Ningún ${pair} disponible ahora.</div>`;
+      } else {
+        html += `<div class="tecColaCompList">`;
+        for (const c of freeWithML) {
+          const simNum  = c.similarity ?? 0;
+          const simCls  = simNum >= 75 ? "simHigh" : simNum >= 50 ? "simMid" : "simLow";
+          const simTxt  = c.similarity !== null ? `${simNum}%` : "—";
+          const starTag = c.isSuggested ? `<span class="tecPairSugTag">⭐ Mejor afinidad</span>` : "";
+          const feat    = c.features;
+          const featTxt = feat ? `${feat.dailyRate} conv./día · pico ${feat.peakHour}:00h${feat.avgMs ? ` · ${feat.avgMs}min/conv.` : ""}` : "";
+          const reasons = c.reasons?.length ? c.reasons.join(" · ") : "";
+          html += `<div class="tecColaCompRow${c.isSuggested ? " tecColaCompRow--top" : ""}">
+            <div class="tecColaCompLeft">
+              <div class="tecColaCompName">👤 ${escapeHtml(c.nombre)}${starTag}</div>
+              ${featTxt ? `<div class="small muted tecColaCompFeat">${escapeHtml(featTxt)}</div>` : ""}
+              ${reasons ? `<div class="small tecColaCompReasons">${escapeHtml(reasons)}</div>` : ""}
+            </div>
+            <div class="tecColaSim ${simCls}">${simTxt}<div class="tecColaSimLabel">afinidad</div></div>
+          </div>`;
+        }
+        html += `</div>`;
+
+        // ML not trained yet hint
+        if (!mlRanked.length) {
+          html += `<div class="small muted" style="margin-top:6px;font-style:italic;">IA no entrenada — entrena el modelo en Admin → Configuración para ver afinidades.</div>`;
+        }
+      }
+      html += `</div>`;
     }
 
-    // VINs table
-    const rows = j.vins?.length ? j.vins : (j.vinsFallback || []);
-    const title = j.fallbackUsed
-      ? `🚘 VINs en cola de ingreso`
-      : `🚘 En proceso de ${pair} — disponibles para ${esp}`;
-
-    html += `<div class="tecColaSection"><div class="tecColaSectionTitle">${title}</div>`;
-
-    if (!rows.length) {
-      html += `<div class="small muted tecColaEmpty">No hay VINs disponibles ahora.</div>`;
-    } else {
-      html += `<div class="tecColaTable">
-        <div class="tecColaTableHead">
-          <span>VIN</span><span>Técnico</span><span>Estado</span>
-        </div>
-        ${rows.map(v => {
-          if (!j.fallbackUsed) {
-            // Pair is actively working — only my specialty is missing
-            return `<div class="tecColaTableRow">
-              <span class="tecColaVin">${escapeHtml(v.vin)}</span>
-              <span class="small tecColaTecnico">${escapeHtml(v.tecnico || "—")}</span>
-              <span class="tecColaEst tecEst--priority">⚡ Falta ${esp}</span>
-            </div>`;
-          }
-          const est = String(v.estado || "").toUpperCase();
-          const estClass = est === "TRABAJANDO" ? "tecEst--trab"
-                         : est === "PAUSADO"   ? "tecEst--paus"
-                         : "tecEst--pend";
-          return `<div class="tecColaTableRow">
+    // ── SECTION 2: VINs where pair is working, my slot is free ──────────
+    const vinsPrimary = j.fallbackUsed ? [] : (j.vins || []);
+    if (vinsPrimary.length) {
+      html += `<div class="tecColaSection">
+        <div class="tecColaSectionTitle">🚘 VINs listos — falta ${esp} (${vinsPrimary.length})</div>
+        <div class="tecColaTable">
+          <div class="tecColaTableHead"><span>VIN</span><span>${pair} activo</span><span>Prioridad</span></div>
+          ${vinsPrimary.map(v => `<div class="tecColaTableRow">
             <span class="tecColaVin">${escapeHtml(v.vin)}</span>
             <span class="small tecColaTecnico">${escapeHtml(v.tecnico || "—")}</span>
-            <span class="tecColaEst ${estClass}">${escapeHtml(v.estado || "En espera")}</span>
-          </div>`;
-        }).join("")}
+            <span class="tecColaEst tecEst--priority">⚡ Falta ${esp}</span>
+          </div>`).join("")}
+        </div>
       </div>`;
     }
-    html += `</div>`;
-    box.innerHTML = html;
+
+    // ── SECTION 3: Solo start fallback ──────────────────────────────────
+    const vinsFallback = j.fallbackUsed ? (j.vinsFallback || []) : [];
+    const noFreeComps  = freeWithML.length === 0;
+    const noActiveVins = vinsPrimary.length === 0;
+
+    if (noFreeComps && noActiveVins) {
+      html += `<div class="tecColaSection tecColaFallback">
+        <div class="tecColaSectionTitle">🚀 Iniciar solo — en espera de ${pair}</div>
+        <div class="small" style="margin-bottom:10px;color:var(--muted);">
+          No hay ${pair} libre ni VINs esperándote. Puedes iniciar un VIN de la cola ahora — cuando se conecte un ${pair}, el sistema lo sugerirá como tu compañero.
+        </div>`;
+      if (vinsFallback.length) {
+        html += `<div class="tecColaTable">
+          <div class="tecColaTableHead"><span>VIN</span><span>Registrado por</span><span>Estado</span></div>
+          ${vinsFallback.slice(0, 10).map(v => `<div class="tecColaTableRow">
+            <span class="tecColaVin">${escapeHtml(v.vin)}</span>
+            <span class="small tecColaTecnico">${escapeHtml(v.tecnico || "—")}</span>
+            <span class="tecColaEst tecEst--pend">En espera</span>
+          </div>`).join("")}
+        </div>`;
+      } else {
+        html += `<div class="small muted">Sin VINs en cola de ingreso.</div>`;
+      }
+      html += `</div>`;
+    } else if (vinsFallback.length) {
+      // Queue visible as secondary info
+      html += `<div class="tecColaSection">
+        <div class="tecColaSectionTitle">🚘 Cola de ingreso (${vinsFallback.length})</div>
+        <div class="tecColaTable">
+          ${vinsFallback.slice(0, 5).map(v => `<div class="tecColaTableRow">
+            <span class="tecColaVin">${escapeHtml(v.vin)}</span>
+            <span class="small tecColaTecnico">${escapeHtml(v.tecnico || "—")}</span>
+            <span class="tecColaEst tecEst--pend">En espera</span>
+          </div>`).join("")}
+        </div>
+      </div>`;
+    }
+
+    box.innerHTML = html || `<div class="small muted">Sin información disponible.</div>`;
   } catch (e) {
     box.innerHTML = `<div class="small" style="color:var(--danger);">Error: ${e.message}</div>`;
   }

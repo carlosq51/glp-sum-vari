@@ -124,6 +124,25 @@
 .tecEst--pend       { background: rgba(148,163,184,.15); color: var(--muted); border: 1px solid var(--surfaceLine); }
 .tecEst--priority   { background: rgba(251,191,36,.2); color: #fbbf24; border: 1px solid rgba(251,191,36,.5); font-weight: var(--fw-bold); }
 
+/* ─── Cola: companion ranked list ─── */
+.tecColaCompList        { display: flex; flex-direction: column; gap: 8px; }
+.tecColaCompRow         { display: flex; align-items: center; gap: 10px; background: var(--glass); border: 1px solid var(--surfaceLine); border-radius: var(--radius); padding: 10px 12px; }
+.tecColaCompRow--top    { border-color: rgba(167,139,250,.5); background: rgba(167,139,250,.08); }
+.tecColaCompLeft        { flex: 1; min-width: 0; }
+.tecColaCompName        { font-weight: var(--fw-bold); font-size: var(--fs-sm); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.tecColaCompFeat        { color: var(--muted); margin-top: 2px; }
+.tecColaCompReasons     { color: #a78bfa; margin-top: 1px; }
+.tecPairSugTag          { font-size: var(--fs-xs); font-weight: var(--fw-extrabold); background: rgba(167,139,250,.2); color: #a78bfa; border-radius: 4px; padding: 1px 6px; white-space: nowrap; }
+/* Similarity badge */
+.tecColaSim             { text-align: center; flex-shrink: 0; min-width: 52px; }
+.tecColaSim .tecColaSimLabel { font-size: 9px; color: var(--muted); line-height: 1; margin-top: 1px; }
+.tecColaSim             { font-size: 1.05rem; font-weight: var(--fw-black); line-height: 1.1; }
+.simHigh                { color: #4ade80; }
+.simMid                 { color: #fbbf24; }
+.simLow                 { color: var(--muted); }
+/* Solo fallback section */
+.tecColaFallback        { border: 1px dashed rgba(96,165,250,.35); border-radius: var(--radius); padding: 12px; background: rgba(96,165,250,.05); }
+
 /* ─── AI Pairing suggestion banner ─── */
 #tecPairBanner          { margin-top: 14px; }
 .tecPairBanner          { display: flex; align-items: center; gap: 12px; background: linear-gradient(135deg, rgba(167,139,250,.12), rgba(96,165,250,.10)); border: 1px solid rgba(167,139,250,.35); border-radius: var(--radius); padding: 12px 16px; }

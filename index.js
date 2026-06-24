@@ -3349,7 +3349,7 @@ app.get("/api/tecnico/cola", async (req, res) => {
       ]);
       const allPairs = rComp.ok ? await rComp.json() : [];
       const busyIds  = new Set((rBusy.ok ? await rBusy.json() : []).map(a => a.user_id));
-      companeros = allPairs.filter(u => !busyIds.has(u.id)).map(u => ({ nombre: u.nombre }));
+      companeros = allPairs.filter(u => !busyIds.has(u.id)).map(u => ({ id: u.id, nombre: u.nombre }));
     }
 
     // ── 2. VINs en proceso: par activo pero mi especialidad libre ──────
@@ -3645,61 +3645,127 @@ app.post("/api/ml/train-pairing", async (req, res) => {
 });
 
 // ── GET /api/ml/suggest-pair?email=xxx ───────────────────────────────────────
-// Sugiere el mejor compañero de especialidad opuesta basado en similitud de producción.
-// Pesos: tasa_diaria=40%, hora_pico=30%, tiempo_conv=15%, dispersión=10%, consistencia=5%.
-// Solo devuelve sugerencia si hay un candidato claramente mejor que los demás.
+// Devuelve TODOS los candidatos de especialidad opuesta rankeados por similitud
+// + la sugerencia principal si hay un candidato claramente mejor.
 app.get("/api/ml/suggest-pair", (req, res) => {
   try {
     const email = String(req.query.email || "").trim().toLowerCase();
     if (!email) return res.json({ ok: false, error: "Email requerido" });
     if (!existsSync(PAIRING_MODEL_PATH))
-      return res.json({ ok: true, suggestion: null, reason: "model_not_trained" });
+      return res.json({ ok: true, suggestion: null, ranked: [], reason: "model_not_trained" });
 
     const model = JSON.parse(readFileSync(PAIRING_MODEL_PATH, "utf8"));
     const techs = model.techs || [];
 
     const me = techs.find(t => t.email?.toLowerCase() === email);
-    if (!me) return res.json({ ok: true, suggestion: null, reason: "not_in_model" });
+    if (!me) return res.json({ ok: true, suggestion: null, ranked: [], reason: "not_in_model" });
 
-    const myEsp  = me.especialidad?.toUpperCase();
+    const myEsp   = me.especialidad?.toUpperCase();
     const pairEsp = myEsp === "MOTOR" ? "TANQUE" : myEsp === "TANQUE" ? "MOTOR" : null;
-    if (!pairEsp) return res.json({ ok: true, suggestion: null });
+    if (!pairEsp) return res.json({ ok: true, suggestion: null, ranked: [] });
 
     const candidates = techs.filter(t => t.especialidad?.toUpperCase() === pairEsp);
-    if (candidates.length < 2) return res.json({ ok: true, suggestion: null, reason: "not_enough_candidates" });
+    if (!candidates.length) return res.json({ ok: true, suggestion: null, ranked: [] });
 
-    // Weighted Euclidean distance (weights sum to 1.0 → max possible dist = 1.0)
     const W = { dailyRate: 0.40, peakHour: 0.30, avgMs: 0.15, hourStd: 0.10, consistency: 0.05 };
-    const dist = (a, b) => Math.sqrt(Object.entries(W).reduce((s, [k, w]) => s + w * ((a.normalized[k]||0) - (b.normalized[k]||0)) ** 2, 0));
+    const calcDist = (a, b) => Math.sqrt(
+      Object.entries(W).reduce((s, [k, w]) => s + w * ((a.normalized[k]||0) - (b.normalized[k]||0)) ** 2, 0)
+    );
 
-    const ranked = candidates.map(c => ({ ...c, distance: dist(me, c) })).sort((a, b) => a.distance - b.distance);
-    const best = ranked[0], second = ranked[1];
+    const ranked = candidates
+      .map(c => {
+        const d = calcDist(me, c);
+        const sim = Math.round((1 - d) * 100);
+        const bF = c.features, myF = me.features;
+        const reasons = [];
+        if (bF && myF) {
+          if (Math.abs(myF.dailyRate - bF.dailyRate) / Math.max(myF.dailyRate, 1) < 0.25)
+            reasons.push(`ritmo ~${bF.dailyRate.toFixed(1)} conv./día`);
+          if (Math.abs(myF.peakHour - bF.peakHour) <= 2)
+            reasons.push(`horario ~${bF.peakHour}:00h`);
+          if (bF.avgMs && Math.abs(myF.avgMs - bF.avgMs) / Math.max(myF.avgMs, 1) < 0.30)
+            reasons.push(`velocidad ~${Math.round(bF.avgMs/60000)}min/conv.`);
+        }
+        return {
+          user_id: c.user_id,
+          nombre: c.nombre,
+          especialidad: c.especialidad,
+          similarity: sim,
+          distance: Math.round(d * 1000) / 1000,
+          features: c.features ? {
+            dailyRate:  Math.round((c.features.dailyRate || 0) * 10) / 10,
+            peakHour:   c.features.peakHour || 0,
+            avgMs:      Math.round((c.features.avgMs || 0) / 60000),
+            workingDays: c.features.workingDays || 0,
+            totalRows:   c.features.totalRows || 0,
+          } : null,
+          reasons,
+        };
+      })
+      .sort((a, b) => a.distance - b.distance);
 
-    // Thresholds: best must be meaningfully closer AND within useful range
-    if (best.distance > 0.45) return res.json({ ok: true, suggestion: null, reason: "no_close_match" });
-    if (best.distance >= second.distance * 0.78)
-      return res.json({ ok: true, suggestion: null, reason: "too_similar_candidates" });
+    // Best suggestion: only if clear winner
+    let suggestion = null;
+    if (ranked.length >= 2) {
+      const best = ranked[0], second = ranked[1];
+      if (best.distance <= 0.45 && best.distance < second.distance * 0.78)
+        suggestion = ranked[0];
+    } else if (ranked.length === 1 && ranked[0].distance <= 0.45) {
+      suggestion = ranked[0];
+    }
 
-    const simPct = Math.round((1 - best.distance) * 100);
-    const bF = best.features, myF = me.features;
+    return res.json({ ok: true, suggestion, ranked, myFeatures: me.features });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e.message) });
+  }
+});
 
-    const reasons = [];
-    if (Math.abs(myF.dailyRate - bF.dailyRate) / Math.max(myF.dailyRate, 1) < 0.25)
-      reasons.push(`ritmo similar (${bF.dailyRate.toFixed(1)} conv./día)`);
-    if (Math.abs(myF.peakHour - bF.peakHour) <= 2)
-      reasons.push(`horario coincidente (~${bF.peakHour}:00h)`);
-    if (bF.avgMs && Math.abs(myF.avgMs - bF.avgMs) / Math.max(myF.avgMs, 1) < 0.30)
-      reasons.push(`velocidad similar (${Math.round(bF.avgMs / 60000)}min/conv.)`);
+// ── GET /api/ml/pairing-overview ─────────────────────────────────────────────
+// Vista admin: matriz completa de similitud MOTOR × TANQUE + mejores pares.
+app.get("/api/ml/pairing-overview", (req, res) => {
+  try {
+    if (!existsSync(PAIRING_MODEL_PATH))
+      return res.json({ ok: false, error: "Modelo no entrenado. Ve a Admin → Configuración → Entrenar emparejamiento." });
+
+    const model = JSON.parse(readFileSync(PAIRING_MODEL_PATH, "utf8"));
+    const techs = model.techs || [];
+    const motors  = techs.filter(t => t.especialidad?.toUpperCase() === "MOTOR");
+    const tanques = techs.filter(t => t.especialidad?.toUpperCase() === "TANQUE");
+
+    const W = { dailyRate: 0.40, peakHour: 0.30, avgMs: 0.15, hourStd: 0.10, consistency: 0.05 };
+    const calcDist = (a, b) => Math.sqrt(
+      Object.entries(W).reduce((s, [k, w]) => s + w * ((a.normalized[k]||0) - (b.normalized[k]||0)) ** 2, 0)
+    );
+
+    // Similarity matrix [motorIdx][tanqueIdx]
+    const matrix = motors.map(m =>
+      tanques.map(t => Math.round((1 - calcDist(m, t)) * 100))
+    );
+
+    // Best pair for each motor
+    const motorPairs = motors.map((m, mi) => {
+      const sorted = tanques.map((t, ti) => ({ ...t, sim: matrix[mi][ti] })).sort((a, b) => b.sim - a.sim);
+      return { motor: { user_id: m.user_id, nombre: m.nombre, features: m.features },
+               best: sorted[0] ? { user_id: sorted[0].user_id, nombre: sorted[0].nombre, sim: sorted[0].sim, features: sorted[0].features } : null,
+               all: sorted.map(t => ({ user_id: t.user_id, nombre: t.nombre, sim: t.sim })) };
+    }).sort((a, b) => (b.best?.sim || 0) - (a.best?.sim || 0));
+
+    // Best pair for each tanque
+    const tanquePairs = tanques.map((t, ti) => {
+      const sorted = motors.map((m, mi) => ({ ...m, sim: matrix[mi][ti] })).sort((a, b) => b.sim - a.sim);
+      return { tanque: { user_id: t.user_id, nombre: t.nombre, features: t.features },
+               best: sorted[0] ? { user_id: sorted[0].user_id, nombre: sorted[0].nombre, sim: sorted[0].sim, features: sorted[0].features } : null };
+    });
 
     return res.json({
       ok: true,
-      suggestion: {
-        nombre: best.nombre,
-        especialidad: best.especialidad,
-        similarity: simPct,
-        features: { dailyRate: Math.round(bF.dailyRate * 10) / 10, peakHour: bF.peakHour, avgMs: Math.round(bF.avgMs / 60000) },
-        reasons,
-      },
+      trained_at: model.trained_at,
+      total_techs: techs.length,
+      motors: motors.map(m => ({ user_id: m.user_id, nombre: m.nombre, features: m.features })),
+      tanques: tanques.map(t => ({ user_id: t.user_id, nombre: t.nombre, features: t.features })),
+      matrix,
+      motorPairs,
+      tanquePairs,
     });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e.message) });

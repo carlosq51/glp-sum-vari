@@ -524,6 +524,7 @@ async function loadTab() {
             <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
               <button id="btnTrainVinModel" type="button" class="adminBtnOk">🔡 Entrenar modelo VIN</button>
               <button id="btnTrainPairing" type="button" class="adminBtnOk" style="background:rgba(167,139,250,.15);border:1px solid rgba(167,139,250,.4);">🤝 Entrenar emparejamiento</button>
+              <button id="btnViewPairing" type="button" class="adminBtnOk" style="background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.35);">📊 Ver pairings</button>
               <button id="btnInferVins" type="button" class="adminBtnOk" style="background:var(--glass);border:1px solid var(--surfaceLine);">Ver VINs sin modelo</button>
               <span id="mlMsg" class="small muted"></span>
             </div>
@@ -552,6 +553,65 @@ async function loadTab() {
             msg.textContent = `⚠️ ${j.error}`;
           }
         } catch (e) { msg.textContent = `Error: ${e.message}`; }
+      });
+
+      $id("btnViewPairing")?.addEventListener("click", async () => {
+        const res = $id("mlResult");
+        const msg = $id("mlMsg");
+        msg.textContent = "Cargando pairings…";
+        res.innerHTML = `<div class="small muted">Cargando…</div>`;
+        try {
+          const r = await fetch("/api/ml/pairing-overview");
+          const j = await r.json();
+          if (!j?.ok) { res.innerHTML = `<div class="small" style="color:var(--danger);">${escHtml(j?.error||"Error")}</div>`; msg.textContent=""; return; }
+          msg.textContent = `Entrenado: ${new Date(j.trained_at).toLocaleString("es-PE")} · ${j.total_techs} técnicos`;
+
+          const fmtFeat = f => f ? `${(f.dailyRate||0).toFixed(1)} conv./día · pico ${f.peakHour||0}:00h` : "—";
+
+          // Best pairs matrix
+          res.innerHTML = `
+            <div style="margin-top:12px;">
+              <div style="font-weight:var(--fw-extrabold);font-size:var(--fs-sm);margin-bottom:10px;">Mejores pares MOTOR → TANQUE</div>
+              <div class="adminTable">
+                <div style="display:grid;grid-template-columns:1fr 1fr auto auto;gap:6px;padding:6px 10px;font-weight:var(--fw-extrabold);opacity:.6;font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--surfaceLine);">
+                  <span>MOTOR</span><span>Mejor compañero TANQUE</span><span>Afinidad</span><span>Ritmo TANQUE</span>
+                </div>
+                ${j.motorPairs.map(p => `
+                  <div style="display:grid;grid-template-columns:1fr 1fr auto auto;gap:6px;padding:8px 10px;border-bottom:1px solid var(--surfaceLine);align-items:center;">
+                    <div>
+                      <div style="font-weight:var(--fw-bold);font-size:var(--fs-sm);">${escHtml(p.motor.nombre||"—")}</div>
+                      <div class="small muted">${escHtml(fmtFeat(p.motor.features))}</div>
+                    </div>
+                    <div>
+                      <div style="font-weight:var(--fw-bold);font-size:var(--fs-sm);">${p.best ? escHtml(p.best.nombre) : '<span style="color:var(--muted)">Sin datos</span>'}</div>
+                      ${p.all?.length > 1 ? `<div class="small muted">${p.all.slice(1).map(t => escHtml(t.nombre)+" "+t.sim+"%").join(", ")}</div>` : ""}
+                    </div>
+                    <div style="font-weight:var(--fw-black);font-size:1.1rem;color:${(p.best?.sim||0)>=75?"#4ade80":(p.best?.sim||0)>=50?"#fbbf24":"var(--muted)"};">${p.best?.sim ?? "—"}%</div>
+                    <div class="small muted">${escHtml(fmtFeat(p.best?.features))}</div>
+                  </div>`).join("")}
+              </div>
+
+              <div style="font-weight:var(--fw-extrabold);font-size:var(--fs-sm);margin:14px 0 8px;">Matriz de similitud completa</div>
+              <div style="overflow-x:auto;">
+                <table style="border-collapse:collapse;font-size:var(--fs-xs);min-width:100%;">
+                  <tr>
+                    <th style="padding:6px 10px;text-align:left;border-bottom:1px solid var(--surfaceLine);opacity:.6;">MOTOR \\ TANQUE</th>
+                    ${j.tanques.map(t => `<th style="padding:6px 10px;text-align:center;border-bottom:1px solid var(--surfaceLine);">${escHtml(t.nombre)}</th>`).join("")}
+                  </tr>
+                  ${j.motors.map((m, mi) => `
+                    <tr>
+                      <td style="padding:6px 10px;font-weight:var(--fw-bold);">${escHtml(m.nombre)}</td>
+                      ${j.tanques.map((_, ti) => {
+                        const sim = j.matrix[mi][ti];
+                        const bg = sim >= 75 ? "rgba(74,222,128,.2)" : sim >= 50 ? "rgba(251,191,36,.15)" : "transparent";
+                        return `<td style="padding:6px 10px;text-align:center;font-weight:var(--fw-black);background:${bg};">${sim}%</td>`;
+                      }).join("")}
+                    </tr>`).join("")}
+                </table>
+              </div>
+            </div>
+          `;
+        } catch (e) { res.innerHTML = `<div class="small" style="color:var(--danger);">Error: ${e.message}</div>`; msg.textContent=""; }
       });
 
       $id("btnTrainPairing")?.addEventListener("click", async () => {
