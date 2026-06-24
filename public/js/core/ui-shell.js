@@ -98,7 +98,7 @@ export function setUserPillUI() {
   const extraTec = rol === "TECNICO" ? ` | ESP: ${esp || "-"}` : "";
 
   if (pillEl) {
-    pillEl.textContent = `ROL: ${rol}${extraTec} | MOD: ${mods}`;
+    pillEl.textContent = `ROL: ${rol}${extraTec}`;
   }
 }
 
