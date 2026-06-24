@@ -39,7 +39,243 @@ import { initVinAutocomplete_ } from "./ui/conversion-vin-autocomplete.js";
 import { checkPendingAlerts_, getMyNombre_ } from "./modals/incidencia-alert.js";
 import { requestNotifPermission } from "./modals/ramal-alert.js";
 import { initConversionQR_ } from "./ui/conversion-qr.js";
-import { initTecValidar_ } from "./ui/conversion-validar.js";
+import { initTecValidar_, openTecBuscarModal_ } from "./ui/conversion-validar.js";
+import { escapeHtml, fmtShort_ } from "../../core/format.js";
+
+// --------------------------
+// TEC CARD NAVIGATION
+// --------------------------
+
+const TEC_PANELS = ["tecPanelMiOT", "tecPanelCola", "tecPanelRendimiento", "tecPanelIncidencias"];
+let tecCardsInited_ = false;
+
+function showTecCards_() {
+  const hub = document.getElementById("tecCards");
+  if (hub) hub.style.display = "block";
+  TEC_PANELS.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = "none";
+  });
+  // Update greeting
+  const nombre = String(CORE.state.currentProfile?.nombre || "").split(" ")[0];
+  const esp    = String(CORE.state.currentProfile?.especialidad || "").toUpperCase();
+  const greet  = document.getElementById("tecGreeting");
+  if (greet) greet.textContent = nombre ? `Hola, ${nombre} 👋` : "Bienvenido";
+  // Badge on Mi OT if there's an active OT
+  updateTecMiOTBadge_();
+}
+
+function showTecPanel_(panelId, loader) {
+  const hub = document.getElementById("tecCards");
+  if (hub) hub.style.display = "none";
+  TEC_PANELS.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = id === panelId ? "block" : "none";
+  });
+  if (loader) loader();
+}
+
+function updateTecMiOTBadge_() {
+  const btn = document.querySelector("#tecCardGrid [data-tec-card='miOT']");
+  if (!btn) return;
+  btn.querySelector(".hubBadge")?.remove();
+  const c = ctx_();
+  const active = [...(c?.itemsByKey?.values() || [])].filter(
+    it => ["TRABAJANDO", "PAUSADO"].includes(String(it.estado || "").toUpperCase())
+  );
+  if (active.length > 0) {
+    const badge = document.createElement("span");
+    badge.className = "hubBadge";
+    badge.textContent = String(active.length);
+    btn.appendChild(badge);
+  }
+}
+
+function initTecCards_() {
+  if (tecCardsInited_) return;
+  tecCardsInited_ = true;
+
+  // Back buttons (class shared across all panels)
+  document.addEventListener("click", e => {
+    if (e.target.closest(".tecBackBtn")) showTecCards_();
+  });
+
+  const grid = document.getElementById("tecCardGrid");
+  if (!grid) return;
+
+  const cards = [
+    { key: "miOT",        emoji: "🔧", label: "Mi OT",           desc: "Tu VIN activo y orden de trabajo"    },
+    { key: "cola",        emoji: "📋", label: "Cola pendiente",   desc: "VINs disponibles y compañeros libres" },
+    { key: "validar",     emoji: "🔍", label: "Buscar / Validar", desc: "Verificar un VIN por código o QR"    },
+    { key: "rendimiento", emoji: "📊", label: "Mi rendimiento",   desc: "Historial, estadísticas y meta"      },
+    { key: "incidencias", emoji: "⚠️", label: "Mis incidencias",  desc: "Registrar y ver fallas detectadas"   },
+  ];
+
+  cards.forEach(c => {
+    const btn = document.createElement("button");
+    btn.className = "hubCard";
+    btn.dataset.tecCard = c.key;
+    btn.innerHTML = `
+      <div class="hubCardEmoji">${c.emoji}</div>
+      <div class="hubCardText">
+        <div class="hubCardName">${c.label}</div>
+        <div class="hubCardDesc">${c.desc}</div>
+      </div>
+    `;
+    btn.addEventListener("click", () => {
+      if (c.key === "validar")      { openTecBuscarModal_(); return; }
+      if (c.key === "miOT")         showTecPanel_("tecPanelMiOT", null);
+      if (c.key === "cola")         showTecPanel_("tecPanelCola", loadTecCola_);
+      if (c.key === "rendimiento")  showTecPanel_("tecPanelRendimiento", loadTecRendimiento_);
+      if (c.key === "incidencias")  showTecPanel_("tecPanelIncidencias", loadTecIncidencias_);
+    });
+    grid.appendChild(btn);
+  });
+}
+
+async function loadTecCola_() {
+  const box = document.getElementById("tecColaContent");
+  if (!box) return;
+  box.innerHTML = `<div class="small muted">Cargando…</div>`;
+  try {
+    const esp  = String(CORE.state.currentProfile?.especialidad || "").toUpperCase();
+    const pair = esp === "MOTOR" ? "TANQUE" : esp === "TANQUE" ? "MOTOR" : "";
+    const j    = await getJSON(`/api/tecnico/cola?especialidad=${encodeURIComponent(esp)}`);
+    if (!j?.ok) throw new Error(j?.error || "Error al cargar cola");
+
+    let html = "";
+
+    // Compañeros libres
+    if (pair) {
+      html += `<div class="tecColaSection">
+        <div class="tecColaSectionTitle">🤝 Compañeros de ${pair} libres</div>`;
+      if (!j.companeros?.length) {
+        html += `<div class="small muted tecColaEmpty">No hay compañeros disponibles ahora.</div>`;
+      } else {
+        html += j.companeros.map(c =>
+          `<div class="tecColaChip">👤 ${escapeHtml(c.nombre)}</div>`
+        ).join("");
+      }
+      html += `</div>`;
+    }
+
+    // VINs disponibles
+    html += `<div class="tecColaSection">
+      <div class="tecColaSectionTitle">🚘 VINs disponibles para ${esp || "ti"}</div>`;
+    if (!j.vins?.length) {
+      html += `<div class="small muted tecColaEmpty">No hay VINs disponibles en este momento.</div>`;
+    } else {
+      html += j.vins.map(v =>
+        `<div class="tecColaVinRow">
+          <span class="tecColaVin">${escapeHtml(v.vin)}</span>
+        </div>`
+      ).join("");
+    }
+    html += `</div>`;
+
+    box.innerHTML = html;
+  } catch (e) {
+    box.innerHTML = `<div class="small" style="color:var(--danger);">Error: ${e.message}</div>`;
+  }
+}
+
+async function loadTecRendimiento_() {
+  const box = document.getElementById("tecRendContent");
+  if (!box) return;
+  box.innerHTML = `<div class="small muted">Cargando…</div>`;
+  try {
+    const emailEl = document.getElementById("email");
+    const email   = String(emailEl?.value || "").trim().toLowerCase();
+    if (!email) throw new Error("No hay sesión activa");
+
+    const j = await getJSON(`/api/mis-finalizadas?email=${encodeURIComponent(email)}`);
+    if (!j?.ok) throw new Error(j?.error || "Error al cargar rendimiento");
+
+    const items = Array.isArray(j.items) ? j.items : [];
+    const hoy   = new Date().toDateString();
+    const semanaMs = 7 * 24 * 60 * 60 * 1000;
+    const cutSem = Date.now() - semanaMs;
+
+    const hoyItems = items.filter(it => new Date(it.updated_at || it.fecha_creacion || 0).toDateString() === hoy);
+    const semItems = items.filter(it => new Date(it.updated_at || it.fecha_creacion || 0).getTime() >= cutSem);
+    const avgMs    = items.length
+      ? items.reduce((s, it) => s + (Number(it.tiempo_trab_ms) || 0), 0) / items.length
+      : 0;
+
+    const fmtTime = ms => {
+      const h = Math.floor(ms / 3600000);
+      const m = Math.floor((ms % 3600000) / 60000);
+      return h ? `${h}h ${m}m` : `${m}m`;
+    };
+
+    box.innerHTML = `
+      <div class="tecRendGrid">
+        <div class="tecRendStat">
+          <div class="tecRendNum">${hoyItems.length}</div>
+          <div class="tecRendLabel">Hoy</div>
+        </div>
+        <div class="tecRendStat">
+          <div class="tecRendNum">${semItems.length}</div>
+          <div class="tecRendLabel">Esta semana</div>
+        </div>
+        <div class="tecRendStat">
+          <div class="tecRendNum">${items.length}</div>
+          <div class="tecRendLabel">Total</div>
+        </div>
+        <div class="tecRendStat">
+          <div class="tecRendNum">${avgMs ? fmtTime(avgMs) : "—"}</div>
+          <div class="tecRendLabel">Tiempo prom.</div>
+        </div>
+      </div>
+      <div class="tecRendHistTitle">Últimas conversiones</div>
+      ${items.length === 0
+        ? `<div class="small muted">Aún no tienes conversiones finalizadas.</div>`
+        : items.slice(0, 20).map(it => `
+          <div class="tecRendRow">
+            <span class="tecRendVin">${escapeHtml(it.vin || "")}</span>
+            <span class="tecRendRole small">${escapeHtml(it.rol_trabajo || it.rolTrabajo || "")}</span>
+            <span class="small muted">${fmtShort_(it.updated_at || it.fecha_creacion)}</span>
+          </div>`
+        ).join("")
+      }
+    `;
+  } catch (e) {
+    box.innerHTML = `<div class="small" style="color:var(--danger);">Error: ${e.message}</div>`;
+  }
+}
+
+async function loadTecIncidencias_() {
+  const box = document.getElementById("tecIncContent");
+  if (!box) return;
+  box.innerHTML = `<div class="small muted">Cargando…</div>`;
+  try {
+    const emailEl = document.getElementById("email");
+    const email   = String(emailEl?.value || "").trim().toLowerCase();
+    if (!email) throw new Error("No hay sesión activa");
+
+    const j = await getJSON(`/api/incidencias/by-tecnico?email=${encodeURIComponent(email)}&days=90`);
+    if (!j?.ok) throw new Error(j?.error || "Error al cargar incidencias");
+
+    const items = Array.isArray(j.items) ? j.items : [];
+    if (!items.length) {
+      box.innerHTML = `<div class="small muted">No tienes incidencias registradas en los últimos 90 días.</div>`;
+      return;
+    }
+
+    box.innerHTML = items.map(it => `
+      <div class="tecIncRow">
+        <div class="tecIncTop">
+          <span class="tecIncVin">${escapeHtml(it.vin || "")}</span>
+          <span class="tecIncTipo small">${escapeHtml(it.tipo || "")}</span>
+          <span class="small muted">${fmtShort_(it.fecha_hora)}</span>
+        </div>
+        ${it.nota ? `<div class="small muted" style="margin-top:3px;">${escapeHtml(it.nota)}</div>` : ""}
+      </div>
+    `).join("");
+  } catch (e) {
+    box.innerHTML = `<div class="small" style="color:var(--danger);">Error: ${e.message}</div>`;
+  }
+}
 
 // --------------------------
 // TICK CLOCK
@@ -145,6 +381,7 @@ export function tickClocksUI_() {
 // VIEW LIFECYCLE
 // --------------------------
 export function init() {
+  initTecCards_();  // card hub navigation (TECNICO)
   initEstadoUI_();
   initVinAutocomplete_();
   initConversionQR_();
@@ -329,6 +566,8 @@ export function enter(mod) {
 
   // Verificar incidencias no vistas (offline -> online / primer login)
   if (mod === "TECNICO") {
+    showTecCards_();  // Mostrar cartillas al entrar
+
     const emailEl = document.getElementById("email");
     const email = String(emailEl?.value || "").trim().toLowerCase();
     if (email) {

@@ -81,6 +81,47 @@
 .hubCard:hover  { transform: translateX(4px); box-shadow: var(--shadow); }
 .hubCard:active { transform: scale(.98); box-shadow: var(--shadowSm); }
 
+/* Colores de borde izquierdo — cartillas de técnico (secciones) */
+.hubCard[data-tec-card="miOT"]        { border-left-color: #60a5fa; }
+.hubCard[data-tec-card="cola"]        { border-left-color: #fbbf24; }
+.hubCard[data-tec-card="validar"]     { border-left-color: #a78bfa; }
+.hubCard[data-tec-card="rendimiento"] { border-left-color: #34d399; }
+.hubCard[data-tec-card="incidencias"] { border-left-color: #f87171; }
+
+/* ─── Panel Cola pendiente ─── */
+.tecColaSection       { margin-bottom: 18px; }
+.tecColaSectionTitle  { font-size: var(--fs-sm); font-weight: var(--fw-extrabold); margin-bottom: 8px; color: var(--text); }
+.tecColaChip          { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; background: var(--glass); border: 1px solid var(--surfaceLine); border-radius: 999px; font-size: var(--fs-sm); margin: 3px 4px 3px 0; }
+.tecColaVinRow        { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: var(--glass); border: 1px solid var(--surfaceLine); border-radius: var(--radiusSm); margin-bottom: 6px; }
+.tecColaVin           { font-weight: var(--fw-bold); font-family: monospace; letter-spacing: .5px; }
+.tecColaEmpty         { padding: 6px 0; }
+
+/* ─── Panel Rendimiento ─── */
+.tecRendGrid      { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+.tecRendStat      { background: var(--glass); border: 1px solid var(--surfaceLine); border-radius: var(--radius); padding: 14px 10px; text-align: center; }
+.tecRendNum       { font-size: var(--fs-3xl); font-weight: var(--fw-black); letter-spacing: -1px; line-height: 1.1; }
+.tecRendLabel     { font-size: var(--fs-xs); color: var(--muted); margin-top: 4px; }
+.tecRendHistTitle { font-size: var(--fs-sm); font-weight: var(--fw-extrabold); margin-bottom: 10px; }
+.tecRendRow       { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--surfaceLine); }
+.tecRendVin       { font-weight: var(--fw-bold); font-family: monospace; flex: 1; }
+.tecRendRole      { background: var(--pillBg); border-radius: 4px; padding: 2px 6px; }
+
+/* ─── Panel Incidencias ─── */
+.tecIncRow   { padding: 10px 0; border-bottom: 1px solid var(--surfaceLine); }
+.tecIncTop   { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tecIncVin   { font-weight: var(--fw-bold); font-family: monospace; }
+.tecIncTipo  { background: var(--pillBg); border-radius: 4px; padding: 2px 6px; }
+
+/* ─── Cabecera cartillas técnico ─── */
+.tecCardsHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--surfaceLine);
+}
+
 /* Colores de borde izquierdo por módulo */
 .hubCard[data-mod="TECNICO"]     { border-left-color: #60a5fa; }
 .hubCard[data-mod="RAMALERO"]    { border-left-color: #34d399; }

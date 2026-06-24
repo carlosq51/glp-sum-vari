@@ -5,30 +5,42 @@
 
 export function tecnicoView() {
   return `
-    <!-- =========================
-         TECNICO
-         ========================= -->
+    <!-- ========================= TECNICO ========================= -->
     <div id="viewTECNICO" style="display:none;">
-      <div class="card">
-        <h3>Técnico (Conversión)</h3>
+
+      <!-- ── Cartillas ── -->
+      <div id="tecCards" class="card">
+        <div class="tecCardsHeader">
+          <div>
+            <div class="hubGreeting" id="tecGreeting">Bienvenido</div>
+            <div class="hubSubtitle">Técnico — Conversión GLP</div>
+          </div>
+        </div>
+        <div class="hubGrid" id="tecCardGrid"></div>
+      </div>
+
+      <!-- ── Panel: Mi OT ── -->
+      <div id="tecPanelMiOT" class="card" style="display:none;">
+        <div class="adminDetailHead">
+          <button class="adminBackBtn tecBackBtn">← Volver</button>
+          <span class="adminDetailTitle">🔧 Mi OT</span>
+        </div>
 
         <!-- Buscar VIN (abre modal con suggest + cámara) -->
         <button id="btnTecBuscar" type="button"
           style="background:none;border:none;color:var(--muted);font-size:.77em;cursor:pointer;
-                 padding:3px 0;margin-bottom:12px;margin-top:6px;display:inline-flex;align-items:center;
+                 padding:3px 0;margin-bottom:12px;display:inline-flex;align-items:center;
                  gap:5px;text-decoration:underline;text-decoration-style:dotted;">
           🔍 Buscar VIN
         </button>
 
-        <div class="fullStack" style="margin-top:10px;">
+        <div class="fullStack">
           <div class="vinRow3">
             <div class="vinWrap">
               <input id="vin" placeholder="Ingresa VIN o escanea QR" />
               <div id="vinSuggest" class="vinSuggest hidden" role="listbox"></div>
             </div>
-
             <button id="btnQR" title="Escanear QR">📷</button>
-
             <button id="btnEstado" title="Busca la OT por VIN o la crea si no existe">
               Buscar / Crear
             </button>
@@ -38,10 +50,6 @@ export function tecnicoView() {
             <button id="btnFinalizados">Ver finalizados</button>
             <button id="btnActivas" title="Refrescar conversiones">🔄 <span>Refrescar</span></button>
           </div>
-
-          <button id="btnVerMisInc" type="button" class="btn3" style="width:100%; margin-top:4px;">
-            📋 Ver mis incidencias
-          </button>
         </div>
 
         <div id="estadoBox" class="small"></div>
@@ -53,12 +61,34 @@ export function tecnicoView() {
         </div>
       </div>
 
-      <div id="debugWrap" class="debug-hidden">
-        <h3 style="margin-top:14px;">Respuesta</h3>
-        <pre id="out">{}</pre>
+      <!-- ── Panel: Cola pendiente ── -->
+      <div id="tecPanelCola" class="card" style="display:none;">
+        <div class="adminDetailHead">
+          <button class="adminBackBtn tecBackBtn">← Volver</button>
+          <span class="adminDetailTitle">📋 Cola pendiente</span>
+        </div>
+        <div id="tecColaContent"><div class="small muted">Cargando…</div></div>
       </div>
 
-      <!-- stubs -->
+      <!-- ── Panel: Mi rendimiento ── -->
+      <div id="tecPanelRendimiento" class="card" style="display:none;">
+        <div class="adminDetailHead">
+          <button class="adminBackBtn tecBackBtn">← Volver</button>
+          <span class="adminDetailTitle">📊 Mi rendimiento</span>
+        </div>
+        <div id="tecRendContent"><div class="small muted">Cargando…</div></div>
+      </div>
+
+      <!-- ── Panel: Mis incidencias ── -->
+      <div id="tecPanelIncidencias" class="card" style="display:none;">
+        <div class="adminDetailHead">
+          <button class="adminBackBtn tecBackBtn">← Volver</button>
+          <span class="adminDetailTitle">⚠️ Mis incidencias</span>
+        </div>
+        <div id="tecIncContent"><div class="small muted">Cargando…</div></div>
+      </div>
+
+      <!-- ── Stubs ocultos (siempre en DOM para delegation.js) ── -->
       <select id="accion" style="display:none;">
         <option value="INICIO">INICIO</option>
         <option value="PAUSA">PAUSA</option>
@@ -69,6 +99,13 @@ export function tecnicoView() {
       <textarea id="nota" style="display:none;"></textarea>
       <button id="btnNotaOnly" style="display:none;"></button>
       <button id="btnEnviar" style="display:none;"></button>
+      <button id="btnVerMisInc" style="display:none;"></button>
+
+      <div id="debugWrap" class="debug-hidden">
+        <h3 style="margin-top:14px;">Respuesta</h3>
+        <pre id="out">{}</pre>
+      </div>
+
     </div>
   `;
 }
