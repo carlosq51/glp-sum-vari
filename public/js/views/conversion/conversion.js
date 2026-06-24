@@ -47,7 +47,10 @@ import { escapeHtml, fmtShort_ } from "../../core/format.js";
 // --------------------------
 
 const TEC_PANELS = ["tecPanelMiOT", "tecPanelCola", "tecPanelRendimiento", "tecPanelIncidencias"];
-let tecCardsInited_ = false;
+let tecCardsInited_      = false;
+let colaBadgeInterval_    = null;
+let vinReadyNotifInterval_ = null;
+const notifiedVins_        = new Set();
 
 function showTecCards_() {
   const hub = document.getElementById("tecCards");
@@ -89,6 +92,46 @@ function updateTecMiOTBadge_() {
     badge.textContent = String(active.length);
     btn.appendChild(badge);
   }
+}
+
+async function updateColaBadge_() {
+  const esp = String(CORE.state.currentProfile?.especialidad || "").toUpperCase();
+  if (!esp) return;
+  try {
+    const j = await getJSON(`/api/tecnico/cola?especialidad=${encodeURIComponent(esp)}`);
+    if (!j?.ok) return;
+    const count = (j.vins?.length || 0) + (j.vinsFallback?.length || 0);
+    const btn = document.querySelector("#tecCardGrid [data-tec-card='cola']");
+    if (!btn) return;
+    btn.querySelector(".hubBadge")?.remove();
+    if (count > 0) {
+      const badge = document.createElement("span");
+      badge.className = "hubBadge";
+      badge.textContent = String(count);
+      btn.appendChild(badge);
+    }
+  } catch {}
+}
+
+async function checkVinReadyNotif_() {
+  const esp = String(CORE.state.currentProfile?.especialidad || "").toUpperCase();
+  if (!esp || Notification.permission !== "granted") return;
+  try {
+    const j = await getJSON(`/api/tecnico/cola?especialidad=${encodeURIComponent(esp)}`);
+    if (!j?.ok) return;
+    const vins = j.vins || [];
+    const currentKeys = new Set(vins.map(v => v.vin));
+    for (const v of vins) {
+      if (notifiedVins_.has(v.vin)) continue;
+      notifiedVins_.add(v.vin);
+      new Notification(`🚘 VIN disponible: ${v.vin}`, {
+        body: `⚡ Falta ${esp} — ${esp === "TANQUE" ? "MOTOR" : "TANQUE"} ya está trabajando\nTécnico: ${v.tecnico || "—"}`,
+        icon: "/favicon.ico",
+        tag: `vin-ready-${v.vin}`,
+      });
+    }
+    for (const k of notifiedVins_) { if (!currentKeys.has(k)) notifiedVins_.delete(k); }
+  } catch {}
 }
 
 function initTecCards_() {
@@ -172,6 +215,14 @@ async function loadTecCola_() {
           <span>VIN</span><span>Técnico</span><span>Estado</span>
         </div>
         ${rows.map(v => {
+          if (!j.fallbackUsed) {
+            // Pair is actively working — only my specialty is missing
+            return `<div class="tecColaTableRow">
+              <span class="tecColaVin">${escapeHtml(v.vin)}</span>
+              <span class="small tecColaTecnico">${escapeHtml(v.tecnico || "—")}</span>
+              <span class="tecColaEst tecEst--priority">⚡ Falta ${esp}</span>
+            </div>`;
+          }
           const est = String(v.estado || "").toUpperCase();
           const estClass = est === "TRABAJANDO" ? "tecEst--trab"
                          : est === "PAUSADO"   ? "tecEst--paus"
@@ -179,7 +230,7 @@ async function loadTecCola_() {
           return `<div class="tecColaTableRow">
             <span class="tecColaVin">${escapeHtml(v.vin)}</span>
             <span class="small tecColaTecnico">${escapeHtml(v.tecnico || "—")}</span>
-            <span class="tecColaEst ${estClass}">${escapeHtml(v.estado || "—")}</span>
+            <span class="tecColaEst ${estClass}">${escapeHtml(v.estado || "En espera")}</span>
           </div>`;
         }).join("")}
       </div>`;
@@ -200,31 +251,60 @@ async function loadTecRendimiento_() {
     const email   = String(emailEl?.value || "").trim().toLowerCase();
     if (!email) throw new Error("No hay sesión activa");
 
-    const [jRend, jCfg] = await Promise.all([
+    const espR = String(CORE.state.currentProfile?.especialidad || "").toUpperCase();
+    const [jRend, jCfg, jEquipo] = await Promise.all([
       getJSON(`/api/mis-finalizadas?email=${encodeURIComponent(email)}`),
       getJSON("/api/admin/config"),
+      espR ? getJSON(`/api/tecnico/equipo-stats?especialidad=${encodeURIComponent(espR)}`) : Promise.resolve(null),
     ]);
     if (!jRend?.ok) throw new Error(jRend?.error || "Error al cargar rendimiento");
 
     const meta  = Number(jCfg?.config?.META_CONVERSION || 25);
     const items = Array.isArray(jRend.items) ? jRend.items : [];
 
-    const msDay  = 86400000;
-    const hoy    = new Date().toDateString();
-    const cutSem = Date.now() - 7  * msDay;
-    const cutMes = Date.now() - 30 * msDay;
+    const msDay        = 86400000;
+    const ahora        = new Date();
+    const hoy          = ahora.toDateString();
+    const cutSem       = Date.now() - 7 * msDay;
+    const primerDeMes  = new Date(ahora.getFullYear(), ahora.getMonth(), 1);
 
     const hoyItems = items.filter(it => new Date(it.updated_at || 0).toDateString() === hoy);
     const semItems = items.filter(it => +new Date(it.updated_at || 0) >= cutSem);
-    const fmtTime  = ms => { const h = Math.floor(ms/3600000), m = Math.floor((ms%3600000)/60000); return h ? `${h}h ${m}m` : `${m}m`; };
-    const fmtHora  = ts => ts ? new Date(ts).toLocaleTimeString("es-PE", {hour:"2-digit", minute:"2-digit"}) : "—";
-    const avgMs    = items.length ? items.reduce((s, it) => s + (Number(it.tiempo_trab_ms) || 0), 0) / items.length : 0;
+    const mesItems = items.filter(it => +new Date(it.updated_at || 0) >= +primerDeMes);
 
-    // SVG circle progress
-    const pct   = Math.min((hoyItems.length / meta) * 100, 100);
+    const fmtTime = ms => { const h = Math.floor(ms/3600000), m = Math.floor((ms%3600000)/60000); return h ? `${h}h ${m}m` : `${m}m`; };
+    const fmtHora = ts => ts ? new Date(ts).toLocaleTimeString("es-PE", {hour:"2-digit", minute:"2-digit"}) : "—";
+    const avgMs   = items.length ? items.reduce((s, it) => s + (Number(it.tiempo_trab_ms) || 0), 0) / items.length : 0;
+
+    // SVG circle — META MENSUAL
+    const pct  = Math.min((mesItems.length / meta) * 100, 100);
     const r = 44, cx = 54, cy = 54, circ = 2 * Math.PI * r;
     const fill  = circ * (pct / 100);
     const color = pct >= 100 ? "#10b981" : pct >= 60 ? "#f59e0b" : "#60a5fa";
+
+    // Team comparison (week)
+    const avgSemana  = jEquipo?.avgSemana  || 0;
+    const totalTeam  = jEquipo?.totalTecnicos || 0;
+    const diff       = semItems.length - avgSemana;
+    const compClass  = diff >= 0 ? "tecRendCompPos" : "tecRendCompNeg";
+    const compLabel  = diff >= 0
+      ? `▲ +${Math.abs(diff).toFixed(1)} por encima del equipo`
+      : `▼ ${Math.abs(diff).toFixed(1)} por debajo del equipo`;
+
+    function renderHistogram(filtered) {
+      const byHour = new Array(24).fill(0);
+      filtered.forEach(it => { if (it.updated_at) byHour[new Date(it.updated_at).getHours()]++; });
+      const hours = Array.from({ length: 17 }, (_, i) => i + 6); // 6–22
+      const maxH = Math.max(...hours.map(h => byHour[h]), 1);
+      return `<div class="tecHistoChart">${hours.map(h => {
+        const cnt = byHour[h];
+        const p   = (cnt / maxH * 100).toFixed(0);
+        return `<div class="tecHistoCol" title="${h}:00 — ${cnt} conv.">
+          <div class="tecHistoFill" style="height:${p}%"></div>
+          <div class="tecHistoHora">${h}</div>
+        </div>`;
+      }).join("")}</div>`;
+    }
 
     function renderList(filtered) {
       if (!filtered.length) return `<div class="small muted" style="padding:8px 0;">Sin registros en este período.</div>`;
@@ -245,7 +325,7 @@ async function loadTecRendimiento_() {
     function getBase() {
       if (activePill === "hoy")    return hoyItems;
       if (activePill === "semana") return semItems;
-      if (activePill === "mes")    return items.filter(it => +new Date(it.updated_at || 0) >= cutMes);
+      if (activePill === "mes")    return mesItems;
       return items;
     }
 
@@ -253,13 +333,14 @@ async function loadTecRendimiento_() {
       let f = getBase();
       if (activeVin)  f = f.filter(it => String(it.vin || "").toUpperCase().includes(activeVin.toUpperCase()));
       if (activeDate) f = f.filter(it => it.updated_at?.startsWith(activeDate));
-      box.querySelector("#tecRendList").innerHTML = renderList(f);
-      box.querySelector("#tecRendCount").textContent = `${f.length} registros`;
+      box.querySelector("#tecRendList").innerHTML      = renderList(f);
+      box.querySelector("#tecRendHistogram").innerHTML = renderHistogram(f);
+      box.querySelector("#tecRendCount").textContent   = `${f.length} registros`;
     }
 
     box.innerHTML = `
-      <!-- KPI hero -->
-      <div class="sup-kpis-panel" style="margin-bottom:16px;">
+      <!-- KPI hero (meta mensual) -->
+      <div class="sup-kpis-panel" style="margin-bottom:12px;">
         <div class="sup-kpis-title">📊 Mi rendimiento</div>
         <div style="display:flex;align-items:center;justify-content:center;gap:24px;flex-wrap:wrap;">
           <div style="text-align:center;">
@@ -268,24 +349,24 @@ async function loadTecRendimiento_() {
               <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${color}" stroke-width="12"
                 stroke-dasharray="${fill.toFixed(1)} ${(circ-fill).toFixed(1)}" stroke-linecap="round"
                 transform="rotate(-90 ${cx} ${cy})"/>
-              <text x="${cx}" y="${cy - 6}" text-anchor="middle" fill="#fff" font-size="20" font-weight="700">${hoyItems.length}</text>
+              <text x="${cx}" y="${cy - 6}" text-anchor="middle" fill="#fff" font-size="20" font-weight="700">${mesItems.length}</text>
               <text x="${cx}" y="${cy + 14}" text-anchor="middle" fill="rgba(255,255,255,.7)" font-size="10">de ${meta}</text>
             </svg>
-            <div style="color:rgba(255,255,255,.8);font-size:12px;margin-top:4px;">Meta del día</div>
+            <div style="color:rgba(255,255,255,.8);font-size:12px;margin-top:4px;">Meta del mes</div>
           </div>
           <div class="sup-kpis-grid" style="flex:1;min-width:200px;">
             <div class="sup-kpi-card">
               <div class="kpi-header"><span class="kpi-icon">☀️</span><span class="kpi-label">Hoy</span></div>
               <div class="kpi-value">${hoyItems.length}</div>
-              <div class="kpi-bar"><div class="kpi-bar-fill ${pct>=100?"positive":pct>=60?"warning":"negative"}" style="width:${pct.toFixed(0)}%"></div></div>
             </div>
             <div class="sup-kpi-card">
               <div class="kpi-header"><span class="kpi-icon">📅</span><span class="kpi-label">Semana</span></div>
               <div class="kpi-value">${semItems.length}</div>
             </div>
             <div class="sup-kpi-card">
-              <div class="kpi-header"><span class="kpi-icon">🏆</span><span class="kpi-label">Total</span></div>
-              <div class="kpi-value">${items.length}</div>
+              <div class="kpi-header"><span class="kpi-icon">📆</span><span class="kpi-label">Este mes</span></div>
+              <div class="kpi-value">${mesItems.length}</div>
+              <div class="kpi-bar"><div class="kpi-bar-fill ${pct>=100?"positive":pct>=60?"warning":"negative"}" style="width:${pct.toFixed(0)}%"></div></div>
             </div>
             <div class="sup-kpi-card">
               <div class="kpi-header"><span class="kpi-icon">⏱</span><span class="kpi-label">Prom.</span></div>
@@ -295,7 +376,24 @@ async function loadTecRendimiento_() {
         </div>
       </div>
 
-      <!-- Filtros historial -->
+      <!-- Comparativa de equipo (semana) -->
+      ${jEquipo?.ok ? `
+      <div class="tecRendComp">
+        <div class="tecRendCompIcon">👥</div>
+        <div class="tecRendCompBody">
+          <div class="tecRendCompMain">Esta semana: <b>${semItems.length}</b> conversiones</div>
+          <div class="tecRendCompSub">Prom. equipo: ${avgSemana} conv. · ${totalTeam} técnico${totalTeam !== 1 ? "s" : ""}</div>
+        </div>
+        <div class="tecRendCompDiff ${compClass}">${compLabel}</div>
+      </div>` : ""}
+
+      <!-- Histograma por hora -->
+      <div class="tecHistoWrap">
+        <div class="tecHistoTitle">Producción por hora del día</div>
+        <div id="tecRendHistogram">${renderHistogram(hoyItems)}</div>
+      </div>
+
+      <!-- Historial -->
       <div class="tecRendHistTitle" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
         <span>Historial</span>
         <span id="tecRendCount" class="small muted">${hoyItems.length} registros</span>
@@ -332,7 +430,7 @@ async function loadTecRendimiento_() {
     });
 
     box.querySelector("#tecRendDatePick")?.addEventListener("change", e => {
-      activeDate = e.target.value; // "YYYY-MM-DD"
+      activeDate = e.target.value;
       if (activeDate) {
         box.querySelectorAll("#tecRendFilters .tecFilterPill").forEach(b => b.classList.remove("active"));
         activePill = "todo";
@@ -765,14 +863,19 @@ export function enter(mod) {
 
   // Verificar incidencias no vistas (offline -> online / primer login)
   if (mod === "TECNICO") {
-    showTecCards_();  // Mostrar cartillas al entrar
+    showTecCards_();
 
     const emailEl = document.getElementById("email");
     const email = String(emailEl?.value || "").trim().toLowerCase();
-    if (email) {
-      checkPendingAlerts_(email, 12).catch(() => {});
-    }
+    if (email) checkPendingAlerts_(email, 12).catch(() => {});
+
     requestNotifPermission();
+
+    // Cola badge + VIN-ready notifications (poll every 3 / 2 min)
+    updateColaBadge_();
+    colaBadgeInterval_ = setInterval(updateColaBadge_, 3 * 60 * 1000);
+    checkVinReadyNotif_();
+    vinReadyNotifInterval_ = setInterval(checkVinReadyNotif_, 2 * 60 * 1000);
   }
 
   startLoopsFor_(mod, {
@@ -785,8 +888,13 @@ export function enter(mod) {
 export function exit(mod) {
   stopLoopsFor_(mod);
   clearModuleUI_(mod);
-  
-  // 🚀 Limpiar Realtime subscriptions
+  if (mod === "TECNICO") {
+    clearInterval(colaBadgeInterval_);
+    clearInterval(vinReadyNotifInterval_);
+    colaBadgeInterval_ = null;
+    vinReadyNotifInterval_ = null;
+    notifiedVins_.clear();
+  }
   destroyRealtime_();
 }
 

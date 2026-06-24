@@ -3400,6 +3400,43 @@ app.get("/api/tecnico/cola", async (req, res) => {
   }
 });
 
+// ── GET /api/tecnico/equipo-stats ────────────────────────────────────────────
+app.get("/api/tecnico/equipo-stats", async (req, res) => {
+  try {
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const esp = String(req.query.especialidad || "").toUpperCase();
+    if (!["MOTOR", "TANQUE"].includes(esp))
+      return res.json({ ok: true, avgSemana: 0, totalTecnicos: 0 });
+
+    // Monday of current week
+    const now = new Date();
+    const day = now.getDay();
+    const daysBack = day === 0 ? 6 : day - 1;
+    const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysBack);
+    const mondaySince = monday.toISOString().split("T")[0] + "T00:00:00";
+
+    const rUsers = await fetch(
+      `${SUPABASE_URL}/rest/v1/usuarios?rol=eq.TECNICO&especialidad=eq.${esp}&activo=eq.true&select=id`,
+      { method: "GET", headers: supabaseHeaders_() }
+    );
+    const users = rUsers.ok ? await rUsers.json() : [];
+    if (!users.length) return res.json({ ok: true, avgSemana: 0, totalTecnicos: 0 });
+
+    const rFin = await fetch(
+      `${SUPABASE_URL}/rest/v1/asignaciones?rol_trabajo=eq.${esp}&estado_actual=eq.FINALIZADO&updated_at=gte.${encodeURIComponent(mondaySince)}&select=user_id&limit=5000`,
+      { method: "GET", headers: supabaseHeaders_() }
+    );
+    const finRows = rFin.ok ? await rFin.json() : [];
+
+    const avgSemana = users.length
+      ? Math.round((finRows.length / users.length) * 10) / 10
+      : 0;
+    return res.json({ ok: true, avgSemana, totalTecnicos: users.length, totalSemana: finRows.length });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e.message) });
+  }
+});
+
 // -----------------------------------------------------------------
 
 app.listen(PORT, "0.0.0.0", () => {

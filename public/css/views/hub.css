@@ -122,6 +122,25 @@
 .tecEst--trab       { background: rgba(16,185,129,.2); color: #6ee7b7; border: 1px solid rgba(16,185,129,.4); }
 .tecEst--paus       { background: rgba(245,158,11,.2); color: #fcd34d; border: 1px solid rgba(245,158,11,.4); }
 .tecEst--pend       { background: rgba(148,163,184,.15); color: var(--muted); border: 1px solid var(--surfaceLine); }
+.tecEst--priority   { background: rgba(251,191,36,.2); color: #fbbf24; border: 1px solid rgba(251,191,36,.5); font-weight: var(--fw-bold); }
+
+/* ─── Rendimiento: comparativa de equipo ─── */
+.tecRendComp        { display: flex; align-items: center; gap: 10px; background: var(--glass); border: 1px solid var(--surfaceLine); border-radius: var(--radius); padding: 10px 14px; margin-bottom: 12px; flex-wrap: wrap; }
+.tecRendCompIcon    { font-size: 20px; flex-shrink: 0; }
+.tecRendCompBody    { flex: 1; min-width: 120px; }
+.tecRendCompMain    { font-size: var(--fs-sm); font-weight: var(--fw-bold); }
+.tecRendCompSub     { font-size: var(--fs-xs); color: var(--muted); }
+.tecRendCompDiff    { font-size: var(--fs-sm); font-weight: var(--fw-black); white-space: nowrap; }
+.tecRendCompPos     { color: #4ade80; }
+.tecRendCompNeg     { color: #f87171; }
+
+/* ─── Rendimiento: histograma por hora ─── */
+.tecHistoWrap       { margin-bottom: 14px; }
+.tecHistoTitle      { font-size: var(--fs-xs); font-weight: var(--fw-extrabold); color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; }
+.tecHistoChart      { display: flex; align-items: flex-end; height: 64px; gap: 2px; background: var(--glass); border: 1px solid var(--surfaceLine); border-radius: var(--radius); padding: 8px 6px 22px; }
+.tecHistoCol        { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; position: relative; height: 100%; cursor: default; }
+.tecHistoFill       { width: 100%; min-height: 2px; background: linear-gradient(to top, #60a5fa, #34d399); border-radius: 2px 2px 0 0; }
+.tecHistoHora       { position: absolute; bottom: -17px; font-size: 9px; color: var(--muted); line-height: 1; }
 
 /* ─── Rendimiento: búsqueda + fecha ─── */
 .tecRendSearchRow  { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
