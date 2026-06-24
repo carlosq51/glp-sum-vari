@@ -25,6 +25,10 @@ import * as VRamalero from "./js/views/ramalero/ramalero.js";
 import * as VSupervisor from "./js/views/supervisor/supervisor.js";
 import * as VAdmin from "./js/views/admin/admin.js";
 import * as VMovilizador from "./js/views/movilizador/movilizador.js";
+import { initAppSettings } from "./js/core/app-settings.js";
+
+// Aplicar ajustes guardados (fuente, acento) antes de cualquier render
+initAppSettings();
 
 const root = document.getElementById("appRoot");
 if (root) root.innerHTML = appShell();

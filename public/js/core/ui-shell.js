@@ -5,6 +5,18 @@
 
 import { CORE, MODULES } from "./state.js";
 import { $, el_ } from "./dom.js";
+import { applyTheme_, loadTheme_ } from "./theme.js";
+import { loadSettings, saveSettings, applySettings } from "./app-settings.js";
+
+// ─── Metadata de módulos ─────────────────────────────────────────────
+const MODULE_META = {
+  TECNICO:     { emoji: "🔧", label: "Técnico",     desc: "Motor y tanque GLP" },
+  RAMALERO:    { emoji: "🪝", label: "Ramalero",    desc: "Suministro de ramales" },
+  CALIDAD:     { emoji: "✅", label: "Calidad",     desc: "Revisión y aprobación" },
+  MOVILIZADOR: { emoji: "🚗", label: "Movilizador", desc: "Traslados y listas" },
+  SUPERVISOR:  { emoji: "👁️", label: "Supervisor",  desc: "Supervisión del taller" },
+  ADMIN:       { emoji: "⚙️", label: "Admin",       desc: "Administración del sistema" },
+};
 
 export function showLoginUI(msg = "") {
   $("viewLogin").style.display = "block";
@@ -34,24 +46,100 @@ export function showHubUI(mods, onPick) {
   const hub = $("viewHub");
   if (hub) hub.style.display = "block";
 
+  // Saludo personalizado
+  const nombre = String(CORE.state.currentProfile?.nombre || "").split(" ")[0];
+  const greeting = $("hubGreeting");
+  if (greeting) greeting.textContent = nombre ? `Hola, ${nombre} 👋` : "Bienvenido";
+
+  // Cerrar settings panel al volver al hub
+  const panel = $("hubSettingsPanel");
+  if (panel) panel.style.display = "none";
+
+  // Renderizar cartillas
   const box = $("hubButtons");
   if (!box) return;
 
   box.innerHTML = "";
   mods.forEach((m) => {
-    const btn = document.createElement("button");
-    btn.textContent = m;
-    btn.dataset.mod = m;
-    btn.addEventListener("click", () => onPick?.(m));
-    box.appendChild(btn);
+    const meta = MODULE_META[m] || { emoji: "📦", label: m, desc: "" };
+    const card = document.createElement("button");
+    card.className = "hubCard";
+    card.dataset.mod = m;
+    card.innerHTML = `
+      <div class="hubCardEmoji">${meta.emoji}</div>
+      <div class="hubCardName">${meta.label}</div>
+      ${meta.desc ? `<div class="hubCardDesc">${meta.desc}</div>` : ""}
+    `;
+    card.addEventListener("click", () => onPick?.(m));
+    box.appendChild(card);
+  });
+
+  // Inicializar settings panel (una sola vez)
+  initHubSettings_();
+}
+
+// ─── Settings panel ──────────────────────────────────────────────────
+let hubSettingsInited_ = false;
+
+function refreshSettingsUI_() {
+  const s   = loadSettings();
+  const cur = document.documentElement.dataset.theme || "night";
+
+  $("hubOptTheme")?.querySelectorAll(".hubOptBtn").forEach(b =>
+    b.classList.toggle("active", b.dataset.val === cur)
+  );
+  $("hubOptSize")?.querySelectorAll(".hubOptBtn").forEach(b =>
+    b.classList.toggle("active", b.dataset.val === (s.size || "md"))
+  );
+  $("hubOptAccent")?.querySelectorAll(".hubColorBtn").forEach(b =>
+    b.classList.toggle("active", b.dataset.val === (s.accent || "blue"))
+  );
+}
+
+function initHubSettings_() {
+  if (hubSettingsInited_) return;
+  hubSettingsInited_ = true;
+
+  const panel = $("hubSettingsPanel");
+
+  $("btnHubSettings")?.addEventListener("click", () => {
+    if (!panel) return;
+    const isOpen = panel.style.display !== "none";
+    panel.style.display = isOpen ? "none" : "block";
+    if (!isOpen) refreshSettingsUI_();
+  });
+
+  $("btnHubSettingsClose")?.addEventListener("click", () => {
+    if (panel) panel.style.display = "none";
+  });
+
+  // Tema (usa el mecanismo existente de theme.js)
+  $("hubOptTheme")?.addEventListener("click", e => {
+    const btn = e.target.closest(".hubOptBtn");
+    if (!btn) return;
+    applyTheme_(btn.dataset.val);
+    refreshSettingsUI_();
+  });
+
+  // Tamaño de fuente
+  $("hubOptSize")?.addEventListener("click", e => {
+    const btn = e.target.closest(".hubOptBtn");
+    if (!btn) return;
+    applySettings(saveSettings({ size: btn.dataset.val }));
+    refreshSettingsUI_();
+  });
+
+  // Acento de color
+  $("hubOptAccent")?.addEventListener("click", e => {
+    const btn = e.target.closest(".hubColorBtn");
+    if (!btn) return;
+    applySettings(saveSettings({ accent: btn.dataset.val }));
+    refreshSettingsUI_();
   });
 }
 
 /**
- * Muestra u oculta un badge con el número de pendientes
- * en el botón del hub correspondiente al módulo dado.
- * @param {string} modName  - Nombre del módulo (ej. "MOVILIZADOR")
- * @param {number} count    - Cantidad a mostrar (0 = ocultar)
+ * Muestra u oculta badge de pendientes en la cartilla de un módulo.
  */
 export function updateHubModuleBadge(modName, count) {
   const btn = document.querySelector(`#hubButtons [data-mod="${modName}"]`);
@@ -64,6 +152,7 @@ export function updateHubModuleBadge(modName, count) {
     btn.appendChild(badge);
   }
 }
+
 export function hasMultipleModulesUI() {
   const mods = CORE.state.currentProfile?.modulos;
   return Array.isArray(mods) && mods.filter(Boolean).length > 1;
@@ -72,9 +161,7 @@ export function hasMultipleModulesUI() {
 export function syncTopbarHomeButtonUI() {
   const btn = $("btnGoHome");
   if (!btn) return;
-
-  const show = hasMultipleModulesUI();
-  btn.classList.toggle("hidden", !show);
+  btn.classList.toggle("hidden", !hasMultipleModulesUI());
 }
 
 export function goToHubUI(mods, onPick) {
@@ -83,23 +170,17 @@ export function goToHubUI(mods, onPick) {
 
 export function setUserPillUI() {
   const p = CORE.state.currentProfile || {};
-  const rol = String(p.rol || "").toUpperCase();
-  const esp = String(p.especialidad || "").toUpperCase();
-  const mods = Array.isArray(p.modulos) ? p.modulos.join(",") : "(default)";
+  const rol    = String(p.rol || "").toUpperCase();
+  const esp    = String(p.especialidad || "").toUpperCase();
   const nombre = String(p.nombre || "").trim();
 
   const helloEl = $("userHello");
-  const pillEl = $("userPill");
+  const pillEl  = $("userPill");
 
-  if (helloEl) {
-    helloEl.textContent = nombre ? `HOLA: ${nombre}` : "HOLA:";
-  }
+  if (helloEl) helloEl.textContent = nombre ? `HOLA: ${nombre}` : "HOLA:";
 
   const extraTec = rol === "TECNICO" ? ` | ESP: ${esp || "-"}` : "";
-
-  if (pillEl) {
-    pillEl.textContent = `ROL: ${rol}${extraTec}`;
-  }
+  if (pillEl) pillEl.textContent = `ROL: ${rol}${extraTec}`;
 }
 
 export function applyDebugVisibilityUI() {

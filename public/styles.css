@@ -50,6 +50,7 @@
 @import url("./css/05-autocomplete.css");
 
 /* ── 7. Vistas ── */
+@import url("./css/views/hub.css");
 @import url("./css/views/topbar-shell.css");
 @import url("./css/views/vin-row.css");
 @import url("./css/views/supervisor.css");
