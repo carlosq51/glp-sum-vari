@@ -52,6 +52,13 @@ let colaBadgeInterval_    = null;
 let vinReadyNotifInterval_ = null;
 const notifiedVins_        = new Set();
 
+// ── Pair suggest popup ─────────────────────────────────────────────
+let pairSuggestQueue_     = [];    // top-3 free suggestions
+let pairSuggestIdx_       = 0;    // current card index
+let pairSuggestMode_      = "pair"; // "pair" | "new_car"
+let pairSuggestLastHadOT_ = null;  // tracks OT presence for transition detection
+let pairCheckInterval_    = null;
+
 function showTecCards_() {
   const hub = document.getElementById("tecCards");
   if (hub) hub.style.display = "block";
@@ -149,6 +156,209 @@ async function loadPairingSuggestion_() {
         </div>
       </div>`;
   } catch { banner.innerHTML = ""; }
+}
+
+// ── Pair suggest popup ─────────────────────────────────────────────────────
+
+function buildPairSuggestModal_() {
+  if (document.getElementById("pairSuggestModal")) return;
+  const el = document.createElement("div");
+  el.id = "pairSuggestModal";
+  el.className = "modal";
+  el.setAttribute("aria-hidden", "true");
+  el.style.display = "none";
+  // Modal persistente: sin botón ✕ ni cierre al hacer clic fuera
+  el.innerHTML = `
+    <div class="modalBox pairSuggestBox">
+      <div class="pairSuggestHeader">
+        <div class="pairSuggestTitle">✨ Tu próximo compañero</div>
+      </div>
+      <div id="pairSuggestBody" class="pairSuggestBody"></div>
+      <div class="pairSuggestActions">
+        <button id="btnPairSuggestAccept" type="button" class="btn pairSuggestBtnAccept">🤝 Trabajar juntos</button>
+        <div class="pairSuggestNavRow">
+          <span id="pairSuggestCounter" class="small muted"></span>
+          <button id="btnPairSuggestNext" type="button" class="pairSuggestBtnNext">Ver otro →</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(el);
+
+  el.querySelector("#btnPairSuggestAccept")?.addEventListener("click", () => {
+    closePairSuggestModal_();
+    showTecPanel_("tecPanelMiOT", null);
+  });
+
+  el.querySelector("#btnPairSuggestNext")?.addEventListener("click", () => {
+    if (pairSuggestIdx_ >= pairSuggestQueue_.length - 1) {
+      renderPairSuggestSolo_();
+    } else {
+      pairSuggestIdx_++;
+      renderPairSuggestCard_();
+    }
+  });
+}
+
+function renderPairSuggestCard_() {
+  const s       = pairSuggestQueue_[pairSuggestIdx_];
+  const total   = pairSuggestQueue_.length;
+  const isLast  = pairSuggestIdx_ >= total - 1;
+  const body    = document.getElementById("pairSuggestBody");
+  const counter = document.getElementById("pairSuggestCounter");
+  const btnNext = document.getElementById("btnPairSuggestNext");
+  const btnAcc  = document.getElementById("btnPairSuggestAccept");
+  if (!body) return;
+
+  if (!s) {
+    body.innerHTML = `<div class="pairSuggestEmpty">
+      <div class="pairSuggestEmoji">😔</div>
+      <div class="pairSuggestEmptyTitle">Sin compañeros disponibles</div>
+      <div class="small muted">Todos están ocupados. Puedes iniciar un nuevo carro solo y esperar.</div>
+    </div>`;
+    if (btnNext)   btnNext.style.display = "none";
+    if (btnAcc)  { btnAcc.textContent = "🚀 Ver cola de VINs"; }
+    if (counter)   counter.textContent = "";
+    return;
+  }
+
+  const sim      = s.similarity ?? 0;
+  const simColor = sim >= 85 ? "#4ade80" : sim >= 75 ? "#fbbf24" : "#94a3b8";
+  const simLabel = sim >= 85 ? "Excelente match" : sim >= 75 ? "Buen match" : s.hasMLData ? "Match débil" : "Sin datos ML";
+  const feat     = s.features;
+  const trendIcon = s.trend === "up" ? "📈" : s.trend === "down" ? "📉" : "";
+  const trendTxt  = s.trend === "up"   ? ` ${trendIcon} +${s.trendPct}% últ. 7d`
+                  : s.trend === "down" ? ` ${trendIcon} ${s.trendPct}% últ. 7d`
+                  : "";
+
+  body.innerHTML = `<div class="pairSuggestCard">
+    <div class="pairSuggestAvatar">👤</div>
+    <div class="pairSuggestName">${escapeHtml(s.nombre)}</div>
+    <div class="pairSuggestEsp">${escapeHtml(s.especialidad)}</div>
+    <div class="pairSuggestSimRow">
+      <span class="pairSuggestSimNum" style="color:${simColor};">${s.hasMLData ? sim + "%" : "—"}</span>
+      <span class="pairSuggestSimLabel" style="color:${simColor};">${simLabel}</span>
+    </div>
+    ${feat ? `<div class="pairSuggestFeats small muted">
+      ${feat.dailyRate} conv./día · pico ${feat.peakHour}:00h${feat.avgMs ? ` · ${feat.avgMs}min/conv.` : ""}${trendTxt}
+    </div>` : ""}
+  </div>`;
+
+  if (counter) counter.textContent = `${pairSuggestIdx_ + 1} de ${total}`;
+  if (btnNext) {
+    btnNext.style.display = "";
+    btnNext.textContent = isLast ? "Ver otro →" : "Ver otro →";
+  }
+  if (btnAcc) btnAcc.textContent = "🤝 Trabajar juntos";
+}
+
+// Se muestra cuando el servidor indica mode="new_car": no hay compañeros libres.
+function renderPairSuggestNewCar_() {
+  const body    = document.getElementById("pairSuggestBody");
+  const counter = document.getElementById("pairSuggestCounter");
+  const btnNext = document.getElementById("btnPairSuggestNext");
+  const btnAcc  = document.getElementById("btnPairSuggestAccept");
+  if (!body) return;
+
+  const esp   = String(CORE.state.currentProfile?.especialidad || "").toUpperCase();
+  const other = esp === "MOTOR" ? "TANQUE" : "MOTOR";
+
+  body.innerHTML = `<div class="pairSuggestCard pairSuggestSoloCard">
+    <div class="pairSuggestAvatar">🚗</div>
+    <div class="pairSuggestName">No hay ${other}s libres</div>
+    <div class="pairSuggestEsp">Todos están ocupados ahora</div>
+    <div class="pairSuggestSoloHint">
+      Empieza un <strong>carro nuevo sin ${other}</strong>. Si te unes a uno donde ya hay un ${other} trabajando, se registrará como omisión.
+    </div>
+  </div>`;
+
+  if (counter) counter.textContent = "";
+  if (btnNext) btnNext.style.display = "none";
+  if (btnAcc)  btnAcc.textContent = "📷 Ir a Mi OT";
+}
+
+// Se muestra cuando el técnico rechaza los 3 compañeros sugeridos.
+function renderPairSuggestSolo_() {
+  const body    = document.getElementById("pairSuggestBody");
+  const counter = document.getElementById("pairSuggestCounter");
+  const btnNext = document.getElementById("btnPairSuggestNext");
+  const btnAcc  = document.getElementById("btnPairSuggestAccept");
+  if (!body) return;
+
+  const esp   = String(CORE.state.currentProfile?.especialidad || "").toUpperCase();
+  const other = esp === "MOTOR" ? "TANQUE" : "MOTOR";
+
+  const titleEl = document.querySelector(".pairSuggestTitle");
+  if (titleEl) titleEl.textContent = "🚗 Trabajar solo";
+
+  body.innerHTML = `<div class="pairSuggestCard pairSuggestSoloCard">
+    <div class="pairSuggestAvatar">🔍</div>
+    <div class="pairSuggestName">Escanea tu VIN</div>
+    <div class="pairSuggestEsp">Elige un carro libre</div>
+    <div class="pairSuggestSoloHint">
+      Busca un VIN <strong>sin ${other} activo</strong>. Si te unes a uno con ${other} ya trabajando, se registrará como omisión de emparejamiento.
+    </div>
+  </div>`;
+
+  if (counter) counter.textContent = "";
+  if (btnNext) btnNext.style.display = "none";
+  if (btnAcc)  btnAcc.textContent = "📷 Ir a Mi OT";
+}
+
+function closePairSuggestModal_() {
+  const modal = document.getElementById("pairSuggestModal");
+  if (modal) { modal.classList.remove("show"); modal.style.display = "none"; }
+}
+
+function openPairSuggestModal_() {
+  buildPairSuggestModal_();
+  pairSuggestIdx_ = 0;
+
+  const modal   = document.getElementById("pairSuggestModal");
+  if (!modal) return;
+
+  const titleEl = modal.querySelector(".pairSuggestTitle");
+  const btnNext = modal.querySelector("#btnPairSuggestNext");
+
+  if (pairSuggestMode_ === "new_car" || pairSuggestQueue_.length === 0) {
+    // Sin compañeros libres → ir directo a "empieza un carro nuevo"
+    if (titleEl) titleEl.textContent = "🚗 Empieza un carro nuevo";
+    if (btnNext) btnNext.style.display = "none";
+    renderPairSuggestNewCar_();
+  } else {
+    if (titleEl) titleEl.textContent = "✨ Tu próximo compañero";
+    if (btnNext) btnNext.style.display = "";
+    renderPairSuggestCard_();
+  }
+
+  modal.style.display = "flex";
+  modal.classList.add("show");
+}
+
+async function checkAndShowPairSuggest_() {
+  const c = ctx_();
+  const hasActive = [...(c?.itemsByKey?.values() || [])].some(
+    it => ["TRABAJANDO", "PAUSADO"].includes(String(it.estado || "").toUpperCase())
+  );
+
+  // Solo mostrar en transición real: estaba trabajando → ahora libre
+  const shouldShow = pairSuggestLastHadOT_ === true && !hasActive;
+  pairSuggestLastHadOT_ = hasActive;
+  if (!shouldShow) return;
+
+  // No abrir si ya hay un modal visible (ej. el tech tardó mucho y se disparó dos veces)
+  if (document.getElementById("pairSuggestModal")?.classList.contains("show")) return;
+
+  const emailEl = document.getElementById("email");
+  const email   = String(emailEl?.value || "").trim().toLowerCase();
+  if (!email) return;
+
+  try {
+    const j = await getJSON(`/api/ml/suggest-next?email=${encodeURIComponent(email)}`);
+    if (!j?.ok) return;
+    pairSuggestQueue_ = j.suggestions || [];
+    pairSuggestMode_  = j.mode || (pairSuggestQueue_.length === 0 ? "new_car" : "pair");
+    openPairSuggestModal_();
+  } catch {}
 }
 
 async function checkVinReadyNotif_() {
@@ -352,10 +562,11 @@ async function loadTecRendimiento_() {
     if (!email) throw new Error("No hay sesión activa");
 
     const espR = String(CORE.state.currentProfile?.especialidad || "").toUpperCase();
-    const [jRend, jCfg, jEquipo] = await Promise.all([
+    const [jRend, jCfg, jEquipo, jOmis] = await Promise.all([
       getJSON(`/api/mis-finalizadas?email=${encodeURIComponent(email)}`),
       getJSON("/api/admin/config"),
       espR ? getJSON(`/api/tecnico/equipo-stats?especialidad=${encodeURIComponent(espR)}`) : Promise.resolve(null),
+      getJSON("/api/omisiones"),
     ]);
     if (!jRend?.ok) throw new Error(jRend?.error || "Error al cargar rendimiento");
 
@@ -381,6 +592,11 @@ async function loadTecRendimiento_() {
     const r = 44, cx = 54, cy = 54, circ = 2 * Math.PI * r;
     const fill  = circ * (pct / 100);
     const color = pct >= 100 ? "#10b981" : pct >= 60 ? "#f59e0b" : "#60a5fa";
+
+    // Omisiones de emparejamiento de este técnico
+    const myUserId    = CORE.state.currentProfile?.id || "";
+    const myOmisData  = jOmis?.omisiones?.find(o => o.userId === myUserId);
+    const myOmisTotal = myOmisData?.total || 0;
 
     // Fair team comparison: daily rate (conv / days worked) vs. active techs only
     const avgDailyRate  = jEquipo?.avgDailyRate  || 0;
@@ -489,6 +705,16 @@ async function loadTecRendimiento_() {
         </div>
         <div class="tecRendCompDiff ${compClass}">${compLabel}</div>
       </div>` : ""}
+
+      <!-- Omisiones de emparejamiento -->
+      <div class="tecRendOmisRow">
+        <div class="tecRendOmisIcon">🔗</div>
+        <div class="tecRendOmisBody">
+          <div class="tecRendOmisTitle">Omisiones de emparejamiento</div>
+          <div class="small muted">Veces que iniciaste en un VIN con el complementario ya activo</div>
+        </div>
+        <div class="tecRendOmisCnt ${myOmisTotal === 0 ? "tecRendOmisCntOk" : myOmisTotal <= 3 ? "tecRendOmisCntWarn" : "tecRendOmisCntBad"}">${myOmisTotal}</div>
+      </div>
 
       <!-- Histograma por hora -->
       <div class="tecHistoWrap">
@@ -979,6 +1205,12 @@ export function enter(mod) {
     colaBadgeInterval_ = setInterval(updateColaBadge_, 3 * 60 * 1000);
     checkVinReadyNotif_();
     vinReadyNotifInterval_ = setInterval(checkVinReadyNotif_, 2 * 60 * 1000);
+
+    // Pair suggest popup: check on enter + poll every 90s for OT-finish transition
+    pairSuggestLastHadOT_ = null;
+    buildPairSuggestModal_();
+    checkAndShowPairSuggest_();
+    pairCheckInterval_ = setInterval(checkAndShowPairSuggest_, 90 * 1000);
   }
 
   startLoopsFor_(mod, {
@@ -994,9 +1226,13 @@ export function exit(mod) {
   if (mod === "TECNICO") {
     clearInterval(colaBadgeInterval_);
     clearInterval(vinReadyNotifInterval_);
+    clearInterval(pairCheckInterval_);
     colaBadgeInterval_ = null;
     vinReadyNotifInterval_ = null;
+    pairCheckInterval_ = null;
     notifiedVins_.clear();
+    pairSuggestLastHadOT_ = null;
+    closePairSuggestModal_();
   }
   destroyRealtime_();
 }

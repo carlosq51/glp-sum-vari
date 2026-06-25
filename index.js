@@ -868,6 +868,12 @@ app.post("/api/evento", async (req, res) => {
       asignacion = Array.isArray(updateResult) ? updateResult[0] : updateResult;
     }
 
+    // 9b. Verificar omisión al hacer INICIO (fire-and-forget, no bloquea respuesta)
+    if (accion === "INICIO" && (rolTrabajo === "MOTOR" || rolTrabajo === "TANQUE")) {
+      const nombreTech = usuarios[0]?.nombre || email;
+      checkAndRecordOmision_(userId, nombreTech, rolTrabajo, workOrderId, vin).catch(() => {});
+    }
+
     // 10️⃣ Actualizar estado_general del work_order (MOTOR/TANQUE)
     // Solo FINALIZADO si AMBAS asignaciones (MOTOR y TANQUE) existen y están FINALIZADO
     if ((rolTrabajo === "MOTOR" || rolTrabajo === "TANQUE") && tipoOt === "CONVERSION") {
@@ -3559,7 +3565,89 @@ app.get("/api/ml/infer-vin-model", (req, res) => {
 // Algoritmo: distancia euclidiana ponderada en espacio de 5 features normalizados.
 // Features: tasa_diaria (40%), hora_pico (30%), tiempo_promedio (15%),
 //           dispersión_horaria (10%), consistencia_diaria (5%).
-const PAIRING_MODEL_PATH = "./pairing-model.json";
+const PAIRING_MODEL_PATH  = "./pairing-model.json";
+const OMISIONES_PATH      = "./omisiones.json";
+
+// Sugerencias pendientes por userId: qué vio el técnico en el popup.
+// { suggestedIds: string[], mode: "pair"|"new_car", ts: number }
+// Se guarda cuando suggest-next se llama; se consume en checkAndRecordOmision_.
+const pendingSuggestions_ = new Map();
+
+// ── Utilidad de omisiones ─────────────────────────────────────────────────────
+function readOmisiones_() {
+  try { return existsSync(OMISIONES_PATH) ? JSON.parse(readFileSync(OMISIONES_PATH, "utf8")) : {}; }
+  catch { return {}; }
+}
+function writeOmisiones_(data) {
+  writeFileSync(OMISIONES_PATH, JSON.stringify(data, null, 2));
+}
+
+// Registra omisión evaluando qué vio el técnico en el popup (pendingSuggestions_).
+// Reglas:
+//   mode="pair"    → omisión solo si el complementario del carro NO está en los IDs sugeridos.
+//   mode="new_car" → omisión si el carro ya tiene un complementario trabajando (le dijeron "nuevo carro").
+//   sin sugerencia → comportamiento anterior (complementario activo = omisión).
+async function checkAndRecordOmision_(userId, nombre, rolTrabajo, workOrderId, vin) {
+  try {
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const complemento  = rolTrabajo === "MOTOR" ? "TANQUE" : rolTrabajo === "TANQUE" ? "MOTOR" : null;
+    if (!complemento) return;
+
+    // ¿Hay un complementario ACTIVO en este VIN?
+    const rComp = await fetch(
+      `${SUPABASE_URL}/rest/v1/asignaciones?work_order_id=eq.${workOrderId}&rol_trabajo=eq.${complemento}&activo=eq.true&estado_actual=neq.FINALIZADO&select=id,user_id`,
+      { method: "GET", headers: supabaseHeaders_() }
+    );
+    const compRows = rComp.ok ? await rComp.json() : [];
+
+    // Sin complementario → nunca es omisión (independientemente de la sugerencia)
+    if (!compRows.length) {
+      pendingSuggestions_.delete(userId);
+      return;
+    }
+
+    const complementUserId = compRows[0]?.user_id;
+    const suggestion = pendingSuggestions_.get(userId);
+    const TWO_HOURS  = 2 * 60 * 60 * 1000;
+    const isRecent   = suggestion && (Date.now() - suggestion.ts) < TWO_HOURS;
+
+    let isOmision = false;
+    let modeUsed  = "sin_sugerencia";
+
+    if (isRecent) {
+      modeUsed = suggestion.mode;
+      if (suggestion.mode === "new_car") {
+        // Le dijeron "empieza un nuevo carro" → se unió a uno con complementario = omisión
+        isOmision = true;
+      } else {
+        // Le mostraron opciones → omisión solo si el complementario no era uno de los sugeridos
+        isOmision = !suggestion.suggestedIds.includes(complementUserId);
+      }
+    } else {
+      // Sin sugerencia válida: comportamiento original
+      isOmision = true;
+    }
+
+    // Siempre limpiar la sugerencia tras consumirla
+    pendingSuggestions_.delete(userId);
+
+    if (!isOmision) {
+      console.log(`[OMISION] ${nombre} (${rolTrabajo}) → VIN ${vin} con ${complemento} sugerido → sin omisión`);
+      return;
+    }
+
+    const data = readOmisiones_();
+    if (!data[userId]) data[userId] = { nombre, total: 0, history: [] };
+    data[userId].nombre = nombre;
+    data[userId].total  = (data[userId].total || 0) + 1;
+    data[userId].history.push({ vin, ts: new Date().toISOString(), mode: modeUsed });
+    if (data[userId].history.length > 50) data[userId].history = data[userId].history.slice(-50);
+    writeOmisiones_(data);
+    console.log(`[OMISION] ${nombre} (${rolTrabajo}) → VIN ${vin} con ${complemento} activo → omisión #${data[userId].total} (modo: ${modeUsed})`);
+  } catch (err) {
+    console.warn("[OMISION] Error al registrar:", err.message);
+  }
+}
 
 app.post("/api/ml/train-pairing", async (req, res) => {
   try {
@@ -3585,21 +3673,18 @@ app.post("/api/ml/train-pairing", async (req, res) => {
       byUser[row.user_id].push(row);
     }
 
+    // ── Feature extraction (reutilizable para base y reciente) ──────────────
     function computeFeatures(rows) {
       if (rows.length < 3) return null;
-      // Daily rate
       const byDay = {};
       rows.forEach(r => { const d = r.updated_at?.split("T")[0]; if (d) byDay[d] = (byDay[d] || 0) + 1; });
       const dayCounts = Object.values(byDay);
       if (!dayCounts.length) return null;
       const dailyRate = dayCounts.reduce((s, c) => s + c, 0) / dayCounts.length;
-      // Day-to-day consistency (coefficient of variation; lower = more consistent)
       const dayStd = Math.sqrt(dayCounts.reduce((s, c) => s + (c - dailyRate) ** 2, 0) / dayCounts.length);
       const consistency = dailyRate > 0 ? dayStd / dailyRate : 1;
-      // Avg conversion time (cap at 8h to exclude anomalies)
       const times = rows.map(r => Number(r.tiempo_trab_ms)).filter(t => t > 0 && t < 28800000);
       const avgMs = times.length ? times.reduce((s, t) => s + t, 0) / times.length : 0;
-      // Peak hour and schedule spread
       const hours = rows.map(r => r.updated_at ? new Date(r.updated_at).getHours() : -1).filter(h => h >= 0);
       const byHour = new Array(24).fill(0);
       hours.forEach(h => byHour[h]++);
@@ -3609,15 +3694,57 @@ app.post("/api/ml/train-pairing", async (req, res) => {
       return { dailyRate, consistency, avgMs, peakHour, hourStd, totalRows: rows.length, workingDays: dayCounts.length };
     }
 
+    // ── Recency blending: mezcla modelo base (90d) con últimos 7 días ────────
+    // Idea: los últimos 7 días tienen mayor peso (α=0.65) porque reflejan
+    // la forma actual del técnico. El modelo base (0.35) aporta estabilidad
+    // ante semanas atípicas. Si no hay datos recientes suficientes, usa base.
+    const BLEND_ALPHA   = 0.65;   // peso de los últimos 7 días
+    const MIN_RECENT    = 5;      // mínimo de asignaciones recientes para blend
+    const TREND_UP_THR  = 1.10;   // +10% respecto a base → tendencia ascendente
+    const TREND_DN_THR  = 0.90;   // −10% → tendencia descendente
+    const since7ms      = Date.now() - 7 * 86400000;
+
     const techFeatures = [];
     for (const user of users) {
-      const feats = computeFeatures(byUser[user.id] || []);
-      if (!feats) continue;
-      techFeatures.push({ id: user.id, nombre: user.nombre, email: user.email, especialidad: user.especialidad, features: feats });
+      const allRows    = byUser[user.id] || [];
+      const baseFeats  = computeFeatures(allRows);
+      if (!baseFeats) continue;
+
+      const recentRows  = allRows.filter(r => new Date(r.updated_at).getTime() >= since7ms);
+      const recentFeats = recentRows.length >= MIN_RECENT ? computeFeatures(recentRows) : null;
+
+      // Blend: si hay datos recientes suficientes, combinarlos con el histórico
+      const features = recentFeats
+        ? Object.fromEntries(
+            ["dailyRate", "consistency", "avgMs", "peakHour", "hourStd"].map(k => [
+              k, BLEND_ALPHA * (recentFeats[k] ?? baseFeats[k]) + (1 - BLEND_ALPHA) * baseFeats[k],
+            ])
+          )
+        : { ...baseFeats };
+      features.workingDays  = baseFeats.workingDays;
+      features.totalRows    = baseFeats.totalRows;
+      features.recentRows   = recentRows.length;
+
+      // Tendencia: compara tasa diaria reciente vs histórica
+      const trend = recentFeats
+        ? (recentFeats.dailyRate > baseFeats.dailyRate * TREND_UP_THR ? "up"
+          : recentFeats.dailyRate < baseFeats.dailyRate * TREND_DN_THR ? "down"
+          : "stable")
+        : "unknown";
+
+      const trendPct = recentFeats
+        ? Math.round(((recentFeats.dailyRate - baseFeats.dailyRate) / Math.max(baseFeats.dailyRate, 0.1)) * 100)
+        : 0;
+
+      techFeatures.push({
+        id: user.id, nombre: user.nombre, email: user.email, especialidad: user.especialidad,
+        features, trend, trendPct,
+        baseFeatures: baseFeats, recentFeatures: recentFeats,
+      });
     }
     if (!techFeatures.length) return res.json({ ok: false, error: "Sin datos suficientes para entrenar" });
 
-    // Normalize each feature to [0,1] across all techs
+    // Normalize blended features to [0,1] across all techs
     const KEYS = ["dailyRate", "avgMs", "peakHour", "hourStd", "consistency"];
     const maxes = {};
     for (const k of KEYS) maxes[k] = Math.max(...techFeatures.map(t => t.features[k] || 0), 1e-9);
@@ -3628,16 +3755,28 @@ app.post("/api/ml/train-pairing", async (req, res) => {
 
     writeFileSync(PAIRING_MODEL_PATH, JSON.stringify({
       trained_at: new Date().toISOString(),
+      blend_alpha: BLEND_ALPHA,
+      recent_days: 7,
       total_techs: techFeatures.length,
       maxes,
-      techs: techFeatures.map(t => ({ user_id: t.id, nombre: t.nombre, email: t.email, especialidad: t.especialidad, features: t.features, normalized: t.normalized })),
+      techs: techFeatures.map(t => ({
+        user_id: t.id, nombre: t.nombre, email: t.email, especialidad: t.especialidad,
+        features: t.features, normalized: t.normalized,
+        trend: t.trend, trendPct: t.trendPct,
+        baseFeatures: t.baseFeatures, recentFeatures: t.recentFeatures,
+      })),
     }));
+
+    const trends = { up: 0, down: 0, stable: 0, unknown: 0 };
+    for (const t of techFeatures) trends[t.trend] = (trends[t.trend] || 0) + 1;
 
     return res.json({
       ok: true,
       total_techs: techFeatures.length,
-      motor: techFeatures.filter(t => t.especialidad === "MOTOR").length,
+      motor:  techFeatures.filter(t => t.especialidad === "MOTOR").length,
       tanque: techFeatures.filter(t => t.especialidad === "TANQUE").length,
+      blend_alpha: BLEND_ALPHA,
+      trends,
     });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e.message) });
@@ -3715,6 +3854,163 @@ app.get("/api/ml/suggest-pair", (req, res) => {
     }
 
     return res.json({ ok: true, suggestion, ranked, myFeatures: me.features });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e.message) });
+  }
+});
+
+// ── GET /api/ml/suggest-next?email=xxx ───────────────────────────────────────
+// Lógica de sugerencia:
+//   1. Encuentra complementarios YA TRABAJANDO en un carro que AÚN NO TIENE su dupla.
+//   2. Calcula el top-3 del ML para el técnico solicitante (todos los complementarios).
+//   3. Intersección: solo sugiere a quien esté trabajando solo Y esté en el top-3 ML.
+//   4. Si la intersección es vacía → mode="new_car" (nadie compatible está solo).
+//   Sin modelo ML: muestra hasta 3 trabajando-solos sin filtro de similitud (fallback).
+app.get("/api/ml/suggest-next", async (req, res) => {
+  try {
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const email = String(req.query.email || "").trim().toLowerCase();
+    if (!email) return res.json({ ok: false, error: "Email requerido" });
+
+    // Cargar modelo (puede no existir)
+    let model = null;
+    let me    = null;
+    if (existsSync(PAIRING_MODEL_PATH)) {
+      try { model = JSON.parse(readFileSync(PAIRING_MODEL_PATH, "utf8")); } catch {}
+      me = model?.techs?.find(t => t.email?.toLowerCase() === email);
+    }
+
+    // Obtener userId y especialidad del técnico solicitante
+    const rUser = await fetch(
+      `${SUPABASE_URL}/rest/v1/usuarios?email=eq.${encodeURIComponent(email)}&activo=eq.true&select=id,nombre,especialidad`,
+      { method: "GET", headers: supabaseHeaders_() }
+    );
+    const userRows = rUser.ok ? await rUser.json() : [];
+    const userRow  = userRows[0];
+    if (!userRow) return res.json({ ok: false, error: "Usuario no encontrado" });
+
+    const myUserId = userRow.id;
+    const myEsp    = (userRow.especialidad || me?.especialidad || "").toUpperCase();
+    const pairEsp  = myEsp === "MOTOR" ? "TANQUE" : myEsp === "TANQUE" ? "MOTOR" : null;
+    if (!pairEsp) return res.json({ ok: true, suggestions: [], mode: "new_car" });
+
+    // ── Paso 1: complementarios trabajando en carros sin su dupla ────────────
+    // pairActive: asignaciones activas del complementario → [{user_id, work_order_id}]
+    // myActive:   asignaciones activas de mi especialidad → sus work_order_ids ya ocupados
+    const [rPairActive, rMyActive] = await Promise.all([
+      fetch(`${SUPABASE_URL}/rest/v1/asignaciones?rol_trabajo=eq.${pairEsp}&activo=eq.true&estado_actual=neq.FINALIZADO&select=user_id,work_order_id`,
+        { method: "GET", headers: supabaseHeaders_() }),
+      fetch(`${SUPABASE_URL}/rest/v1/asignaciones?rol_trabajo=eq.${myEsp}&activo=eq.true&estado_actual=neq.FINALIZADO&select=work_order_id`,
+        { method: "GET", headers: supabaseHeaders_() }),
+    ]);
+    const pairActiveRows = rPairActive.ok ? await rPairActive.json() : [];
+    const myActiveWoIds  = new Set((rMyActive.ok ? await rMyActive.json() : []).map(a => a.work_order_id));
+
+    // Complementarios cuyo work_order NO tiene aún mi especialidad asignada
+    const soloRows   = pairActiveRows.filter(a => !myActiveWoIds.has(a.work_order_id));
+    // Deduplicar por user_id (un tech puede tener una sola asignación activa en la práctica)
+    const soloByUser = {};
+    soloRows.forEach(a => { soloByUser[a.user_id] = a.work_order_id; });
+    const soloUserIds = new Set(Object.keys(soloByUser));
+
+    // ── Paso 2: top-3 del ML para mi especialidad vs. la complementaria ───────
+    const W = { dailyRate: 0.40, peakHour: 0.30, avgMs: 0.15, hourStd: 0.10, consistency: 0.05 };
+    const calcDist = (a, b) => Math.sqrt(
+      Object.entries(W).reduce((s, [k, w]) => s + w * ((a.normalized[k]||0) - (b.normalized[k]||0)) ** 2, 0)
+    );
+
+    // mlTop3: [{userId, sim, ml}] — top-3 de similitud con el solicitante (de todos los complementarios)
+    let mlTop3 = [];
+    if (me && model) {
+      const mlCandidates = model.techs?.filter(t => t.especialidad?.toUpperCase() === pairEsp) || [];
+      mlTop3 = mlCandidates
+        .filter(t => t.user_id)
+        .map(t => ({ userId: t.user_id, sim: Math.round((1 - calcDist(me, t)) * 100), ml: t }))
+        .sort((a, b) => b.sim - a.sim)
+        .slice(0, 3);
+    }
+
+    // ── Paso 3: intersección — solo sugiere si está en el top-3 Y trabajando solo ─
+    let suggestions = [];
+
+    if (mlTop3.length > 0) {
+      // Obtener datos de usuario de los candidatos para el nombre
+      const candidateIds = mlTop3.map(c => c.userId);
+      const rCandUsers = await fetch(
+        `${SUPABASE_URL}/rest/v1/usuarios?id=in.(${candidateIds.join(",")})&select=id,nombre`,
+        { method: "GET", headers: supabaseHeaders_() }
+      );
+      const candUserMap = {};
+      (rCandUsers.ok ? await rCandUsers.json() : []).forEach(u => { candUserMap[u.id] = u.nombre; });
+
+      for (const { userId, sim, ml } of mlTop3) {
+        if (!soloUserIds.has(userId)) continue; // no está trabajando solo → no sugerir
+        const f = ml?.features;
+        suggestions.push({
+          id:           userId,
+          nombre:       candUserMap[userId] || ml?.nombre || "",
+          especialidad: pairEsp,
+          similarity:   sim,
+          quality:      sim >= 85 ? "great" : sim >= 75 ? "good" : "ok",
+          trend:        ml?.trend    || "unknown",
+          trendPct:     ml?.trendPct || 0,
+          features: f ? {
+            dailyRate:   Math.round((f.dailyRate || 0) * 10) / 10,
+            peakHour:    f.peakHour  || 0,
+            avgMs:       Math.round((f.avgMs || 0) / 60000),
+            workingDays: f.workingDays || 0,
+          } : null,
+          hasMLData: true,
+        });
+      }
+    } else if (soloUserIds.size > 0) {
+      // Sin modelo ML: mostrar trabajando-solos sin filtro de similitud (fallback)
+      const rSoloUsers = await fetch(
+        `${SUPABASE_URL}/rest/v1/usuarios?id=in.(${[...soloUserIds].join(",")})&select=id,nombre`,
+        { method: "GET", headers: supabaseHeaders_() }
+      );
+      (rSoloUsers.ok ? await rSoloUsers.json() : []).slice(0, 3).forEach(u => {
+        suggestions.push({
+          id: u.id, nombre: u.nombre || "", especialidad: pairEsp,
+          similarity: 50, quality: "ok", trend: "unknown", trendPct: 0,
+          features: null, hasMLData: false,
+        });
+      });
+    }
+
+    const mode         = suggestions.length === 0 ? "new_car" : "pair";
+    const suggestedIds = suggestions.map(s => s.id).filter(Boolean);
+
+    // Guardar sugerencia para validación de omisión cuando haga INICIO
+    pendingSuggestions_.set(myUserId, { suggestedIds, mode, ts: Date.now() });
+
+    return res.json({ ok: true, suggestions, pairEsp, totalSolo: soloUserIds.size, mode });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e.message) });
+  }
+});
+
+// ── GET /api/omisiones ───────────────────────────────────────────────────────
+// Devuelve el conteo de omisiones por técnico (+ historial reciente).
+app.get("/api/omisiones", (req, res) => {
+  try {
+    const data = readOmisiones_();
+    const list = Object.entries(data)
+      .map(([userId, d]) => ({ userId, nombre: d.nombre, total: d.total, history: (d.history || []).slice(-10) }))
+      .sort((a, b) => b.total - a.total);
+    res.json({ ok: true, omisiones: list });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e.message) });
+  }
+});
+
+// DELETE /api/omisiones/:userId  — resetea el contador de un técnico (uso admin)
+app.delete("/api/omisiones/:userId", (req, res) => {
+  try {
+    const data = readOmisiones_();
+    delete data[req.params.userId];
+    writeOmisiones_(data);
+    res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e.message) });
   }

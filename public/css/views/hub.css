@@ -155,6 +155,43 @@
 .tecPairSim             { text-align: center; flex-shrink: 0; }
 .tecPairSimNum          { font-size: 1.4rem; font-weight: var(--fw-black); color: #a78bfa; line-height: 1; }
 
+/* ─── Pair suggest popup (modal) ─── */
+.pairSuggestBox         { max-width: 340px; width: 92vw; padding: 0; overflow: hidden; }
+.pairSuggestHeader      { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px 12px; border-bottom: 1px solid var(--surfaceLine); }
+.pairSuggestTitle       { font-weight: var(--fw-black); font-size: var(--fs-base); }
+.pairSuggestHeader button { background: none; border: none; color: var(--muted); font-size: 18px; cursor: pointer; padding: 4px 6px; border-radius: 6px; }
+.pairSuggestHeader button:hover { background: var(--glass); color: var(--fg); }
+.pairSuggestBody        { padding: 20px 18px; min-height: 160px; }
+.pairSuggestCard        { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.pairSuggestAvatar      { width: 56px; height: 56px; border-radius: 50%; background: linear-gradient(135deg, rgba(167,139,250,.25), rgba(96,165,250,.20)); display: flex; align-items: center; justify-content: center; font-size: 28px; margin-bottom: 4px; }
+.pairSuggestName        { font-size: 1.1rem; font-weight: var(--fw-black); text-align: center; }
+.pairSuggestEsp         { font-size: var(--fs-xs); color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.pairSuggestSimRow      { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.pairSuggestSimNum      { font-size: 1.6rem; font-weight: var(--fw-black); line-height: 1; }
+.pairSuggestSimLabel    { font-size: var(--fs-sm); font-weight: var(--fw-bold); }
+.pairSuggestFeats       { margin-top: 6px; text-align: center; line-height: 1.5; }
+.pairSuggestEmpty       { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; padding: 8px 0; }
+.pairSuggestEmoji       { font-size: 2.2rem; }
+.pairSuggestEmptyTitle  { font-weight: var(--fw-black); font-size: var(--fs-base); }
+.pairSuggestActions     { padding: 12px 18px 18px; border-top: 1px solid var(--surfaceLine); display: flex; flex-direction: column; gap: 8px; }
+.pairSuggestBtnAccept   { width: 100%; padding: 11px; font-size: var(--fs-base); font-weight: var(--fw-bold); background: linear-gradient(135deg, #7c3aed, #4f46e5) !important; color: #fff !important; border: none; border-radius: var(--radius); cursor: pointer; }
+.pairSuggestBtnAccept:hover { opacity: .9; }
+.pairSuggestNavRow      { display: flex; align-items: center; justify-content: space-between; min-height: 32px; }
+.pairSuggestBtnNext     { background: none; border: none; color: var(--muted); font-size: var(--fs-sm); cursor: pointer; padding: 4px 0; text-decoration: underline; text-underline-offset: 2px; }
+.pairSuggestBtnNext:hover { color: var(--fg); }
+.pairSuggestSoloVin     { font-family: monospace; font-size: 1.1rem; font-weight: var(--fw-black); letter-spacing: .05em; background: var(--glass); border: 1px solid var(--surfaceLine); border-radius: 8px; padding: 6px 16px; margin-top: 6px; }
+.pairSuggestSoloHint    { font-size: var(--fs-sm); color: var(--muted); text-align: center; margin-top: 10px; line-height: 1.5; padding: 0 8px; }
+
+/* ─── Rendimiento: omisiones de emparejamiento ─── */
+.tecRendOmisRow         { display: flex; align-items: center; gap: 12px; background: var(--glass); border: 1px solid var(--surfaceLine); border-radius: var(--radius); padding: 10px 14px; margin-bottom: 12px; }
+.tecRendOmisIcon        { font-size: 20px; flex-shrink: 0; }
+.tecRendOmisBody        { flex: 1; min-width: 0; }
+.tecRendOmisTitle       { font-size: var(--fs-sm); font-weight: var(--fw-bold); }
+.tecRendOmisCnt         { font-size: 1.5rem; font-weight: var(--fw-black); flex-shrink: 0; min-width: 32px; text-align: center; }
+.tecRendOmisCntOk       { color: #4ade80; }
+.tecRendOmisCntWarn     { color: #fbbf24; }
+.tecRendOmisCntBad      { color: #f87171; }
+
 /* ─── Rendimiento: comparativa de equipo ─── */
 .tecRendComp        { display: flex; align-items: center; gap: 10px; background: var(--glass); border: 1px solid var(--surfaceLine); border-radius: var(--radius); padding: 10px 14px; margin-bottom: 12px; flex-wrap: wrap; }
 .tecRendCompIcon    { font-size: 20px; flex-shrink: 0; }
