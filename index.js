@@ -2793,6 +2793,98 @@ app.get("/api/admin/usuarios-activos", async (req, res) => {
   }
 });
 
+// ─── CLASIFICADOR DE VINs POR MODELO ─────────────────────────────────────────
+// Tabla de prefijos (8 chars) → nombre canónico.
+// JAC V-series comparte prefijo → se extrae V3/V5/V7 del modelo actual.
+const VIN_BRAND_MAP_ = {
+  "HJRPBGFA": "Jetour MEC",   // X70 transmisión manual
+  "HJRPBGFB": "Jetour AUT",   // X70 automático
+  "LVTDB11B": "Jetour MEC",   // X70FL 6MT
+  "LVTDB21B": "Jetour AUT",   // X70FL 6DCT
+  "LSCAB33E": "KYC X5 DC",    // JAC X5 Doble Cabina
+  "LSCABN3E": "KYC X5",       // JAC X5 / T3 (cabina simple / cargo)
+  "9BWBL6DF": "VW Tera",      // VW Tarek ensamblado en Brasil
+  "9BWAL5BZ": "VW Polo",      // VW Polo Track Brasil
+  "9BWAH5BZ": "VW Polo",      // VW Polo (otra variante)
+  "9BWJL45U": "VW Saveiro",   // VW Saveiro
+  "VSSZZZKJ": "SEAT",         // SEAT (modelo por confirmar)
+};
+
+function classifyVin_(vin, modeloActual) {
+  if (!vin || vin.length < 8) return modeloActual || "";
+  const pref = vin.substring(0, 8).toUpperCase();
+
+  // JAC V-series: V3, V5, V7 comparten el mismo prefijo → leer del modelo actual
+  if (pref === "LS4ASL2E") {
+    const mu = (modeloActual || "").toUpperCase();
+    if (mu.includes("V7")) return "KYC V7";
+    if (mu.includes("V5")) return "KYC V5";
+    if (mu.includes("V3")) return "KYC V3";
+    return "KYC V-series"; // sin info suficiente para distinguir
+  }
+
+  return VIN_BRAND_MAP_[pref] || modeloActual || "";
+}
+
+// POST /api/admin/normalize-modelos
+// Migración batch: reclasifica todos los VINs con nombre canónico.
+// Devuelve reporte de cuántos cambiaron por modelo.
+app.post("/api/admin/normalize-modelos", async (req, res) => {
+  try {
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const hdrs = supabaseHeaders_();
+
+    // Leer todos los VINs paginado
+    let allVins = [];
+    let offset  = 0;
+    const LIMIT = 500;
+    while (true) {
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/vins?select=vin,modelo&limit=${LIMIT}&offset=${offset}`,
+        { method: "GET", headers: hdrs }
+      );
+      if (!r.ok) throw new Error(`Supabase read: ${r.status}`);
+      const page = await r.json();
+      allVins = allVins.concat(page);
+      if (page.length < LIMIT) break;
+      offset += LIMIT;
+    }
+
+    // Clasificar y agrupar cambios
+    const cambios   = [];   // {vin, antes, despues}
+    const reporte   = {};   // canonico -> count
+    const sinClasif = [];   // VINs que quedaron sin clasificar
+
+    for (const row of allVins) {
+      const canonico = classifyVin_(row.vin, row.modelo);
+      if (canonico === (row.modelo || "")) continue;  // sin cambio
+      cambios.push({ vin: row.vin, antes: row.modelo || "", despues: canonico });
+      reporte[canonico] = (reporte[canonico] || 0) + 1;
+      if (!canonico || canonico === (row.modelo || "")) sinClasif.push(row.vin);
+    }
+
+    // Aplicar en lotes de 100 via upsert
+    const BATCH = 100;
+    let actualizados = 0;
+    for (let i = 0; i < cambios.length; i += BATCH) {
+      const lote = cambios.slice(i, i + BATCH).map(c => ({ vin: c.vin, modelo: c.despues }));
+      const rUp = await fetch(`${SUPABASE_URL}/rest/v1/vins`, {
+        method: "POST",
+        headers: { ...hdrs, "Prefer": "resolution=merge-duplicates,return=minimal" },
+        body: JSON.stringify(lote),
+      });
+      if (!rUp.ok) throw new Error(`Supabase upsert: ${rUp.status} ${await rUp.text()}`);
+      actualizados += lote.length;
+    }
+
+    console.log(`[NORMALIZE] ${actualizados} VINs reclasificados de ${allVins.length} totales.`);
+    return res.json({ ok: true, total: allVins.length, actualizados, reporte, cambios: cambios.slice(0, 50) });
+  } catch (e) {
+    console.error("[NORMALIZE]", e.message);
+    res.status(500).json({ ok: false, error: String(e.message) });
+  }
+});
+
 // ─── MOVILIZADOR STATUS ───────────────────────────────────────────────
 // GET /api/movilizador/status
 // Devuelve las 3 listas del flujo movilizador + fecha_corte activa
