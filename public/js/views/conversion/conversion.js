@@ -314,6 +314,28 @@ function closePairSuggestModal_() {
   if (modal) { modal.classList.remove("show"); modal.style.display = "none"; }
 }
 
+function showPairSuggestLoading_() {
+  buildPairSuggestModal_();
+  const modal   = document.getElementById("pairSuggestModal");
+  if (!modal) return;
+  const titleEl = modal.querySelector(".pairSuggestTitle");
+  const btnNext = modal.querySelector("#btnPairSuggestNext");
+  const btnAcc  = modal.querySelector("#btnPairSuggestAccept");
+  const counter = modal.querySelector("#pairSuggestCounter");
+  if (titleEl)  titleEl.textContent = "🔍 Buscando compañero...";
+  if (btnNext)  btnNext.style.display = "none";
+  if (btnAcc)   btnAcc.style.display  = "none";
+  if (counter)  counter.textContent   = "";
+  const body = modal.querySelector("#pairSuggestBody");
+  if (body) body.innerHTML = `
+    <div class="pairSuggestLoading">
+      <div class="pairSuggestSpinner"></div>
+      <div class="pairSuggestLoadingText">Analizando disponibilidad y afinidad...</div>
+    </div>`;
+  modal.style.display = "flex";
+  modal.classList.add("show");
+}
+
 function openPairSuggestModal_() {
   buildPairSuggestModal_();
   pairSuggestIdx_ = 0;
@@ -323,9 +345,11 @@ function openPairSuggestModal_() {
 
   const titleEl = modal.querySelector(".pairSuggestTitle");
   const btnNext = modal.querySelector("#btnPairSuggestNext");
+  const btnAcc  = modal.querySelector("#btnPairSuggestAccept");
+
+  if (btnAcc) btnAcc.style.display = "";
 
   if (pairSuggestMode_ === "new_car" || pairSuggestQueue_.length === 0) {
-    // Sin compañeros libres → ir directo a "empieza un carro nuevo"
     if (titleEl) titleEl.textContent = "🚗 Empieza un carro nuevo";
     if (btnNext) btnNext.style.display = "none";
     renderPairSuggestNewCar_();
@@ -348,7 +372,7 @@ async function checkAndShowPairSuggest_() {
   // Si ya tiene trabajo activo → cerrar popup y salir
   if (hasActive) { closePairSuggestModal_(); return; }
 
-  // Sin OT activa → mostrar siempre (al abrir la vista, al volver, etc.)
+  // Sin OT activa → mostrar siempre.
   // Guard: si el modal ya está visible no re-disparar fetch
   if (document.getElementById("pairSuggestModal")?.classList.contains("show")) return;
 
@@ -356,13 +380,16 @@ async function checkAndShowPairSuggest_() {
   const email   = String(emailEl?.value || "").trim().toLowerCase();
   if (!email) return;
 
+  // Mostrar loading inmediatamente — no hay retardo visible
+  showPairSuggestLoading_();
+
   try {
     const j = await getJSON(`/api/ml/suggest-next?email=${encodeURIComponent(email)}`);
-    if (!j?.ok) return;
+    if (!j?.ok) { closePairSuggestModal_(); return; }
     pairSuggestQueue_ = j.suggestions || [];
     pairSuggestMode_  = j.mode || (pairSuggestQueue_.length === 0 ? "new_car" : "pair");
     openPairSuggestModal_();
-  } catch {}
+  } catch { closePairSuggestModal_(); }
 }
 
 async function checkVinReadyNotif_() {
