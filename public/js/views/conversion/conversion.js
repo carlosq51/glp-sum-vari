@@ -230,10 +230,15 @@ function renderPairSuggestCard_() {
                   : s.trend === "down" ? ` ${trendIcon} ${s.trendPct}% últ. 7d`
                   : "";
 
+  const modeloBadge = s.modelo
+    ? `<div class="pairSuggestModelo">${escapeHtml(s.modelo)}</div>`
+    : "";
+
   body.innerHTML = `<div class="pairSuggestCard">
     <div class="pairSuggestAvatar">👤</div>
     <div class="pairSuggestName">${escapeHtml(s.nombre)}</div>
     <div class="pairSuggestEsp">${escapeHtml(s.especialidad)}</div>
+    ${modeloBadge}
     <div class="pairSuggestSimRow">
       <span class="pairSuggestSimNum" style="color:${simColor};">${s.hasMLData ? sim + "%" : "—"}</span>
       <span class="pairSuggestSimLabel" style="color:${simColor};">${simLabel}</span>
@@ -340,12 +345,11 @@ async function checkAndShowPairSuggest_() {
     it => ["TRABAJANDO", "PAUSADO"].includes(String(it.estado || "").toUpperCase())
   );
 
-  // Solo mostrar en transición real: estaba trabajando → ahora libre
-  const shouldShow = pairSuggestLastHadOT_ === true && !hasActive;
-  pairSuggestLastHadOT_ = hasActive;
-  if (!shouldShow) return;
+  // Si ya tiene trabajo activo → cerrar popup y salir
+  if (hasActive) { closePairSuggestModal_(); return; }
 
-  // No abrir si ya hay un modal visible (ej. el tech tardó mucho y se disparó dos veces)
+  // Sin OT activa → mostrar siempre (al abrir la vista, al volver, etc.)
+  // Guard: si el modal ya está visible no re-disparar fetch
   if (document.getElementById("pairSuggestModal")?.classList.contains("show")) return;
 
   const emailEl = document.getElementById("email");

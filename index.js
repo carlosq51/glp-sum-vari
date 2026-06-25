@@ -3665,38 +3665,26 @@ const OMISIONES_PATH      = "./omisiones.json";
 // Se guarda cuando suggest-next se llama; se consume en checkAndRecordOmision_.
 const pendingSuggestions_ = new Map();
 
-// ── Utilidad de omisiones ─────────────────────────────────────────────────────
-function readOmisiones_() {
-  try { return existsSync(OMISIONES_PATH) ? JSON.parse(readFileSync(OMISIONES_PATH, "utf8")) : {}; }
-  catch { return {}; }
-}
-function writeOmisiones_(data) {
-  writeFileSync(OMISIONES_PATH, JSON.stringify(data, null, 2));
-}
-
-// Registra omisión evaluando qué vio el técnico en el popup (pendingSuggestions_).
+// Registra omisión en Supabase (tabla pairing_omisiones).
 // Reglas:
 //   mode="pair"    → omisión solo si el complementario del carro NO está en los IDs sugeridos.
-//   mode="new_car" → omisión si el carro ya tiene un complementario trabajando (le dijeron "nuevo carro").
-//   sin sugerencia → comportamiento anterior (complementario activo = omisión).
+//   mode="new_car" → omisión si el carro ya tiene un complementario trabajando.
+//   sin sugerencia → complementario activo = omisión directa.
 async function checkAndRecordOmision_(userId, nombre, rolTrabajo, workOrderId, vin) {
   try {
     const SUPABASE_URL = process.env.SUPABASE_URL;
+    const hdrs         = supabaseHeaders_();
     const complemento  = rolTrabajo === "MOTOR" ? "TANQUE" : rolTrabajo === "TANQUE" ? "MOTOR" : null;
     if (!complemento) return;
 
-    // ¿Hay un complementario ACTIVO en este VIN?
+    // ¿Hay un complementario ACTIVO en este work_order?
     const rComp = await fetch(
       `${SUPABASE_URL}/rest/v1/asignaciones?work_order_id=eq.${workOrderId}&rol_trabajo=eq.${complemento}&activo=eq.true&estado_actual=neq.FINALIZADO&select=id,user_id`,
-      { method: "GET", headers: supabaseHeaders_() }
+      { method: "GET", headers: hdrs }
     );
     const compRows = rComp.ok ? await rComp.json() : [];
 
-    // Sin complementario → nunca es omisión (independientemente de la sugerencia)
-    if (!compRows.length) {
-      pendingSuggestions_.delete(userId);
-      return;
-    }
+    if (!compRows.length) { pendingSuggestions_.delete(userId); return; }
 
     const complementUserId = compRows[0]?.user_id;
     const suggestion = pendingSuggestions_.get(userId);
@@ -3708,34 +3696,45 @@ async function checkAndRecordOmision_(userId, nombre, rolTrabajo, workOrderId, v
 
     if (isRecent) {
       modeUsed = suggestion.mode;
-      if (suggestion.mode === "new_car") {
-        // Le dijeron "empieza un nuevo carro" → se unió a uno con complementario = omisión
-        isOmision = true;
-      } else {
-        // Le mostraron opciones → omisión solo si el complementario no era uno de los sugeridos
-        isOmision = !suggestion.suggestedIds.includes(complementUserId);
-      }
+      isOmision = suggestion.mode === "new_car"
+        ? true
+        : !suggestion.suggestedIds.includes(complementUserId);
     } else {
-      // Sin sugerencia válida: comportamiento original
       isOmision = true;
     }
 
-    // Siempre limpiar la sugerencia tras consumirla
     pendingSuggestions_.delete(userId);
-
     if (!isOmision) {
-      console.log(`[OMISION] ${nombre} (${rolTrabajo}) → VIN ${vin} con ${complemento} sugerido → sin omisión`);
+      console.log(`[OMISION] ${nombre} ok — complementario sugerido (modo: ${modeUsed})`);
       return;
     }
 
-    const data = readOmisiones_();
-    if (!data[userId]) data[userId] = { nombre, total: 0, history: [] };
-    data[userId].nombre = nombre;
-    data[userId].total  = (data[userId].total || 0) + 1;
-    data[userId].history.push({ vin, ts: new Date().toISOString(), mode: modeUsed });
-    if (data[userId].history.length > 50) data[userId].history = data[userId].history.slice(-50);
-    writeOmisiones_(data);
-    console.log(`[OMISION] ${nombre} (${rolTrabajo}) → VIN ${vin} con ${complemento} activo → omisión #${data[userId].total} (modo: ${modeUsed})`);
+    // Obtener modelo del VIN para enriquecer el registro
+    let modelo = null;
+    try {
+      const rVin = await fetch(
+        `${SUPABASE_URL}/rest/v1/vins?vin=eq.${encodeURIComponent(vin)}&select=modelo&limit=1`,
+        { method: "GET", headers: hdrs }
+      );
+      modelo = rVin.ok ? (await rVin.json())[0]?.modelo || null : null;
+    } catch {}
+
+    await fetch(`${SUPABASE_URL}/rest/v1/pairing_omisiones`, {
+      method:  "POST",
+      headers: { ...hdrs, "Prefer": "return=minimal" },
+      body:    JSON.stringify({
+        user_id:       userId,
+        nombre,
+        rol_trabajo:   rolTrabajo,
+        work_order_id: workOrderId,
+        vin,
+        modelo,
+        mode:          modeUsed,
+        suggested_ids: suggestion?.suggestedIds || [],
+        complement_id: complementUserId || null,
+      }),
+    });
+    console.log(`[OMISION] ${nombre} (${rolTrabajo}) VIN=${vin} modelo=${modelo} modo=${modeUsed}`);
   } catch (err) {
     console.warn("[OMISION] Error al registrar:", err.message);
   }
@@ -3754,15 +3753,47 @@ app.post("/api/ml/train-pairing", async (req, res) => {
 
     const since90 = new Date(Date.now() - 90 * 86400000).toISOString();
     const rFin = await fetch(
-      `${SUPABASE_URL}/rest/v1/asignaciones?estado_actual=eq.FINALIZADO&updated_at=gte.${encodeURIComponent(since90)}&select=user_id,updated_at,tiempo_trab_ms&limit=5000`,
+      `${SUPABASE_URL}/rest/v1/asignaciones?estado_actual=eq.FINALIZADO&updated_at=gte.${encodeURIComponent(since90)}&select=user_id,updated_at,tiempo_trab_ms,work_order_id&limit=5000`,
       { method: "GET", headers: supabaseHeaders_() }
     );
     const finRows = rFin.ok ? await rFin.json() : [];
 
-    const byUser = {};
+    // Enriquecer con modelo del carro: asignaciones → work_orders → vins
+    const woIds = [...new Set(finRows.map(r => r.work_order_id).filter(Boolean))];
+    const woVinMap = {};
+    for (let i = 0; i < woIds.length; i += 200) {
+      const batch = woIds.slice(i, i + 200);
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/work_orders?id=in.(${batch.join(",")})&select=id,vin`,
+        { method: "GET", headers: supabaseHeaders_() }
+      );
+      if (r.ok) (await r.json()).forEach(wo => { woVinMap[wo.id] = wo.vin; });
+    }
+    const vinList = [...new Set(Object.values(woVinMap).filter(Boolean))];
+    const vinModelMap = {};
+    for (let i = 0; i < vinList.length; i += 200) {
+      const batch = vinList.slice(i, i + 200);
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/vins?vin=in.(${batch.map(v => encodeURIComponent(v)).join(",")})&select=vin,modelo`,
+        { method: "GET", headers: supabaseHeaders_() }
+      );
+      if (r.ok) (await r.json()).forEach(v => { vinModelMap[v.vin] = v.modelo; });
+    }
+    for (const row of finRows) {
+      const woVin = woVinMap[row.work_order_id];
+      row.modelo = woVin ? (vinModelMap[woVin] || null) : null;
+    }
+
+    const byUser     = {};
+    const byUserModel = {};   // { userId: { modelo: [rows] } }
     for (const row of finRows) {
       if (!byUser[row.user_id]) byUser[row.user_id] = [];
       byUser[row.user_id].push(row);
+      if (row.modelo) {
+        if (!byUserModel[row.user_id]) byUserModel[row.user_id] = {};
+        if (!byUserModel[row.user_id][row.modelo]) byUserModel[row.user_id][row.modelo] = [];
+        byUserModel[row.user_id][row.modelo].push(row);
+      }
     }
 
     // ── Feature extraction (reutilizable para base y reciente) ──────────────
@@ -3828,21 +3859,56 @@ app.post("/api/ml/train-pairing", async (req, res) => {
         ? Math.round(((recentFeats.dailyRate - baseFeats.dailyRate) / Math.max(baseFeats.dailyRate, 0.1)) * 100)
         : 0;
 
+      // Features por modelo: mismo blend pero segmentado por tipo de carro
+      const modelFeatsMap = {};
+      for (const [modelo, rows] of Object.entries(byUserModel[user.id] || {})) {
+        if (rows.length < 3) continue;   // mínimo 3 asignaciones para ese modelo
+        const mBase   = computeFeatures(rows);
+        const mRecent = rows.filter(r => new Date(r.updated_at).getTime() >= since7ms);
+        const mRF     = mRecent.length >= MIN_RECENT ? computeFeatures(mRecent) : null;
+        if (!mBase) continue;
+        modelFeatsMap[modelo] = mRF
+          ? Object.fromEntries(
+              ["dailyRate","consistency","avgMs","peakHour","hourStd"].map(k => [
+                k, BLEND_ALPHA * (mRF[k] ?? mBase[k]) + (1 - BLEND_ALPHA) * mBase[k],
+              ])
+            )
+          : { ...mBase };
+        modelFeatsMap[modelo].sampleCount = rows.length;
+      }
+
       techFeatures.push({
         id: user.id, nombre: user.nombre, email: user.email, especialidad: user.especialidad,
         features, trend, trendPct,
         baseFeatures: baseFeats, recentFeatures: recentFeats,
+        modelFeatures: modelFeatsMap,
       });
     }
     if (!techFeatures.length) return res.json({ ok: false, error: "Sin datos suficientes para entrenar" });
 
-    // Normalize blended features to [0,1] across all techs
+    // Normalizar features globales a [0,1] usando maxes entre todos los técnicos
     const KEYS = ["dailyRate", "avgMs", "peakHour", "hourStd", "consistency"];
     const maxes = {};
     for (const k of KEYS) maxes[k] = Math.max(...techFeatures.map(t => t.features[k] || 0), 1e-9);
     for (const tech of techFeatures) {
       tech.normalized = {};
       for (const k of KEYS) tech.normalized[k] = (tech.features[k] || 0) / maxes[k];
+
+      // Normalizar features por modelo usando los MISMOS maxes globales → comparables
+      tech.modelNormalized = {};
+      for (const [modelo, mf] of Object.entries(tech.modelFeatures || {})) {
+        tech.modelNormalized[modelo] = {};
+        for (const k of KEYS) tech.modelNormalized[modelo][k] = (mf[k] || 0) / maxes[k];
+        tech.modelNormalized[modelo].sampleCount = mf.sampleCount || 0;
+      }
+    }
+
+    // Construir índice modelFeatures: { userId: { modelo: normalizedFeatures } }
+    const modelFeaturesIndex = {};
+    for (const tech of techFeatures) {
+      if (Object.keys(tech.modelNormalized).length) {
+        modelFeaturesIndex[tech.id] = tech.modelNormalized;
+      }
     }
 
     writeFileSync(PAIRING_MODEL_PATH, JSON.stringify({
@@ -3851,11 +3917,13 @@ app.post("/api/ml/train-pairing", async (req, res) => {
       recent_days: 7,
       total_techs: techFeatures.length,
       maxes,
+      modelFeaturesIndex,
       techs: techFeatures.map(t => ({
         user_id: t.id, nombre: t.nombre, email: t.email, especialidad: t.especialidad,
         features: t.features, normalized: t.normalized,
         trend: t.trend, trendPct: t.trendPct,
         baseFeatures: t.baseFeatures, recentFeatures: t.recentFeatures,
+        modelFeatures: t.modelFeatures, modelNormalized: t.modelNormalized,
       })),
     }));
 
@@ -3987,8 +4055,6 @@ app.get("/api/ml/suggest-next", async (req, res) => {
     if (!pairEsp) return res.json({ ok: true, suggestions: [], mode: "new_car" });
 
     // ── Paso 1: complementarios trabajando en carros sin su dupla ────────────
-    // pairActive: asignaciones activas del complementario → [{user_id, work_order_id}]
-    // myActive:   asignaciones activas de mi especialidad → sus work_order_ids ya ocupados
     const [rPairActive, rMyActive] = await Promise.all([
       fetch(`${SUPABASE_URL}/rest/v1/asignaciones?rol_trabajo=eq.${pairEsp}&activo=eq.true&estado_actual=neq.FINALIZADO&select=user_id,work_order_id`,
         { method: "GET", headers: supabaseHeaders_() }),
@@ -3998,50 +4064,83 @@ app.get("/api/ml/suggest-next", async (req, res) => {
     const pairActiveRows = rPairActive.ok ? await rPairActive.json() : [];
     const myActiveWoIds  = new Set((rMyActive.ok ? await rMyActive.json() : []).map(a => a.work_order_id));
 
-    // Complementarios cuyo work_order NO tiene aún mi especialidad asignada
-    const soloRows   = pairActiveRows.filter(a => !myActiveWoIds.has(a.work_order_id));
-    // Deduplicar por user_id (un tech puede tener una sola asignación activa en la práctica)
-    const soloByUser = {};
+    const soloRows = pairActiveRows.filter(a => !myActiveWoIds.has(a.work_order_id));
+    const soloByUser = {};   // userId → work_order_id
     soloRows.forEach(a => { soloByUser[a.user_id] = a.work_order_id; });
     const soloUserIds = new Set(Object.keys(soloByUser));
 
-    // ── Paso 2: top-3 del ML para mi especialidad vs. la complementaria ───────
-    const W = { dailyRate: 0.40, peakHour: 0.30, avgMs: 0.15, hourStd: 0.10, consistency: 0.05 };
-    const calcDist = (a, b) => Math.sqrt(
-      Object.entries(W).reduce((s, [k, w]) => s + w * ((a.normalized[k]||0) - (b.normalized[k]||0)) ** 2, 0)
-    );
-
-    // mlTop3: [{userId, sim, ml}] — top-3 de similitud con el solicitante (de todos los complementarios)
-    let mlTop3 = [];
-    if (me && model) {
-      const mlCandidates = model.techs?.filter(t => t.especialidad?.toUpperCase() === pairEsp) || [];
-      mlTop3 = mlCandidates
-        .filter(t => t.user_id)
-        .map(t => ({ userId: t.user_id, sim: Math.round((1 - calcDist(me, t)) * 100), ml: t }))
-        .sort((a, b) => b.sim - a.sim)
-        .slice(0, 3);
-    }
-
-    // ── Paso 3: intersección — solo sugiere si está en el top-3 Y trabajando solo ─
-    let suggestions = [];
-
-    if (mlTop3.length > 0) {
-      // Obtener datos de usuario de los candidatos para el nombre
-      const candidateIds = mlTop3.map(c => c.userId);
-      const rCandUsers = await fetch(
-        `${SUPABASE_URL}/rest/v1/usuarios?id=in.(${candidateIds.join(",")})&select=id,nombre`,
+    // ── Paso 1b: obtener el modelo del carro de cada trabajador-solo ──────────
+    // work_order_id → vin → modelo (para usar features por modelo en la similitud)
+    const soloWoIds = [...new Set(Object.values(soloByUser))];
+    const soloWoVin = {};   // work_order_id → vin
+    const soloWoModelo = {}; // work_order_id → modelo
+    if (soloWoIds.length) {
+      const rWo = await fetch(
+        `${SUPABASE_URL}/rest/v1/work_orders?id=in.(${soloWoIds.join(",")})&select=id,vin`,
         { method: "GET", headers: supabaseHeaders_() }
       );
-      const candUserMap = {};
-      (rCandUsers.ok ? await rCandUsers.json() : []).forEach(u => { candUserMap[u.id] = u.nombre; });
+      if (rWo.ok) (await rWo.json()).forEach(wo => { soloWoVin[wo.id] = wo.vin; });
 
-      for (const { userId, sim, ml } of mlTop3) {
-        if (!soloUserIds.has(userId)) continue; // no está trabajando solo → no sugerir
+      const soloVins = [...new Set(Object.values(soloWoVin).filter(Boolean))];
+      if (soloVins.length) {
+        const rVins = await fetch(
+          `${SUPABASE_URL}/rest/v1/vins?vin=in.(${soloVins.map(v => encodeURIComponent(v)).join(",")})&select=vin,modelo`,
+          { method: "GET", headers: supabaseHeaders_() }
+        );
+        const vinModelMap = {};
+        if (rVins.ok) (await rVins.json()).forEach(v => { vinModelMap[v.vin] = v.modelo; });
+        for (const [woId, vin] of Object.entries(soloWoVin)) {
+          soloWoModelo[woId] = vinModelMap[vin] || null;
+        }
+      }
+    }
+
+    // ── Paso 2: ML con features por modelo ────────────────────────────────────
+    const W = { dailyRate: 0.40, peakHour: 0.30, avgMs: 0.15, hourStd: 0.10, consistency: 0.05 };
+    const calcDist = (a, b) => Math.sqrt(
+      Object.entries(W).reduce((s, [k, w]) => s + w * ((a[k]||0) - (b[k]||0)) ** 2, 0)
+    );
+
+    // Devuelve features normalizadas para un técnico, prefiriendo las del modelo si existen
+    const mfi = model?.modelFeaturesIndex || {};
+    const getNorm = (techEntry, modelo) =>
+      (modelo && mfi[techEntry?.user_id]?.[modelo]) || techEntry?.normalized || {};
+
+    let suggestions = [];
+
+    if (me && model) {
+      const mlCandidates = model.techs?.filter(t => t.especialidad?.toUpperCase() === pairEsp) || [];
+
+      // Para cada candidato que trabaja solo, calcular similitud usando el modelo de SU carro
+      const rankedSolo = mlCandidates
+        .filter(t => t.user_id && soloUserIds.has(t.user_id))
+        .map(t => {
+          const woId    = soloByUser[t.user_id];
+          const modelo  = soloWoModelo[woId] || null;
+          // Similitud: mis features para ese modelo vs. las del candidato para ese modelo
+          const myNorm  = getNorm(me,  modelo);
+          const canNorm = getNorm(t,   modelo);
+          const sim     = Math.round((1 - calcDist(myNorm, canNorm)) * 100);
+          return { userId: t.user_id, sim, modelo, ml: t };
+        })
+        .sort((a, b) => b.sim - a.sim)
+        .slice(0, 3);
+
+      const candIds = rankedSolo.map(c => c.userId);
+      const rCandUsers = candIds.length ? await fetch(
+        `${SUPABASE_URL}/rest/v1/usuarios?id=in.(${candIds.join(",")})&select=id,nombre`,
+        { method: "GET", headers: supabaseHeaders_() }
+      ) : null;
+      const candUserMap = {};
+      if (rCandUsers?.ok) (await rCandUsers.json()).forEach(u => { candUserMap[u.id] = u.nombre; });
+
+      for (const { userId, sim, modelo, ml } of rankedSolo) {
         const f = ml?.features;
         suggestions.push({
           id:           userId,
           nombre:       candUserMap[userId] || ml?.nombre || "",
           especialidad: pairEsp,
+          modelo:       modelo,
           similarity:   sim,
           quality:      sim >= 85 ? "great" : sim >= 75 ? "good" : "ok",
           trend:        ml?.trend    || "unknown",
@@ -4056,14 +4155,16 @@ app.get("/api/ml/suggest-next", async (req, res) => {
         });
       }
     } else if (soloUserIds.size > 0) {
-      // Sin modelo ML: mostrar trabajando-solos sin filtro de similitud (fallback)
+      // Sin modelo ML: fallback — mostrar trabajando-solos sin filtro
       const rSoloUsers = await fetch(
         `${SUPABASE_URL}/rest/v1/usuarios?id=in.(${[...soloUserIds].join(",")})&select=id,nombre`,
         { method: "GET", headers: supabaseHeaders_() }
       );
       (rSoloUsers.ok ? await rSoloUsers.json() : []).slice(0, 3).forEach(u => {
+        const woId = soloByUser[u.id];
         suggestions.push({
           id: u.id, nombre: u.nombre || "", especialidad: pairEsp,
+          modelo: soloWoModelo[woId] || null,
           similarity: 50, quality: "ok", trend: "unknown", trendPct: 0,
           features: null, hasMLData: false,
         });
@@ -4073,7 +4174,6 @@ app.get("/api/ml/suggest-next", async (req, res) => {
     const mode         = suggestions.length === 0 ? "new_car" : "pair";
     const suggestedIds = suggestions.map(s => s.id).filter(Boolean);
 
-    // Guardar sugerencia para validación de omisión cuando haga INICIO
     pendingSuggestions_.set(myUserId, { suggestedIds, mode, ts: Date.now() });
 
     return res.json({ ok: true, suggestions, pairEsp, totalSolo: soloUserIds.size, mode });
