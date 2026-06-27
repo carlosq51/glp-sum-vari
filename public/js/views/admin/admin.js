@@ -567,7 +567,10 @@ async function loadTab() {
           const ageDays  = Math.floor((Date.now() - new Date(j.trained_at).getTime()) / 86400000);
           const ageLabel = ageDays === 0 ? "hoy" : `${ageDays}d`;
           const ageColor = ageDays > 14 ? "#f87171" : ageDays > 7 ? "#fbbf24" : "#4ade80";
-          msg.innerHTML  = `Entrenado: ${new Date(j.trained_at).toLocaleString("es-PE")} · <span style="color:${ageColor};font-weight:var(--fw-bold);">antigüedad: ${ageLabel}</span> · ${j.total_techs} técnicos`;
+          const nextRetrain = j.next_auto_retrain
+            ? ` · próximo auto-retrain: <b>${new Date(j.next_auto_retrain).toLocaleString("es-PE")}</b>`
+            : "";
+          msg.innerHTML  = `Entrenado: ${new Date(j.trained_at).toLocaleString("es-PE")} · <span style="color:${ageColor};font-weight:var(--fw-bold);">antigüedad: ${ageLabel}</span> · ${j.total_techs} técnicos${nextRetrain}`;
 
           const fmtFeat  = f => f ? `${(f.dailyRate||0).toFixed(1)} conv./día · pico ${f.peakHour||0}:00h` : "—";
           const simColor = sim => sim >= 75 ? "#4ade80" : sim >= 50 ? "#fbbf24" : "#f87171";

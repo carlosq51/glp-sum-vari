@@ -3663,6 +3663,9 @@ const OMISIONES_PATH      = "./omisiones.json";
 // Distancia circular entre horas del día (0-23): normalizada a [0,1], máximo a 12h de diferencia.
 const circHourDist_ = (ha, hb) => Math.min(Math.abs(ha - hb), 24 - Math.abs(ha - hb)) / 12;
 
+// Próximo re-entrenamiento automático (ISO string, se actualiza al programar).
+let nextAutoRetrainAt_ = null;
+
 // Sugerencias pendientes por userId: qué vio el técnico en el popup.
 // { suggestedIds: string[], mode: "pair"|"new_car", ts: number }
 // Se guarda cuando suggest-next se llama; se consume en checkAndRecordOmision_.
@@ -4334,6 +4337,7 @@ app.get("/api/ml/pairing-overview", (req, res) => {
     return res.json({
       ok: true,
       trained_at: model.trained_at,
+      next_auto_retrain: nextAutoRetrainAt_,
       total_techs: techs.length,
       motors:  motors.map(m => ({ user_id: m.user_id, nombre: m.nombre, features: m.features })),
       tanques: tanques.map(t => ({ user_id: t.user_id, nombre: t.nombre, features: t.features })),
@@ -4362,11 +4366,47 @@ app.get("/api/vins-sin-modelo", async (req, res) => {
   }
 });
 
+// ── Auto re-entrenamiento de emparejamiento cada 3 días ──────────────────────
+// El scheduler se re-programa a sí mismo tras cada ejecución para mantenerse
+// alineado con el intervalo real (no con el uptime del servidor).
+const RETRAIN_INTERVAL_MS = 3 * 24 * 60 * 60 * 1000; // 72 horas
+
+function scheduleAutoRetrain_() {
+  let delayMs = RETRAIN_INTERVAL_MS;
+  if (existsSync(PAIRING_MODEL_PATH)) {
+    try {
+      const { trained_at } = JSON.parse(readFileSync(PAIRING_MODEL_PATH, "utf8"));
+      const elapsed = Date.now() - new Date(trained_at).getTime();
+      delayMs = Math.max(60_000, RETRAIN_INTERVAL_MS - elapsed); // mínimo 1 min
+    } catch {}
+  }
+  nextAutoRetrainAt_ = new Date(Date.now() + delayMs).toISOString();
+  const h = Math.round(delayMs / 3600000);
+  console.log(`[ML-AUTO] Próximo re-entrenamiento en ${h}h (${new Date(nextAutoRetrainAt_).toLocaleString("es-PE")})`);
+
+  setTimeout(async () => {
+    try {
+      console.log("[ML-AUTO] Iniciando re-entrenamiento automático de emparejamiento…");
+      const r = await fetch(`http://localhost:${PORT}/api/ml/train-pairing`, { method: "POST" });
+      const j = await r.json();
+      if (j.ok) {
+        console.log(`[ML-AUTO] OK · ${j.total_techs} técnicos (motor:${j.motor} tanque:${j.tanque}) · tendencias up:${j.trends?.up} down:${j.trends?.down}`);
+      } else {
+        console.warn(`[ML-AUTO] Falla: ${j.error}`);
+      }
+    } catch (e) {
+      console.error("[ML-AUTO] Error en re-entrenamiento:", e.message);
+    }
+    scheduleAutoRetrain_(); // re-programar para dentro de 3 días
+  }, delayMs);
+}
+
 // -----------------------------------------------------------------
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Servidor corriendo en puerto ${PORT}`);
-  console.log(`�brelo desde tu celular con: http://192.168.18.121:${PORT}`);
+  console.log(`Ábrelo desde tu celular con: http://192.168.18.121:${PORT}`);
+  scheduleAutoRetrain_(); // arrancar el scheduler al iniciar el servidor
 });
 
 app.get("/api/ping-aps", async (req, res) => {
