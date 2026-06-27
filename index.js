@@ -3666,6 +3666,23 @@ const circHourDist_ = (ha, hb) => Math.min(Math.abs(ha - hb), 24 - Math.abs(ha -
 // Próximo re-entrenamiento automático (ISO string, se actualiza al programar).
 let nextAutoRetrainAt_ = null;
 
+// ── Normalización canónica de modelo de vehículo ─────────────────────────────
+// Convierte cualquier variante de texto (con comas, puntos, full/deluxe/etc.)
+// al nombre canónico que usamos para agrupar en el ML.
+function normalizeModelo_(raw) {
+  if (!raw || typeof raw !== "string") return null;
+  const s = raw.trim().toUpperCase().replace(/,/g, ".").replace(/\s+/g, " ");
+  if (/X70/.test(s) || /^JETOUR\s+(MEC|AUT|FULL|DELUXE|CONFORT)/.test(s)) return "Jetour X70";
+  if (/NEW\s+V3|\bV3\b/.test(s)) return "KYC V3";
+  if (/NEW\s+V5|\bV5\b/.test(s)) return "KYC V5";
+  if (/NEW\s+V7|\bV7\b/.test(s)) return "KYC V7";
+  if (/NEW\s+X5|\bX5\b/.test(s)) return "KYC X5";
+  if (/\bT3\b/.test(s)) return "KYC T3";
+  if (/TERA/.test(s)) return "VW Tera";
+  if (/SAVEIRO/.test(s)) return "VW Saveiro";
+  return null; // no se puede normalizar
+}
+
 // Sugerencias pendientes por userId: qué vio el técnico en el popup.
 // { suggestedIds: string[], mode: "pair"|"new_car", ts: number }
 // Se guarda cuando suggest-next se llama; se consume en checkAndRecordOmision_.
@@ -3780,10 +3797,13 @@ app.post("/api/ml/train-pairing", async (req, res) => {
     for (let i = 0; i < vinList.length; i += 200) {
       const batch = vinList.slice(i, i + 200);
       const r = await fetch(
-        `${SUPABASE_URL}/rest/v1/vins?vin=in.(${batch.map(v => encodeURIComponent(v)).join(",")})&select=vin,modelo`,
+        `${SUPABASE_URL}/rest/v1/vins?vin=in.(${batch.map(v => encodeURIComponent(v)).join(",")})&select=vin,modelo,modelo_normalizado`,
         { method: "GET", headers: supabaseHeaders_() }
       );
-      if (r.ok) (await r.json()).forEach(v => { vinModelMap[v.vin] = v.modelo; });
+      if (r.ok) (await r.json()).forEach(v => {
+        // Preferir modelo_normalizado; si no existe, normalizar on-the-fly desde modelo
+        vinModelMap[v.vin] = v.modelo_normalizado || normalizeModelo_(v.modelo) || v.modelo || null;
+      });
     }
     // Fallback: para VINs sin modelo en DB, intentar inferir con el modelo VIN entrenado
     if (existsSync(VIN_MODEL_PATH)) {
@@ -4361,6 +4381,93 @@ app.get("/api/vins-sin-modelo", async (req, res) => {
     );
     const items = r.ok ? await r.json() : [];
     return res.json({ ok: true, items });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e.message) });
+  }
+});
+
+// ── POST /api/admin/normalizar-vins ──────────────────────────────────────────
+// Normaliza el campo `modelo` de todos los VINs y escribe `modelo_normalizado`.
+// Requiere que la columna exista: ALTER TABLE vins ADD COLUMN IF NOT EXISTS modelo_normalizado text;
+app.post("/api/admin/normalizar-vins", async (req, res) => {
+  try {
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const hdrs = supabaseHeaders_();
+
+    // Verificar que la columna existe intentando leerla
+    const testR = await fetch(
+      `${SUPABASE_URL}/rest/v1/vins?select=vin,modelo_normalizado&limit=1`,
+      { method: "GET", headers: hdrs }
+    );
+    if (!testR.ok) {
+      return res.json({
+        ok: false,
+        need_migration: true,
+        sql: "ALTER TABLE vins ADD COLUMN IF NOT EXISTS modelo_normalizado text;\nCREATE INDEX IF NOT EXISTS idx_vins_modelo_normalizado ON vins(modelo_normalizado);",
+        error: "Columna modelo_normalizado no existe. Ejecuta el SQL de migración en el Supabase Dashboard → SQL Editor.",
+      });
+    }
+
+    // Traer todos los VINs con modelo
+    let all = [], offset = 0;
+    while (true) {
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/vins?select=vin,modelo&modelo=not.is.null&limit=1000&offset=${offset}`,
+        { method: "GET", headers: hdrs }
+      );
+      const batch = r.ok ? await r.json() : [];
+      if (!Array.isArray(batch) || !batch.length) break;
+      all.push(...batch);
+      if (batch.length < 1000) break;
+      offset += 1000;
+    }
+
+    let updated = 0, skipped = 0, failed = 0;
+    const byNorm = {};
+
+    // PATCH en batches de 50 (para no saturar la API)
+    for (let i = 0; i < all.length; i += 50) {
+      const batch = all.slice(i, i + 50);
+      await Promise.all(batch.map(async ({ vin, modelo }) => {
+        const norm = normalizeModelo_(modelo);
+        if (!norm) { skipped++; return; }
+        byNorm[norm] = (byNorm[norm] || 0) + 1;
+        const r = await fetch(
+          `${SUPABASE_URL}/rest/v1/vins?vin=eq.${encodeURIComponent(vin)}`,
+          {
+            method: "PATCH",
+            headers: { ...hdrs, "Content-Type": "application/json", "Prefer": "return=minimal" },
+            body: JSON.stringify({ modelo_normalizado: norm }),
+          }
+        );
+        if (r.ok) updated++; else failed++;
+      }));
+    }
+
+    return res.json({ ok: true, total: all.length, updated, skipped, failed, byNorm });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e.message) });
+  }
+});
+
+// ── GET /api/admin/preview-normalizacion ─────────────────────────────────────
+// Vista previa de cómo quedarían los modelos normalizados (sin modificar BD).
+app.get("/api/admin/preview-normalizacion", async (req, res) => {
+  try {
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/vins?select=modelo&modelo=not.is.null&limit=1000`,
+      { method: "GET", headers: supabaseHeaders_() }
+    );
+    const rows = r.ok ? await r.json() : [];
+    const counts = {};
+    for (const { modelo } of rows) {
+      const norm = normalizeModelo_(modelo) || "⚠ sin mapeo";
+      if (!counts[norm]) counts[norm] = { count: 0, examples: [] };
+      counts[norm].count++;
+      if (counts[norm].examples.length < 3) counts[norm].examples.push(modelo);
+    }
+    return res.json({ ok: true, total: rows.length, byNorm: counts });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e.message) });
   }

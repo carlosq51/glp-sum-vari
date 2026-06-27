@@ -516,6 +516,27 @@ async function loadTab() {
           </div>
 
           <!-- MODELO VIN (IA) -->
+          <!-- NORMALIZACIÓN DE MODELOS -->
+          <div class="adminConfigSection" style="border:1px solid rgba(251,191,36,.25);background:rgba(251,191,36,.04);border-radius:10px;padding:14px;">
+            <h4 class="adminConfigTitle" style="color:#fbbf24;">🏷 Normalización de modelos vehiculares</h4>
+            <p class="small muted" style="margin-bottom:10px;">
+              Convierte variantes de texto (<i>X70FL 1.5T 6DCT 4X2 LIMITED</i>, <i>X70 1,5T MEC...</i>) a nombres canónicos
+              (<b>Jetour X70</b>, <b>KYC V3</b>, <b>KYC V5</b>, <b>KYC V7</b>, etc.) y los guarda en la columna <code>modelo_normalizado</code> de la tabla <code>vins</code>.
+            </p>
+            <div style="background:rgba(0,0,0,.25);border-radius:6px;padding:10px 12px;font-family:monospace;font-size:var(--fs-xs);color:#a5f3fc;margin-bottom:12px;line-height:1.7;">
+              <div style="opacity:.5;margin-bottom:4px;">-- 1. Ejecuta esto UNA VEZ en Supabase Dashboard → SQL Editor:</div>
+              ALTER TABLE vins ADD COLUMN IF NOT EXISTS modelo_normalizado text;<br>
+              CREATE INDEX IF NOT EXISTS idx_vins_modelo_normalizado ON vins(modelo_normalizado);
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+              <button id="btnPreviewNorm" type="button" class="adminBtnOk" style="background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.4);">👁 Vista previa</button>
+              <button id="btnNormalizarVins" type="button" class="adminBtnOk" style="background:rgba(251,191,36,.2);border:1px solid rgba(251,191,36,.5);color:#fbbf24;font-weight:var(--fw-bold);">⚡ Normalizar todos los VINs</button>
+              <span id="normMsg" class="small muted"></span>
+            </div>
+            <div id="normResult" style="margin-top:10px;"></div>
+          </div>
+
+          <!-- MODELO VIN (IA) -->
           <div class="adminConfigSection">
             <h4 class="adminConfigTitle">🤖 Inferencia de modelo vehicular</h4>
             <p class="small muted">
@@ -535,6 +556,60 @@ async function loadTab() {
       `;
 
       // --- eventos ---
+
+      // Vista previa normalización
+      $id("btnPreviewNorm")?.addEventListener("click", async () => {
+        const msg = $id("normMsg");
+        const res = $id("normResult");
+        msg.textContent = "Cargando…";
+        res.innerHTML = "";
+        try {
+          const r = await fetch("/api/admin/preview-normalizacion");
+          const j = await r.json();
+          if (!j?.ok) { msg.textContent = `⚠️ ${j?.error}`; return; }
+          msg.textContent = `${j.total} VINs analizados`;
+          const rows = Object.entries(j.byNorm).sort((a, b) => b[1].count - a[1].count);
+          res.innerHTML = `
+            <div class="adminTable" style="margin-top:8px;font-size:var(--fs-xs);">
+              <div style="display:grid;grid-template-columns:140px 1fr auto;gap:6px;padding:5px 10px;font-weight:var(--fw-extrabold);opacity:.6;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--surfaceLine);">
+                <span>Canónico</span><span>Ejemplos de raw</span><span>Cant.</span>
+              </div>
+              ${rows.map(([norm, d]) => `
+                <div style="display:grid;grid-template-columns:140px 1fr auto;gap:6px;padding:6px 10px;border-bottom:1px solid var(--surfaceLine);align-items:center;">
+                  <span style="font-weight:var(--fw-bold);color:${norm.startsWith("⚠")?"#fbbf24":"var(--fg)"};">${escHtml(norm)}</span>
+                  <span style="color:var(--muted);">${d.examples.map(e => escHtml(e)).join(" · ")}</span>
+                  <span style="font-weight:var(--fw-black);">${d.count}</span>
+                </div>`).join("")}
+            </div>`;
+        } catch (e) { msg.textContent = `Error: ${e.message}`; }
+      });
+
+      // Normalizar VINs
+      $id("btnNormalizarVins")?.addEventListener("click", async () => {
+        const msg = $id("normMsg");
+        const res = $id("normResult");
+        msg.textContent = "Normalizando…";
+        res.innerHTML = "";
+        try {
+          const r = await fetch("/api/admin/normalizar-vins", { method: "POST" });
+          const j = await r.json();
+          if (j.need_migration) {
+            msg.textContent = "⚠️ Primero ejecuta el SQL de migración arriba en Supabase Dashboard.";
+            return;
+          }
+          if (!j?.ok) { msg.textContent = `⚠️ ${j?.error}`; return; }
+          const entries = Object.entries(j.byNorm || {}).sort((a, b) => b[1] - a[1]);
+          msg.textContent = `✅ ${j.updated} actualizados · ${j.skipped} sin mapeo · ${j.failed} errores`;
+          res.innerHTML = entries.length ? `
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+              ${entries.map(([n, c]) => `
+                <span style="padding:3px 10px;border-radius:14px;background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.3);font-size:var(--fs-xs);font-weight:var(--fw-bold);">
+                  ${escHtml(n)} <span style="opacity:.6;">${c}</span>
+                </span>`).join("")}
+            </div>` : "";
+        } catch (e) { msg.textContent = `Error: ${e.message}`; }
+      });
+
       $id("btnSaveConfig")?.addEventListener("click", saveConfig_);
       $id("btnSaveHorarios")?.addEventListener("click", saveHorarios_);
       $id("btnSaveMetas")?.addEventListener("click", saveMetas_);
