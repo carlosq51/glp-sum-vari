@@ -190,12 +190,10 @@ function buildPairSuggestModal_() {
   });
 
   el.querySelector("#btnPairSuggestNext")?.addEventListener("click", () => {
-    if (pairSuggestIdx_ >= pairSuggestQueue_.length - 1) {
-      renderPairSuggestSolo_();
-    } else {
-      pairSuggestIdx_++;
-      renderPairSuggestCard_();
-    }
+    // Cicla entre los candidatos calificados; no hay salida a "trabajar solo"
+    // cuando el servidor envió sugerencias válidas (mode="pair").
+    pairSuggestIdx_ = (pairSuggestIdx_ + 1) % pairSuggestQueue_.length;
+    renderPairSuggestCard_();
   });
 }
 
@@ -248,10 +246,11 @@ function renderPairSuggestCard_() {
     </div>` : ""}
   </div>`;
 
-  if (counter) counter.textContent = `${pairSuggestIdx_ + 1} de ${total}`;
+  if (counter) counter.textContent = total > 1 ? `${pairSuggestIdx_ + 1} de ${total}` : "";
   if (btnNext) {
-    btnNext.style.display = "";
-    btnNext.textContent = isLast ? "Ver otro →" : "Ver otro →";
+    // Ocultar "Ver otro" si solo hay un candidato calificado
+    btnNext.style.display = total > 1 ? "" : "none";
+    btnNext.textContent = "Ver otro →";
   }
   if (btnAcc) btnAcc.textContent = "🤝 Trabajar juntos";
 }
@@ -354,8 +353,9 @@ function openPairSuggestModal_() {
     if (btnNext) btnNext.style.display = "none";
     renderPairSuggestNewCar_();
   } else {
-    if (titleEl) titleEl.textContent = "✨ Tu próximo compañero";
-    if (btnNext) btnNext.style.display = "";
+    const n = pairSuggestQueue_.length;
+    if (titleEl) titleEl.textContent = n === 1 ? "✨ Tu compañero ideal" : "✨ Compañeros disponibles";
+    if (btnNext) btnNext.style.display = n > 1 ? "" : "none";
     renderPairSuggestCard_();
   }
 
