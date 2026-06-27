@@ -4422,26 +4422,32 @@ app.post("/api/admin/normalizar-vins", async (req, res) => {
       offset += 1000;
     }
 
-    let updated = 0, skipped = 0, failed = 0;
-    const byNorm = {};
+    // Agrupar VINs por modelo canónico → 1 PATCH por grupo en lugar de 1 por VIN
+    const groups = {};  // { "Jetour X70": ["VIN1","VIN2",...], ... }
+    let skipped = 0;
+    for (const { vin, modelo } of all) {
+      const norm = normalizeModelo_(modelo);
+      if (!norm) { skipped++; continue; }
+      if (!groups[norm]) groups[norm] = [];
+      groups[norm].push(vin);
+    }
 
-    // PATCH en batches de 50 (para no saturar la API)
-    for (let i = 0; i < all.length; i += 50) {
-      const batch = all.slice(i, i + 50);
-      await Promise.all(batch.map(async ({ vin, modelo }) => {
-        const norm = normalizeModelo_(modelo);
-        if (!norm) { skipped++; return; }
-        byNorm[norm] = (byNorm[norm] || 0) + 1;
+    let updated = 0, failed = 0;
+    const byNorm = {};
+    const patchHdrs = { ...hdrs, "Content-Type": "application/json", "Prefer": "return=minimal" };
+
+    // Para cada canónico, PATCH en sub-batches de 200 VINs (límite seguro de URL)
+    for (const [norm, vins] of Object.entries(groups)) {
+      byNorm[norm] = vins.length;
+      for (let i = 0; i < vins.length; i += 200) {
+        const batch = vins.slice(i, i + 200);
+        const inClause = batch.map(v => encodeURIComponent(v)).join(",");
         const r = await fetch(
-          `${SUPABASE_URL}/rest/v1/vins?vin=eq.${encodeURIComponent(vin)}`,
-          {
-            method: "PATCH",
-            headers: { ...hdrs, "Content-Type": "application/json", "Prefer": "return=minimal" },
-            body: JSON.stringify({ modelo_normalizado: norm }),
-          }
+          `${SUPABASE_URL}/rest/v1/vins?vin=in.(${inClause})`,
+          { method: "PATCH", headers: patchHdrs, body: JSON.stringify({ modelo_normalizado: norm }) }
         );
-        if (r.ok) updated++; else failed++;
-      }));
+        if (r.ok) updated += batch.length; else failed += batch.length;
+      }
     }
 
     return res.json({ ok: true, total: all.length, updated, skipped, failed, byNorm });
