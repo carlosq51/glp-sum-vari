@@ -4455,11 +4455,19 @@ app.post("/api/admin/normalizar-vins", async (req, res) => {
 app.get("/api/admin/preview-normalizacion", async (req, res) => {
   try {
     const SUPABASE_URL = process.env.SUPABASE_URL;
-    const r = await fetch(
-      `${SUPABASE_URL}/rest/v1/vins?select=modelo&modelo=not.is.null&limit=1000`,
-      { method: "GET", headers: supabaseHeaders_() }
-    );
-    const rows = r.ok ? await r.json() : [];
+    const hdrs = supabaseHeaders_();
+    let rows = [], offset = 0;
+    while (true) {
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/vins?select=modelo&modelo=not.is.null&limit=1000&offset=${offset}`,
+        { method: "GET", headers: hdrs }
+      );
+      const batch = r.ok ? await r.json() : [];
+      if (!Array.isArray(batch) || !batch.length) break;
+      rows.push(...batch);
+      if (batch.length < 1000) break;
+      offset += 1000;
+    }
     const counts = {};
     for (const { modelo } of rows) {
       const norm = normalizeModelo_(modelo) || "⚠ sin mapeo";
