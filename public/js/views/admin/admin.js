@@ -564,53 +564,118 @@ async function loadTab() {
           const r = await fetch("/api/ml/pairing-overview");
           const j = await r.json();
           if (!j?.ok) { res.innerHTML = `<div class="small" style="color:var(--danger);">${escHtml(j?.error||"Error")}</div>`; msg.textContent=""; return; }
-          msg.textContent = `Entrenado: ${new Date(j.trained_at).toLocaleString("es-PE")} · ${j.total_techs} técnicos`;
+          const ageDays  = Math.floor((Date.now() - new Date(j.trained_at).getTime()) / 86400000);
+          const ageLabel = ageDays === 0 ? "hoy" : `${ageDays}d`;
+          const ageColor = ageDays > 14 ? "#f87171" : ageDays > 7 ? "#fbbf24" : "#4ade80";
+          msg.innerHTML  = `Entrenado: ${new Date(j.trained_at).toLocaleString("es-PE")} · <span style="color:${ageColor};font-weight:var(--fw-bold);">antigüedad: ${ageLabel}</span> · ${j.total_techs} técnicos`;
 
-          const fmtFeat = f => f ? `${(f.dailyRate||0).toFixed(1)} conv./día · pico ${f.peakHour||0}:00h` : "—";
+          const fmtFeat  = f => f ? `${(f.dailyRate||0).toFixed(1)} conv./día · pico ${f.peakHour||0}:00h` : "—";
+          const simColor = sim => sim >= 75 ? "#4ade80" : sim >= 50 ? "#fbbf24" : "#f87171";
+          // Heatmap: degradado suave HSL rojo→verde según similitud
+          const heatBg   = sim => `hsla(${Math.round(sim * 1.2)},65%,45%,${(0.08 + sim / 250).toFixed(2)})`;
+          const trendIcon = (trend, pct) =>
+            trend === "up"   ? `<span style="color:#4ade80;font-size:.72em;margin-left:3px;">↑${Math.abs(pct||0)}%</span>` :
+            trend === "down" ? `<span style="color:#f87171;font-size:.72em;margin-left:3px;">↓${Math.abs(pct||0)}%</span>` : "";
 
-          // Best pairs matrix
+          const renderPairTable = (motorPairs, tanquesArr, matrixArr, motorsArr) => `
+            <div class="adminTable">
+              <div style="display:grid;grid-template-columns:1fr 1fr auto auto;gap:6px;padding:6px 10px;font-weight:var(--fw-extrabold);opacity:.6;font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--surfaceLine);">
+                <span>MOTOR</span><span>Mejor compañero TANQUE</span><span>Afinidad</span><span>Ritmo TANQUE</span>
+              </div>
+              ${motorPairs.map(p => `
+                <div style="display:grid;grid-template-columns:1fr 1fr auto auto;gap:6px;padding:8px 10px;border-bottom:1px solid var(--surfaceLine);align-items:center;">
+                  <div>
+                    <div style="font-weight:var(--fw-bold);font-size:var(--fs-sm);">${escHtml(p.motor.nombre||"—")}${trendIcon(p.motor.trend, p.motor.trendPct)}</div>
+                    <div class="small muted">${escHtml(fmtFeat(p.motor.features))}${p.motor.samples ? ` · ${p.motor.samples} asig.` : ""}</div>
+                  </div>
+                  <div>
+                    <div style="font-weight:var(--fw-bold);font-size:var(--fs-sm);">${p.best ? escHtml(p.best.nombre)+trendIcon(p.best.trend, p.best.trendPct) : '<span style="color:var(--muted)">Sin datos</span>'}</div>
+                    ${p.all?.length > 1 ? `<div class="small muted">${p.all.slice(1).map(t => escHtml(t.nombre)+" "+t.sim+"%").join(", ")}</div>` : ""}
+                  </div>
+                  <div style="font-weight:var(--fw-black);font-size:1.1rem;color:${simColor(p.best?.sim||0)};">${p.best?.sim ?? "—"}%</div>
+                  <div class="small muted">${escHtml(fmtFeat(p.best?.features))}</div>
+                </div>`).join("")}
+            </div>
+            ${tanquesArr?.length ? `
+            <div style="font-weight:var(--fw-extrabold);font-size:var(--fs-sm);margin:14px 0 8px;">Matriz de similitud (heatmap)</div>
+            <div style="overflow-x:auto;">
+              <table style="border-collapse:collapse;font-size:var(--fs-xs);min-width:100%;">
+                <tr>
+                  <th style="padding:6px 10px;text-align:left;border-bottom:1px solid var(--surfaceLine);opacity:.6;">MOTOR \\ TANQUE</th>
+                  ${tanquesArr.map(t => `<th style="padding:6px 8px;text-align:center;border-bottom:1px solid var(--surfaceLine);white-space:nowrap;">${escHtml(t.nombre)}</th>`).join("")}
+                </tr>
+                ${motorsArr.map((m, mi) => `
+                  <tr>
+                    <td style="padding:6px 10px;font-weight:var(--fw-bold);white-space:nowrap;">${escHtml(m.nombre)}</td>
+                    ${tanquesArr.map((t, ti) => {
+                      const sim = matrixArr[mi][ti];
+                      return `<td title="${escHtml(m.nombre)} + ${escHtml(t.nombre)}: ${sim}%" style="padding:6px 8px;text-align:center;font-weight:var(--fw-black);background:${heatBg(sim)};color:${simColor(sim)};min-width:48px;">${sim}%</td>`;
+                    }).join("")}
+                  </tr>`).join("")}
+              </table>
+            </div>` : ""}
+          `;
+
+          const modelList = Object.keys(j.byModel || {}).sort();
+
           res.innerHTML = `
             <div style="margin-top:12px;">
-              <div style="font-weight:var(--fw-extrabold);font-size:var(--fs-sm);margin-bottom:10px;">Mejores pares MOTOR → TANQUE</div>
-              <div class="adminTable">
-                <div style="display:grid;grid-template-columns:1fr 1fr auto auto;gap:6px;padding:6px 10px;font-weight:var(--fw-extrabold);opacity:.6;font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--surfaceLine);">
-                  <span>MOTOR</span><span>Mejor compañero TANQUE</span><span>Afinidad</span><span>Ritmo TANQUE</span>
-                </div>
-                ${j.motorPairs.map(p => `
-                  <div style="display:grid;grid-template-columns:1fr 1fr auto auto;gap:6px;padding:8px 10px;border-bottom:1px solid var(--surfaceLine);align-items:center;">
-                    <div>
-                      <div style="font-weight:var(--fw-bold);font-size:var(--fs-sm);">${escHtml(p.motor.nombre||"—")}</div>
-                      <div class="small muted">${escHtml(fmtFeat(p.motor.features))}</div>
-                    </div>
-                    <div>
-                      <div style="font-weight:var(--fw-bold);font-size:var(--fs-sm);">${p.best ? escHtml(p.best.nombre) : '<span style="color:var(--muted)">Sin datos</span>'}</div>
-                      ${p.all?.length > 1 ? `<div class="small muted">${p.all.slice(1).map(t => escHtml(t.nombre)+" "+t.sim+"%").join(", ")}</div>` : ""}
-                    </div>
-                    <div style="font-weight:var(--fw-black);font-size:1.1rem;color:${(p.best?.sim||0)>=75?"#4ade80":(p.best?.sim||0)>=50?"#fbbf24":"var(--muted)"};">${p.best?.sim ?? "—"}%</div>
-                    <div class="small muted">${escHtml(fmtFeat(p.best?.features))}</div>
-                  </div>`).join("")}
-              </div>
 
-              <div style="font-weight:var(--fw-extrabold);font-size:var(--fs-sm);margin:14px 0 8px;">Matriz de similitud completa</div>
-              <div style="overflow-x:auto;">
-                <table style="border-collapse:collapse;font-size:var(--fs-xs);min-width:100%;">
-                  <tr>
-                    <th style="padding:6px 10px;text-align:left;border-bottom:1px solid var(--surfaceLine);opacity:.6;">MOTOR \\ TANQUE</th>
-                    ${j.tanques.map(t => `<th style="padding:6px 10px;text-align:center;border-bottom:1px solid var(--surfaceLine);">${escHtml(t.nombre)}</th>`).join("")}
-                  </tr>
-                  ${j.motors.map((m, mi) => `
-                    <tr>
-                      <td style="padding:6px 10px;font-weight:var(--fw-bold);">${escHtml(m.nombre)}</td>
-                      ${j.tanques.map((_, ti) => {
-                        const sim = j.matrix[mi][ti];
-                        const bg = sim >= 75 ? "rgba(74,222,128,.2)" : sim >= 50 ? "rgba(251,191,36,.15)" : "transparent";
-                        return `<td style="padding:6px 10px;text-align:center;font-weight:var(--fw-black);background:${bg};">${sim}%</td>`;
-                      }).join("")}
-                    </tr>`).join("")}
-                </table>
+              <!-- ── Sección Global ── -->
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                <span style="font-weight:var(--fw-extrabold);font-size:var(--fs-sm);">Resultado global</span>
+                <span class="small muted">(todos los vehículos combinados)</span>
               </div>
+              ${renderPairTable(j.motorPairs, j.tanques, j.matrix, j.motors)}
+
+              <!-- ── Sección Por Modelo ── -->
+              ${modelList.length ? `
+              <div style="margin-top:22px;padding-top:16px;border-top:1px solid var(--surfaceLine);">
+                <div style="font-weight:var(--fw-extrabold);font-size:var(--fs-sm);margin-bottom:10px;">Resultado por modelo de vehículo</div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;" id="pairingModelPills">
+                  ${modelList.map((m, i) => `
+                    <button type="button"
+                      data-pmodel="${escHtml(m)}"
+                      class="pairingModelPill"
+                      style="padding:5px 12px;border-radius:20px;font-size:var(--fs-xs);font-weight:var(--fw-bold);cursor:pointer;border:1px solid var(--surfaceLine);background:${i===0?"rgba(167,139,250,.25);border-color:rgba(167,139,250,.6);color:#c4b5fd":"var(--glass);color:var(--muted)"};transition:all .15s;">
+                      ${escHtml(m)} <span style="opacity:.6;font-weight:normal;">${j.byModel[m].motorPairs?.length||0}M · ${j.byModel[m].tanques?.length||0}T</span>
+                    </button>`).join("")}
+                </div>
+                <div id="pairingModelContent">
+                  ${modelList.length ? renderPairTable(
+                      j.byModel[modelList[0]].motorPairs,
+                      j.byModel[modelList[0]].tanques,
+                      j.byModel[modelList[0]].matrix,
+                      j.byModel[modelList[0]].motors
+                    ) : ""}
+                </div>
+              </div>` : `<div class="small muted" style="margin-top:12px;">Sin datos por modelo (requiere re-entrenar con asignaciones que tengan modelo asignado).</div>`}
             </div>
           `;
+
+          // Activar pills de modelos
+          if (modelList.length) {
+            const pairingData = j.byModel;
+            document.querySelectorAll(".pairingModelPill").forEach(pill => {
+              pill.addEventListener("click", () => {
+                document.querySelectorAll(".pairingModelPill").forEach(p => {
+                  p.style.background = "var(--glass)";
+                  p.style.borderColor = "var(--surfaceLine)";
+                  p.style.color = "var(--muted)";
+                });
+                pill.style.background = "rgba(167,139,250,.25)";
+                pill.style.borderColor = "rgba(167,139,250,.6)";
+                pill.style.color = "#c4b5fd";
+                const modelo = pill.dataset.pmodel;
+                const md = pairingData[modelo];
+                const content = $id("pairingModelContent");
+                if (content && md) {
+                  content.innerHTML = renderPairTable(md.motorPairs, md.tanques, md.matrix, md.motors);
+                }
+              });
+            });
+          }
+
         } catch (e) { res.innerHTML = `<div class="small" style="color:var(--danger);">Error: ${e.message}</div>`; msg.textContent=""; }
       });
 

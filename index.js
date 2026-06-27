@@ -3660,6 +3660,9 @@ app.get("/api/ml/infer-vin-model", (req, res) => {
 const PAIRING_MODEL_PATH  = "./pairing-model.json";
 const OMISIONES_PATH      = "./omisiones.json";
 
+// Distancia circular entre horas del día (0-23): normalizada a [0,1], máximo a 12h de diferencia.
+const circHourDist_ = (ha, hb) => Math.min(Math.abs(ha - hb), 24 - Math.abs(ha - hb)) / 12;
+
 // Sugerencias pendientes por userId: qué vio el técnico en el popup.
 // { suggestedIds: string[], mode: "pair"|"new_car", ts: number }
 // Se guarda cuando suggest-next se llama; se consume en checkAndRecordOmision_.
@@ -3779,6 +3782,28 @@ app.post("/api/ml/train-pairing", async (req, res) => {
       );
       if (r.ok) (await r.json()).forEach(v => { vinModelMap[v.vin] = v.modelo; });
     }
+    // Fallback: para VINs sin modelo en DB, intentar inferir con el modelo VIN entrenado
+    if (existsSync(VIN_MODEL_PATH)) {
+      try {
+        const vinInfModel = JSON.parse(readFileSync(VIN_MODEL_PATH, "utf8"));
+        const vinPrefixes = vinInfModel.prefixes || {};
+        let inferred = 0;
+        for (const vin of vinList) {
+          if (vinModelMap[vin]) continue;
+          for (let len = Math.min(9, vin.length); len >= 3; len--) {
+            const key = vin.slice(0, len).toUpperCase();
+            const dist = vinPrefixes[len]?.[key];
+            if (!dist) continue;
+            const total = Object.values(dist).reduce((s, c) => s + c, 0);
+            const [bestModel, bestCount] = Object.entries(dist).sort((a, b) => b[1] - a[1])[0];
+            if (Math.round((bestCount / total) * 100) >= 70) { vinModelMap[vin] = bestModel; inferred++; }
+            break;
+          }
+        }
+        if (inferred) console.log(`[ML-TRAIN] ${inferred} VINs sin modelo inferidos con vin-model.json`);
+      } catch {}
+    }
+
     for (const row of finRows) {
       const woVin = woVinMap[row.work_order_id];
       row.modelo = woVin ? (vinModelMap[woVin] || null) : null;
@@ -3809,9 +3834,8 @@ app.post("/api/ml/train-pairing", async (req, res) => {
       const times = rows.map(r => Number(r.tiempo_trab_ms)).filter(t => t > 0 && t < 28800000);
       const avgMs = times.length ? times.reduce((s, t) => s + t, 0) / times.length : 0;
       const hours = rows.map(r => r.updated_at ? new Date(r.updated_at).getHours() : -1).filter(h => h >= 0);
-      const byHour = new Array(24).fill(0);
-      hours.forEach(h => byHour[h]++);
-      const peakHour = byHour.indexOf(Math.max(...byHour));
+      const sortedHours = [...hours].sort((a, b) => a - b);
+      const peakHour = sortedHours[Math.floor(sortedHours.length / 2)] ?? 12;
       const hourMean = hours.reduce((s, h) => s + h, 0) / (hours.length || 1);
       const hourStd = Math.sqrt(hours.reduce((s, h) => s + (h - hourMean) ** 2, 0) / (hours.length || 1));
       return { dailyRate, consistency, avgMs, peakHour, hourStd, totalRows: rows.length, workingDays: dayCounts.length };
@@ -3836,11 +3860,14 @@ app.post("/api/ml/train-pairing", async (req, res) => {
       const recentRows  = allRows.filter(r => new Date(r.updated_at).getTime() >= since7ms);
       const recentFeats = recentRows.length >= MIN_RECENT ? computeFeatures(recentRows) : null;
 
-      // Blend: si hay datos recientes suficientes, combinarlos con el histórico
+      // Blend adaptivo: más datos recientes → más peso reciente (escala MIN_RECENT→0.35 hasta 30→BLEND_ALPHA)
+      const adaptiveAlpha = recentFeats
+        ? Math.min(BLEND_ALPHA, 0.35 + (recentRows.length - MIN_RECENT) / Math.max(30 - MIN_RECENT, 1) * (BLEND_ALPHA - 0.35))
+        : 0;
       const features = recentFeats
         ? Object.fromEntries(
             ["dailyRate", "consistency", "avgMs", "peakHour", "hourStd"].map(k => [
-              k, BLEND_ALPHA * (recentFeats[k] ?? baseFeats[k]) + (1 - BLEND_ALPHA) * baseFeats[k],
+              k, adaptiveAlpha * (recentFeats[k] ?? baseFeats[k]) + (1 - adaptiveAlpha) * baseFeats[k],
             ])
           )
         : { ...baseFeats };
@@ -3862,15 +3889,18 @@ app.post("/api/ml/train-pairing", async (req, res) => {
       // Features por modelo: mismo blend pero segmentado por tipo de carro
       const modelFeatsMap = {};
       for (const [modelo, rows] of Object.entries(byUserModel[user.id] || {})) {
-        if (rows.length < 3) continue;   // mínimo 3 asignaciones para ese modelo
+        if (rows.length < 8) continue;   // mínimo 8 asignaciones para features confiables por modelo
         const mBase   = computeFeatures(rows);
         const mRecent = rows.filter(r => new Date(r.updated_at).getTime() >= since7ms);
         const mRF     = mRecent.length >= MIN_RECENT ? computeFeatures(mRecent) : null;
         if (!mBase) continue;
+        const mAlpha = mRF
+          ? Math.min(BLEND_ALPHA, 0.35 + (mRecent.length - MIN_RECENT) / Math.max(30 - MIN_RECENT, 1) * (BLEND_ALPHA - 0.35))
+          : 0;
         modelFeatsMap[modelo] = mRF
           ? Object.fromEntries(
               ["dailyRate","consistency","avgMs","peakHour","hourStd"].map(k => [
-                k, BLEND_ALPHA * (mRF[k] ?? mBase[k]) + (1 - BLEND_ALPHA) * mBase[k],
+                k, mAlpha * (mRF[k] ?? mBase[k]) + (1 - mAlpha) * mBase[k],
               ])
             )
           : { ...mBase };
@@ -3968,7 +3998,12 @@ app.get("/api/ml/suggest-pair", (req, res) => {
 
     const W = { dailyRate: 0.40, peakHour: 0.30, avgMs: 0.15, hourStd: 0.10, consistency: 0.05 };
     const calcDist = (a, b) => Math.sqrt(
-      Object.entries(W).reduce((s, [k, w]) => s + w * ((a.normalized[k]||0) - (b.normalized[k]||0)) ** 2, 0)
+      Object.entries(W).reduce((s, [k, w]) => {
+        const d = k === 'peakHour'
+          ? circHourDist_(a.features?.peakHour || 0, b.features?.peakHour || 0)
+          : (a.normalized[k]||0) - (b.normalized[k]||0);
+        return s + w * d * d;
+      }, 0)
     );
 
     const ranked = candidates
@@ -4097,14 +4132,21 @@ app.get("/api/ml/suggest-next", async (req, res) => {
 
     // ── Paso 2: ML con features por modelo ────────────────────────────────────
     const W = { dailyRate: 0.40, peakHour: 0.30, avgMs: 0.15, hourStd: 0.10, consistency: 0.05 };
-    const calcDist = (a, b) => Math.sqrt(
-      Object.entries(W).reduce((s, [k, w]) => s + w * ((a[k]||0) - (b[k]||0)) ** 2, 0)
+    const calcDist = (aNorm, bNorm, aPeakH, bPeakH) => Math.sqrt(
+      Object.entries(W).reduce((s, [k, w]) => {
+        const d = k === 'peakHour'
+          ? circHourDist_(aPeakH || 0, bPeakH || 0)
+          : (aNorm[k]||0) - (bNorm[k]||0);
+        return s + w * d * d;
+      }, 0)
     );
 
     // Devuelve features normalizadas para un técnico, prefiriendo las del modelo si existen
     const mfi = model?.modelFeaturesIndex || {};
-    const getNorm = (techEntry, modelo) =>
+    const getNorm  = (techEntry, modelo) =>
       (modelo && mfi[techEntry?.user_id]?.[modelo]) || techEntry?.normalized || {};
+    const getPeakH = (techEntry, modelo) =>
+      (modelo && techEntry?.modelFeatures?.[modelo]?.peakHour) ?? techEntry?.features?.peakHour ?? 0;
 
     let suggestions = [];
 
@@ -4118,9 +4160,11 @@ app.get("/api/ml/suggest-next", async (req, res) => {
           const woId    = soloByUser[t.user_id];
           const modelo  = soloWoModelo[woId] || null;
           // Similitud: mis features para ese modelo vs. las del candidato para ese modelo
-          const myNorm  = getNorm(me,  modelo);
-          const canNorm = getNorm(t,   modelo);
-          const sim     = Math.round((1 - calcDist(myNorm, canNorm)) * 100);
+          const myNorm   = getNorm(me,  modelo);
+          const canNorm  = getNorm(t,   modelo);
+          const myPeakH  = getPeakH(me, modelo);
+          const canPeakH = getPeakH(t,  modelo);
+          const sim      = Math.round((1 - calcDist(myNorm, canNorm, myPeakH, canPeakH)) * 100);
           return { userId: t.user_id, sim, modelo, ml: t };
         })
         .sort((a, b) => b.sim - a.sim)
@@ -4209,7 +4253,8 @@ app.delete("/api/omisiones/:userId", (req, res) => {
 });
 
 // ── GET /api/ml/pairing-overview ─────────────────────────────────────────────
-// Vista admin: matriz completa de similitud MOTOR × TANQUE + mejores pares.
+// Vista admin: matriz completa de similitud MOTOR × TANQUE + mejores pares
+// + resultados por modelo de vehículo.
 app.get("/api/ml/pairing-overview", (req, res) => {
   try {
     if (!existsSync(PAIRING_MODEL_PATH))
@@ -4221,39 +4266,81 @@ app.get("/api/ml/pairing-overview", (req, res) => {
     const tanques = techs.filter(t => t.especialidad?.toUpperCase() === "TANQUE");
 
     const W = { dailyRate: 0.40, peakHour: 0.30, avgMs: 0.15, hourStd: 0.10, consistency: 0.05 };
-    const calcDist = (a, b) => Math.sqrt(
-      Object.entries(W).reduce((s, [k, w]) => s + w * ((a.normalized[k]||0) - (b.normalized[k]||0)) ** 2, 0)
+    const calcDistNorm = (na, nb, aPeakH, bPeakH) => Math.sqrt(
+      Object.entries(W).reduce((s, [k, w]) => {
+        const d = k === 'peakHour'
+          ? circHourDist_(aPeakH || 0, bPeakH || 0)
+          : (na[k]||0) - (nb[k]||0);
+        return s + w * d * d;
+      }, 0)
     );
 
-    // Similarity matrix [motorIdx][tanqueIdx]
+    // Similarity matrix global [motorIdx][tanqueIdx]
     const matrix = motors.map(m =>
-      tanques.map(t => Math.round((1 - calcDist(m, t)) * 100))
+      tanques.map(t => Math.round((1 - calcDistNorm(m.normalized, t.normalized, m.features?.peakHour, t.features?.peakHour)) * 100))
     );
 
-    // Best pair for each motor
+    // Best pair for each motor (global)
     const motorPairs = motors.map((m, mi) => {
       const sorted = tanques.map((t, ti) => ({ ...t, sim: matrix[mi][ti] })).sort((a, b) => b.sim - a.sim);
-      return { motor: { user_id: m.user_id, nombre: m.nombre, features: m.features },
-               best: sorted[0] ? { user_id: sorted[0].user_id, nombre: sorted[0].nombre, sim: sorted[0].sim, features: sorted[0].features } : null,
+      return { motor: { user_id: m.user_id, nombre: m.nombre, features: m.features, trend: m.trend, trendPct: m.trendPct },
+               best: sorted[0] ? { user_id: sorted[0].user_id, nombre: sorted[0].nombre, sim: sorted[0].sim, features: sorted[0].features, trend: sorted[0].trend, trendPct: sorted[0].trendPct } : null,
                all: sorted.map(t => ({ user_id: t.user_id, nombre: t.nombre, sim: t.sim })) };
     }).sort((a, b) => (b.best?.sim || 0) - (a.best?.sim || 0));
 
-    // Best pair for each tanque
+    // Best pair for each tanque (global)
     const tanquePairs = tanques.map((t, ti) => {
       const sorted = motors.map((m, mi) => ({ ...m, sim: matrix[mi][ti] })).sort((a, b) => b.sim - a.sim);
-      return { tanque: { user_id: t.user_id, nombre: t.nombre, features: t.features },
-               best: sorted[0] ? { user_id: sorted[0].user_id, nombre: sorted[0].nombre, sim: sorted[0].sim, features: sorted[0].features } : null };
+      return { tanque: { user_id: t.user_id, nombre: t.nombre, features: t.features, trend: t.trend, trendPct: t.trendPct },
+               best: sorted[0] ? { user_id: sorted[0].user_id, nombre: sorted[0].nombre, sim: sorted[0].sim, features: sorted[0].features, trend: sorted[0].trend, trendPct: sorted[0].trendPct } : null };
     });
+
+    // ── Resultados por modelo de vehículo ──────────────────────────────────
+    const allModelos = new Set();
+    for (const tech of techs) {
+      for (const modelo of Object.keys(tech.modelNormalized || {})) allModelos.add(modelo);
+    }
+
+    const byModel = {};
+    for (const modelo of allModelos) {
+      const mMotors  = motors.filter(m => m.modelNormalized?.[modelo]);
+      const mTanques = tanques.filter(t => t.modelNormalized?.[modelo]);
+      if (!mMotors.length || !mTanques.length) continue;
+
+      const mMatrix = mMotors.map(m =>
+        mTanques.map(t => Math.round((1 - calcDistNorm(
+          m.modelNormalized[modelo], t.modelNormalized[modelo],
+          m.modelFeatures?.[modelo]?.peakHour, t.modelFeatures?.[modelo]?.peakHour
+        )) * 100))
+      );
+
+      const mMotorPairs = mMotors.map((m, mi) => {
+        const sorted = mTanques.map((t, ti) => ({ ...t, sim: mMatrix[mi][ti] })).sort((a, b) => b.sim - a.sim);
+        return {
+          motor: { user_id: m.user_id, nombre: m.nombre, features: m.modelFeatures?.[modelo], samples: m.modelNormalized[modelo]?.sampleCount || 0, trend: m.trend, trendPct: m.trendPct },
+          best: sorted[0] ? { user_id: sorted[0].user_id, nombre: sorted[0].nombre, sim: sorted[0].sim, features: sorted[0].modelFeatures?.[modelo], trend: sorted[0].trend, trendPct: sorted[0].trendPct } : null,
+          all: sorted.map(t => ({ user_id: t.user_id, nombre: t.nombre, sim: t.sim })),
+        };
+      }).sort((a, b) => (b.best?.sim || 0) - (a.best?.sim || 0));
+
+      byModel[modelo] = {
+        motors:    mMotors.map(m  => ({ user_id: m.user_id,  nombre: m.nombre,  features: m.modelFeatures?.[modelo],  samples: m.modelNormalized[modelo]?.sampleCount || 0, trend: m.trend,  trendPct: m.trendPct })),
+        tanques:   mTanques.map(t => ({ user_id: t.user_id,  nombre: t.nombre,  features: t.modelFeatures?.[modelo],  samples: t.modelNormalized[modelo]?.sampleCount || 0, trend: t.trend,  trendPct: t.trendPct })),
+        matrix:    mMatrix,
+        motorPairs: mMotorPairs,
+      };
+    }
 
     return res.json({
       ok: true,
       trained_at: model.trained_at,
       total_techs: techs.length,
-      motors: motors.map(m => ({ user_id: m.user_id, nombre: m.nombre, features: m.features })),
+      motors:  motors.map(m => ({ user_id: m.user_id, nombre: m.nombre, features: m.features })),
       tanques: tanques.map(t => ({ user_id: t.user_id, nombre: t.nombre, features: t.features })),
       matrix,
       motorPairs,
       tanquePairs,
+      byModel,
     });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e.message) });
