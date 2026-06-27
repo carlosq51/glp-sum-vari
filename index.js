@@ -4142,11 +4142,14 @@ app.get("/api/ml/suggest-next", async (req, res) => {
       const soloVins = [...new Set(Object.values(soloWoVin).filter(Boolean))];
       if (soloVins.length) {
         const rVins = await fetch(
-          `${SUPABASE_URL}/rest/v1/vins?vin=in.(${soloVins.map(v => encodeURIComponent(v)).join(",")})&select=vin,modelo`,
+          `${SUPABASE_URL}/rest/v1/vins?vin=in.(${soloVins.map(v => encodeURIComponent(v)).join(",")})&select=vin,modelo,modelo_normalizado`,
           { method: "GET", headers: supabaseHeaders_() }
         );
         const vinModelMap = {};
-        if (rVins.ok) (await rVins.json()).forEach(v => { vinModelMap[v.vin] = v.modelo; });
+        if (rVins.ok) (await rVins.json()).forEach(v => {
+          // Usar modelo_normalizado si existe, si no normalizar on-the-fly, si no usar raw
+          vinModelMap[v.vin] = v.modelo_normalizado || normalizeModelo_(v.modelo) || v.modelo || null;
+        });
         for (const [woId, vin] of Object.entries(soloWoVin)) {
           soloWoModelo[woId] = vinModelMap[vin] || null;
         }
@@ -4386,75 +4389,78 @@ app.get("/api/vins-sin-modelo", async (req, res) => {
   }
 });
 
-// ── POST /api/admin/normalizar-vins ──────────────────────────────────────────
-// Normaliza el campo `modelo` de todos los VINs y escribe `modelo_normalizado`.
-// Requiere que la columna exista: ALTER TABLE vins ADD COLUMN IF NOT EXISTS modelo_normalizado text;
-app.post("/api/admin/normalizar-vins", async (req, res) => {
-  try {
-    const SUPABASE_URL = process.env.SUPABASE_URL;
-    const hdrs = supabaseHeaders_();
+// Lógica interna de normalización (reutilizada por el endpoint y el scheduler diario).
+async function runNormalizarVins_(soloNuevos = false) {
+  const SUPABASE_URL = process.env.SUPABASE_URL;
+  const hdrs = supabaseHeaders_();
 
-    // Verificar que la columna existe intentando leerla
-    const testR = await fetch(
-      `${SUPABASE_URL}/rest/v1/vins?select=vin,modelo_normalizado&limit=1`,
+  // Verificar que la columna existe
+  const testR = await fetch(
+    `${SUPABASE_URL}/rest/v1/vins?select=vin,modelo_normalizado&limit=1`,
+    { method: "GET", headers: hdrs }
+  );
+  if (!testR.ok) return { ok: false, need_migration: true,
+    sql: "ALTER TABLE vins ADD COLUMN IF NOT EXISTS modelo_normalizado text;\nCREATE INDEX IF NOT EXISTS idx_vins_modelo_normalizado ON vins(modelo_normalizado);",
+    error: "Columna modelo_normalizado no existe. Ejecuta el SQL en Supabase Dashboard → SQL Editor." };
+
+  // Filtro: todos los VINs con modelo, o solo los que aún no tienen normalizado
+  const filter = soloNuevos
+    ? "modelo=not.is.null&modelo_normalizado=is.null"
+    : "modelo=not.is.null";
+
+  let all = [], offset = 0;
+  while (true) {
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/vins?select=vin,modelo&${filter}&limit=1000&offset=${offset}`,
       { method: "GET", headers: hdrs }
     );
-    if (!testR.ok) {
-      return res.json({
-        ok: false,
-        need_migration: true,
-        sql: "ALTER TABLE vins ADD COLUMN IF NOT EXISTS modelo_normalizado text;\nCREATE INDEX IF NOT EXISTS idx_vins_modelo_normalizado ON vins(modelo_normalizado);",
-        error: "Columna modelo_normalizado no existe. Ejecuta el SQL de migración en el Supabase Dashboard → SQL Editor.",
-      });
-    }
+    const batch = r.ok ? await r.json() : [];
+    if (!Array.isArray(batch) || !batch.length) break;
+    all.push(...batch);
+    if (batch.length < 1000) break;
+    offset += 1000;
+  }
 
-    // Traer todos los VINs con modelo
-    let all = [], offset = 0;
-    while (true) {
+  // Agrupar por canónico → 1 PATCH por grupo
+  const groups = {};
+  let skipped = 0;
+  for (const { vin, modelo } of all) {
+    const norm = normalizeModelo_(modelo);
+    if (!norm) { skipped++; continue; }
+    if (!groups[norm]) groups[norm] = [];
+    groups[norm].push(vin);
+  }
+
+  let updated = 0, failed = 0;
+  const byNorm = {};
+  const patchHdrs = { ...hdrs, "Content-Type": "application/json", "Prefer": "return=minimal" };
+  for (const [norm, vins] of Object.entries(groups)) {
+    byNorm[norm] = vins.length;
+    for (let i = 0; i < vins.length; i += 200) {
+      const batch = vins.slice(i, i + 200);
+      const inClause = batch.map(v => encodeURIComponent(v)).join(",");
       const r = await fetch(
-        `${SUPABASE_URL}/rest/v1/vins?select=vin,modelo&modelo=not.is.null&limit=1000&offset=${offset}`,
-        { method: "GET", headers: hdrs }
+        `${SUPABASE_URL}/rest/v1/vins?vin=in.(${inClause})`,
+        { method: "PATCH", headers: patchHdrs, body: JSON.stringify({ modelo_normalizado: norm }) }
       );
-      const batch = r.ok ? await r.json() : [];
-      if (!Array.isArray(batch) || !batch.length) break;
-      all.push(...batch);
-      if (batch.length < 1000) break;
-      offset += 1000;
+      if (r.ok) updated += batch.length; else failed += batch.length;
     }
+  }
+  return { ok: true, total: all.length, updated, skipped, failed, byNorm };
+}
 
-    // Agrupar VINs por modelo canónico → 1 PATCH por grupo en lugar de 1 por VIN
-    const groups = {};  // { "Jetour X70": ["VIN1","VIN2",...], ... }
-    let skipped = 0;
-    for (const { vin, modelo } of all) {
-      const norm = normalizeModelo_(modelo);
-      if (!norm) { skipped++; continue; }
-      if (!groups[norm]) groups[norm] = [];
-      groups[norm].push(vin);
-    }
-
-    let updated = 0, failed = 0;
-    const byNorm = {};
-    const patchHdrs = { ...hdrs, "Content-Type": "application/json", "Prefer": "return=minimal" };
-
-    // Para cada canónico, PATCH en sub-batches de 200 VINs (límite seguro de URL)
-    for (const [norm, vins] of Object.entries(groups)) {
-      byNorm[norm] = vins.length;
-      for (let i = 0; i < vins.length; i += 200) {
-        const batch = vins.slice(i, i + 200);
-        const inClause = batch.map(v => encodeURIComponent(v)).join(",");
-        const r = await fetch(
-          `${SUPABASE_URL}/rest/v1/vins?vin=in.(${inClause})`,
-          { method: "PATCH", headers: patchHdrs, body: JSON.stringify({ modelo_normalizado: norm }) }
-        );
-        if (r.ok) updated += batch.length; else failed += batch.length;
-      }
-    }
-
-    return res.json({ ok: true, total: all.length, updated, skipped, failed, byNorm });
+// ── POST /api/admin/normalizar-vins ──────────────────────────────────────────
+// ?solo_nuevos=1 → solo normaliza VINs donde modelo_normalizado IS NULL (incremental)
+app.post("/api/admin/normalizar-vins", async (req, res) => {
+  try {
+    const soloNuevos = req.query.solo_nuevos === "1";
+    const result = await runNormalizarVins_(soloNuevos);
+    return res.json(result);
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e.message) });
   }
 });
+
 
 // ── GET /api/admin/preview-normalizacion ─────────────────────────────────────
 // Vista previa de cómo quedarían los modelos normalizados (sin modificar BD).
@@ -4486,6 +4492,28 @@ app.get("/api/admin/preview-normalizacion", async (req, res) => {
     res.status(500).json({ ok: false, error: String(e.message) });
   }
 });
+
+// ── Auto-normalización diaria de VINs sin modelo_normalizado ─────────────────
+// Corre cada 24h y solo toca los VINs nuevos (modelo_normalizado IS NULL).
+function scheduleAutoNormalize_() {
+  const DAILY_MS = 24 * 60 * 60 * 1000;
+  setTimeout(async () => {
+    try {
+      console.log("[NORM-AUTO] Normalizando VINs nuevos sin modelo_normalizado…");
+      const r = await runNormalizarVins_(true); // soloNuevos=true
+      if (r.ok) {
+        console.log(`[NORM-AUTO] OK · ${r.updated} actualizados · ${r.skipped} sin mapeo`);
+      } else if (r.need_migration) {
+        console.warn("[NORM-AUTO] Columna modelo_normalizado no existe, salteando.");
+      } else {
+        console.warn(`[NORM-AUTO] Error: ${r.error}`);
+      }
+    } catch (e) {
+      console.error("[NORM-AUTO] Falla:", e.message);
+    }
+    scheduleAutoNormalize_(); // re-programar para mañana
+  }, DAILY_MS);
+}
 
 // ── Auto re-entrenamiento de emparejamiento cada 3 días ──────────────────────
 // El scheduler se re-programa a sí mismo tras cada ejecución para mantenerse
@@ -4527,7 +4555,8 @@ function scheduleAutoRetrain_() {
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Servidor corriendo en puerto ${PORT}`);
   console.log(`Ábrelo desde tu celular con: http://192.168.18.121:${PORT}`);
-  scheduleAutoRetrain_(); // arrancar el scheduler al iniciar el servidor
+  scheduleAutoRetrain_();   // re-entrenamiento cada 3 días
+  scheduleAutoNormalize_(); // normalización incremental cada 24h
 });
 
 app.get("/api/ping-aps", async (req, res) => {
