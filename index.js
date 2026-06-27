@@ -4204,14 +4204,7 @@ app.get("/api/ml/suggest-next", async (req, res) => {
       const candUserMap = {};
       if (rCandUsers?.ok) (await rCandUsers.json()).forEach(u => { candUserMap[u.id] = u.nombre; });
 
-      // Umbral dinámico: piso absoluto de 55% + al menos 70% del mejor candidato.
-      // Si nadie califica → mode="new_car" (empieza carro nuevo).
-      const MIN_SIM = 55;
-      const topSim  = rankedSolo[0]?.sim ?? 0;
-      const dynFloor = Math.max(MIN_SIM, Math.round(topSim * 0.70));
-      const qualified = rankedSolo.filter(c => c.sim >= dynFloor);
-
-      for (const { userId, sim, modelo, ml } of qualified) {
+      for (const { userId, sim, modelo, ml } of rankedSolo) {
         const f = ml?.features;
         suggestions.push({
           id:           userId,
@@ -4232,7 +4225,7 @@ app.get("/api/ml/suggest-next", async (req, res) => {
         });
       }
     } else if (soloUserIds.size > 0) {
-      // Sin modelo ML: fallback — mostrar solo el mejor disponible sin filtro de umbral
+      // Sin modelo ML: fallback — mostrar trabajando-solos sin filtro
       const rSoloUsers = await fetch(
         `${SUPABASE_URL}/rest/v1/usuarios?id=in.(${[...soloUserIds].join(",")})&select=id,nombre`,
         { method: "GET", headers: supabaseHeaders_() }
