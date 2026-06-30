@@ -1,21 +1,29 @@
 // =========================
 // public/js/views/zonas/zonas-mapa.js
 // Componente compartido: mapa visual de las 15 zonas de conversión.
-// Usado en movilizador (interactivo) y supervisor (read-only).
+// Layout: 9 zonas izquierda | carretera | 6 zonas derecha | Zona Libre
 // =========================
 
 import { escapeHtml, postJSON } from "../../core/core.js";
 
-// ── Configuración de layout ──────────────────────────────────────────────────
-// Derecha: zonas 1-9 (9 spots) | Izquierda: zonas 10-15 (6 spots)
-const COL_DERECHA  = [1, 2, 3, 4, 5, 6, 7, 8, 9];
-const COL_IZQUIERDA = [10, 11, 12, 13, 14, 15];
+// ── Layout físico del taller ─────────────────────────────────────────────────
+// Izquierda: zonas 1-9 (9 spots junto al pasillo)
+// Derecha:   zonas 10-15 (6 spots al otro lado del pasillo)
+const COL_IZQUIERDA = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+const COL_DERECHA   = [10, 11, 12, 13, 14, 15];
 
 const ESTADO_LABEL = {
   LIBRE:          "Libre",
-  ESPERANDO:      "⏳ En Espera",
-  EN_CONVERSION:  "🔧 En Conversión",
-  FINALIZADO:     "✅ Listo",
+  ESPERANDO:      "En Espera",
+  EN_CONVERSION:  "En Conversión",
+  FINALIZADO:     "Listo ✓",
+};
+
+const ESTADO_ICON = {
+  LIBRE:          "🅿️",
+  ESPERANDO:      "🚗",
+  EN_CONVERSION:  "🔧",
+  FINALIZADO:     "✅",
 };
 
 const ESTADO_CSS = {
@@ -25,15 +33,17 @@ const ESTADO_CSS = {
   FINALIZADO:     "finalizado",
 };
 
-// ── Render del mapa ──────────────────────────────────────────────────────────
+// ── Render ───────────────────────────────────────────────────────────────────
 
 function renderZonaCard_(z, readOnly) {
-  const css  = ESTADO_CSS[z.estado] || "libre";
+  const css   = ESTADO_CSS[z.estado] || "libre";
   const label = ESTADO_LABEL[z.estado] || "Libre";
+  const icon  = ESTADO_ICON[z.estado] || "🅿️";
   const roClass = readOnly ? " readOnly" : "";
-  const vinDisplay = z.vin
-    ? escapeHtml(z.vin.length > 12 ? z.vin.slice(-10) : z.vin)
+  const vinShort = z.vin
+    ? (z.vin.length > 11 ? "…" + z.vin.slice(-9) : z.vin)
     : "—";
+
   return `
     <div class="zonaCard zonaCard--${css}${roClass}"
          data-zona="${z.zona_id}"
@@ -42,7 +52,8 @@ function renderZonaCard_(z, readOnly) {
          role="${readOnly ? "presentation" : "button"}"
          tabindex="${readOnly ? "-1" : "0"}">
       <span class="zonaNum">ZONA ${z.zona_id}</span>
-      <span class="zonaVin">${vinDisplay}</span>
+      <span class="zonaCarIcon">${icon}</span>
+      <span class="zonaVin">${escapeHtml(vinShort)}</span>
       <span class="zonaEstadoChip">${label}</span>
     </div>`;
 }
@@ -50,23 +61,29 @@ function renderZonaCard_(z, readOnly) {
 function renderMapa_(container, zonas, sinZona, readOnly) {
   const byId = new Map(zonas.map(z => [z.zona_id, z]));
 
-  const colDerHTML  = COL_DERECHA.map(n => renderZonaCard_(byId.get(n) || { zona_id: n, vin: null, estado: "LIBRE" }, readOnly)).join("");
-  const colIzqHTML  = COL_IZQUIERDA.map(n => renderZonaCard_(byId.get(n) || { zona_id: n, vin: null, estado: "LIBRE" }, readOnly)).join("");
+  const colIzqHTML = COL_IZQUIERDA.map(n =>
+    renderZonaCard_(byId.get(n) || { zona_id: n, vin: null, estado: "LIBRE" }, readOnly)
+  ).join("");
 
-  // Zona 16: sin ubicación
-  let sinZonaBody;
+  const colDerHTML = COL_DERECHA.map(n =>
+    renderZonaCard_(byId.get(n) || { zona_id: n, vin: null, estado: "LIBRE" }, readOnly)
+  ).join("");
+
+  // Zona Libre (zona 16)
+  const sinZonaCount = sinZona.length;
+  let zonaLibreBody;
   if (!sinZona.length) {
-    sinZonaBody = `<span class="zonaSinUbicacionEmpty">Ningún vehículo sin zona asignada</span>`;
+    zonaLibreBody = `<span class="zonaLibreEmpty">Sin vehículos en zona libre</span>`;
   } else {
-    sinZonaBody = sinZona.map(v => {
+    zonaLibreBody = sinZona.map(v => {
       const css = ESTADO_CSS[v.estado] || "en_conversion";
       const roClass = readOnly ? " readOnly" : "";
-      return `<span class="zonaSuVin zonaSuVin--${css}${roClass}"
+      return `<span class="zonaLibreVin zonaLibreVin--${css}${roClass}"
                 data-vin="${escapeHtml(v.vin)}"
                 data-zona="16"
                 data-estado="${v.estado}">
         ${escapeHtml(v.vin)}
-        <span class="zonaSuVinEstado">${v.estado === "FINALIZADO" ? "✅" : "🔧"}</span>
+        <span class="zonaLibreVinEstado">${v.estado === "FINALIZADO" ? "✅" : "🔧"}</span>
       </span>`;
     }).join("");
   }
@@ -74,20 +91,34 @@ function renderMapa_(container, zonas, sinZona, readOnly) {
   container.innerHTML = `
     <div class="zonasMapaWrap">
       <div class="zonasGrid">
+        <!-- Izquierda: zonas 1-9 -->
         <div class="zonasCol" id="zonasColIzq">${colIzqHTML}</div>
+
+        <!-- Carretera / Pasillo -->
         <div class="zonasPasillo">
+          <span class="zonasPasilloArrow">▲</span>
+          <div class="zonasPasilloLine"></div>
           <span class="zonasPasilloLabel">PASILLO</span>
           <div class="zonasPasilloLine"></div>
+          <span class="zonasPasilloArrow">▼</span>
         </div>
+
+        <!-- Derecha: zonas 10-15 -->
         <div class="zonasCol" id="zonasColDer">${colDerHTML}</div>
       </div>
 
-      <div class="zonaSinUbicacion">
-        <div class="zonaSinUbicacionHeader">
-          <span>📍 Sin ubicación</span>
-          <span style="font-size:var(--fs-2xs);font-weight:normal;opacity:.6;">Zona 16</span>
+      <!-- Zona Libre (zona 16) -->
+      <div class="zonaLibreSection">
+        <div class="zonaLibreHeader">
+          <div class="zonaLibreHeaderLeft">
+            <div>
+              <div class="zonaLibreTitle">🟡 ZONA LIBRE</div>
+              <div class="zonaLibreSub">Área de desborde · sin espacio asignado</div>
+            </div>
+          </div>
+          ${sinZonaCount ? `<span class="zonaLibreBadge">${sinZonaCount} carro${sinZonaCount !== 1 ? "s" : ""}</span>` : ""}
         </div>
-        <div class="zonaSinUbicacionBody">${sinZonaBody}</div>
+        <div class="zonaLibreBody">${zonaLibreBody}</div>
       </div>
 
       <div class="zonasLeyenda">
@@ -95,6 +126,7 @@ function renderMapa_(container, zonas, sinZona, readOnly) {
         <span class="zonasLeyendaItem"><span class="zonasLeyendaDot zonasLeyendaDot--esperando"></span>En Espera</span>
         <span class="zonasLeyendaItem"><span class="zonasLeyendaDot zonasLeyendaDot--en_conversion"></span>En Conversión</span>
         <span class="zonasLeyendaItem"><span class="zonasLeyendaDot zonasLeyendaDot--finalizado"></span>Listo para mover</span>
+        <span class="zonasLeyendaItem"><span class="zonasLeyendaDot zonasLeyendaDot--libre_zone"></span>Zona Libre</span>
       </div>
     </div>`;
 }
@@ -104,14 +136,14 @@ function renderMapa_(container, zonas, sinZona, readOnly) {
 let _actionSheetEl = null;
 let _pickerEl = null;
 
-function removeSheet_(el) {
+function removeEl_(el) {
   if (el && el.parentNode) el.parentNode.removeChild(el);
 }
 
 function openActionSheet_(zona, onRefresh) {
-  removeSheet_(_actionSheetEl);
-  const css    = ESTADO_CSS[zona.estado] || "libre";
-  const label  = ESTADO_LABEL[zona.estado] || "Libre";
+  removeEl_(_actionSheetEl);
+  const css   = ESTADO_CSS[zona.estado] || "libre";
+  const label = ESTADO_LABEL[zona.estado] || "Libre";
   const hasVin = !!zona.vin;
 
   const sheet = document.createElement("div");
@@ -120,19 +152,19 @@ function openActionSheet_(zona, onRefresh) {
     <div class="zonasActionBox">
       <div class="zonasActionHead">
         <div>
-          <div class="zonasActionTitle">Zona ${zona.zona_id}</div>
+          <div class="zonasActionTitle">Zona ${zona.zona_id === 16 ? "Libre" : zona.zona_id}</div>
           ${hasVin ? `<div class="zonasActionVin">${escapeHtml(zona.vin)}</div>` : ""}
         </div>
         <button class="zonasPickerClose" id="zonasActionCloseBtn" type="button">✕</button>
       </div>
-      <span class="zonasActionEstado zonasActionEstado--${css}">${label}</span>
+      <span class="zonasActionEstado zonasActionEstado--${css}">${ESTADO_ICON[zona.estado] || ""} ${label}</span>
       <div class="zonasActionBtns">
         <button class="zonasActionBtn" id="zonasActionAsignarBtn" type="button">
           🚗 Asignar carro a esta zona
         </button>
         ${hasVin ? `
           <button class="zonasActionBtn zonasActionBtn--danger" id="zonasActionLiberarBtn" type="button">
-            🔓 Liberar zona (sacar carro)
+            🔓 Liberar zona
           </button>
         ` : ""}
       </div>
@@ -141,9 +173,7 @@ function openActionSheet_(zona, onRefresh) {
   document.body.appendChild(sheet);
   _actionSheetEl = sheet;
 
-  sheet.addEventListener("click", e => {
-    if (e.target === sheet) closeActionSheet_();
-  });
+  sheet.addEventListener("click", e => { if (e.target === sheet) closeActionSheet_(); });
   sheet.querySelector("#zonasActionCloseBtn").addEventListener("click", closeActionSheet_);
 
   sheet.querySelector("#zonasActionAsignarBtn").addEventListener("click", () => {
@@ -169,36 +199,98 @@ function openActionSheet_(zona, onRefresh) {
   }
 }
 
-function closeActionSheet_() { removeSheet_(_actionSheetEl); _actionSheetEl = null; }
+function closeActionSheet_() { removeEl_(_actionSheetEl); _actionSheetEl = null; }
 
-// ── Picker: seleccionar zona para un VIN ─────────────────────────────────────
+// Picker para asignar un VIN a una zona específica (src: click en zona vacía)
+function openPickerForZone_(zonaId, onRefresh) {
+  // Reutilizamos el VIN picker pero como "¿qué carro mover a zona X?"
+  // Por simplicidad: abre el picker de VIN (campo texto + sugerencias)
+  // que ya existe en el movilizador. Aquí simplemente mostramos un mini form.
+  const sheet = document.createElement("div");
+  sheet.className = "zonasActionSheet";
+  sheet.innerHTML = `
+    <div class="zonasActionBox" style="gap:14px;">
+      <div class="zonasActionHead">
+        <div class="zonasActionTitle">Asignar a Zona ${zonaId === 16 ? "Libre" : zonaId}</div>
+        <button class="zonasPickerClose" id="zpForZoneClose" type="button">✕</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <input id="zpForZoneVin" type="text"
+          placeholder="Ingresa el VIN…"
+          style="background:var(--inputBg);border:1.5px solid var(--inputLine);border-radius:var(--radiusSm);padding:12px 14px;color:var(--text);font-size:var(--fs-md);font-family:var(--font-mono);outline:none;width:100%;box-sizing:border-box;"
+          autocomplete="off" autocapitalize="characters" spellcheck="false" />
+        <button class="zonasActionBtn" id="zpForZoneConfirm" type="button" disabled>
+          Confirmar asignación ▶
+        </button>
+        <div id="zpForZoneStatus" style="font-size:var(--fs-xs);color:var(--muted);min-height:16px;"></div>
+      </div>
+    </div>`;
+
+  document.body.appendChild(sheet);
+
+  const closeMe = () => removeEl_(sheet);
+  sheet.addEventListener("click", e => { if (e.target === sheet) closeMe(); });
+  sheet.querySelector("#zpForZoneClose").addEventListener("click", closeMe);
+
+  const vinInput   = sheet.querySelector("#zpForZoneVin");
+  const confirmBtn = sheet.querySelector("#zpForZoneConfirm");
+  const statusEl   = sheet.querySelector("#zpForZoneStatus");
+
+  vinInput.addEventListener("input", () => {
+    confirmBtn.disabled = vinInput.value.trim().length < 5;
+  });
+
+  confirmBtn.addEventListener("click", async () => {
+    const vin = vinInput.value.trim().toUpperCase();
+    if (!vin) return;
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = "Guardando…";
+    try {
+      const j = await postJSON("/api/zonas/asignar", { zona_id: zonaId, vin, usuario: "" });
+      if (!j?.ok) throw new Error(j?.error || "Error");
+      closeMe();
+      if (onRefresh) await onRefresh();
+    } catch (e) {
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = "Confirmar asignación ▶";
+      if (statusEl) statusEl.textContent = `Error: ${e.message}`;
+    }
+  });
+
+  vinInput.focus();
+}
+
+// ── Picker de zona para un VIN específico ────────────────────────────────────
 
 /**
  * Abre el picker de zonas para asignar un VIN.
- * @param {string} vin - VIN a asignar
- * @param {string} usuario - nombre del usuario
- * @param {{ zonas, sin_zona }} zonaData - datos actuales del mapa
- * @param {function} onDone - callback tras asignar zona (zona_id: number | null)
- * @param {boolean} dismissible - si se puede cerrar sin elegir
+ * @param {string} vin
+ * @param {string} usuario
+ * @param {{ zonas, sin_zona }} zonaData - estado actual del mapa
+ * @param {function|null} onDone - callback(zona_id) tras asignar
+ * @param {boolean} dismissible
  */
 export function openZonaPicker(vin, usuario, zonaData, onDone, dismissible = true) {
-  removeSheet_(_pickerEl);
+  removeEl_(_pickerEl);
   const { zonas = [], sin_zona = [] } = zonaData || {};
   const byId = new Map(zonas.map(z => [z.zona_id, z]));
 
-  function zonaPickerCard_(n) {
+  function pickerCard_(n) {
     const z = byId.get(n) || { zona_id: n, vin: null, estado: "LIBRE" };
-    const css = ESTADO_CSS[z.estado] || "libre";
-    const esMismoVin = z.vin === vin;
+    const css    = ESTADO_CSS[z.estado] || "libre";
+    const esMismo = z.vin === vin;
+    const vinLabel = z.vin ? (esMismo ? "(actual)" : "…" + z.vin.slice(-7)) : "";
     return `
       <div class="zonasPickerZona zonasPickerZona--${css}" data-zona="${n}" role="button">
         <span class="zpZonaNum">Zona ${n}</span>
-        ${z.vin ? `<span class="zpZonaVin">${escapeHtml(esMismoVin ? "(actual)" : z.vin.slice(-8))}</span>` : ""}
-        <span class="zpZonaEstado">${esMismoVin ? "★ Actual" : ESTADO_LABEL[z.estado] || "Libre"}</span>
+        <span class="zpZonaCar">${ESTADO_ICON[z.estado] || "🅿️"}</span>
+        ${vinLabel ? `<span class="zpZonaVin">${escapeHtml(vinLabel)}</span>` : ""}
+        <span class="zpZonaEstado">${esMismo ? "★ Actual" : ESTADO_LABEL[z.estado] || "Libre"}</span>
       </div>`;
   }
 
-  const allCards = [...COL_DERECHA, ...COL_IZQUIERDA].sort((a,b) => a-b).map(zonaPickerCard_).join("");
+  // Zonas 1-15 ordenadas
+  const allCards = [...COL_IZQUIERDA, ...COL_DERECHA].map(pickerCard_).join("");
 
   const picker = document.createElement("div");
   picker.className = "zonasPickerModal";
@@ -213,8 +305,9 @@ export function openZonaPicker(vin, usuario, zonaData, onDone, dismissible = tru
       <div class="zonasPickerHint">Toca una zona para asignar este carro</div>
       <div class="zonasPickerGrid">
         ${allCards}
-        <div class="zonasPickerZona zonasPickerZona--sinubic" data-zona="16" role="button">
-          <span class="zpSinUbicLabel">📍 Sin ubicación (Zona 16)</span>
+        <div class="zonasPickerZona zonasPickerZona--librezona" data-zona="16" role="button">
+          <span>🟡</span>
+          <span class="zpLibreLabel">Zona Libre</span>
         </div>
       </div>
       <div id="zonasPickerStatus" style="font-size:var(--fs-sm);color:var(--muted);min-height:18px;"></div>
@@ -233,16 +326,12 @@ export function openZonaPicker(vin, usuario, zonaData, onDone, dismissible = tru
       const zonaId = Number(btn.dataset.zona);
       const statusEl = picker.querySelector("#zonasPickerStatus");
 
-      picker.querySelectorAll(".zonasPickerZona").forEach(b => b.style.opacity = "0.5");
+      picker.querySelectorAll(".zonasPickerZona").forEach(b => b.style.opacity = "0.4");
       btn.style.opacity = "1";
       if (statusEl) statusEl.textContent = "Guardando…";
 
       try {
-        const j = await postJSON("/api/zonas/asignar", {
-          zona_id: zonaId,
-          vin,
-          usuario,
-        });
+        const j = await postJSON("/api/zonas/asignar", { zona_id: zonaId, vin, usuario });
         if (!j?.ok) throw new Error(j?.error || "Error");
         closePicker_();
         if (onDone) onDone(j.zona_id);
@@ -254,24 +343,22 @@ export function openZonaPicker(vin, usuario, zonaData, onDone, dismissible = tru
   });
 }
 
-function closePicker_() { removeSheet_(_pickerEl); _pickerEl = null; }
+function closePicker_() { removeEl_(_pickerEl); _pickerEl = null; }
 
 // ── Inicialización del mapa ──────────────────────────────────────────────────
 
 let _zonaData = { zonas: [], sin_zona: [] };
 
 /**
- * Inicializa el mapa de zonas en un contenedor.
- * @param {string} containerId - ID del elemento contenedor
+ * Inicializa el mapa de zonas en un contenedor DOM.
+ * @param {string} containerId
  * @param {{ readOnly, usuario, onZoneAction }} opts
- *   readOnly: true = solo visualización (supervisor)
- *   usuario: nombre del usuario activo (movilizador)
- *   onZoneAction: callback tras cualquier acción (para refrescar datos externos)
+ * @returns {{ refresh: function }}
  */
 export function initZonasMapa(containerId, opts = {}) {
   const { readOnly = false, usuario = "", onZoneAction = null } = opts;
   const container = document.getElementById(containerId);
-  if (!container) return;
+  if (!container) return null;
 
   async function refresh_() {
     try {
@@ -281,19 +368,16 @@ export function initZonasMapa(containerId, opts = {}) {
       _zonaData = j;
       renderMapa_(container, j.zonas, j.sin_zona, readOnly);
 
-      // Timestamp
       const ts = document.getElementById(`${containerId}Ts`);
       if (ts) {
         const d = new Date();
-        ts.textContent = `Actualizado ${d.toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" })}`;
+        ts.textContent = `Act. ${d.toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" })}`;
       }
 
-      // Bind clicks si no es read-only
       if (!readOnly) bindMapaClicks_(container, usuario, onZoneAction);
     } catch {}
   }
 
-  // Botón refresh externo (si existe)
   const refreshBtn = document.getElementById(`${containerId}RefreshBtn`);
   if (refreshBtn) refreshBtn.addEventListener("click", () => refresh_().catch(() => {}));
 
@@ -302,44 +386,35 @@ export function initZonasMapa(containerId, opts = {}) {
 }
 
 function bindMapaClicks_(container, usuario, onZoneAction) {
-  // Remover listener anterior para evitar duplicados
   const old = container._zonaClickHandler;
   if (old) container.removeEventListener("click", old);
 
-  const handler = async (e) => {
-    const card = e.target.closest(".zonaCard[data-zona]");
-    const suVin = e.target.closest(".zonaSuVin[data-vin]");
+  const doRefresh_ = async () => {
+    const res = await fetch("/api/zonas");
+    const j = res.ok ? await res.json() : null;
+    if (!j?.ok) return;
+    _zonaData = j;
+    renderMapa_(container, j.zonas, j.sin_zona, false);
+    bindMapaClicks_(container, usuario, onZoneAction);
+    if (onZoneAction) onZoneAction();
+  };
+
+  const handler = (e) => {
+    const card   = e.target.closest(".zonaCard[data-zona]");
+    const libVin = e.target.closest(".zonaLibreVin[data-vin]");
 
     if (card) {
       const zonaId = Number(card.dataset.zona);
       const z = _zonaData.zonas.find(z => z.zona_id === zonaId)
              || { zona_id: zonaId, vin: null, estado: "LIBRE" };
-      openActionSheet_(z, async () => {
-        // Refresh del mapa tras acción
-        const res = await fetch("/api/zonas");
-        const j = res.ok ? await res.json() : null;
-        if (!j?.ok) return;
-        _zonaData = j;
-        renderMapa_(container, j.zonas, j.sin_zona, false);
-        bindMapaClicks_(container, usuario, onZoneAction);
-        if (onZoneAction) onZoneAction();
-      });
+      openActionSheet_(z, doRefresh_);
       return;
     }
 
-    if (suVin) {
-      const vin = suVin.dataset.vin;
+    if (libVin) {
+      const vin = libVin.dataset.vin;
       if (!vin) return;
-      // VIN sin zona → abrir picker directamente para asignarlo
-      openZonaPicker(vin, usuario, _zonaData, async (zonaId) => {
-        const res = await fetch("/api/zonas");
-        const j = res.ok ? await res.json() : null;
-        if (!j?.ok) return;
-        _zonaData = j;
-        renderMapa_(container, j.zonas, j.sin_zona, false);
-        bindMapaClicks_(container, usuario, onZoneAction);
-        if (onZoneAction) onZoneAction();
-      });
+      openZonaPicker(vin, usuario, _zonaData, doRefresh_);
     }
   };
 
@@ -348,11 +423,10 @@ function bindMapaClicks_(container, usuario, onZoneAction) {
 }
 
 /**
- * Abre el picker para asignar zona a un VIN específico.
- * Primero hace fetch del estado actual del mapa para mostrar disponibilidad.
+ * Consulta si un VIN tiene zona y abre el picker si no la tiene.
  * @param {string} vin
  * @param {string} usuario
- * @param {function} onDone - callback(zona_id)
+ * @param {function|null} onDone
  * @param {boolean} dismissible
  */
 export async function promptZonaForVin(vin, usuario, onDone, dismissible = true) {

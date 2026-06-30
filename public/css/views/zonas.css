@@ -1,211 +1,310 @@
 /* =====================================================================
    zonas.css — Mapa de zonas de conversión
-   15 zonas físicas (9 derecha + 6 izquierda) + zona 16 (sin ubicación)
+   Layout: 9 zonas izquierda | carretera | 6 zonas derecha | Zona Libre
    ===================================================================== */
 
-/* ── Contenedor del mapa ── */
+/* ── Contenedor principal ── */
 .zonasMapaWrap {
-  padding: 10px 0 4px;
+  padding: 4px 0 8px;
+  user-select: none;
 }
 
-.zonasMapaTitle {
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-bold);
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: .06em;
-  margin-bottom: 10px;
-  padding: 0 2px;
-}
-
-/* ── Layout: dos columnas + pasillo ── */
+/* ── Grid: col-izq | carretera | col-der ── */
 .zonasGrid {
   display: grid;
-  grid-template-columns: 1fr 36px 1fr;
-  gap: 6px 0;
+  grid-template-columns: 1fr 44px 1fr;
+  gap: 0;
   align-items: start;
 }
 
+/* ── Columnas de zonas ── */
 .zonasCol {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 0;
 }
 
-.zonasPasillo {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-start;
-  padding-top: 6px;
-  gap: 6px;
-}
+/* ═══════════════════════════════════════════════════
+   PARKING SPOT — zona card
+═══════════════════════════════════════════════════ */
 
-.zonasPasilloLine {
-  width: 2px;
-  background: var(--surfaceLine);
-  flex: 1;
-  min-height: 40px;
-  border-radius: 2px;
-}
-
-.zonasPasilloLabel {
-  font-size: var(--fs-2xs);
-  color: var(--muted);
-  writing-mode: vertical-rl;
-  text-orientation: mixed;
-  letter-spacing: .08em;
-  opacity: .5;
-}
-
-/* ── Zona card ── */
 .zonaCard {
-  border-radius: var(--radiusSm);
-  border: 1.5px solid var(--surfaceLine);
-  padding: 8px 10px;
-  cursor: pointer;
-  transition: opacity .12s, transform .1s;
-  background: var(--bgAccent);
+  background: #0f1623;
+  border-left:  3px solid rgba(255,255,255,.40);
+  border-right: 3px solid rgba(255,255,255,.40);
+  border-top:    1px solid rgba(255,255,255,.10);
+  border-bottom: 1px solid rgba(255,255,255,.10);
+  border-radius: 0;
+  padding: 7px 9px 8px;
+  min-height: 68px;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  min-height: 64px;
-  user-select: none;
-  -webkit-tap-highlight-color: transparent;
+  cursor: pointer;
   position: relative;
+  transition: filter .12s, opacity .1s;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.zonaCard:active {
-  opacity: .75;
-  transform: scale(.97);
+/* Primera y última zona: cerrar el rectángulo */
+.zonasCol > .zonaCard:first-child {
+  border-top: 3px solid rgba(255,255,255,.40);
+  border-radius: 6px 6px 0 0;
 }
+.zonasCol > .zonaCard:last-child {
+  border-bottom: 3px solid rgba(255,255,255,.40);
+  border-radius: 0 0 6px 6px;
+}
+
+.zonaCard:active { opacity: .72; }
 
 .zonaCard.readOnly {
   cursor: default;
   pointer-events: none;
 }
 
-/* Estado: LIBRE */
+/* ── Estados ── */
+
+/* LIBRE: asfalto oscuro, opaco */
 .zonaCard--libre {
-  border-style: dashed;
-  border-color: rgba(255,255,255,.14);
-  background: transparent;
-  opacity: .55;
+  opacity: .40;
 }
 
-/* Estado: ESPERANDO */
+/* ESPERANDO: calor amarillo */
 .zonaCard--esperando {
-  border-color: var(--warn);
-  background: var(--warnBg);
+  background: rgba(251,191,36,.09);
+  border-left-color:  var(--warn);
+  border-right-color: var(--warn);
 }
+.zonaCard--esperando:first-child  { border-top-color: var(--warn); }
+.zonaCard--esperando:last-child   { border-bottom-color: var(--warn); }
 
-/* Estado: EN_CONVERSION */
+/* EN_CONVERSION: azul eléctrico */
 .zonaCard--en_conversion {
-  border-color: var(--note);
-  background: var(--noteBg);
+  background: rgba(96,165,250,.08);
+  border-left-color:  var(--note);
+  border-right-color: var(--note);
 }
+.zonaCard--en_conversion:first-child  { border-top-color: var(--note); }
+.zonaCard--en_conversion:last-child   { border-bottom-color: var(--note); }
 
-/* Estado: FINALIZADO */
+/* FINALIZADO: verde */
 .zonaCard--finalizado {
-  border-color: var(--ok);
-  background: var(--okBg);
+  background: rgba(34,197,94,.10);
+  border-left-color:  var(--ok);
+  border-right-color: var(--ok);
 }
+.zonaCard--finalizado:first-child  { border-top-color: var(--ok); }
+.zonaCard--finalizado:last-child   { border-bottom-color: var(--ok); }
+
+/* ── Contenido de la zona ── */
 
 .zonaNum {
-  font-size: var(--fs-2xs);
-  font-weight: var(--fw-bold);
-  color: var(--muted);
-  letter-spacing: .04em;
+  font-size: 10px;
+  font-weight: 700;
+  color: rgba(255,255,255,.35);
+  letter-spacing: .06em;
+  text-transform: uppercase;
 }
 
-.zonaCard--libre .zonaNum { opacity: .45; }
+.zonaCard--libre .zonaNum { opacity: .5; }
+
+/* Ícono de estado como "carro" visual */
+.zonaCarIcon {
+  font-size: 18px;
+  line-height: 1;
+  margin: 1px 0;
+}
+
+.zonaCard--libre .zonaCarIcon { opacity: .18; }
 
 .zonaVin {
-  font-size: var(--fs-xs);
+  font-size: 11px;
   font-family: var(--font-mono);
-  font-weight: var(--fw-bold);
+  font-weight: 700;
   color: var(--text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  line-height: 1.3;
+  line-height: 1.2;
 }
 
-.zonaCard--libre .zonaVin { color: var(--muted); opacity: .4; }
+.zonaCard--libre .zonaVin { opacity: .25; color: var(--muted); }
 
 .zonaEstadoChip {
-  font-size: var(--fs-2xs);
-  font-weight: var(--fw-bold);
-  letter-spacing: .03em;
-  margin-top: 2px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .02em;
+  margin-top: 1px;
 }
 
-.zonaCard--libre      .zonaEstadoChip { color: var(--muted); opacity: .4; }
-.zonaCard--esperando  .zonaEstadoChip { color: var(--warn); }
+.zonaCard--libre         .zonaEstadoChip { color: rgba(255,255,255,.2); }
+.zonaCard--esperando     .zonaEstadoChip { color: var(--warn); }
 .zonaCard--en_conversion .zonaEstadoChip { color: var(--note); }
-.zonaCard--finalizado .zonaEstadoChip { color: var(--ok); }
+.zonaCard--finalizado    .zonaEstadoChip { color: var(--ok); }
 
-/* ── Zona 16: Sin ubicación ── */
-.zonaSinUbicacion {
-  margin-top: 14px;
+/* ═══════════════════════════════════════════════════
+   CARRETERA / PASILLO
+═══════════════════════════════════════════════════ */
+
+.zonasPasillo {
+  background: #050505;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  padding: 6px 0;
+  position: relative;
+  min-height: 100%;
+  border-top:    2px solid #1a1a1a;
+  border-bottom: 2px solid #1a1a1a;
+}
+
+/* Flecha superior */
+.zonasPasilloArrow {
+  font-size: 11px;
+  color: rgba(251,191,36,.7);
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+/* Línea central amarilla punteada (como raya de carretera) */
+.zonasPasilloLine {
+  flex: 1;
+  width: 3px;
+  border-radius: 2px;
+  background: repeating-linear-gradient(
+    to bottom,
+    #fbbf24 0px,
+    #fbbf24 10px,
+    transparent 10px,
+    transparent 22px
+  );
+  min-height: 30px;
+}
+
+/* Etiqueta "PASILLO" vertical */
+.zonasPasilloLabel {
+  font-size: 9px;
+  font-weight: 800;
+  color: rgba(255,255,255,.18);
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  flex-shrink: 0;
+}
+
+/* Marcas de velocidad / rayas de carretera a los lados */
+.zonasPasillo::before,
+.zonasPasillo::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(255,255,255,.06) 0px,
+    rgba(255,255,255,.06) 4px,
+    transparent 4px,
+    transparent 10px
+  );
+}
+.zonasPasillo::before { left: 4px; }
+.zonasPasillo::after  { right: 4px; }
+
+/* ═══════════════════════════════════════════════════
+   ZONA LIBRE (Zona 16 — desborde)
+═══════════════════════════════════════════════════ */
+
+.zonaLibreSection {
+  margin-top: 12px;
   border-radius: var(--radiusSm);
-  border: 1.5px solid var(--surfaceLine);
-  background: var(--bgAccent);
+  border: 2px dashed rgba(251,191,36,.35);
+  background: rgba(251,191,36,.04);
   overflow: hidden;
 }
 
-.zonaSinUbicacionHeader {
+.zonaLibreHeader {
   padding: 8px 12px;
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-bold);
-  color: var(--muted);
   display: flex;
   align-items: center;
-  gap: 6px;
-  border-bottom: 1px solid var(--surfaceLine);
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(251,191,36,.15);
 }
 
-.zonaSinUbicacionBody {
-  padding: 8px;
+.zonaLibreHeaderLeft {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.zonaLibreTitle {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  color: rgba(251,191,36,.85);
+}
+
+.zonaLibreSub {
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+  opacity: .7;
+  margin-top: 1px;
+}
+
+.zonaLibreBadge {
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-bold);
+  color: rgba(251,191,36,.7);
+  background: rgba(251,191,36,.12);
+  border-radius: var(--radius-full);
+  padding: 2px 8px;
+}
+
+.zonaLibreBody {
+  padding: 8px 10px;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  min-height: 36px;
 }
 
-.zonaSinUbicacionEmpty {
+.zonaLibreEmpty {
   font-size: var(--fs-xs);
   color: var(--muted);
-  padding: 4px 4px 2px;
-  opacity: .6;
+  opacity: .55;
+  font-style: italic;
 }
 
-.zonaSuVin {
+/* VIN chip en zona libre */
+.zonaLibreVin {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   border-radius: 8px;
-  padding: 5px 9px;
-  background: var(--surface);
+  padding: 5px 10px;
+  background: var(--bgAccent);
   border: 1px solid var(--surfaceLine);
   font-size: var(--fs-xs);
   font-family: var(--font-mono);
-  font-weight: var(--fw-bold);
+  font-weight: 700;
   color: var(--text);
   cursor: pointer;
   transition: opacity .1s;
 }
 
-.zonaSuVin:active { opacity: .7; }
-.zonaSuVin.readOnly { cursor: default; pointer-events: none; }
+.zonaLibreVin:active { opacity: .65; }
+.zonaLibreVin.readOnly { cursor: default; pointer-events: none; }
 
-.zonaSuVinEstado {
-  font-size: var(--fs-2xs);
-  font-weight: normal;
+.zonaLibreVinEstado {
+  font-size: 10px;
   font-family: var(--font-body);
+  font-weight: normal;
 }
 
-.zonaSuVin--en_conversion .zonaSuVinEstado { color: var(--note); }
-.zonaSuVin--finalizado    .zonaSuVinEstado { color: var(--ok); }
+.zonaLibreVin--en_conversion .zonaLibreVinEstado { color: var(--note); }
+.zonaLibreVin--finalizado    .zonaLibreVinEstado { color: var(--ok); }
 
 /* ── Leyenda ── */
 .zonasLeyenda {
@@ -231,12 +330,41 @@
   flex-shrink: 0;
 }
 
-.zonasLeyendaDot--libre        { background: var(--muted); opacity: .35; }
-.zonasLeyendaDot--esperando    { background: var(--warn); }
-.zonasLeyendaDot--en_conversion { background: var(--note); }
-.zonasLeyendaDot--finalizado   { background: var(--ok); }
+.zonasLeyendaDot--libre         { background: rgba(255,255,255,.25); }
+.zonasLeyendaDot--esperando     { background: var(--warn); }
+.zonasLeyendaDot--en_conversion  { background: var(--note); }
+.zonasLeyendaDot--finalizado    { background: var(--ok); }
+.zonasLeyendaDot--libre_zone    { background: rgba(251,191,36,.6); border: 1px dashed rgba(251,191,36,.8); }
 
-/* ── Modal zona picker (para tecnico y movilizador) ── */
+/* ── Barra de estado del mapa ── */
+.zonasMapaBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.zonasMapaTs {
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+  opacity: .6;
+}
+
+.zonasMapaRefreshBtn {
+  background: none;
+  border: none;
+  color: var(--note);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+  padding: 4px 0;
+  font-weight: var(--fw-bold);
+}
+
+/* ═══════════════════════════════════════════════════
+   PICKER DE ZONA (bottom sheet)
+═══════════════════════════════════════════════════ */
+
 .zonasPickerModal {
   position: fixed;
   inset: 0;
@@ -272,7 +400,7 @@
   font-size: var(--fs-lg);
   font-weight: var(--fw-bold);
   color: var(--text);
-  line-height: 1.3;
+  line-height: 1.35;
 }
 
 .zonasPickerVin {
@@ -301,92 +429,62 @@
   margin-top: -6px;
 }
 
-/* Grid del picker: 3 columnas */
+/* Grid picker: 3 columnas × 5 filas = 15 zonas + Zona Libre full-width */
 .zonasPickerGrid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+  gap: 7px;
 }
 
 .zonasPickerZona {
   border-radius: var(--radiusSm);
-  border: 1.5px solid var(--surfaceLine);
-  padding: 10px 8px;
+  border: 1.5px solid rgba(255,255,255,.18);
+  padding: 9px 6px;
   cursor: pointer;
-  background: var(--bgAccent);
+  background: #0f1623;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 3px;
-  min-height: 60px;
-  transition: opacity .1s, border-color .1s;
+  min-height: 58px;
+  transition: opacity .1s;
   -webkit-tap-highlight-color: transparent;
   text-align: center;
 }
 
-.zonasPickerZona:active { opacity: .7; }
+.zonasPickerZona:active { opacity: .65; }
 
-.zonasPickerZona--libre {
-  border-style: dashed;
-  border-color: rgba(255,255,255,.16);
-}
+.zonasPickerZona--libre       { border-style: dashed; border-color: rgba(255,255,255,.18); }
+.zonasPickerZona--esperando   { border-color: var(--warn);  background: rgba(251,191,36,.08); }
+.zonasPickerZona--en_conversion { border-color: var(--note); background: rgba(96,165,250,.08); }
+.zonasPickerZona--finalizado  { border-color: var(--ok);   background: rgba(34,197,94,.10); }
 
-.zonasPickerZona--esperando {
-  border-color: var(--warn);
-  background: var(--warnBg);
-}
-
-.zonasPickerZona--en_conversion {
-  border-color: var(--note);
-  background: var(--noteBg);
-}
-
-.zonasPickerZona--finalizado {
-  border-color: var(--ok);
-  background: var(--okBg);
-}
-
-.zonasPickerZona--sinubic {
+.zonasPickerZona--librezona {
   grid-column: 1 / -1;
-  border-color: var(--surfaceLine);
-  background: var(--glass);
+  border-color: rgba(251,191,36,.4);
+  border-style: dashed;
+  background: rgba(251,191,36,.05);
   flex-direction: row;
   justify-content: center;
   min-height: 44px;
+  gap: 8px;
 }
 
-.zpZonaNum {
-  font-size: var(--fs-xs);
-  font-weight: var(--fw-bold);
-  color: var(--muted);
-}
+.zpZonaNum   { font-size: 10px; font-weight: 700; color: rgba(255,255,255,.4); }
+.zpZonaCar   { font-size: 15px; line-height: 1; }
+.zpZonaVin   { font-size: 10px; font-family: var(--font-mono); color: var(--text); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.zpZonaEstado { font-size: 10px; color: var(--muted); }
 
-.zpZonaVin {
-  font-size: var(--fs-2xs);
-  font-family: var(--font-mono);
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-}
+.zonasPickerZona--esperando     .zpZonaEstado { color: var(--warn); }
+.zonasPickerZona--en_conversion  .zpZonaEstado { color: var(--note); }
+.zonasPickerZona--finalizado    .zpZonaEstado { color: var(--ok); }
 
-.zpZonaEstado {
-  font-size: var(--fs-2xs);
-  color: var(--muted);
-}
+.zpLibreLabel { font-size: var(--fs-sm); font-weight: 700; color: rgba(251,191,36,.8); }
 
-.zonasPickerZona--esperando    .zpZonaEstado { color: var(--warn); }
-.zonasPickerZona--en_conversion .zpZonaEstado { color: var(--note); }
-.zonasPickerZona--finalizado   .zpZonaEstado { color: var(--ok); }
+/* ═══════════════════════════════════════════════════
+   ACTION SHEET (tap en zona del mapa)
+═══════════════════════════════════════════════════ */
 
-.zpSinUbicLabel {
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-bold);
-  color: var(--muted);
-}
-
-/* ── Zona card acción (dentro del mapa, click abre bottom sheet de acciones) ── */
 .zonasActionSheet {
   position: fixed;
   inset: 0;
@@ -402,7 +500,7 @@
   border-radius: var(--radius) var(--radius) 0 0;
   width: 100%;
   max-width: 480px;
-  padding: 20px 16px calc(20px + var(--safeBottom));
+  padding: 20px 16px calc(22px + var(--safeBottom));
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -424,6 +522,7 @@
   font-size: var(--fs-md);
   color: var(--muted);
   font-family: var(--font-mono);
+  margin-top: 2px;
 }
 
 .zonasActionEstado {
@@ -432,14 +531,14 @@
   gap: 5px;
   font-size: var(--fs-sm);
   font-weight: var(--fw-bold);
-  padding: 4px 10px;
+  padding: 4px 12px;
   border-radius: var(--radius-full);
 }
 
-.zonasActionEstado--libre        { background: var(--glass); color: var(--muted); }
-.zonasActionEstado--esperando    { background: var(--warnBg); color: var(--warn); }
-.zonasActionEstado--en_conversion { background: var(--noteBg); color: var(--note); }
-.zonasActionEstado--finalizado   { background: var(--okBg); color: var(--ok); }
+.zonasActionEstado--libre         { background: var(--glass); color: var(--muted); }
+.zonasActionEstado--esperando     { background: var(--warnBg); color: var(--warn); }
+.zonasActionEstado--en_conversion  { background: var(--noteBg); color: var(--note); }
+.zonasActionEstado--finalizado    { background: var(--okBg); color: var(--ok); }
 
 .zonasActionBtns {
   display: flex;
@@ -458,32 +557,12 @@
   cursor: pointer;
   text-align: left;
   transition: opacity .1s;
+  font-family: var(--font-body);
 }
 
 .zonasActionBtn:active { opacity: .7; }
-.zonasActionBtn--danger { color: var(--danger); border-color: var(--danger); background: var(--dangerBg); }
-
-/* ── Refresh / status bar del mapa ── */
-.zonasMapaBar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-
-.zonasMapaTs {
-  font-size: var(--fs-2xs);
-  color: var(--muted);
-  opacity: .6;
-}
-
-.zonasMapaRefreshBtn {
-  background: none;
-  border: none;
-  color: var(--note);
-  font-size: var(--fs-xs);
-  cursor: pointer;
-  padding: 4px 0;
-  font-weight: var(--fw-bold);
+.zonasActionBtn--danger {
+  color: var(--danger);
+  border-color: rgba(248,113,113,.35);
+  background: var(--dangerBg);
 }
