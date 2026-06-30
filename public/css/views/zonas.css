@@ -1,265 +1,244 @@
 /* =====================================================================
-   zonas.css — Mapa de zonas de conversión
-   Layout: 9 zonas izquierda | carretera | 6 zonas derecha | Zona Libre
+   zonas.css — Mapa de zonas de conversión (vista top-down estilo parking)
    ===================================================================== */
 
 /* ── Contenedor principal ── */
 .zonasMapaWrap {
   padding: 4px 0 8px;
   user-select: none;
+  -webkit-user-select: none;
 }
 
 /* ── Grid: col-izq | carretera | col-der ── */
 .zonasGrid {
   display: grid;
-  grid-template-columns: 1fr 44px 1fr;
+  grid-template-columns: 1fr 52px 1fr;
   gap: 0;
-  align-items: start;
+  align-items: stretch;
 }
 
-/* ── Columnas de zonas ── */
+/* ── Columnas ── */
 .zonasCol {
   display: flex;
   flex-direction: column;
   gap: 0;
 }
 
-/* ═══════════════════════════════════════════════════
-   PARKING SPOT — zona card
-═══════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════
+   ZONA — estilo spot de estacionamiento
+══════════════════════════════════════════════════════ */
 
 .zonaCard {
-  background: #0f1623;
-  border-left:  3px solid rgba(255,255,255,.40);
-  border-right: 3px solid rgba(255,255,255,.40);
-  border-top:    1px solid rgba(255,255,255,.10);
-  border-bottom: 1px solid rgba(255,255,255,.10);
+  /* Base: concreto oscuro */
+  background: #1c1c2a;
+  border: none;
+  /* Líneas divisorias blancas en los lados (como rayas pintadas) */
+  border-left:  3.5px solid rgba(255,255,255,.55);
+  border-right: 3.5px solid rgba(255,255,255,.55);
+  border-top:    1px solid rgba(255,255,255,.12);
+  border-bottom: 1px solid rgba(255,255,255,.12);
   border-radius: 0;
-  padding: 7px 9px 8px;
-  min-height: 68px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  cursor: pointer;
-  position: relative;
-  transition: filter .12s, opacity .1s;
-  -webkit-tap-highlight-color: transparent;
-}
-
-/* Primera y última zona: cerrar el rectángulo */
-.zonasCol > .zonaCard:first-child {
-  border-top: 3px solid rgba(255,255,255,.40);
-  border-radius: 6px 6px 0 0;
-}
-.zonasCol > .zonaCard:last-child {
-  border-bottom: 3px solid rgba(255,255,255,.40);
-  border-radius: 0 0 6px 6px;
-}
-
-.zonaCard:active { opacity: .72; }
-
-.zonaCard.readOnly {
-  cursor: default;
-  pointer-events: none;
-}
-
-/* ── Estados ── */
-
-/* LIBRE: asfalto oscuro, opaco */
-.zonaCard--libre {
-  opacity: .40;
-}
-
-/* ESPERANDO: calor amarillo */
-.zonaCard--esperando {
-  background: rgba(251,191,36,.09);
-  border-left-color:  var(--warn);
-  border-right-color: var(--warn);
-}
-.zonaCard--esperando:first-child  { border-top-color: var(--warn); }
-.zonaCard--esperando:last-child   { border-bottom-color: var(--warn); }
-
-/* EN_CONVERSION: azul eléctrico */
-.zonaCard--en_conversion {
-  background: rgba(96,165,250,.08);
-  border-left-color:  var(--note);
-  border-right-color: var(--note);
-}
-.zonaCard--en_conversion:first-child  { border-top-color: var(--note); }
-.zonaCard--en_conversion:last-child   { border-bottom-color: var(--note); }
-
-/* FINALIZADO: verde */
-.zonaCard--finalizado {
-  background: rgba(34,197,94,.10);
-  border-left-color:  var(--ok);
-  border-right-color: var(--ok);
-}
-.zonaCard--finalizado:first-child  { border-top-color: var(--ok); }
-.zonaCard--finalizado:last-child   { border-bottom-color: var(--ok); }
-
-/* ── Contenido de la zona ── */
-
-.zonaNum {
-  font-size: 10px;
-  font-weight: 700;
-  color: rgba(255,255,255,.35);
-  letter-spacing: .06em;
-  text-transform: uppercase;
-}
-
-.zonaCard--libre .zonaNum { opacity: .5; }
-
-/* Ícono de estado como "carro" visual */
-.zonaCarIcon {
-  font-size: 18px;
-  line-height: 1;
-  margin: 1px 0;
-}
-
-.zonaCard--libre .zonaCarIcon { opacity: .18; }
-
-.zonaVin {
-  font-size: 11px;
-  font-family: var(--font-mono);
-  font-weight: 700;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  line-height: 1.2;
-}
-
-.zonaCard--libre .zonaVin { opacity: .25; color: var(--muted); }
-
-.zonaEstadoChip {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: .02em;
-  margin-top: 1px;
-}
-
-.zonaCard--libre         .zonaEstadoChip { color: rgba(255,255,255,.2); }
-.zonaCard--esperando     .zonaEstadoChip { color: var(--warn); }
-.zonaCard--en_conversion .zonaEstadoChip { color: var(--note); }
-.zonaCard--finalizado    .zonaEstadoChip { color: var(--ok); }
-
-/* ═══════════════════════════════════════════════════
-   CARRETERA / PASILLO
-═══════════════════════════════════════════════════ */
-
-.zonasPasillo {
-  background: #050505;
+  padding: 8px 8px 10px;
+  min-height: 72px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0;
-  padding: 6px 0;
+  justify-content: flex-start;
+  gap: 4px;
+  cursor: pointer;
   position: relative;
-  min-height: 100%;
-  border-top:    2px solid #1a1a1a;
-  border-bottom: 2px solid #1a1a1a;
+  transition: opacity .12s;
+  -webkit-tap-highlight-color: transparent;
 }
 
-/* Flecha superior */
-.zonasPasilloArrow {
-  font-size: 11px;
-  color: rgba(251,191,36,.7);
+/* Primera zona: cerrar arriba */
+.zonasCol > .zonaCard:first-child {
+  border-top: 3.5px solid rgba(255,255,255,.55);
+  border-radius: 4px 4px 0 0;
+}
+/* Última zona: cerrar abajo */
+.zonasCol > .zonaCard:last-child {
+  border-bottom: 3.5px solid rgba(255,255,255,.55);
+  border-radius: 0 0 4px 4px;
+}
+
+.zonaCard:active { opacity: .70; }
+.zonaCard.readOnly { cursor: default; pointer-events: none; }
+
+/* ── Número de zona ── */
+.zonaNum {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  color: rgba(255,255,255,.30);
+  text-transform: uppercase;
+  align-self: flex-start;
+  line-height: 1;
+}
+
+/* ── SPOT VACÍO: solo "P" tenue ── */
+.zonaCard--libre .zonaEmptyP {
+  font-size: 22px;
+  font-weight: 900;
+  color: rgba(255,255,255,.10);
+  line-height: 1;
+  margin: auto 0;
+  letter-spacing: -.02em;
+}
+
+/* ── CARRO (solo visible cuando hay VIN) ── */
+.zonaCarShape {
+  width: 62%;
+  height: 30px;
+  border-radius: 5px 5px 4px 4px;
+  position: relative;
+  flex-shrink: 0;
+  margin: 2px auto 0;
+}
+
+/* Techo / parabrisas (franja oscura central) */
+.zonaCarShape::before {
+  content: "";
+  position: absolute;
+  top: 5px;
+  left: 7px;
+  right: 7px;
+  height: 13px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, .32);
+}
+
+/* Color del carro por estado */
+.zonaCard--esperando    .zonaCarShape { background: #f59e0b; }
+.zonaCard--en_conversion .zonaCarShape { background: #3b82f6; }
+.zonaCard--finalizado   .zonaCarShape { background: #22c55e; }
+
+/* ── VIN (pequeño, debajo del carro) ── */
+.zonaVin {
+  font-size: 9.5px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: rgba(255,255,255,.75);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  line-height: 1;
+  margin-top: 1px;
+}
+
+/* ── Ocultar elementos según estado ── */
+.zonaCard--libre .zonaCarShape,
+.zonaCard--libre .zonaVin { display: none; }
+
+.zonaCard--esperando .zonaEmptyP,
+.zonaCard--en_conversion .zonaEmptyP,
+.zonaCard--finalizado .zonaEmptyP { display: none; }
+
+/* ── Indicador de estado (borde coloreado) ── */
+.zonaCard--esperando {
+  border-left-color:  #f59e0b;
+  border-right-color: #f59e0b;
+}
+.zonaCard--esperando:first-child  { border-top-color: #f59e0b; }
+.zonaCard--esperando:last-child   { border-bottom-color: #f59e0b; }
+
+.zonaCard--en_conversion {
+  border-left-color:  #3b82f6;
+  border-right-color: #3b82f6;
+}
+.zonaCard--en_conversion:first-child  { border-top-color: #3b82f6; }
+.zonaCard--en_conversion:last-child   { border-bottom-color: #3b82f6; }
+
+.zonaCard--finalizado {
+  border-left-color:  #22c55e;
+  border-right-color: #22c55e;
+}
+.zonaCard--finalizado:first-child  { border-top-color: #22c55e; }
+.zonaCard--finalizado:last-child   { border-bottom-color: #22c55e; }
+
+/* ══════════════════════════════════════════════════════
+   CARRETERA / PASILLO
+══════════════════════════════════════════════════════ */
+
+.zonasPasillo {
+  background: #3d3d3d;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+  position: relative;
+  /* Líneas de borde de carretera */
+  border-left:  2px solid rgba(255,255,255,.14);
+  border-right: 2px solid rgba(255,255,255,.14);
+}
+
+/* Flecha grande hacia abajo (parte superior) */
+.zonasPasilloArrowDown,
+.zonasPasilloArrowUp {
+  color: rgba(255,255,255,.55);
+  font-size: 20px;
   line-height: 1;
   flex-shrink: 0;
 }
 
-/* Línea central amarilla punteada (como raya de carretera) */
+/* Línea central punteada amarilla (separador de carriles) */
 .zonasPasilloLine {
   flex: 1;
   width: 3px;
+  background: repeating-linear-gradient(
+    to bottom,
+    #fbbf24  0px,
+    #fbbf24  12px,
+    transparent 12px,
+    transparent 26px
+  );
   border-radius: 2px;
-  background: repeating-linear-gradient(
-    to bottom,
-    #fbbf24 0px,
-    #fbbf24 10px,
-    transparent 10px,
-    transparent 22px
-  );
-  min-height: 30px;
+  min-height: 20px;
+  margin: 4px 0;
 }
 
-/* Etiqueta "PASILLO" vertical */
-.zonasPasilloLabel {
-  font-size: 9px;
-  font-weight: 800;
-  color: rgba(255,255,255,.18);
-  letter-spacing: .14em;
-  text-transform: uppercase;
-  writing-mode: vertical-rl;
-  text-orientation: mixed;
-  flex-shrink: 0;
-}
-
-/* Marcas de velocidad / rayas de carretera a los lados */
-.zonasPasillo::before,
-.zonasPasillo::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  background: repeating-linear-gradient(
-    to bottom,
-    rgba(255,255,255,.06) 0px,
-    rgba(255,255,255,.06) 4px,
-    transparent 4px,
-    transparent 10px
-  );
-}
-.zonasPasillo::before { left: 4px; }
-.zonasPasillo::after  { right: 4px; }
-
-/* ═══════════════════════════════════════════════════
-   ZONA LIBRE (Zona 16 — desborde)
-═══════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════
+   ZONA LIBRE (zona 16 — desborde)
+══════════════════════════════════════════════════════ */
 
 .zonaLibreSection {
-  margin-top: 12px;
+  margin-top: 14px;
   border-radius: var(--radiusSm);
-  border: 2px dashed rgba(251,191,36,.35);
+  border: 2px dashed rgba(251,191,36,.40);
   background: rgba(251,191,36,.04);
   overflow: hidden;
 }
 
 .zonaLibreHeader {
-  padding: 8px 12px;
+  padding: 9px 12px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid rgba(251,191,36,.15);
 }
 
-.zonaLibreHeaderLeft {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-
 .zonaLibreTitle {
   font-size: var(--fs-sm);
   font-weight: var(--fw-bold);
-  color: rgba(251,191,36,.85);
+  color: rgba(251,191,36,.90);
 }
 
 .zonaLibreSub {
   font-size: var(--fs-2xs);
   color: var(--muted);
-  opacity: .7;
+  opacity: .65;
   margin-top: 1px;
 }
 
 .zonaLibreBadge {
   font-size: var(--fs-2xs);
   font-weight: var(--fw-bold);
-  color: rgba(251,191,36,.7);
+  color: rgba(251,191,36,.75);
   background: rgba(251,191,36,.12);
   border-radius: var(--radius-full);
-  padding: 2px 8px;
+  padding: 2px 9px;
 }
 
 .zonaLibreBody {
@@ -267,17 +246,16 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  min-height: 36px;
+  min-height: 38px;
 }
 
 .zonaLibreEmpty {
   font-size: var(--fs-xs);
   color: var(--muted);
-  opacity: .55;
+  opacity: .50;
   font-style: italic;
 }
 
-/* VIN chip en zona libre */
 .zonaLibreVin {
   display: inline-flex;
   align-items: center;
@@ -297,14 +275,7 @@
 .zonaLibreVin:active { opacity: .65; }
 .zonaLibreVin.readOnly { cursor: default; pointer-events: none; }
 
-.zonaLibreVinEstado {
-  font-size: 10px;
-  font-family: var(--font-body);
-  font-weight: normal;
-}
-
-.zonaLibreVin--en_conversion .zonaLibreVinEstado { color: var(--note); }
-.zonaLibreVin--finalizado    .zonaLibreVinEstado { color: var(--ok); }
+.zonaLibreVinEstado { font-size: 11px; }
 
 /* ── Leyenda ── */
 .zonasLeyenda {
@@ -324,19 +295,19 @@
 }
 
 .zonasLeyendaDot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
   flex-shrink: 0;
 }
 
-.zonasLeyendaDot--libre         { background: rgba(255,255,255,.25); }
-.zonasLeyendaDot--esperando     { background: var(--warn); }
-.zonasLeyendaDot--en_conversion  { background: var(--note); }
-.zonasLeyendaDot--finalizado    { background: var(--ok); }
-.zonasLeyendaDot--libre_zone    { background: rgba(251,191,36,.6); border: 1px dashed rgba(251,191,36,.8); }
+.zonasLeyendaDot--libre         { background: rgba(255,255,255,.18); border: 1.5px dashed rgba(255,255,255,.30); }
+.zonasLeyendaDot--esperando     { background: #f59e0b; }
+.zonasLeyendaDot--en_conversion  { background: #3b82f6; }
+.zonasLeyendaDot--finalizado    { background: #22c55e; }
+.zonasLeyendaDot--libre_zone    { background: rgba(251,191,36,.5); border: 1.5px dashed rgba(251,191,36,.8); }
 
-/* ── Barra de estado del mapa ── */
+/* ── Barra superior del mapa ── */
 .zonasMapaBar {
   display: flex;
   align-items: center;
@@ -348,7 +319,7 @@
 .zonasMapaTs {
   font-size: var(--fs-2xs);
   color: var(--muted);
-  opacity: .6;
+  opacity: .55;
 }
 
 .zonasMapaRefreshBtn {
@@ -361,9 +332,9 @@
   font-weight: var(--fw-bold);
 }
 
-/* ═══════════════════════════════════════════════════
+/* ══════════════════════════════════════════════════════
    PICKER DE ZONA (bottom sheet)
-═══════════════════════════════════════════════════ */
+══════════════════════════════════════════════════════ */
 
 .zonasPickerModal {
   position: fixed;
@@ -373,7 +344,6 @@
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  padding: 0;
 }
 
 .zonasPickerBox {
@@ -429,7 +399,6 @@
   margin-top: -6px;
 }
 
-/* Grid picker: 3 columnas × 5 filas = 15 zonas + Zona Libre full-width */
 .zonasPickerGrid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -438,30 +407,32 @@
 
 .zonasPickerZona {
   border-radius: var(--radiusSm);
-  border: 1.5px solid rgba(255,255,255,.18);
+  border: 1.5px solid rgba(255,255,255,.16);
   padding: 9px 6px;
   cursor: pointer;
   background: #0f1623;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
-  min-height: 58px;
+  gap: 4px;
+  min-height: 62px;
   transition: opacity .1s;
   -webkit-tap-highlight-color: transparent;
   text-align: center;
+  position: relative;
+  overflow: hidden;
 }
 
 .zonasPickerZona:active { opacity: .65; }
 
-.zonasPickerZona--libre       { border-style: dashed; border-color: rgba(255,255,255,.18); }
-.zonasPickerZona--esperando   { border-color: var(--warn);  background: rgba(251,191,36,.08); }
-.zonasPickerZona--en_conversion { border-color: var(--note); background: rgba(96,165,250,.08); }
-.zonasPickerZona--finalizado  { border-color: var(--ok);   background: rgba(34,197,94,.10); }
+.zonasPickerZona--libre        { border-style: dashed; border-color: rgba(255,255,255,.16); }
+.zonasPickerZona--esperando    { border-color: #f59e0b; background: rgba(245,158,11,.08); }
+.zonasPickerZona--en_conversion { border-color: #3b82f6; background: rgba(59,130,246,.08); }
+.zonasPickerZona--finalizado   { border-color: #22c55e; background: rgba(34,197,94,.10); }
 
 .zonasPickerZona--librezona {
   grid-column: 1 / -1;
-  border-color: rgba(251,191,36,.4);
+  border-color: rgba(251,191,36,.45);
   border-style: dashed;
   background: rgba(251,191,36,.05);
   flex-direction: row;
@@ -470,20 +441,41 @@
   gap: 8px;
 }
 
-.zpZonaNum   { font-size: 10px; font-weight: 700; color: rgba(255,255,255,.4); }
-.zpZonaCar   { font-size: 15px; line-height: 1; }
-.zpZonaVin   { font-size: 10px; font-family: var(--font-mono); color: var(--text); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.zpZonaEstado { font-size: 10px; color: var(--muted); }
+/* Mini carro en picker */
+.zpCarShape {
+  width: 28px;
+  height: 14px;
+  border-radius: 3px 3px 2px 2px;
+  position: relative;
+  flex-shrink: 0;
+}
+.zpCarShape::before {
+  content: "";
+  position: absolute;
+  top: 2px; left: 3px; right: 3px;
+  height: 7px;
+  border-radius: 2px;
+  background: rgba(0,0,0,.30);
+}
 
-.zonasPickerZona--esperando     .zpZonaEstado { color: var(--warn); }
-.zonasPickerZona--en_conversion  .zpZonaEstado { color: var(--note); }
-.zonasPickerZona--finalizado    .zpZonaEstado { color: var(--ok); }
+.zonasPickerZona--libre        .zpCarShape { background: rgba(255,255,255,.12); }
+.zonasPickerZona--esperando    .zpCarShape { background: #f59e0b; }
+.zonasPickerZona--en_conversion .zpCarShape { background: #3b82f6; }
+.zonasPickerZona--finalizado   .zpCarShape { background: #22c55e; }
 
-.zpLibreLabel { font-size: var(--fs-sm); font-weight: 700; color: rgba(251,191,36,.8); }
+.zpZonaNum     { font-size: 10px; font-weight: 700; color: rgba(255,255,255,.40); line-height: 1; }
+.zpZonaVin     { font-size: 9px; font-family: var(--font-mono); color: rgba(255,255,255,.65); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.zpZonaEstado  { font-size: 9px; color: var(--muted); }
 
-/* ═══════════════════════════════════════════════════
-   ACTION SHEET (tap en zona del mapa)
-═══════════════════════════════════════════════════ */
+.zonasPickerZona--esperando    .zpZonaEstado { color: #f59e0b; }
+.zonasPickerZona--en_conversion .zpZonaEstado { color: #3b82f6; }
+.zonasPickerZona--finalizado   .zpZonaEstado { color: #22c55e; }
+
+.zpLibreLabel { font-size: var(--fs-sm); font-weight: 700; color: rgba(251,191,36,.85); }
+
+/* ══════════════════════════════════════════════════════
+   ACTION SHEET
+══════════════════════════════════════════════════════ */
 
 .zonasActionSheet {
   position: fixed;
@@ -500,7 +492,7 @@
   border-radius: var(--radius) var(--radius) 0 0;
   width: 100%;
   max-width: 480px;
-  padding: 20px 16px calc(22px + var(--safeBottom));
+  padding: 20px 16px calc(24px + var(--safeBottom));
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -512,18 +504,8 @@
   justify-content: space-between;
 }
 
-.zonasActionTitle {
-  font-size: var(--fs-xl);
-  font-weight: var(--fw-bold);
-  color: var(--text);
-}
-
-.zonasActionVin {
-  font-size: var(--fs-md);
-  color: var(--muted);
-  font-family: var(--font-mono);
-  margin-top: 2px;
-}
+.zonasActionTitle  { font-size: var(--fs-xl); font-weight: var(--fw-bold); color: var(--text); }
+.zonasActionVin    { font-size: var(--fs-md); color: var(--muted); font-family: var(--font-mono); margin-top: 2px; }
 
 .zonasActionEstado {
   display: inline-flex;
@@ -535,16 +517,12 @@
   border-radius: var(--radius-full);
 }
 
-.zonasActionEstado--libre         { background: var(--glass); color: var(--muted); }
-.zonasActionEstado--esperando     { background: var(--warnBg); color: var(--warn); }
-.zonasActionEstado--en_conversion  { background: var(--noteBg); color: var(--note); }
-.zonasActionEstado--finalizado    { background: var(--okBg); color: var(--ok); }
+.zonasActionEstado--libre          { background: var(--glass); color: var(--muted); }
+.zonasActionEstado--esperando      { background: rgba(245,158,11,.18); color: #f59e0b; }
+.zonasActionEstado--en_conversion   { background: rgba(59,130,246,.18); color: #60a5fa; }
+.zonasActionEstado--finalizado     { background: rgba(34,197,94,.18); color: #22c55e; }
 
-.zonasActionBtns {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
+.zonasActionBtns { display: flex; flex-direction: column; gap: 8px; }
 
 .zonasActionBtn {
   padding: 14px 16px;
@@ -560,7 +538,7 @@
   font-family: var(--font-body);
 }
 
-.zonasActionBtn:active { opacity: .7; }
+.zonasActionBtn:active { opacity: .70; }
 .zonasActionBtn--danger {
   color: var(--danger);
   border-color: rgba(248,113,113,.35);
