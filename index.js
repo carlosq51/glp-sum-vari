@@ -4565,8 +4565,8 @@ app.get("/api/zonas", async (req, res) => {
 
     const [zResp, convResp, finResp] = await Promise.all([
       fetch(`${SUPABASE_URL}/rest/v1/conversion_zonas?select=zona_id,vin,registrado_por,registrado_at&order=zona_id.asc`, { method: "GET", headers }),
-      fetch(`${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CONVERSION&estado_general=neq.FINALIZADO&select=vin,estado_general&limit=200`, { method: "GET", headers }),
-      fetch(`${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CONVERSION&estado_general=eq.FINALIZADO&fecha_sin_calidad=gte.${todayStart.toISOString()}&select=vin,estado_general&limit=100`, { method: "GET", headers }),
+      fetch(`${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CONVERSION&estado_general=neq.FINALIZADO&select=id,vin,estado_general&limit=200`, { method: "GET", headers }),
+      fetch(`${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CONVERSION&estado_general=eq.FINALIZADO&fecha_sin_calidad=gte.${todayStart.toISOString()}&select=id,vin,estado_general&limit=100`, { method: "GET", headers }),
     ]);
 
     const zonaRows = zResp.ok ? await zResp.json() : [];
@@ -4577,6 +4577,42 @@ app.get("/api/zonas", async (req, res) => {
     const woEstadoMap = new Map();
     for (const wo of [...convRows, ...finRows]) {
       if (wo.vin && !woEstadoMap.has(wo.vin)) woEstadoMap.set(wo.vin, wo.estado_general);
+    }
+
+    // VIN → { delantero, tanquero } (primer nombre del técnico MOTOR/TANQUE asignado activamente)
+    const tecnicosMap = new Map();
+    const allWos = [...convRows, ...finRows].filter(w => w.id && w.vin);
+    if (allWos.length) {
+      try {
+        const woIds = allWos.map(w => w.id).join(",");
+        const asgResp = await fetch(
+          `${SUPABASE_URL}/rest/v1/asignaciones?work_order_id=in.(${encodeURIComponent(woIds)})&activo=eq.true&select=work_order_id,user_id,rol_trabajo`,
+          { method: "GET", headers }
+        );
+        const asgs = asgResp.ok ? await asgResp.json() : [];
+        if (asgs.length) {
+          const userIds = [...new Set(asgs.map(a => a.user_id))].join(",");
+          const usrResp = await fetch(
+            `${SUPABASE_URL}/rest/v1/usuarios?id=in.(${encodeURIComponent(userIds)})&select=id,nombre`,
+            { method: "GET", headers }
+          );
+          const usrs = usrResp.ok ? await usrResp.json() : [];
+          const userNombreMap = new Map(usrs.map(u => [u.id, u.nombre]));
+          const woIdToVin = new Map(allWos.map(w => [w.id, w.vin]));
+
+          for (const a of asgs) {
+            const vin = woIdToVin.get(a.work_order_id);
+            const nombre = userNombreMap.get(a.user_id);
+            if (!vin || !nombre) continue;
+            const primerNombre = String(nombre).trim().split(/\s+/)[0];
+            const rol = String(a.rol_trabajo || "").toUpperCase();
+            if (!tecnicosMap.has(vin)) tecnicosMap.set(vin, {});
+            const entry = tecnicosMap.get(vin);
+            if (rol === "MOTOR") entry.delantero = primerNombre;
+            else if (rol === "TANQUE") entry.tanquero = primerNombre;
+          }
+        }
+      } catch { /* tecnicosMap queda vacío si falla — no bloquea el mapa */ }
     }
 
     // Compute estado for a zone
@@ -4597,6 +4633,7 @@ app.get("/api/zonas", async (req, res) => {
         estado:        zonaEstado_(z.vin),
         registrado_por: z.registrado_por || "",
         registrado_at: z.registrado_at || null,
+        tecnicos:      z.vin ? (tecnicosMap.get(z.vin) || null) : null,
       };
     });
 
@@ -4607,6 +4644,7 @@ app.get("/api/zonas", async (req, res) => {
         sin_zona.push({
           vin,
           estado: (eg || "").toUpperCase() === "FINALIZADO" ? "FINALIZADO" : "EN_CONVERSION",
+          tecnicos: tecnicosMap.get(vin) || null,
         });
       }
     }

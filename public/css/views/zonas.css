@@ -39,7 +39,7 @@
   border-bottom: 1px solid rgba(255,255,255,.12);
   border-radius: 0;
   padding: 8px 8px 10px;
-  min-height: 72px;
+  min-height: 108px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -87,25 +87,78 @@
 }
 
 /* ── CARRO (solo visible cuando hay VIN) ── */
+/* Silueta tipo auto visto desde arriba: esquinas recortadas + parabrisas */
 .zonaCarShape {
-  width: 62%;
-  height: 30px;
-  border-radius: 5px 5px 4px 4px;
+  width: 72%;
+  min-height: 64px;
   position: relative;
   flex-shrink: 0;
   margin: 2px auto 0;
+  clip-path: polygon(
+    18% 0%, 82% 0%,
+    100% 14%, 100% 86%,
+    82% 100%, 18% 100%,
+    0% 86%, 0% 14%
+  );
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 4px 6px;
+  box-sizing: border-box;
 }
 
-/* Techo / parabrisas (franja oscura central) */
+/* Parabrisas delantero */
 .zonaCarShape::before {
   content: "";
   position: absolute;
-  top: 5px;
-  left: 7px;
-  right: 7px;
-  height: 13px;
-  border-radius: 3px;
-  background: rgba(0, 0, 0, .32);
+  top: 7px;
+  left: 16%;
+  right: 16%;
+  height: 9px;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, .35);
+}
+
+/* Parabrisas trasero (luneta) */
+.zonaCarShape::after {
+  content: "";
+  position: absolute;
+  bottom: 7px;
+  left: 16%;
+  right: 16%;
+  height: 9px;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, .35);
+}
+
+/* Espejos laterales */
+.zonaCarMirrorL, .zonaCarMirrorR {
+  position: absolute;
+  top: 28%;
+  width: 5px;
+  height: 9px;
+  border-radius: 2px;
+  background: inherit;
+  filter: brightness(0.85);
+}
+.zonaCarMirrorL { left: -4px; }
+.zonaCarMirrorR { right: -4px; }
+
+/* Etiquetas de técnico (delantero arriba / tanquero abajo) */
+.zonaCarLabel {
+  position: relative;
+  z-index: 1;
+  font-size: 8.5px;
+  font-weight: 800;
+  line-height: 1;
+  color: rgba(0, 0, 0, .60);
+  text-transform: uppercase;
+  letter-spacing: .01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 /* Color del carro por estado */

@@ -38,6 +38,9 @@ function renderZonaCard_(z, readOnly) {
     ? (z.vin.length > 8 ? z.vin.slice(-8) : z.vin)
     : "";
 
+  const delantero = z.tecnicos?.delantero || "";
+  const tanquero  = z.tecnicos?.tanquero  || "";
+
   return `
     <div class="zonaCard zonaCard--${css}${roClass}"
          data-zona="${z.zona_id}"
@@ -47,7 +50,12 @@ function renderZonaCard_(z, readOnly) {
          tabindex="${readOnly ? "-1" : "0"}">
       <span class="zonaNum">Z${z.zona_id}</span>
       ${isOcupada
-        ? `<div class="zonaCarShape"></div>
+        ? `<div class="zonaCarShape">
+             <span class="zonaCarMirrorL"></span>
+             <span class="zonaCarMirrorR"></span>
+             <span class="zonaCarLabel">${escapeHtml(delantero)}</span>
+             <span class="zonaCarLabel">${escapeHtml(tanquero)}</span>
+           </div>
            <span class="zonaVin">${escapeHtml(vinShort)}</span>`
         : `<span class="zonaEmptyP">P</span>`
       }
