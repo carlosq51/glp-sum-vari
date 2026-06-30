@@ -5,9 +5,11 @@
 
 import { getJSON } from "../../core/api.js";
 import { escapeHtml } from "../../core/format.js";
+import { initZonasMapa } from "../zonas/zonas-mapa.js";
 
-let ubTimer_  = null;
-let ubActive_ = false;
+let ubTimer_     = null;
+let ubActive_    = false;
+let _supZonasMapa = null;
 const REFRESH_MS = 300_000; // 5 min
 
 // ── Helpers ───────────────────────────────────────────────────────────
@@ -180,6 +182,13 @@ export async function enterUbicaciones_() {
   await refreshUb_();
   clearInterval(ubTimer_);
   ubTimer_ = setInterval(() => refreshUb_().catch(() => {}), REFRESH_MS);
+
+  // Inicializar mapa de zonas read-only (solo una vez)
+  if (!_supZonasMapa) {
+    _supZonasMapa = initZonasMapa("supZonasMapaContainer", { readOnly: true });
+  } else {
+    await _supZonasMapa.refresh();
+  }
 }
 
 export function exitUbicaciones_() {

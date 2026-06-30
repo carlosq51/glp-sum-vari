@@ -11,6 +11,7 @@ import { CORE, escapeHtml, fmtShort_, getJSON, getJSON_user, postJSON } from "..
 import { updateHubModuleBadge } from "../../core/ui-shell.js";
 import { getVinSuggest } from "../../core/supabase-client.js";
 import { createScanner } from "../../core/qr-scanner.js";
+import { initZonasMapa, promptZonaForVin } from "../zonas/zonas-mapa.js";
 
 let pollTimer = null;
 let otRecheckTimer = null;
@@ -25,6 +26,9 @@ const LISTA_CACHE_KEY = "glp_mov_lista_cache";
 
 let _pendientesRows = [];
 let _pendientesFiltro = "";
+
+// Mapa de zonas
+let _zonasMapa = null;
 
 // ─── Helpers ──────────────────────────────────────────────────────────
 
@@ -317,6 +321,10 @@ async function confirmarIngresoPendiente_(vin) {
     removeFromOfflineQueue_(vinClean);
     if (statusEl) statusEl.textContent = `✓ ${vinClean} registrado en GLP.`;
     await refreshAll_();
+    // Preguntar zona al movilizador (dismissible)
+    promptZonaForVin(vinClean, getMovNombre_(), async () => {
+      if (_zonasMapa) await _zonasMapa.refresh();
+    });
   } catch (e) {
     // Network failure → save offline
     if (!navigator.onLine || /fetch|network|failed/i.test(e.message)) {
@@ -969,6 +977,10 @@ async function handleRegistroDesde_(vin, btn) {
     const statusEl = document.getElementById("movStatus");
     if (statusEl) statusEl.textContent = `✓ ${vinClean} ingresado.`;
     await refreshAll_();
+    // Preguntar zona al movilizador (dismissible)
+    promptZonaForVin(vinClean, getMovNombre_(), async () => {
+      if (_zonasMapa) await _zonasMapa.refresh();
+    });
   } catch (e) {
     btn.disabled = false;
     btn.textContent = original;
@@ -1010,6 +1022,11 @@ async function handleRegistro_(vin, accion, btnId) {
     btn.textContent = original;
 
     await refreshAll_();
+    if (accion === "REGISTRAR_ENTRADA") {
+      promptZonaForVin(vinClean, getMovNombre_(), async () => {
+        if (_zonasMapa) await _zonasMapa.refresh();
+      });
+    }
   } catch (e) {
     btn.disabled = false;
     btn.textContent = original;
@@ -1169,11 +1186,21 @@ export function init() {
   bindTabs_();
   bindFiltros_();
   bindPanelToggles_();
+
+  // Mapa de zonas — se inicializa en enter() para tener nombre correcto del usuario
 }
 
 export function enter() {
   refreshAll_().catch(() => {});
   startPoll_();
+  // Inicializar (o re-inicializar) el mapa de zonas con el nombre actualizado del usuario
+  if (!_zonasMapa) {
+    _zonasMapa = initZonasMapa("movZonasMapaContainer", {
+      readOnly: false,
+      usuario: getMovNombre_(),
+      onZoneAction: () => refreshAll_().catch(() => {}),
+    });
+  }
 }
 
 export function exit() {

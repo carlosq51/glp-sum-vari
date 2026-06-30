@@ -40,6 +40,11 @@ export function movilizadorView() {
           <span class="movTabLabel">Salida</span>
           <span id="movBadge3" class="movBadge movBadgeOk" style="display:none;"></span>
         </button>
+        <button class="movTab" data-tab="mapa" role="tab" aria-selected="false">
+          <span class="movTabIcon">🗺️</span>
+          <span class="movTabLabel">Mapa</span>
+          <span id="movBadgeMapa" class="movBadge movBadgeOk" style="display:none;"></span>
+        </button>
       </div>
 
       <!-- QR Modal -->
@@ -204,6 +209,18 @@ export function movilizadorView() {
           </button>
           <div id="movPanel3Body" class="movPanelBody"></div>
         </div>
+
+      </div>
+
+      <!-- ── Tab: MAPA DE ZONAS ── -->
+      <div class="movTabPanel" data-panel="mapa" style="display:none;">
+
+        <div class="zonasMapaBar">
+          <span class="zonasMapaTs" id="movZonasMapaTs"></span>
+          <button class="zonasMapaRefreshBtn" id="movZonasMapaRefreshBtn" type="button">↻ Actualizar</button>
+        </div>
+
+        <div id="movZonasMapaContainer"></div>
 
       </div>
 

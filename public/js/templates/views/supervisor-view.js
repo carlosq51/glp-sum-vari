@@ -97,6 +97,26 @@ export function supervisorView() {
            PANEL UBICACIONES (solo lectura, datos del movilizador)
       ══════════════════════════════════════════════ -->
       <div id="supPanelUbicaciones" style="display:none;">
+
+        <!-- Mapa de zonas de conversión (solo lectura) -->
+        <div class="movPanel open" id="ubPanelZonas" style="margin-top:10px;">
+          <button class="movPanelHeader" type="button" aria-expanded="true">
+            <span class="movPanelIcon">🗺️</span>
+            <div class="movPanelTitleGroup">
+              <span class="movPanelTitle">Mapa de Zonas de Conversión</span>
+              <span class="movPanelHint">Estado en tiempo real de las 15 zonas</span>
+            </div>
+            <span class="movChevron" aria-hidden="true">▼</span>
+          </button>
+          <div class="movPanelBody" style="padding:8px 12px 12px;">
+            <div class="zonasMapaBar">
+              <span class="zonasMapaTs" id="supZonasMapaTs"></span>
+              <button class="zonasMapaRefreshBtn" id="supZonasMapaRefreshBtn" type="button">↻</button>
+            </div>
+            <div id="supZonasMapaContainer"></div>
+          </div>
+        </div>
+
         <div class="live-refresh-bar" style="margin-top:10px;">
           <span class="live-fecha small">📅 Estado de traslados</span>
           <span id="ubLastUpdate" class="live-last-update small"></span>

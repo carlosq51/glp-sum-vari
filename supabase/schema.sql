@@ -327,3 +327,24 @@ CREATE POLICY "service_full_access" ON solicitudes_ramal FOR ALL USING (true) WI
 --    EVENTO_ID                              →  eventos.id
 --    CONVERSION_ID (en asignaciones)        →  asignaciones.work_order_id
 -- ============================================================
+
+-- ────────────────────────────────────────────
+--  MIGRATION v5: conversion_zonas
+--  15 zonas físicas del área de conversión.
+--  Zona 16 = virtual "Sin ubicación" — no tiene fila en esta tabla.
+-- ────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS conversion_zonas (
+  zona_id        SMALLINT     PRIMARY KEY CHECK (zona_id BETWEEN 1 AND 15),
+  vin            TEXT,
+  registrado_por TEXT         NOT NULL DEFAULT '',
+  registrado_at  TIMESTAMPTZ,
+  updated_at     TIMESTAMPTZ  DEFAULT now()
+);
+
+INSERT INTO conversion_zonas (zona_id)
+SELECT generate_series(1, 15)
+ON CONFLICT (zona_id) DO NOTHING;
+
+ALTER TABLE conversion_zonas ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "service_full_access" ON conversion_zonas FOR ALL USING (true) WITH CHECK (true);
+CREATE INDEX IF NOT EXISTS idx_cz_vin ON conversion_zonas (vin) WHERE vin IS NOT NULL;

@@ -1,0 +1,489 @@
+/* =====================================================================
+   zonas.css — Mapa de zonas de conversión
+   15 zonas físicas (9 derecha + 6 izquierda) + zona 16 (sin ubicación)
+   ===================================================================== */
+
+/* ── Contenedor del mapa ── */
+.zonasMapaWrap {
+  padding: 10px 0 4px;
+}
+
+.zonasMapaTitle {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  margin-bottom: 10px;
+  padding: 0 2px;
+}
+
+/* ── Layout: dos columnas + pasillo ── */
+.zonasGrid {
+  display: grid;
+  grid-template-columns: 1fr 36px 1fr;
+  gap: 6px 0;
+  align-items: start;
+}
+
+.zonasCol {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.zonasPasillo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding-top: 6px;
+  gap: 6px;
+}
+
+.zonasPasilloLine {
+  width: 2px;
+  background: var(--surfaceLine);
+  flex: 1;
+  min-height: 40px;
+  border-radius: 2px;
+}
+
+.zonasPasilloLabel {
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  letter-spacing: .08em;
+  opacity: .5;
+}
+
+/* ── Zona card ── */
+.zonaCard {
+  border-radius: var(--radiusSm);
+  border: 1.5px solid var(--surfaceLine);
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: opacity .12s, transform .1s;
+  background: var(--bgAccent);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 64px;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  position: relative;
+}
+
+.zonaCard:active {
+  opacity: .75;
+  transform: scale(.97);
+}
+
+.zonaCard.readOnly {
+  cursor: default;
+  pointer-events: none;
+}
+
+/* Estado: LIBRE */
+.zonaCard--libre {
+  border-style: dashed;
+  border-color: rgba(255,255,255,.14);
+  background: transparent;
+  opacity: .55;
+}
+
+/* Estado: ESPERANDO */
+.zonaCard--esperando {
+  border-color: var(--warn);
+  background: var(--warnBg);
+}
+
+/* Estado: EN_CONVERSION */
+.zonaCard--en_conversion {
+  border-color: var(--note);
+  background: var(--noteBg);
+}
+
+/* Estado: FINALIZADO */
+.zonaCard--finalizado {
+  border-color: var(--ok);
+  background: var(--okBg);
+}
+
+.zonaNum {
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-bold);
+  color: var(--muted);
+  letter-spacing: .04em;
+}
+
+.zonaCard--libre .zonaNum { opacity: .45; }
+
+.zonaVin {
+  font-size: var(--fs-xs);
+  font-family: var(--font-mono);
+  font-weight: var(--fw-bold);
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+
+.zonaCard--libre .zonaVin { color: var(--muted); opacity: .4; }
+
+.zonaEstadoChip {
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-bold);
+  letter-spacing: .03em;
+  margin-top: 2px;
+}
+
+.zonaCard--libre      .zonaEstadoChip { color: var(--muted); opacity: .4; }
+.zonaCard--esperando  .zonaEstadoChip { color: var(--warn); }
+.zonaCard--en_conversion .zonaEstadoChip { color: var(--note); }
+.zonaCard--finalizado .zonaEstadoChip { color: var(--ok); }
+
+/* ── Zona 16: Sin ubicación ── */
+.zonaSinUbicacion {
+  margin-top: 14px;
+  border-radius: var(--radiusSm);
+  border: 1.5px solid var(--surfaceLine);
+  background: var(--bgAccent);
+  overflow: hidden;
+}
+
+.zonaSinUbicacionHeader {
+  padding: 8px 12px;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-bottom: 1px solid var(--surfaceLine);
+}
+
+.zonaSinUbicacionBody {
+  padding: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.zonaSinUbicacionEmpty {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  padding: 4px 4px 2px;
+  opacity: .6;
+}
+
+.zonaSuVin {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 8px;
+  padding: 5px 9px;
+  background: var(--surface);
+  border: 1px solid var(--surfaceLine);
+  font-size: var(--fs-xs);
+  font-family: var(--font-mono);
+  font-weight: var(--fw-bold);
+  color: var(--text);
+  cursor: pointer;
+  transition: opacity .1s;
+}
+
+.zonaSuVin:active { opacity: .7; }
+.zonaSuVin.readOnly { cursor: default; pointer-events: none; }
+
+.zonaSuVinEstado {
+  font-size: var(--fs-2xs);
+  font-weight: normal;
+  font-family: var(--font-body);
+}
+
+.zonaSuVin--en_conversion .zonaSuVinEstado { color: var(--note); }
+.zonaSuVin--finalizado    .zonaSuVinEstado { color: var(--ok); }
+
+/* ── Leyenda ── */
+.zonasLeyenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin-top: 12px;
+  padding: 0 2px;
+}
+
+.zonasLeyendaItem {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+}
+
+.zonasLeyendaDot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.zonasLeyendaDot--libre        { background: var(--muted); opacity: .35; }
+.zonasLeyendaDot--esperando    { background: var(--warn); }
+.zonasLeyendaDot--en_conversion { background: var(--note); }
+.zonasLeyendaDot--finalizado   { background: var(--ok); }
+
+/* ── Modal zona picker (para tecnico y movilizador) ── */
+.zonasPickerModal {
+  position: fixed;
+  inset: 0;
+  background: var(--backdropHeavy);
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
+}
+
+.zonasPickerBox {
+  background: var(--bg1);
+  border-radius: var(--radius) var(--radius) 0 0;
+  width: 100%;
+  max-width: 480px;
+  max-height: 88vh;
+  overflow-y: auto;
+  padding: 20px 16px calc(20px + var(--safeBottom));
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.zonasPickerHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.zonasPickerTitle {
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-bold);
+  color: var(--text);
+  line-height: 1.3;
+}
+
+.zonasPickerVin {
+  font-family: var(--font-mono);
+  color: var(--note);
+}
+
+.zonasPickerClose {
+  background: var(--glass);
+  border: none;
+  color: var(--muted);
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  font-size: 16px;
+  cursor: pointer;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.zonasPickerHint {
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  margin-top: -6px;
+}
+
+/* Grid del picker: 3 columnas */
+.zonasPickerGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.zonasPickerZona {
+  border-radius: var(--radiusSm);
+  border: 1.5px solid var(--surfaceLine);
+  padding: 10px 8px;
+  cursor: pointer;
+  background: var(--bgAccent);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-height: 60px;
+  transition: opacity .1s, border-color .1s;
+  -webkit-tap-highlight-color: transparent;
+  text-align: center;
+}
+
+.zonasPickerZona:active { opacity: .7; }
+
+.zonasPickerZona--libre {
+  border-style: dashed;
+  border-color: rgba(255,255,255,.16);
+}
+
+.zonasPickerZona--esperando {
+  border-color: var(--warn);
+  background: var(--warnBg);
+}
+
+.zonasPickerZona--en_conversion {
+  border-color: var(--note);
+  background: var(--noteBg);
+}
+
+.zonasPickerZona--finalizado {
+  border-color: var(--ok);
+  background: var(--okBg);
+}
+
+.zonasPickerZona--sinubic {
+  grid-column: 1 / -1;
+  border-color: var(--surfaceLine);
+  background: var(--glass);
+  flex-direction: row;
+  justify-content: center;
+  min-height: 44px;
+}
+
+.zpZonaNum {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-bold);
+  color: var(--muted);
+}
+
+.zpZonaVin {
+  font-size: var(--fs-2xs);
+  font-family: var(--font-mono);
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.zpZonaEstado {
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+}
+
+.zonasPickerZona--esperando    .zpZonaEstado { color: var(--warn); }
+.zonasPickerZona--en_conversion .zpZonaEstado { color: var(--note); }
+.zonasPickerZona--finalizado   .zpZonaEstado { color: var(--ok); }
+
+.zpSinUbicLabel {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  color: var(--muted);
+}
+
+/* ── Zona card acción (dentro del mapa, click abre bottom sheet de acciones) ── */
+.zonasActionSheet {
+  position: fixed;
+  inset: 0;
+  background: var(--backdropHeavy);
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.zonasActionBox {
+  background: var(--bg1);
+  border-radius: var(--radius) var(--radius) 0 0;
+  width: 100%;
+  max-width: 480px;
+  padding: 20px 16px calc(20px + var(--safeBottom));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.zonasActionHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.zonasActionTitle {
+  font-size: var(--fs-xl);
+  font-weight: var(--fw-bold);
+  color: var(--text);
+}
+
+.zonasActionVin {
+  font-size: var(--fs-md);
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+.zonasActionEstado {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+}
+
+.zonasActionEstado--libre        { background: var(--glass); color: var(--muted); }
+.zonasActionEstado--esperando    { background: var(--warnBg); color: var(--warn); }
+.zonasActionEstado--en_conversion { background: var(--noteBg); color: var(--note); }
+.zonasActionEstado--finalizado   { background: var(--okBg); color: var(--ok); }
+
+.zonasActionBtns {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.zonasActionBtn {
+  padding: 14px 16px;
+  border-radius: var(--radiusSm);
+  border: 1px solid var(--surfaceLine);
+  background: var(--bgAccent);
+  color: var(--text);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-bold);
+  cursor: pointer;
+  text-align: left;
+  transition: opacity .1s;
+}
+
+.zonasActionBtn:active { opacity: .7; }
+.zonasActionBtn--danger { color: var(--danger); border-color: var(--danger); background: var(--dangerBg); }
+
+/* ── Refresh / status bar del mapa ── */
+.zonasMapaBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.zonasMapaTs {
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+  opacity: .6;
+}
+
+.zonasMapaRefreshBtn {
+  background: none;
+  border: none;
+  color: var(--note);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+  padding: 4px 0;
+  font-weight: var(--fw-bold);
+}

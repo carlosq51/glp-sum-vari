@@ -13,6 +13,8 @@ import {
   postJSON_user,
 } from "../../../core/core.js";
 
+import { promptZonaForVin } from "../../zonas/zonas-mapa.js";
+
 import {
   allowedActionsByEstado,
   rebuildListsFromStore_,
@@ -235,13 +237,30 @@ export async function enviarEvento(accionOverride, opts = {}) {
 
   // ✅ MEJOR: Sincronización mejorada después de evento
   // Aumenta el timeout y usa forceFull si es INICIO
-  setTimeout(() => { 
+  setTimeout(() => {
     if (!CORE.state.uiLocked) {
       const forceFull = accion === "INICIO";  // Fuerza full sync después de crear OT
       syncNow({ forceFull, showOut: false }).catch(() => {});
     }
   }, accion === "INICIO" ? 800 : 400);  // 800ms para INICIO, 400ms para otros
-  
+
+  // Si es INICIO exitoso, verificar si el VIN tiene zona asignada.
+  // Si no tiene zona, mostrar picker (dismissible) para que el técnico la indique.
+  if (accion === "INICIO") {
+    const vinParaZona = String(vin || "").trim().toUpperCase();
+    if (vinParaZona) {
+      fetch(`/api/zonas/vin/${encodeURIComponent(vinParaZona)}`)
+        .then(r => r.json())
+        .then(z => {
+          if (z?.ok && z.zona_id == null) {
+            const nombre = CORE.state.currentProfile?.nombre || CORE.state.currentProfile?.email || "";
+            promptZonaForVin(vinParaZona, nombre, null, true);
+          }
+        })
+        .catch(() => {});
+    }
+  }
+
   return j;
 }
 
