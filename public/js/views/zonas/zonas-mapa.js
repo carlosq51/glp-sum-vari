@@ -5,6 +5,8 @@
 // =========================
 
 import { escapeHtml, postJSON } from "../../core/core.js";
+import { getVinSuggest } from "../../core/supabase-client.js";
+import { createScanner } from "../../core/qr-scanner.js";
 
 // ── Layout físico del taller ─────────────────────────────────────────────────
 const COL_IZQUIERDA = [1, 2, 3, 4, 5, 6, 7, 8, 9];
@@ -195,19 +197,37 @@ function closeActionSheet_() { removeEl_(_actionSheetEl); _actionSheetEl = null;
 
 // Mini form para asignar un VIN a una zona específica (desde click en spot)
 function openPickerForZone_(zonaId, onRefresh) {
+  const zonaNom = zonaId === 16 ? "Zona Libre" : `Zona ${zonaId}`;
+
   const sheet = document.createElement("div");
   sheet.className = "zonasActionSheet";
   sheet.innerHTML = `
     <div class="zonasActionBox" style="gap:14px;">
       <div class="zonasActionHead">
-        <div class="zonasActionTitle">Asignar a Zona ${zonaId === 16 ? "Libre" : zonaId}</div>
+        <div class="zonasActionTitle">Asignar a ${zonaNom}</div>
         <button class="zonasPickerClose" id="zpForZoneClose" type="button">✕</button>
       </div>
       <div style="display:flex;flex-direction:column;gap:8px;">
-        <input id="zpForZoneVin" type="text"
-          placeholder="Ingresa el VIN…"
-          style="background:var(--inputBg);border:1.5px solid var(--inputLine);border-radius:var(--radiusSm);padding:12px 14px;color:var(--text);font-size:var(--fs-md);font-family:var(--font-mono);outline:none;width:100%;box-sizing:border-box;"
-          autocomplete="off" autocapitalize="characters" spellcheck="false" />
+        <!-- VIN input + QR button -->
+        <div style="display:flex;gap:8px;align-items:flex-start;">
+          <div style="flex:1;position:relative;">
+            <input id="zpForZoneVin" type="text"
+              placeholder="Ingresa el VIN…"
+              style="background:var(--inputBg);border:1.5px solid var(--inputLine);border-radius:var(--radiusSm);padding:12px 14px;color:var(--text);font-size:var(--fs-md);font-family:var(--font-mono);outline:none;width:100%;box-sizing:border-box;"
+              autocomplete="off" autocapitalize="characters" spellcheck="false" />
+            <div id="zpForZoneVinSuggest" class="vinSuggest hidden" role="listbox"></div>
+          </div>
+          <button id="zpForZoneQrBtn" type="button"
+            title="Escanear QR"
+            style="flex-shrink:0;width:48px;height:48px;border-radius:var(--radiusSm);border:1.5px solid var(--inputLine);background:var(--bgAccent);color:var(--text);font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;">
+            📷
+          </button>
+        </div>
+        <!-- QR reader area (hidden until activated) -->
+        <div id="zpForZoneQrArea" style="display:none;border-radius:var(--radiusSm);overflow:hidden;">
+          <div id="zpForZoneQrReader"></div>
+          <div id="zpForZoneQrMsg" class="small" style="color:var(--muted);padding:6px 0;min-height:18px;"></div>
+        </div>
         <button class="zonasActionBtn" id="zpForZoneConfirm" type="button" disabled>
           Confirmar asignación
         </button>
@@ -217,18 +237,118 @@ function openPickerForZone_(zonaId, onRefresh) {
 
   document.body.appendChild(sheet);
 
-  const closeMe = () => removeEl_(sheet);
-  sheet.addEventListener("click", e => { if (e.target === sheet) closeMe(); });
-  sheet.querySelector("#zpForZoneClose").addEventListener("click", closeMe);
-
+  const zpScanner  = createScanner("zpForZoneQrReader");
   const vinInput   = sheet.querySelector("#zpForZoneVin");
+  const suggestBox = sheet.querySelector("#zpForZoneVinSuggest");
+  const qrBtn      = sheet.querySelector("#zpForZoneQrBtn");
+  const qrArea     = sheet.querySelector("#zpForZoneQrArea");
+  const qrMsg      = sheet.querySelector("#zpForZoneQrMsg");
   const confirmBtn = sheet.querySelector("#zpForZoneConfirm");
   const statusEl   = sheet.querySelector("#zpForZoneStatus");
 
+  const closeMe = async () => {
+    await zpScanner.stop().catch(() => {});
+    removeEl_(sheet);
+  };
+
+  sheet.addEventListener("click", e => { if (e.target === sheet) closeMe(); });
+  sheet.querySelector("#zpForZoneClose").addEventListener("click", closeMe);
+
+  // ── VIN Suggest ──────────────────────────────────────────────────────
+  const MIN = 1, LIMIT = 10, DEBOUNCE = 220;
+  let acTimer = null, acItems = [], acIdx = -1, acLastQ = "";
+
+  function acHide_() {
+    acItems = []; acIdx = -1;
+    suggestBox.classList.add("hidden");
+    suggestBox.innerHTML = "";
+  }
+
+  function acRender_() {
+    if (!acItems.length) { acHide_(); return; }
+    suggestBox.innerHTML = acItems.map((vin, i) => `
+      <div class="vsItem ${i === acIdx ? "active" : ""}" data-idx="${i}" role="option">
+        <div class="vsVin">${escapeHtml(vin)}</div>
+      </div>`).join("");
+    suggestBox.classList.remove("hidden");
+  }
+
+  function acPick_(vin) {
+    vinInput.value = String(vin || "").toUpperCase();
+    acHide_();
+    confirmBtn.disabled = vinInput.value.length < 5;
+  }
+
   vinInput.addEventListener("input", () => {
-    confirmBtn.disabled = vinInput.value.trim().length < 5;
+    const q = vinInput.value.trim().toUpperCase();
+    acLastQ = q;
+    confirmBtn.disabled = q.length < 5;
+    if (!q || q.length < MIN) { acHide_(); return; }
+    clearTimeout(acTimer);
+    acTimer = setTimeout(async () => {
+      try {
+        const res = await getVinSuggest(q, LIMIT);
+        if (acLastQ !== q) return;
+        acItems = (res || [])
+          .map(it => (typeof it === "object" && it?.vin) ? String(it.vin).toUpperCase() : String(it || "").toUpperCase())
+          .filter(Boolean);
+        acIdx = acItems.length ? 0 : -1;
+        acRender_();
+      } catch { acHide_(); }
+    }, DEBOUNCE);
   });
 
+  vinInput.addEventListener("keydown", e => {
+    if (!acItems.length) return;
+    if (e.key === "ArrowDown") { e.preventDefault(); acIdx = Math.min(acIdx + 1, acItems.length - 1); acRender_(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); acIdx = Math.max(acIdx - 1, 0); acRender_(); }
+    else if (e.key === "Enter" && acIdx >= 0 && acItems[acIdx]) { e.preventDefault(); acPick_(acItems[acIdx]); }
+    else if (e.key === "Escape") { acHide_(); }
+  });
+
+  suggestBox.addEventListener("mousedown", e => {
+    const row = e.target.closest(".vsItem[data-idx]");
+    if (!row) return;
+    e.preventDefault();
+    acPick_(acItems[Number(row.dataset.idx)]);
+  });
+
+  // ── QR Scanner ───────────────────────────────────────────────────────
+  let qrActive = false;
+
+  qrBtn.addEventListener("click", async () => {
+    if (qrActive) {
+      await zpScanner.stop().catch(() => {});
+      qrArea.style.display = "none";
+      qrBtn.textContent = "📷";
+      qrActive = false;
+      return;
+    }
+    qrArea.style.display = "block";
+    qrBtn.textContent = "⏹";
+    qrActive = true;
+    try {
+      await zpScanner.start({
+        mode: "QR",
+        msgEl: qrMsg,
+        onDecoded: async (code) => {
+          await zpScanner.stop().catch(() => {});
+          qrArea.style.display = "none";
+          qrBtn.textContent = "📷";
+          qrActive = false;
+          vinInput.value = code;
+          vinInput.dispatchEvent(new Event("input"));
+          confirmBtn.disabled = code.length < 5;
+        },
+      });
+    } catch {
+      qrArea.style.display = "none";
+      qrBtn.textContent = "📷";
+      qrActive = false;
+    }
+  });
+
+  // ── Confirmar ────────────────────────────────────────────────────────
   confirmBtn.addEventListener("click", async () => {
     const vin = vinInput.value.trim().toUpperCase();
     if (!vin) return;
@@ -237,7 +357,7 @@ function openPickerForZone_(zonaId, onRefresh) {
     try {
       const j = await postJSON("/api/zonas/asignar", { zona_id: zonaId, vin, usuario: "" });
       if (!j?.ok) throw new Error(j?.error || "Error");
-      closeMe();
+      await closeMe();
       if (onRefresh) await onRefresh();
     } catch (e) {
       confirmBtn.disabled = false;
