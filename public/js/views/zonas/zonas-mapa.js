@@ -26,6 +26,18 @@ const ESTADO_CSS = {
   FINALIZADO:     "finalizado",
 };
 
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function fmtElapsed_(isoStr) {
+  if (!isoStr) return "";
+  const mins = Math.floor((Date.now() - new Date(isoStr).getTime()) / 60000);
+  if (mins < 0) return "";
+  if (mins < 60) return `${mins}m`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
 // ── Render de cada spot ──────────────────────────────────────────────────────
 
 function renderZonaCard_(z, readOnly) {
@@ -33,13 +45,10 @@ function renderZonaCard_(z, readOnly) {
   const roClass = readOnly ? " readOnly" : "";
   const isOcupada = !!z.vin;
 
-  // VIN: últimos 8 caracteres para que quepa en el spot
-  const vinShort = z.vin
-    ? (z.vin.length > 8 ? z.vin.slice(-8) : z.vin)
-    : "";
-
+  const vinShort  = z.vin ? (z.vin.length > 8 ? z.vin.slice(-8) : z.vin) : "";
   const delantero = z.tecnicos?.delantero || "";
   const tanquero  = z.tecnicos?.tanquero  || "";
+  const tiempo    = isOcupada ? fmtElapsed_(z.registrado_at) : "";
 
   return `
     <div class="zonaCard zonaCard--${css}${roClass}"
@@ -50,13 +59,18 @@ function renderZonaCard_(z, readOnly) {
          tabindex="${readOnly ? "-1" : "0"}">
       <span class="zonaNum">Z${z.zona_id}</span>
       ${isOcupada
-        ? `<div class="zonaCarShape">
-             <span class="zonaCarMirrorL"></span>
-             <span class="zonaCarMirrorR"></span>
-             <span class="zonaCarLabel">${escapeHtml(delantero)}</span>
-             <span class="zonaCarLabel">${escapeHtml(tanquero)}</span>
+        ? `<div class="zonaCarOuter">
+             <div class="zonaCarShape">
+               <span class="zonaCarLabel">${escapeHtml(delantero)}</span>
+               <span class="zonaCarLabel">${escapeHtml(tanquero)}</span>
+             </div>
+             <span class="zonaCarWheel zonaCarWheelFL"></span>
+             <span class="zonaCarWheel zonaCarWheelFR"></span>
+             <span class="zonaCarWheel zonaCarWheelBL"></span>
+             <span class="zonaCarWheel zonaCarWheelBR"></span>
            </div>
-           <span class="zonaVin">${escapeHtml(vinShort)}</span>`
+           <span class="zonaVin">${escapeHtml(vinShort)}</span>
+           ${tiempo ? `<span class="zonaTime">${tiempo}</span>` : ""}`
         : `<span class="zonaEmptyP">P</span>`
       }
     </div>`;

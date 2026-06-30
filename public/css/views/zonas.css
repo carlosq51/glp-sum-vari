@@ -86,19 +86,24 @@
   letter-spacing: -.02em;
 }
 
-/* ── CARRO (solo visible cuando hay VIN) ── */
-/* Silueta tipo auto visto desde arriba: esquinas recortadas + parabrisas */
+/* ── CARRO — wrapper externo (contiene body + neumáticos) ── */
+.zonaCarOuter {
+  position: relative;
+  width: 74%;
+  margin: 4px auto 0;
+  flex-shrink: 0;
+}
+
+/* Cuerpo del carro: silueta octagonal top-down */
 .zonaCarShape {
-  width: 72%;
+  width: 100%;
   min-height: 64px;
   position: relative;
-  flex-shrink: 0;
-  margin: 2px auto 0;
   clip-path: polygon(
-    18% 0%, 82% 0%,
+    18% 0%,  82% 0%,
     100% 14%, 100% 86%,
     82% 100%, 18% 100%,
-    0% 86%, 0% 14%
+    0%  86%,  0%  14%
   );
   display: flex;
   flex-direction: column;
@@ -113,52 +118,53 @@
   content: "";
   position: absolute;
   top: 7px;
-  left: 16%;
-  right: 16%;
+  left: 16%; right: 16%;
   height: 9px;
   border-radius: 2px;
-  background: rgba(0, 0, 0, .35);
+  background: rgba(0, 0, 0, .38);
 }
 
-/* Parabrisas trasero (luneta) */
+/* Luneta trasera */
 .zonaCarShape::after {
   content: "";
   position: absolute;
   bottom: 7px;
-  left: 16%;
-  right: 16%;
+  left: 16%; right: 16%;
   height: 9px;
   border-radius: 2px;
-  background: rgba(0, 0, 0, .35);
+  background: rgba(0, 0, 0, .38);
 }
 
-/* Espejos laterales */
-.zonaCarMirrorL, .zonaCarMirrorR {
+/* ── Neumáticos: 4 cuadrados en las esquinas del outer ── */
+.zonaCarWheel {
   position: absolute;
-  top: 28%;
-  width: 5px;
-  height: 9px;
+  width: 7px;
+  height: 15px;
+  background: #0a0a12;
   border-radius: 2px;
-  background: inherit;
-  filter: brightness(0.85);
+  border: 1px solid rgba(255,255,255,.22);
 }
-.zonaCarMirrorL { left: -4px; }
-.zonaCarMirrorR { right: -4px; }
+/* Delanteros */
+.zonaCarWheelFL { top: 13%; left:  -6px; }
+.zonaCarWheelFR { top: 13%; right: -6px; }
+/* Traseros */
+.zonaCarWheelBL { bottom: 13%; left:  -6px; }
+.zonaCarWheelBR { bottom: 13%; right: -6px; }
 
-/* Etiquetas de técnico (delantero arriba / tanquero abajo) */
+/* Etiquetas de técnico dentro del carro */
 .zonaCarLabel {
   position: relative;
   z-index: 1;
-  font-size: 8.5px;
-  font-weight: 800;
+  font-size: 8px;
+  font-weight: 900;
   line-height: 1;
-  color: rgba(0, 0, 0, .60);
+  color: rgba(0, 0, 0, .58);
   text-transform: uppercase;
-  letter-spacing: .01em;
+  letter-spacing: .02em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 100%;
+  max-width: 90%;
 }
 
 /* Color del carro por estado */
@@ -177,12 +183,22 @@
   text-overflow: ellipsis;
   max-width: 100%;
   line-height: 1;
+  margin-top: 3px;
+}
+
+/* ── Tiempo estacionado ── */
+.zonaTime {
+  font-size: 8.5px;
+  color: rgba(255,255,255,.38);
+  line-height: 1;
   margin-top: 1px;
+  letter-spacing: .02em;
 }
 
 /* ── Ocultar elementos según estado ── */
-.zonaCard--libre .zonaCarShape,
-.zonaCard--libre .zonaVin { display: none; }
+.zonaCard--libre .zonaCarOuter,
+.zonaCard--libre .zonaVin,
+.zonaCard--libre .zonaTime { display: none; }
 
 .zonaCard--esperando .zonaEmptyP,
 .zonaCard--en_conversion .zonaEmptyP,

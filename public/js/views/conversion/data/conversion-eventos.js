@@ -244,8 +244,8 @@ export async function enviarEvento(accionOverride, opts = {}) {
     }
   }, accion === "INICIO" ? 800 : 400);  // 800ms para INICIO, 400ms para otros
 
-  // Si es INICIO exitoso, verificar si el VIN tiene zona asignada.
-  // Si no tiene zona, mostrar picker (dismissible) para que el técnico la indique.
+  // Si es INICIO exitoso y el VIN no tiene zona asignada →
+  // popup OBLIGATORIO (no se puede cerrar hasta elegir una zona o Zona Libre).
   if (accion === "INICIO") {
     const vinParaZona = String(vin || "").trim().toUpperCase();
     if (vinParaZona) {
@@ -254,7 +254,7 @@ export async function enviarEvento(accionOverride, opts = {}) {
         .then(z => {
           if (z?.ok && z.zona_id == null) {
             const nombre = CORE.state.currentProfile?.nombre || CORE.state.currentProfile?.email || "";
-            promptZonaForVin(vinParaZona, nombre, null, true);
+            promptZonaForVin(vinParaZona, nombre, null, false); // false = no dismissible
           }
         })
         .catch(() => {});
