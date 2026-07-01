@@ -9,8 +9,8 @@ import { getVinSuggest } from "../../core/supabase-client.js";
 import { createScanner } from "../../core/qr-scanner.js";
 
 // ── Layout físico del taller ─────────────────────────────────────────────────
-const COL_IZQUIERDA = [1, 2, 3, 4, 5, 6, 7, 8, 9];
-const COL_DERECHA   = [10, 11, 12, 13, 14, 15];
+const COL_IZQUIERDA = [15, 14, 13, 12, 11, 10];   // 6 zonas, Z15 arriba → Z10 abajo
+const COL_DERECHA   = [9, 8, 7, 6, 5, 4, 3, 2, 1]; // 9 zonas, Z9 arriba  → Z1 abajo
 
 const ESTADO_LABEL = {
   LIBRE:          "Libre",
