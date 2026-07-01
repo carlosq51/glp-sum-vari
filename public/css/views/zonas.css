@@ -24,6 +24,12 @@
   gap: 0;
 }
 
+/* La columna izquierda tiene 6 zonas (Z10-Z15): se pega al fondo
+   para que Z10 quede a la altura de Z1 y Z15 a la altura de Z6 */
+.zonasCol:first-child {
+  justify-content: flex-end;
+}
+
 /* ══════════════════════════════════════════════════════
    ZONA — estilo spot de estacionamiento
 ══════════════════════════════════════════════════════ */
