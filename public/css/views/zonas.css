@@ -9,48 +9,41 @@
   -webkit-user-select: none;
 }
 
-/* ── Badge de finalizados ── */
-.zonasFinBadge {
-  display: flex;
+/* ── Chip de notificación: carros finalizados ── */
+.zonasFinChip {
+  display: inline-flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  border-radius: 10px;
-  background: rgba(22, 101, 52, .22);
-  border: 1.5px solid rgba(74, 222, 128, .38);
-  margin-bottom: 10px;
+  gap: 7px;
+  padding: 6px 12px 6px 8px;
+  border-radius: 20px;
+  background: rgba(22, 101, 52, .28);
+  border: 1.5px solid rgba(74, 222, 128, .45);
+  margin-bottom: 8px;
 }
-.zonasFinBadgeNum {
-  font-size: 36px;
+.zonasFinChipNum {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  border-radius: 12px;
+  background: #16a34a;
+  color: #fff;
+  font-size: 13px;
   font-weight: 900;
   line-height: 1;
-  color: #4ade80;
-  min-width: 28px;
-  text-align: center;
+  padding: 0 5px;
 }
-.zonasFinBadgeText {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex: 1;
-}
-.zonasFinBadgeLabel {
-  font-size: 13px;
-  font-weight: 800;
+.zonasFinChipLabel {
+  font-size: 12px;
+  font-weight: 700;
   color: #4ade80;
   text-transform: uppercase;
   letter-spacing: .04em;
 }
-.zonasFinBadgeSub {
-  font-size: 10px;
-  color: rgba(74, 222, 128, .60);
-}
-.zonasFinBadgeIcon {
-  font-size: 22px;
-}
 
-/* Ocultar en el picker (no relevante al elegir zona) */
-#zonasPickerMapaInner .zonasFinBadge { display: none; }
+/* Ocultar en el picker */
+#zonasPickerMapaInner .zonasFinChip { display: none; }
 
 /* ── Grid: col-izq | carretera | col-der ── */
 .zonasGrid {
