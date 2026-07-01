@@ -612,7 +612,7 @@ async function loadTecRendimiento_() {
     ]);
     if (!jRend?.ok) throw new Error(jRend?.error || "Error al cargar rendimiento");
 
-    const meta  = Number(jCfg?.config?.META_CONVERSION || 65);
+    const meta  = Number(jCfg?.config?.META_MENSUAL || 60);
     const items = Array.isArray(jRend.items) ? jRend.items : [];
 
     const msDay        = 86400000;

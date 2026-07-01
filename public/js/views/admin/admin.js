@@ -398,8 +398,9 @@ async function loadTab() {
       const comidaFin     = cfg.HORARIO_COMIDA_FIN       || "14:00";
       const descInicio    = cfg.HORARIO_DESCANSO_INICIO  || "16:30";
       const descFin       = cfg.HORARIO_DESCANSO_FIN     || "07:00";
-      const metaConv      = cfg.META_CONVERSION          || "65";
-      const metaCal       = cfg.META_CALIDAD             || "22";
+      const metaDiaria    = cfg.META_DIARIA               || "25";
+      const metaCal       = cfg.META_CALIDAD              || "22";
+      const metaMensual   = cfg.META_MENSUAL              || "60";
 
       wrap.innerHTML = `
         <div class="adminConfigPanel">
@@ -476,22 +477,34 @@ async function loadTab() {
             </div>
           </div>
 
-          <!-- OBJETIVOS DIARIOS -->
+          <!-- OBJETIVOS -->
           <div class="adminConfigSection">
-            <h4 class="adminConfigTitle">Objetivos diarios de producci\u00f3n</h4>
-            <p class="small muted">
-              Metas de VINs completados por d\u00eda. Se muestran como barras de progreso en el panel LIVE.
+            <h4 class="adminConfigTitle">Objetivos de producci\u00f3n</h4>
+
+            <p class="small muted" style="margin-bottom:10px;">
+              <strong>Objetivo grupal diario</strong> — barras de progreso en el panel LIVE (supervisor).
             </p>
             <div class="adminHorarioGrid">
               <label class="adminLabel adminLabelInline">
-                🔧 Conversi\u00f3n (motor+tanque)
-                <input id="cfgMetaConv" type="number" min="1" max="500" value="${escHtml(metaConv)}" style="width:100px;">
+                🔧 Conversi\u00f3n / d\u00eda
+                <input id="cfgMetaDiaria" type="number" min="1" max="500" value="${escHtml(metaDiaria)}" style="width:100px;">
               </label>
               <label class="adminLabel adminLabelInline">
-                ✅ Calidad
+                ✅ Calidad / d\u00eda
                 <input id="cfgMetaCal" type="number" min="1" max="200" value="${escHtml(metaCal)}" style="width:100px;">
               </label>
             </div>
+
+            <p class="small muted" style="margin:14px 0 8px;">
+              <strong>Objetivo individual mensual</strong> — c\u00edrculo de progreso en &quot;Mi rendimiento&quot; de cada t\u00e9cnico.
+            </p>
+            <div class="adminHorarioGrid">
+              <label class="adminLabel adminLabelInline">
+                📊 Conversiones / mes por t\u00e9cnico
+                <input id="cfgMetaMensual" type="number" min="1" max="500" value="${escHtml(metaMensual)}" style="width:100px;">
+              </label>
+            </div>
+
             <div style="margin-top:14px;display:flex;gap:10px;align-items:center;">
               <button id="btnSaveMetas" type="button" class="adminBtnOk">Guardar objetivos</button>
               <span id="cfgMetasMsg" class="small muted"></span>
@@ -858,7 +871,8 @@ async function saveConfig_() {
 async function saveMetas_() {
   const btn   = $id("btnSaveMetas");
   const msgEl = $id("cfgMetasMsg");
-  const conv  = String(Number($id("cfgMetaConv")?.value) || 65);
+  const diaria  = String(Number($id("cfgMetaDiaria")?.value) || 25);
+  const mensual = String(Number($id("cfgMetaMensual")?.value) || 60);
   const cal   = String(Number($id("cfgMetaCal")?.value)  || 22);
   if (btn) btn.disabled = true;
   if (msgEl) msgEl.textContent = "Guardando\u2026";
@@ -867,7 +881,8 @@ async function saveMetas_() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ configs: [
-        { key: "META_CONVERSION", value: conv },
+        { key: "META_DIARIA",  value: diaria },
+        { key: "META_MENSUAL", value: mensual },
         { key: "META_CALIDAD",    value: cal  },
       ]}),
     });

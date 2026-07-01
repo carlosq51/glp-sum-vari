@@ -1372,8 +1372,8 @@ app.get("/api/supervisor/live", async (req, res) => {
     // Q5: Trabajos de días anteriores que siguen ACTIVOS hoy ("virtual" — en progreso, no finalizados)
     const url5 = `${SUPABASE_URL}/rest/v1/asignaciones?select=${selectFields}&activo=eq.true&estado_actual=in.(TRABAJANDO,PAUSADO,SIN_INICIAR)&fecha_asignacion=lt.${todayStr}T00:00:00&order=updated_at.desc`;
 
-    // Q6: Metas diarias (META_CONVERSION, META_CALIDAD) desde app_config
-    const url6 = `${SUPABASE_URL}/rest/v1/app_config?select=key,value&key=in.(META_CONVERSION,META_CALIDAD)`;
+    // Q6: Metas diarias (META_DIARIA, META_CALIDAD) desde app_config
+    const url6 = `${SUPABASE_URL}/rest/v1/app_config?select=key,value&key=in.(META_DIARIA,META_CALIDAD,META_CONVERSION)`;
 
     const [resp1, resp2, resp3, resp4, resp5, resp6] = await Promise.all([
       fetch(url1, { method: "GET", headers }),
@@ -1397,8 +1397,9 @@ app.get("/api/supervisor/live", async (req, res) => {
     ]);
     const _cfgMap = {};
     (cfgRows || []).forEach(r => { _cfgMap[r.key] = r.value; });
-    const metaConv = Number(_cfgMap.META_CONVERSION) || 25;
-    const metaCal  = Number(_cfgMap.META_CALIDAD)    || 22;
+    // META_DIARIA = objetivo grupal diario (Live). Fallback a META_CONVERSION por compatibilidad.
+    const metaConv = Number(_cfgMap.META_DIARIA || _cfgMap.META_CONVERSION) || 25;
+    const metaCal  = Number(_cfgMap.META_CALIDAD) || 22;
 
     // Mapa: user_id → último rol_trabajo conocido (para TECNICO AMBOS)
     const lastRolMap = new Map();
