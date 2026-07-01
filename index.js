@@ -3660,6 +3660,43 @@ app.get("/api/ml/infer-vin-model", (req, res) => {
 const PAIRING_MODEL_PATH  = "./pairing-model.json";
 const OMISIONES_PATH      = "./omisiones.json";
 
+// ── Persistencia del modelo en Supabase (sobrevive reinicios de Render) ───────
+// El filesystem efímero de Render borra archivos al reiniciar el dyno.
+// Guardamos el modelo en la tabla ml_models de Supabase como respaldo.
+
+async function savePairingModelToSupabase_(modelObj) {
+  try {
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    await fetch(`${SUPABASE_URL}/rest/v1/ml_models`, {
+      method:  "POST",
+      headers: { ...supabaseHeaders_(), "Prefer": "resolution=merge-duplicates,return=minimal" },
+      body:    JSON.stringify({ key: "pairing-model", data: modelObj, updated_at: new Date().toISOString() }),
+    });
+    console.log("[ML] Modelo de emparejamiento guardado en Supabase.");
+  } catch (e) {
+    console.warn("[ML] No se pudo guardar modelo en Supabase:", e.message);
+  }
+}
+
+async function loadPairingModelFromSupabase_() {
+  try {
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/ml_models?key=eq.pairing-model&select=data,updated_at&limit=1`,
+      { method: "GET", headers: supabaseHeaders_() }
+    );
+    if (!r.ok) return false;
+    const rows = await r.json();
+    if (!rows.length || !rows[0]?.data) return false;
+    writeFileSync(PAIRING_MODEL_PATH, JSON.stringify(rows[0].data));
+    console.log(`[ML] Modelo restaurado desde Supabase (entrenado: ${rows[0].data.trained_at})`);
+    return true;
+  } catch (e) {
+    console.warn("[ML] No se pudo restaurar modelo desde Supabase:", e.message);
+    return false;
+  }
+}
+
 // Distancia circular entre horas del día (0-23): normalizada a [0,1], máximo a 12h de diferencia.
 const circHourDist_ = (ha, hb) => Math.min(Math.abs(ha - hb), 24 - Math.abs(ha - hb)) / 12;
 
@@ -3964,7 +4001,7 @@ app.post("/api/ml/train-pairing", async (req, res) => {
       }
     }
 
-    writeFileSync(PAIRING_MODEL_PATH, JSON.stringify({
+    const modelPayload = {
       trained_at: new Date().toISOString(),
       blend_alpha: BLEND_ALPHA,
       recent_days: 7,
@@ -3978,7 +4015,10 @@ app.post("/api/ml/train-pairing", async (req, res) => {
         baseFeatures: t.baseFeatures, recentFeatures: t.recentFeatures,
         modelFeatures: t.modelFeatures, modelNormalized: t.modelNormalized,
       })),
-    }));
+    };
+    writeFileSync(PAIRING_MODEL_PATH, JSON.stringify(modelPayload));
+    // Persistir en Supabase para sobrevivir reinicios de Render
+    await savePairingModelToSupabase_(modelPayload);
 
     const trends = { up: 0, down: 0, stable: 0, unknown: 0 };
     for (const t of techFeatures) trends[t.trend] = (trends[t.trend] || 0) + 1;
@@ -3999,10 +4039,11 @@ app.post("/api/ml/train-pairing", async (req, res) => {
 // ── GET /api/ml/suggest-pair?email=xxx ───────────────────────────────────────
 // Devuelve TODOS los candidatos de especialidad opuesta rankeados por similitud
 // + la sugerencia principal si hay un candidato claramente mejor.
-app.get("/api/ml/suggest-pair", (req, res) => {
+app.get("/api/ml/suggest-pair", async (req, res) => {
   try {
     const email = String(req.query.email || "").trim().toLowerCase();
     if (!email) return res.json({ ok: false, error: "Email requerido" });
+    if (!existsSync(PAIRING_MODEL_PATH)) await loadPairingModelFromSupabase_();
     if (!existsSync(PAIRING_MODEL_PATH))
       return res.json({ ok: true, suggestion: null, ranked: [], reason: "model_not_trained" });
 
@@ -4281,8 +4322,9 @@ app.delete("/api/omisiones/:userId", (req, res) => {
 // ── GET /api/ml/pairing-overview ─────────────────────────────────────────────
 // Vista admin: matriz completa de similitud MOTOR × TANQUE + mejores pares
 // + resultados por modelo de vehículo.
-app.get("/api/ml/pairing-overview", (req, res) => {
+app.get("/api/ml/pairing-overview", async (req, res) => {
   try {
+    if (!existsSync(PAIRING_MODEL_PATH)) await loadPairingModelFromSupabase_();
     if (!existsSync(PAIRING_MODEL_PATH))
       return res.json({ ok: false, error: "Modelo no entrenado. Ve a Admin → Configuración → Entrenar emparejamiento." });
 
@@ -4751,6 +4793,10 @@ app.get("/api/zonas/vin/:vin", async (req, res) => {
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Servidor corriendo en puerto ${PORT}`);
   console.log(`Ábrelo desde tu celular con: http://192.168.18.121:${PORT}`);
+  // Restaurar modelo de emparejamiento desde Supabase si el FS efímero lo borró
+  if (!existsSync(PAIRING_MODEL_PATH)) {
+    loadPairingModelFromSupabase_().catch(() => {});
+  }
   scheduleAutoRetrain_();   // re-entrenamiento cada 3 días
   scheduleAutoNormalize_(); // normalización incremental cada 24h
 });

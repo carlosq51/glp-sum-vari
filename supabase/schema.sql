@@ -348,3 +348,17 @@ ON CONFLICT (zona_id) DO NOTHING;
 ALTER TABLE conversion_zonas ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "service_full_access" ON conversion_zonas FOR ALL USING (true) WITH CHECK (true);
 CREATE INDEX IF NOT EXISTS idx_cz_vin ON conversion_zonas (vin) WHERE vin IS NOT NULL;
+
+-- ────────────────────────────────────────────
+--  MIGRATION v6: ml_models
+--  Persistencia de modelos ML en Supabase para sobrevivir
+--  reinicios del filesystem efímero de Render.
+-- ────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS ml_models (
+  key         TEXT        PRIMARY KEY,
+  data        JSONB       NOT NULL,
+  updated_at  TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE ml_models ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "service_full_access" ON ml_models FOR ALL USING (true) WITH CHECK (true);
