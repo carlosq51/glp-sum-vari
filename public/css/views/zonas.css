@@ -493,77 +493,36 @@
   margin-top: -6px;
 }
 
-.zonasPickerGrid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 7px;
+/* Mapa completo embebido dentro del picker */
+#zonasPickerMapaInner .zonaCard {
+  min-height: 76px;
+  padding: 6px 6px 8px;
+}
+#zonasPickerMapaInner .zonaCarShape {
+  min-height: 42px;
+}
+#zonasPickerMapaInner .zonasLeyenda,
+#zonasPickerMapaInner .zonaLibreSection {
+  display: none;
 }
 
-.zonasPickerZona {
+/* Botón Zona Libre al pie del picker */
+.zonasPickerZonaLibreBtn {
+  width: 100%;
+  padding: 14px;
   border-radius: var(--radiusSm);
-  border: 1.5px solid rgba(255,255,255,.16);
-  padding: 9px 6px;
+  border: 1.5px dashed rgba(251,191,36,.50);
+  background: rgba(251,191,36,.06);
+  color: #fbbf24;
+  font-size: var(--fs-md);
+  font-weight: 900;
+  letter-spacing: .06em;
   cursor: pointer;
-  background: #0f1623;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  min-height: 62px;
-  transition: opacity .1s;
-  -webkit-tap-highlight-color: transparent;
   text-align: center;
-  position: relative;
-  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity .12s;
 }
-
-.zonasPickerZona:active { opacity: .65; }
-
-.zonasPickerZona--libre        { border-style: dashed; border-color: rgba(255,255,255,.16); }
-.zonasPickerZona--esperando    { border-color: #f59e0b; background: rgba(245,158,11,.08); }
-.zonasPickerZona--en_conversion { border-color: #3b82f6; background: rgba(59,130,246,.08); }
-.zonasPickerZona--finalizado   { border-color: #22c55e; background: rgba(34,197,94,.10); }
-
-.zonasPickerZona--librezona {
-  grid-column: 1 / -1;
-  border-color: rgba(251,191,36,.45);
-  border-style: dashed;
-  background: rgba(251,191,36,.05);
-  flex-direction: row;
-  justify-content: center;
-  min-height: 44px;
-  gap: 8px;
-}
-
-/* Mini carro en picker */
-.zpCarShape {
-  width: 28px;
-  height: 14px;
-  border-radius: 3px 3px 2px 2px;
-  position: relative;
-  flex-shrink: 0;
-}
-.zpCarShape::before {
-  content: "";
-  position: absolute;
-  top: 2px; left: 3px; right: 3px;
-  height: 7px;
-  border-radius: 2px;
-  background: rgba(0,0,0,.30);
-}
-
-.zonasPickerZona--libre        .zpCarShape { background: rgba(255,255,255,.12); }
-.zonasPickerZona--esperando    .zpCarShape { background: #f59e0b; }
-.zonasPickerZona--en_conversion .zpCarShape { background: #3b82f6; }
-.zonasPickerZona--finalizado   .zpCarShape { background: #22c55e; }
-
-.zpZonaNum     { font-size: 10px; font-weight: 700; color: rgba(255,255,255,.40); line-height: 1; }
-.zpZonaVin     { font-size: 9px; font-family: var(--font-mono); color: rgba(255,255,255,.65); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.zpZonaEstado  { font-size: 9px; color: var(--muted); }
-
-.zonasPickerZona--esperando    .zpZonaEstado { color: #f59e0b; }
-.zonasPickerZona--en_conversion .zpZonaEstado { color: #3b82f6; }
-.zonasPickerZona--finalizado   .zpZonaEstado { color: #22c55e; }
+.zonasPickerZonaLibreBtn:active { opacity: .65; }
 
 .zpLibreLabel { font-size: var(--fs-sm); font-weight: 700; color: rgba(251,191,36,.85); }
 

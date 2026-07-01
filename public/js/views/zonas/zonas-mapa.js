@@ -405,26 +405,7 @@ function openPickerForZone_(zonaId, onRefresh) {
  */
 export function openZonaPicker(vin, usuario, zonaData, onDone, dismissible = true) {
   removeEl_(_pickerEl);
-  const { zonas = [], sin_zona = [] } = zonaData || {};
-  const byId = new Map(zonas.map(z => [z.zona_id, z]));
-
-  function pickerCard_(n) {
-    const z       = byId.get(n) || { zona_id: n, vin: null, estado: "LIBRE" };
-    const css     = ESTADO_CSS[z.estado] || "libre";
-    const esMismo = z.vin === vin;
-    const vinLabel = z.vin ? (esMismo ? "(actual)" : "…" + z.vin.slice(-6)) : "";
-    const isOcupada = !!z.vin;
-
-    return `
-      <div class="zonasPickerZona zonasPickerZona--${css}" data-zona="${n}" role="button">
-        <span class="zpZonaNum">Z${n}</span>
-        ${isOcupada ? `<div class="zpCarShape"></div>` : ""}
-        ${vinLabel ? `<span class="zpZonaVin">${escapeHtml(vinLabel)}</span>` : ""}
-        ${esMismo ? `<span class="zpZonaEstado">★ Actual</span>` : ""}
-      </div>`;
-  }
-
-  const allCards = [...COL_IZQUIERDA, ...COL_DERECHA].map(pickerCard_).join("");
+  const { zonas = [] } = zonaData || {};
 
   const picker = document.createElement("div");
   picker.className = "zonasPickerModal";
@@ -436,44 +417,52 @@ export function openZonaPicker(vin, usuario, zonaData, onDone, dismissible = tru
         </div>
         ${dismissible ? `<button class="zonasPickerClose" id="zonasPickerCloseBtn" type="button">✕</button>` : ""}
       </div>
-      <div class="zonasPickerHint">Toca una zona para asignar este carro</div>
-      <div class="zonasPickerGrid">
-        ${allCards}
-        <div class="zonasPickerZona zonasPickerZona--librezona" data-zona="16" role="button">
-          <span class="zpLibreLabel">ZONA LIBRE</span>
-        </div>
-      </div>
-      <div id="zonasPickerStatus" style="font-size:var(--fs-sm);color:var(--muted);min-height:18px;"></div>
+      <div class="zonasPickerHint">Toca una zona libre para asignar este vehículo</div>
+      <div id="zonasPickerMapaInner"></div>
+      <button class="zonasPickerZonaLibreBtn" type="button">ZONA LIBRE</button>
+      <div id="zonasPickerStatus" style="font-size:var(--fs-sm);color:var(--muted);min-height:18px;text-align:center;"></div>
     </div>`;
 
   document.body.appendChild(picker);
   _pickerEl = picker;
 
+  // Render the full didactic map inside the picker (sin_zona vacío: no sección zona libre)
+  const mapaInner = picker.querySelector("#zonasPickerMapaInner");
+  renderMapa_(mapaInner, zonas, [], false);
+
+  const statusEl = picker.querySelector("#zonasPickerStatus");
+
+  async function assignZone_(zonaId) {
+    mapaInner.querySelectorAll(".zonaCard").forEach(c => {
+      c.style.opacity = "0.3";
+      c.style.pointerEvents = "none";
+    });
+    const sel = mapaInner.querySelector(`.zonaCard[data-zona="${zonaId}"]`);
+    if (sel) { sel.style.opacity = "1"; sel.style.pointerEvents = ""; }
+    if (statusEl) statusEl.textContent = "Guardando…";
+    try {
+      const j = await postJSON("/api/zonas/asignar", { zona_id: zonaId, vin, usuario });
+      if (!j?.ok) throw new Error(j?.error || "Error");
+      closePicker_();
+      if (onDone) onDone(j.zona_id);
+    } catch (err) {
+      mapaInner.querySelectorAll(".zonaCard").forEach(c => { c.style.opacity = ""; c.style.pointerEvents = ""; });
+      if (statusEl) statusEl.textContent = `Error: ${err.message}`;
+    }
+  }
+
+  mapaInner.addEventListener("click", e => {
+    const card = e.target.closest(".zonaCard[data-zona]");
+    if (card) assignZone_(Number(card.dataset.zona));
+  });
+
+  picker.querySelector(".zonasPickerZonaLibreBtn")
+        .addEventListener("click", () => assignZone_(16));
+
   if (dismissible) {
     picker.addEventListener("click", e => { if (e.target === picker) closePicker_(); });
     picker.querySelector("#zonasPickerCloseBtn")?.addEventListener("click", closePicker_);
   }
-
-  picker.querySelectorAll(".zonasPickerZona").forEach(btn => {
-    btn.addEventListener("click", async () => {
-      const zonaId  = Number(btn.dataset.zona);
-      const statusEl = picker.querySelector("#zonasPickerStatus");
-
-      picker.querySelectorAll(".zonasPickerZona").forEach(b => b.style.opacity = "0.4");
-      btn.style.opacity = "1";
-      if (statusEl) statusEl.textContent = "Guardando…";
-
-      try {
-        const j = await postJSON("/api/zonas/asignar", { zona_id: zonaId, vin, usuario });
-        if (!j?.ok) throw new Error(j?.error || "Error");
-        closePicker_();
-        if (onDone) onDone(j.zona_id);
-      } catch (e) {
-        picker.querySelectorAll(".zonasPickerZona").forEach(b => b.style.opacity = "");
-        if (statusEl) statusEl.textContent = `Error: ${e.message}`;
-      }
-    });
-  });
 }
 
 function closePicker_() { removeEl_(_pickerEl); _pickerEl = null; }
