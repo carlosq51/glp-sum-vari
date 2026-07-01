@@ -364,6 +364,10 @@ function openPairSuggestModal_() {
 }
 
 async function checkAndShowPairSuggest_() {
+  // Solo mostrar cuando el técnico está en la vista "Mi OT", nunca en el menú general ni otros paneles
+  const miOTPanel = document.getElementById("tecPanelMiOT");
+  if (!miOTPanel || miOTPanel.style.display === "none") { closePairSuggestModal_(); return; }
+
   const c = ctx_();
   const hasActive = [...(c?.itemsByKey?.values() || [])].some(
     it => ["TRABAJANDO", "PAUSADO"].includes(String(it.estado || "").toUpperCase())
@@ -446,7 +450,7 @@ function initTecCards_() {
     `;
     btn.addEventListener("click", () => {
       if (c.key === "validar")      { openTecBuscarModal_(); return; }
-      if (c.key === "miOT")         showTecPanel_("tecPanelMiOT", null);
+      if (c.key === "miOT")         { showTecPanel_("tecPanelMiOT", null); checkAndShowPairSuggest_(); }
       if (c.key === "cola")         showTecPanel_("tecPanelCola", loadTecCola_);
       if (c.key === "rendimiento")  showTecPanel_("tecPanelRendimiento", loadTecRendimiento_);
       if (c.key === "incidencias")  showTecPanel_("tecPanelIncidencias", loadTecIncidencias_);
