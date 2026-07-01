@@ -48,6 +48,7 @@ function renderZonaCard_(z, readOnly) {
   const vinShort  = z.vin ? (z.vin.length > 8 ? z.vin.slice(-8) : z.vin) : "";
   const delantero = z.tecnicos?.delantero || "";
   const tanquero  = z.tecnicos?.tanquero  || "";
+  const modelo    = z.modelo || "";
   const tiempo    = isOcupada ? fmtElapsed_(z.registrado_at) : "";
 
   return `
@@ -62,6 +63,7 @@ function renderZonaCard_(z, readOnly) {
         ? `<div class="zonaCarOuter">
              <div class="zonaCarShape">
                <span class="zonaCarLabel">${escapeHtml(delantero)}</span>
+               ${modelo ? `<span class="zonaCarModelo">${escapeHtml(modelo)}</span>` : ""}
                <span class="zonaCarLabel">${escapeHtml(tanquero)}</span>
              </div>
              <span class="zonaCarWheel zonaCarWheelFL"></span>
