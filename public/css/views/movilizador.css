@@ -470,97 +470,40 @@
 
 
 /* ─── Tab bar ─── */
-.movTabBar {
+/* ── Hub de cartillas ── */
+.movHubHeader {
   display: flex;
-  gap: 0;
-  border-radius: var(--radius);
-  overflow: hidden;
-  border: var(--border-w) solid rgba(255,255,255,.14);
-  background: rgba(0,0,0,.18);
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
 }
 
-.movTab {
-  flex: 1;
+/* ── Pantallas de sección (reemplaza movTabPanel) ── */
+.movScreen {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  padding: 12px 8px 10px;
-  background: none;
-  border: none;
-  border-right: var(--border-w) solid rgba(255,255,255,.1);
-  cursor: pointer;
-  color: rgba(240,244,255,.55);
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-bold);
-  transition: background .18s, color .18s;
-  position: relative;
+  gap: 10px;
 }
 
-.movTab:last-child {
-  border-right: none;
-}
-
-.movTab:hover:not(.active) {
-  background: rgba(255,255,255,.05);
-  color: rgba(240,244,255,.8);
-}
-
-.movTab.active {
-  background: rgba(79,70,229,.22);
-  color: #ffffff;
-}
-
-.movTab.active::after {
-  content: "";
+/* Badge dentro de cartilla (top-right) */
+.hubCard .movBadge {
   position: absolute;
-  bottom: 0; left: 0; right: 0;
-  height: 3px;
-  background: var(--accent, #818cf8);
-  border-radius: 3px 3px 0 0;
-}
-
-.movTabIcon {
-  font-size: 1.25em;
-  line-height: 1;
-}
-
-.movTabLabel {
-  font-size: var(--fs-xs);
-  font-weight: var(--fw-extrabold);
-  letter-spacing: .3px;
-  white-space: nowrap;
-}
-
-.movTab .movBadge {
-  position: absolute;
-  top: 6px;
-  right: 6px;
+  top: 8px;
+  right: 8px;
   min-width: 20px;
   height: 20px;
   padding: 0 5px;
   font-size: 11px;
 }
 
-/* Tab panels */
-.movTabPanel {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-/* Day theme */
-:root[data-theme="day"] .movTabBar {
-  background: rgba(79,70,229,.06);
-  border-color: rgba(15,23,42,.13);
-}
-:root[data-theme="day"] .movTab {
-  color: rgba(15,23,42,.5);
-  border-right-color: rgba(15,23,42,.10);
-}
-:root[data-theme="day"] .movTab:hover:not(.active) { background: rgba(79,70,229,.08); color: #0f172a; }
-:root[data-theme="day"] .movTab.active { background: rgba(79,70,229,.15); color: #1e1b4b; }
-:root[data-theme="day"] .movTab.active::after { background: #6366f1; }
+/* Colores de borde por sección */
+.hubCard[data-mov-card="lista"]   { border-left-color: #94a3b8; }
+.hubCard[data-mov-card="ingreso"] { border-left-color: #fbbf24; }
+.hubCard[data-mov-card="espera"]  { border-left-color: #60a5fa; }
+.hubCard[data-mov-card="salida"]  { border-left-color: #4ade80; }
+.hubCard[data-mov-card="mapa"]    { border-left-color: #a78bfa; }
 
 /* ─── Secciones visuales ENTRADA / ZONA DE ESPERA / SALIDA ─── */
 .movSection {

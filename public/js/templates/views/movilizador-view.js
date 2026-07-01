@@ -1,53 +1,13 @@
 // =========================
 // public/js/templates/views/movilizador-view.js
-// Template HTML: vista movilizador – 4 tabs de flujo
+// Template HTML: vista movilizador – cartillas de navegación
 // =========================
 
 export function movilizadorView() {
   return `
     <div id="viewMOVILIZADOR" class="card" style="display:none;">
 
-      <!-- Header -->
-      <div class="movHeader">
-        <h3>Movilizador</h3>
-        <div class="movHeaderActions">
-          <span id="movStatus" class="small muted"></span>
-          <button id="btnMovRefresh" type="button" class="movRefreshBtn" title="Actualizar">↻ Actualizar</button>
-        </div>
-      </div>
-
-      <!-- Tab bar – 4 pestañas -->
-      <div class="movTabBar" role="tablist">
-        <button class="movTab active" data-tab="lista" role="tab" aria-selected="true">
-          <span class="movTabIcon">📋</span>
-          <span class="movTabLabel">Lista</span>
-          <span id="movBadgeLista" class="movBadge movBadgeWarn" style="display:none;"></span>
-        </button>
-        <button class="movTab" data-tab="ingreso" role="tab" aria-selected="false">
-          <span class="movTabIcon">📥</span>
-          <span class="movTabLabel">Ingreso</span>
-          <span id="movBadge0"     class="movBadge movBadgeWarn"  style="display:none;"></span>
-          <span id="movBadge0conv" class="movBadge movBadgeNote"  style="display:none;"></span>
-        </button>
-        <button class="movTab" data-tab="espera" role="tab" aria-selected="false">
-          <span class="movTabIcon">🔧</span>
-          <span class="movTabLabel">Zona Espera</span>
-          <span id="movBadge1" class="movBadge movBadgeWarn" style="display:none;"></span>
-          <span id="movBadge2" class="movBadge movBadgeNote" style="display:none;"></span>
-        </button>
-        <button class="movTab" data-tab="salida" role="tab" aria-selected="false">
-          <span class="movTabIcon">📤</span>
-          <span class="movTabLabel">Salida</span>
-          <span id="movBadge3" class="movBadge movBadgeOk" style="display:none;"></span>
-        </button>
-        <button class="movTab" data-tab="mapa" role="tab" aria-selected="false">
-          <span class="movTabIcon">🗺️</span>
-          <span class="movTabLabel">Mapa</span>
-          <span id="movBadgeMapa" class="movBadge movBadgeOk" style="display:none;"></span>
-        </button>
-      </div>
-
-      <!-- QR Modal -->
+      <!-- QR Modal (siempre en DOM) -->
       <div id="movQrModal" class="modal" aria-hidden="true" style="display:none;">
         <div class="modalBox">
           <div class="modalHead">
@@ -61,10 +21,33 @@ export function movilizadorView() {
         </div>
       </div>
 
-      <!-- ── Tab: LISTA ── -->
-      <div class="movTabPanel" data-panel="lista">
+      <!-- ── Hub: cartillas ── -->
+      <div id="movHub">
+        <div class="movHubHeader">
+          <div>
+            <div class="hubGreeting" id="movGreeting">Bienvenido</div>
+            <div class="hubSubtitle">Movilizador — Control de flota</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <span id="movStatus" class="small muted"></span>
+            <button id="btnMovRefresh" type="button" class="movRefreshBtn" title="Actualizar">↻ Actualizar</button>
+          </div>
+        </div>
 
-        <!-- Barra de búsqueda + QR + Descargar -->
+        <div id="movOfflineBanner" class="movOfflineBanner" style="display:none;">
+          📶 <strong><span id="movOfflineCount">0</span></strong> registro(s) guardados sin conexión &mdash; se sincronizarán cuando haya internet
+        </div>
+
+        <div class="hubGrid" id="movCardGrid"></div>
+      </div>
+
+      <!-- ── Screen: Lista ── -->
+      <div id="movScreenLista" class="movScreen" style="display:none;">
+        <div class="adminDetailHead">
+          <button class="adminBackBtn movBackBtn" type="button">← Volver</button>
+          <span class="adminDetailTitle">📋 Lista del día</span>
+        </div>
+
         <div class="movSearchRow">
           <div class="vinWrap" style="flex:1;">
             <input id="movPendientesSearch" type="search" placeholder="Buscar VIN…"
@@ -74,7 +57,6 @@ export function movilizadorView() {
           <button id="btnMovGuardarLista" type="button" class="movDownloadBtn" title="Guardar lista en el celular">💾</button>
         </div>
 
-        <!-- QR result card -->
         <div id="movPendientesQrCard" class="movPendientesQrCard" style="display:none;">
           <div class="movPendientesQrTop">
             <span id="movPendientesQrVin" class="movVin" style="font-size:1rem;font-family:monospace;"></span>
@@ -87,24 +69,17 @@ export function movilizadorView() {
           </div>
         </div>
 
-        <!-- Banner: lista cacheada (sin internet) -->
         <div id="movCacheBanner" class="movCacheBanner" style="display:none;"></div>
-
-        <!-- Offline sync banner -->
-        <div id="movOfflineBanner" class="movOfflineBanner" style="display:none;">
-          📶 <strong><span id="movOfflineCount">0</span></strong> registro(s) guardados sin conexión &mdash; se sincronizarán cuando haya internet
-        </div>
-
-        <!-- Contador -->
         <div id="movPendientesSubHdr" class="movPendientesSubHdr"></div>
-
-        <!-- Lista de VINs pendientes -->
         <div id="movPendientesBody" class="movPendientesBody"></div>
-
       </div>
 
-      <!-- ── Tab: INGRESO ── -->
-      <div class="movTabPanel" data-panel="ingreso" style="display:none;">
+      <!-- ── Screen: Ingreso ── -->
+      <div id="movScreenIngreso" class="movScreen" style="display:none;">
+        <div class="adminDetailHead">
+          <button class="adminBackBtn movBackBtn" type="button">← Volver</button>
+          <span class="adminDetailTitle">📥 Ingreso</span>
+        </div>
 
         <div class="movRegBox">
           <div class="movRegTitle">Registrar Ingreso</div>
@@ -134,11 +109,14 @@ export function movilizadorView() {
           </button>
           <div id="movPanel0Body" class="movPanelBody"></div>
         </div>
-
       </div>
 
-      <!-- ── Tab: ZONA DE ESPERA ── -->
-      <div class="movTabPanel" data-panel="espera" style="display:none;">
+      <!-- ── Screen: Zona de Espera ── -->
+      <div id="movScreenEspera" class="movScreen" style="display:none;">
+        <div class="adminDetailHead">
+          <button class="adminBackBtn movBackBtn" type="button">← Volver</button>
+          <span class="adminDetailTitle">🔧 Zona de Espera</span>
+        </div>
 
         <div class="movPanel open" id="movPanel1">
           <button class="movPanelHeader" type="button" aria-expanded="true">
@@ -163,11 +141,14 @@ export function movilizadorView() {
           </button>
           <div id="movPanel2Body" class="movPanelBody"></div>
         </div>
-
       </div>
 
-      <!-- ── Tab: SALIDA ── -->
-      <div class="movTabPanel" data-panel="salida" style="display:none;">
+      <!-- ── Screen: Salida ── -->
+      <div id="movScreenSalida" class="movScreen" style="display:none;">
+        <div class="adminDetailHead">
+          <button class="adminBackBtn movBackBtn" type="button">← Volver</button>
+          <span class="adminDetailTitle">📤 Salida</span>
+        </div>
 
         <div class="movRegBox">
           <div class="movRegTitle">Registrar Salida</div>
@@ -183,7 +164,6 @@ export function movilizadorView() {
           </div>
         </div>
 
-        <!-- Resultado de búsqueda por QR -->
         <div id="movSalidaQrResult" class="movSalidaQrResult" style="display:none;" aria-live="polite">
           <div class="movSalidaQrResultTop">
             <div>
@@ -209,19 +189,19 @@ export function movilizadorView() {
           </button>
           <div id="movPanel3Body" class="movPanelBody"></div>
         </div>
-
       </div>
 
-      <!-- ── Tab: MAPA DE ZONAS ── -->
-      <div class="movTabPanel" data-panel="mapa" style="display:none;">
-
+      <!-- ── Screen: Mapa de Zonas ── -->
+      <div id="movScreenMapa" class="movScreen" style="display:none;">
+        <div class="adminDetailHead">
+          <button class="adminBackBtn movBackBtn" type="button">← Volver</button>
+          <span class="adminDetailTitle">🗺️ Mapa de Zonas</span>
+        </div>
         <div class="zonasMapaBar">
           <span class="zonasMapaTs" id="movZonasMapaTs"></span>
           <button class="zonasMapaRefreshBtn" id="movZonasMapaRefreshBtn" type="button">↻ Actualizar</button>
         </div>
-
         <div id="movZonasMapaContainer"></div>
-
       </div>
 
     </div>

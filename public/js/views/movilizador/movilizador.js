@@ -646,32 +646,91 @@ async function handleAction_(vin, accion, btn, onSuccess) {
 
 // ─── Tab switching ────────────────────────────────────────────
 
-function bindTabs_() {
-  const tabs   = document.querySelectorAll("#viewMOVILIZADOR .movTab");
-  const panels = document.querySelectorAll("#viewMOVILIZADOR .movTabPanel");
-  const STOR_KEY = "movTab_active";
+function showMovHub_() {
+  document.getElementById("movHub").style.display = "";
+  document.querySelectorAll("#viewMOVILIZADOR .movScreen")
+    .forEach(s => { s.style.display = "none"; });
+}
 
-  function activateTab_(target) {
-    tabs.forEach(t => {
-      t.classList.toggle("active", t.dataset.tab === target);
-      t.setAttribute("aria-selected", String(t.dataset.tab === target));
-    });
-    panels.forEach(p => { p.style.display = p.dataset.panel === target ? "flex" : "none"; });
-  }
+function showMovPanel_(screenId) {
+  document.getElementById("movHub").style.display = "none";
+  document.querySelectorAll("#viewMOVILIZADOR .movScreen").forEach(s => {
+    s.style.display = s.id === screenId ? "" : "none";
+  });
+}
 
-  tabs.forEach(tab => {
-    tab.addEventListener("click", () => {
-      const target = tab.dataset.tab;
-      localStorage.setItem(STOR_KEY, target);
-      activateTab_(target);
-    });
+function initMovCards_() {
+  const grid = document.getElementById("movCardGrid");
+  if (!grid || grid.dataset.inited) return;
+  grid.dataset.inited = "1";
+
+  // Back buttons (delegated)
+  document.addEventListener("click", e => {
+    if (e.target.closest(".movBackBtn")) showMovHub_();
   });
 
-  // Restaurar pestaña guardada si sigue existiendo
-  const saved = localStorage.getItem(STOR_KEY);
-  if (saved && Array.from(tabs).some(t => t.dataset.tab === saved)) {
-    activateTab_(saved);
+  // Update greeting
+  const greetEl = document.getElementById("movGreeting");
+  if (greetEl) {
+    const nombre = getMovNombre_();
+    greetEl.textContent = nombre && nombre !== "Movilizador" ? `Hola, ${nombre.split(" ")[0]}` : "Bienvenido";
   }
+
+  const cards = [
+    {
+      key: "Lista", emoji: "📋", label: "Lista del día",
+      desc: "VINs pendientes y estado de la flota",
+      color: "#94a3b8",
+      badges: [{ id: "movBadgeLista", type: "Warn" }],
+    },
+    {
+      key: "Ingreso", emoji: "📥", label: "Ingreso",
+      desc: "Registrar entrada de vehículos al taller",
+      color: "#fbbf24",
+      badges: [{ id: "movBadge0", type: "Warn" }, { id: "movBadge0conv", type: "Note" }],
+    },
+    {
+      key: "Espera", emoji: "🔧", label: "Zona de Espera",
+      desc: "Conversión finalizada · en espera",
+      color: "#60a5fa",
+      badges: [{ id: "movBadge1", type: "Warn" }, { id: "movBadge2", type: "Note" }],
+    },
+    {
+      key: "Salida", emoji: "📤", label: "Salida",
+      desc: "Confirmar salida y registrar en GPS",
+      color: "#4ade80",
+      badges: [{ id: "movBadge3", type: "Ok" }],
+    },
+    {
+      key: "Mapa", emoji: "🗺️", label: "Mapa de Zonas",
+      desc: "Estado en tiempo real de las 15 zonas",
+      color: "#a78bfa",
+      badges: [],
+    },
+  ];
+
+  cards.forEach(c => {
+    const btn = document.createElement("button");
+    btn.className = "hubCard";
+    btn.dataset.movCard = c.key.toLowerCase();
+    btn.style.borderLeftColor = c.color;
+
+    const badgesHTML = c.badges.map(b =>
+      `<span id="${b.id}" class="movBadge movBadge${b.type}" style="display:none;"></span>`
+    ).join("");
+
+    btn.innerHTML = `
+      <div class="hubCardEmoji">${c.emoji}</div>
+      <div class="hubCardText">
+        <div class="hubCardName">${c.label}</div>
+        <div class="hubCardDesc">${c.desc}</div>
+      </div>
+      ${badgesHTML}
+    `;
+
+    btn.addEventListener("click", () => showMovPanel_(`movScreen${c.key}`));
+    grid.appendChild(btn);
+  });
 }
 
 // ─── Lista diaria filtros ─────────────────────────────────────
@@ -1183,7 +1242,7 @@ export function init() {
     }
   });
 
-  bindTabs_();
+  initMovCards_();
   bindFiltros_();
   bindPanelToggles_();
 
