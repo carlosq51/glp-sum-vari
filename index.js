@@ -1919,20 +1919,31 @@ app.post("/api/fin-prerequisites", async (req, res) => {
 
     // 2) Fotos de soldadura en R2
     if (vin) {
-      const today = dateStr || new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Lima" }).format(new Date());
+      // Usar siempre hora Lima para evitar desfase UTC vs Peru (bug al finalizar después de 7 PM)
+      const limaToday = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Lima" }).format(new Date());
+      // Mes anterior como fallback: trabajos iniciados el último día del mes previo
+      const prevMonthDate = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Lima" }));
+      prevMonthDate.setDate(0); // día 0 = último día del mes anterior
+      const limaPrev = `${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth() + 1).padStart(2, "0")}-${String(prevMonthDate.getDate()).padStart(2, "0")}`;
+
       try {
-        const r2 = await r2GetStatus({ vin, dateStr: today });
-        const s = r2.status || {};
+        const [r2Cur, r2Prev] = await Promise.all([
+          r2GetStatus({ vin, dateStr: limaToday }),
+          r2GetStatus({ vin, dateStr: limaPrev }),
+        ]);
+        // Combinar: foto presente en cualquiera de los dos meses cuenta
+        const s = {};
+        for (const key of Object.keys(r2Cur.status || {})) {
+          s[key] = !!(r2Cur.status[key] || (r2Prev.status || {})[key]);
+        }
 
         if (rolUp === "MOTOR") {
-          // Motor (delantero): soldadura de cabina
           if (!s.sold_cabina_antes || !s.sold_cabina_post) {
             blockers.push("Falta registrar fotos de soldadura de CABINA (antes y después).");
           }
         }
 
         if (rolUp === "TANQUE") {
-          // Tanque: soldadura del sensor de nivel
           if (!s.sold_sensor_antes || !s.sold_sensor_post) {
             blockers.push("Falta registrar fotos de soldadura del SENSOR DE NIVEL (antes y después).");
           }
