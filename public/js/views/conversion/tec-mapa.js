@@ -18,17 +18,19 @@ function fmtElapsed_(isoStr) {
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
-// Devuelve el color ML para una zona: verde | verde-soft | gris | rojo | neutral
+// Devuelve el color ML para una zona
 function classifyZona_(z, mySlot, partnerSlot, suggestedNames, hasSuggestedAnywhere) {
-  if (!z.vin || z.estado === "LIBRE" || z.estado === "FINALIZADO") return "neutral";
+  if (!z.vin || z.estado === "LIBRE") return "neutral";   // spot vacío, sin VIN
+  if (z.estado === "FINALIZADO")      return "azul";      // ya convertido
+
   const myTech      = z.tecnicos?.[mySlot];
   const partnerTech = z.tecnicos?.[partnerSlot];
 
-  if (myTech)                                            return "rojo";        // mi rol ya ocupado
-  if (partnerTech && suggestedNames.has(partnerTech))   return "verde";       // compañero ideal aquí
-  if (!partnerTech && !hasSuggestedAnywhere)            return "verde-soft";  // fallback: carro vacío
-  if (partnerTech)                                       return "gris";        // compañero no ideal
-  return "neutral";
+  if (myTech)                                           return "rojo";       // mi rol ya ocupado
+  if (partnerTech && suggestedNames.has(partnerTech))  return "verde";      // compañero ideal aquí
+  if (!partnerTech && !hasSuggestedAnywhere)           return "verde-soft"; // fallback: carro sin nadie
+  if (partnerTech)                                      return "gris";       // compañero presente, no ideal
+  return "neutral";  // VIN sin técnicos, pero hay sugeridos en otras zonas
 }
 
 function renderCard_(z, color) {
@@ -42,10 +44,9 @@ function renderCard_(z, color) {
   // Una sola clase maestra: el color ML controla TODO (carro + borde + fondo).
   // No mezclamos con estado para evitar conflictos de color.
   let primaryCss;
-  if (!isOcupada)                        primaryCss = "libre";
-  else if (z.estado === "FINALIZADO")    primaryCss = "finalizado";
-  else if (color !== "neutral")          primaryCss = `tec-${color}`;
-  else                                   primaryCss = "tec-neutral";
+  if (!isOcupada)               primaryCss = "libre";
+  else if (color !== "neutral") primaryCss = `tec-${color}`;
+  else                          primaryCss = "tec-neutral";
 
   return `
     <div class="zonaCard zonaCard--${primaryCss} readOnly"
@@ -100,6 +101,7 @@ function renderLeyenda_(leyendaEl, colorMap, myRole, suggestions) {
   const hasVerdeSoft = colors.includes("verde-soft");
   const hasGris      = colors.includes("gris");
   const hasRojo      = colors.includes("rojo");
+  const hasAzul      = colors.includes("azul");
 
   const partnerLabel = myRole === "MOTOR" ? "tanquero" : "delantero";
   const myLabel      = myRole === "MOTOR" ? "delantero" : "tanquero";
@@ -114,8 +116,9 @@ function renderLeyenda_(leyendaEl, colorMap, myRole, suggestions) {
     <div class="tecMapaLeyInner">
       ${hasVerde     ? `<span class="tecMapaLeyItem"><span class="tecMapaLeyDot tecMapaLeyDot--verde"></span>Ir aquí — ${partnerLabel} ideal</span>` : ""}
       ${hasVerdeSoft ? `<span class="tecMapaLeyItem"><span class="tecMapaLeyDot tecMapaLeyDot--verde-soft"></span>Carro vacío — empezar solo</span>` : ""}
-      ${hasGris      ? `<span class="tecMapaLeyItem"><span class="tecMapaLeyDot tecMapaLeyDot--gris"></span>${partnerLabel} disponible (no ideal)</span>` : ""}
-      ${hasRojo      ? `<span class="tecMapaLeyItem"><span class="tecMapaLeyDot tecMapaLeyDot--rojo"></span>${myLabel} ya ocupado</span>` : ""}
+      ${hasGris      ? `<span class="tecMapaLeyItem"><span class="tecMapaLeyDot tecMapaLeyDot--gris"></span>${partnerLabel} no ideal</span>` : ""}
+      ${hasRojo      ? `<span class="tecMapaLeyItem"><span class="tecMapaLeyDot tecMapaLeyDot--rojo"></span>Mi rol (${myLabel}) ya ocupado</span>` : ""}
+      ${hasAzul      ? `<span class="tecMapaLeyItem"><span class="tecMapaLeyDot tecMapaLeyDot--azul"></span>Ya convertido</span>` : ""}
     </div>`;
 }
 

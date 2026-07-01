@@ -690,6 +690,17 @@
 .zonaCard--tec-rojo:last-child  { border-bottom-color: #ef4444; }
 .zonaCard--tec-rojo .zonaCarShape { background: #ef4444; }
 
+/* ── Azul: carro ya convertido (FINALIZADO) ── */
+.zonaCard--tec-azul {
+  border-left-color:  #3b82f6;
+  border-right-color: #3b82f6;
+  background: rgba(59,130,246,.08);
+  opacity: 0.60;
+}
+.zonaCard--tec-azul:first-child { border-top-color:    #3b82f6; }
+.zonaCard--tec-azul:last-child  { border-bottom-color: #3b82f6; }
+.zonaCard--tec-azul .zonaCarShape { background: #3b82f6; }
+
 /* ── Neutral: carro en conversión sin clasificación ML ── */
 .zonaCard--tec-neutral {
   border-left-color:  rgba(255,255,255,.25);
@@ -745,6 +756,7 @@
 }
 
 .tecMapaLeyDot--verde      { background: #22c55e; }
-.tecMapaLeyDot--verde-soft { background: rgba(134,239,172,.5); border: 1.5px dashed #86efac; }
+.tecMapaLeyDot--verde-soft { background: rgba(74,222,128,.5); border: 1.5px dashed #4ade80; }
 .tecMapaLeyDot--gris       { background: rgba(255,255,255,.20); }
 .tecMapaLeyDot--rojo       { background: #ef4444; }
+.tecMapaLeyDot--azul       { background: #3b82f6; }
