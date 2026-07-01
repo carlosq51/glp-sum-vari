@@ -124,22 +124,22 @@
 .zonaCarShape::before {
   content: "";
   position: absolute;
-  top: 7px;
-  left: 16%; right: 16%;
-  height: 9px;
+  top: 2px;
+  left: 20%; right: 20%;
+  height: 6px;
   border-radius: 2px;
-  background: rgba(0, 0, 0, .38);
+  background: rgba(0, 0, 0, .32);
 }
 
 /* Luneta trasera */
 .zonaCarShape::after {
   content: "";
   position: absolute;
-  bottom: 7px;
-  left: 16%; right: 16%;
-  height: 9px;
+  bottom: 2px;
+  left: 20%; right: 20%;
+  height: 6px;
   border-radius: 2px;
-  background: rgba(0, 0, 0, .38);
+  background: rgba(0, 0, 0, .32);
 }
 
 /* ── Neumáticos: horizontales, arriba y abajo del carro ── */
