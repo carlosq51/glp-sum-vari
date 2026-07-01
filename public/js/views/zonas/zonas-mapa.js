@@ -480,18 +480,30 @@ function closePicker_() { removeEl_(_pickerEl); _pickerEl = null; }
 
 // ── Inicialización del mapa ──────────────────────────────────────────────────
 
+const AUTO_REFRESH_MS = 60_000;
+
 let _zonaData = { zonas: [], sin_zona: [] };
 
 /**
  * Inicializa el mapa de zonas en un contenedor DOM.
  * @param {string} containerId
  * @param {{ readOnly, usuario, onZoneAction }} opts
- * @returns {{ refresh: function }}
+ * @returns {{ refresh: function, destroy: function }}
  */
 export function initZonasMapa(containerId, opts = {}) {
   const { readOnly = false, usuario = "", onZoneAction = null } = opts;
   const container = document.getElementById(containerId);
   if (!container) return null;
+
+  let _timer = null;
+
+  function updateTs_() {
+    const ts = document.getElementById(`${containerId}Ts`);
+    if (ts) {
+      const d = new Date();
+      ts.textContent = `Act. ${d.toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" })}`;
+    }
+  }
 
   async function refresh_() {
     try {
@@ -500,22 +512,29 @@ export function initZonasMapa(containerId, opts = {}) {
       if (!j?.ok) return;
       _zonaData = j;
       renderMapa_(container, j.zonas, j.sin_zona, readOnly);
-
-      const ts = document.getElementById(`${containerId}Ts`);
-      if (ts) {
-        const d = new Date();
-        ts.textContent = `Act. ${d.toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" })}`;
-      }
-
+      updateTs_();
       if (!readOnly) bindMapaClicks_(container, usuario, onZoneAction);
     } catch {}
+  }
+
+  function autoRefresh_() {
+    // No interrumpir si hay un modal o picker abierto
+    if (_actionSheetEl || _pickerEl) return;
+    refresh_().catch(() => {});
+  }
+
+  function destroy_() {
+    clearInterval(_timer);
+    _timer = null;
   }
 
   const refreshBtn = document.getElementById(`${containerId}RefreshBtn`);
   if (refreshBtn) refreshBtn.addEventListener("click", () => refresh_().catch(() => {}));
 
   refresh_().catch(() => {});
-  return { refresh: refresh_ };
+  _timer = setInterval(autoRefresh_, AUTO_REFRESH_MS);
+
+  return { refresh: refresh_, destroy: destroy_ };
 }
 
 function bindMapaClicks_(container, usuario, onZoneAction) {

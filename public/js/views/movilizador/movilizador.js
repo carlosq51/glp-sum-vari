@@ -1206,4 +1206,6 @@ export function enter() {
 export function exit() {
   stopPoll_();
   closeMovQr_().catch(() => {});
+  _zonasMapa?.destroy();
+  _zonasMapa = null;
 }

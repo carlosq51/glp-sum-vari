@@ -195,4 +195,6 @@ export function exitUbicaciones_() {
   ubActive_ = false;
   clearInterval(ubTimer_);
   ubTimer_ = null;
+  _supZonasMapa?.destroy();
+  _supZonasMapa = null;
 }
