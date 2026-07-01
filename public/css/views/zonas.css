@@ -637,3 +637,91 @@
   border-color: rgba(248,113,113,.35);
   background: var(--dangerBg);
 }
+
+/* ══════════════════════════════════════════════════════
+   MAPA TÉCNICO — overlay de colores ML
+══════════════════════════════════════════════════════ */
+
+/* Verde: compañero ideal en esta zona, mi slot libre */
+.zonaCard--tec-verde {
+  border-left-color:  #22c55e;
+  border-right-color: #22c55e;
+  background: rgba(34,197,94,.13);
+}
+.zonaCard--tec-verde:first-child { border-top-color:    #22c55e; }
+.zonaCard--tec-verde:last-child  { border-bottom-color: #22c55e; }
+
+/* Verde suave: fallback — carro sin nadie cuando no hay par sugerido disponible */
+.zonaCard--tec-verde-soft {
+  border-left-color:   #86efac;
+  border-right-color:  #86efac;
+  border-left-style:   dashed;
+  border-right-style:  dashed;
+  background: rgba(134,239,172,.07);
+}
+.zonaCard--tec-verde-soft:first-child { border-top-color:    #86efac; border-top-style:    dashed; }
+.zonaCard--tec-verde-soft:last-child  { border-bottom-color: #86efac; border-bottom-style: dashed; }
+
+/* Gris: hay compañero pero no es del top sugerido */
+.zonaCard--tec-gris { opacity: 0.42; }
+
+/* Rojo: mi rol ya está ocupado por otro técnico */
+.zonaCard--tec-rojo {
+  border-left-color:  #ef4444;
+  border-right-color: #ef4444;
+  background: rgba(239,68,68,.09);
+}
+.zonaCard--tec-rojo:first-child { border-top-color:    #ef4444; }
+.zonaCard--tec-rojo:last-child  { border-bottom-color: #ef4444; }
+
+/* ── Leyenda + info box del mapa técnico ── */
+.tecMapaLeyenda {
+  margin-bottom: 6px;
+}
+
+.tecMapaInfoBox {
+  background: var(--bgAccent);
+  border: 1px solid var(--surfaceLine);
+  border-radius: var(--radiusSm);
+  padding: 8px 12px;
+  margin-bottom: 8px;
+}
+
+.tecMapaInfoRole {
+  font-size: var(--fs-sm);
+  color: var(--text);
+}
+
+.tecMapaInfoSug {
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+  margin-top: 3px;
+  opacity: .80;
+}
+
+.tecMapaLeyInner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  padding: 0 2px;
+}
+
+.tecMapaLeyItem {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+}
+
+.tecMapaLeyDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.tecMapaLeyDot--verde      { background: #22c55e; }
+.tecMapaLeyDot--verde-soft { background: rgba(134,239,172,.5); border: 1.5px dashed #86efac; }
+.tecMapaLeyDot--gris       { background: rgba(255,255,255,.20); }
+.tecMapaLeyDot--rojo       { background: #ef4444; }

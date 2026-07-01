@@ -41,12 +41,13 @@ import { requestNotifPermission } from "./modals/ramal-alert.js";
 import { initConversionQR_ } from "./ui/conversion-qr.js";
 import { initTecValidar_, openTecBuscarModal_ } from "./ui/conversion-validar.js";
 import { escapeHtml, fmtShort_ } from "../../core/format.js";
+import { loadTecMapa_ } from "./tec-mapa.js";
 
 // --------------------------
 // TEC CARD NAVIGATION
 // --------------------------
 
-const TEC_PANELS = ["tecPanelMiOT", "tecPanelCola", "tecPanelRendimiento", "tecPanelIncidencias"];
+const TEC_PANELS = ["tecPanelMiOT", "tecPanelCola", "tecPanelRendimiento", "tecPanelIncidencias", "tecPanelMapa"];
 let tecCardsInited_      = false;
 let colaBadgeInterval_    = null;
 let vinReadyNotifInterval_ = null;
@@ -435,6 +436,7 @@ function initTecCards_() {
     { key: "validar",     emoji: "🔍", label: "Buscar / Validar", desc: "Verificar un VIN por código o QR"    },
     { key: "rendimiento", emoji: "📊", label: "Mi rendimiento",   desc: "Historial, estadísticas y meta"      },
     { key: "incidencias", emoji: "⚠️", label: "Mis incidencias",  desc: "Registrar y ver fallas detectadas"   },
+    { key: "mapa",        emoji: "🗺",  label: "Mapa de zonas",   desc: "Ve a qué zona ir y con quién trabajar" },
   ];
 
   cards.forEach(c => {
@@ -454,6 +456,11 @@ function initTecCards_() {
       if (c.key === "cola")         showTecPanel_("tecPanelCola", loadTecCola_);
       if (c.key === "rendimiento")  showTecPanel_("tecPanelRendimiento", loadTecRendimiento_);
       if (c.key === "incidencias")  showTecPanel_("tecPanelIncidencias", loadTecIncidencias_);
+      if (c.key === "mapa") {
+        const email = String(document.getElementById("email")?.value || "").trim().toLowerCase();
+        const esp   = String(CORE.state.currentProfile?.especialidad || "").toUpperCase();
+        showTecPanel_("tecPanelMapa", () => loadTecMapa_("tecMapaContainer", email, esp));
+      }
     });
     grid.appendChild(btn);
   });

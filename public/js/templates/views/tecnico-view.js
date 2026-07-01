@@ -80,6 +80,20 @@ export function tecnicoView() {
         <div id="tecIncContent"><div class="small muted">Cargando…</div></div>
       </div>
 
+      <!-- ── Panel: Mapa de zonas ── -->
+      <div id="tecPanelMapa" class="card" style="display:none;">
+        <div class="adminDetailHead">
+          <button class="adminBackBtn tecBackBtn">← Volver</button>
+          <span class="adminDetailTitle">🗺 Mapa de zonas</span>
+        </div>
+        <div id="tecMapaLeyenda" class="tecMapaLeyenda"></div>
+        <div class="zonasMapaBar">
+          <span class="zonasMapaTs" id="tecMapaTs"></span>
+          <button class="zonasMapaRefreshBtn" id="tecMapaRefreshBtn" type="button">↻ Actualizar</button>
+        </div>
+        <div id="tecMapaContainer"></div>
+      </div>
+
       <!-- ── Stubs ocultos (siempre en DOM para delegation.js) ── -->
       <select id="accion" style="display:none;">
         <option value="INICIO">INICIO</option>
