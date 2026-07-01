@@ -39,13 +39,16 @@ function renderCard_(z, color) {
   const modelo     = z.modelo || "";
   const tiempo     = isOcupada ? fmtElapsed_(z.registrado_at) : "";
 
-  const estadoCss  = isOcupada
-    ? (z.estado === "FINALIZADO" ? "finalizado" : "en_conversion")
-    : "libre";
-  const colorCss   = color !== "neutral" ? ` zonaCard--tec-${color}` : "";
+  // Una sola clase maestra: el color ML controla TODO (carro + borde + fondo).
+  // No mezclamos con estado para evitar conflictos de color.
+  let primaryCss;
+  if (!isOcupada)                        primaryCss = "libre";
+  else if (z.estado === "FINALIZADO")    primaryCss = "finalizado";
+  else if (color !== "neutral")          primaryCss = `tec-${color}`;
+  else                                   primaryCss = "tec-neutral";
 
   return `
-    <div class="zonaCard zonaCard--${estadoCss}${colorCss} readOnly"
+    <div class="zonaCard zonaCard--${primaryCss} readOnly"
          data-zona="${z.zona_id}" role="presentation" tabindex="-1">
       <span class="zonaNum">Z${z.zona_id}</span>
       ${isOcupada ? `

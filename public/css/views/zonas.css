@@ -639,33 +639,48 @@
 }
 
 /* ══════════════════════════════════════════════════════
-   MAPA TÉCNICO — overlay de colores ML
+   MAPA TÉCNICO — clases maestras ML (carro + borde + fondo)
+   Cada clase controla TODO: no se mezcla con estado global.
 ══════════════════════════════════════════════════════ */
 
-/* Verde: compañero ideal en esta zona, mi slot libre */
+/* Ocultar P vacío en zonas con carro (mismas reglas que estado normal) */
+.zonaCard--tec-verde .zonaEmptyP,
+.zonaCard--tec-verde-soft .zonaEmptyP,
+.zonaCard--tec-gris .zonaEmptyP,
+.zonaCard--tec-rojo .zonaEmptyP,
+.zonaCard--tec-neutral .zonaEmptyP { display: none; }
+
+/* ── Verde: compañero ideal, mi slot libre — IR AQUÍ ── */
 .zonaCard--tec-verde {
   border-left-color:  #22c55e;
   border-right-color: #22c55e;
-  background: rgba(34,197,94,.13);
+  background: rgba(34,197,94,.10);
 }
 .zonaCard--tec-verde:first-child { border-top-color:    #22c55e; }
 .zonaCard--tec-verde:last-child  { border-bottom-color: #22c55e; }
+.zonaCard--tec-verde .zonaCarShape { background: #22c55e; }
 
-/* Verde suave: fallback — carro sin nadie cuando no hay par sugerido disponible */
+/* ── Verde suave: fallback — carro vacío, empezar solo ── */
 .zonaCard--tec-verde-soft {
-  border-left-color:   #86efac;
-  border-right-color:  #86efac;
-  border-left-style:   dashed;
-  border-right-style:  dashed;
-  background: rgba(134,239,172,.07);
+  border-left-color:  #4ade80;
+  border-right-color: #4ade80;
+  border-left-style:  dashed;
+  border-right-style: dashed;
+  background: rgba(74,222,128,.07);
 }
-.zonaCard--tec-verde-soft:first-child { border-top-color:    #86efac; border-top-style:    dashed; }
-.zonaCard--tec-verde-soft:last-child  { border-bottom-color: #86efac; border-bottom-style: dashed; }
+.zonaCard--tec-verde-soft:first-child { border-top-color:    #4ade80; border-top-style:    dashed; }
+.zonaCard--tec-verde-soft:last-child  { border-bottom-color: #4ade80; border-bottom-style: dashed; }
+.zonaCard--tec-verde-soft .zonaCarShape { background: #4ade80; }
 
-/* Gris: hay compañero pero no es del top sugerido */
-.zonaCard--tec-gris { opacity: 0.42; }
+/* ── Gris: compañero disponible pero no ideal ── */
+.zonaCard--tec-gris {
+  border-left-color:  rgba(255,255,255,.22);
+  border-right-color: rgba(255,255,255,.22);
+  opacity: 0.45;
+}
+.zonaCard--tec-gris .zonaCarShape { background: rgba(255,255,255,.22); }
 
-/* Rojo: mi rol ya está ocupado por otro técnico */
+/* ── Rojo: mi rol ya está ocupado ── */
 .zonaCard--tec-rojo {
   border-left-color:  #ef4444;
   border-right-color: #ef4444;
@@ -673,6 +688,14 @@
 }
 .zonaCard--tec-rojo:first-child { border-top-color:    #ef4444; }
 .zonaCard--tec-rojo:last-child  { border-bottom-color: #ef4444; }
+.zonaCard--tec-rojo .zonaCarShape { background: #ef4444; }
+
+/* ── Neutral: carro en conversión sin clasificación ML ── */
+.zonaCard--tec-neutral {
+  border-left-color:  rgba(255,255,255,.25);
+  border-right-color: rgba(255,255,255,.25);
+}
+.zonaCard--tec-neutral .zonaCarShape { background: #475569; }
 
 /* ── Leyenda + info box del mapa técnico ── */
 .tecMapaLeyenda {
