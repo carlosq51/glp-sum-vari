@@ -89,6 +89,20 @@ function renderMapa_(container, zonas, sinZona, readOnly) {
     renderZonaCard_(byId.get(n) || { zona_id: n, vin: null, estado: "LIBRE" }, readOnly)
   ).join("");
 
+  // Contador de finalizados (zonas numeradas + zona libre)
+  const finalizados = zonas.filter(z => z.estado === "FINALIZADO").length
+                    + sinZona.filter(v => v.estado === "FINALIZADO").length;
+  const finBadge = finalizados > 0
+    ? `<div class="zonasFinBadge">
+         <span class="zonasFinBadgeNum">${finalizados}</span>
+         <div class="zonasFinBadgeText">
+           <span class="zonasFinBadgeLabel">listo${finalizados !== 1 ? "s" : ""} para salida</span>
+           <span class="zonasFinBadgeSub">carros finalizados · listos para intercambio</span>
+         </div>
+         <span class="zonasFinBadgeIcon">✅</span>
+       </div>`
+    : "";
+
   // Zona Libre (zona 16)
   const sinZonaCount = sinZona.length;
   let zonaLibreBody;
@@ -110,6 +124,7 @@ function renderMapa_(container, zonas, sinZona, readOnly) {
 
   container.innerHTML = `
     <div class="zonasMapaWrap">
+      ${finBadge}
       <div class="zonasGrid">
 
         <!-- Izquierda: zonas 1-9 -->

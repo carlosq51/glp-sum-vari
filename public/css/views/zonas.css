@@ -9,6 +9,49 @@
   -webkit-user-select: none;
 }
 
+/* ── Badge de finalizados ── */
+.zonasFinBadge {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: rgba(22, 101, 52, .22);
+  border: 1.5px solid rgba(74, 222, 128, .38);
+  margin-bottom: 10px;
+}
+.zonasFinBadgeNum {
+  font-size: 36px;
+  font-weight: 900;
+  line-height: 1;
+  color: #4ade80;
+  min-width: 28px;
+  text-align: center;
+}
+.zonasFinBadgeText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+.zonasFinBadgeLabel {
+  font-size: 13px;
+  font-weight: 800;
+  color: #4ade80;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.zonasFinBadgeSub {
+  font-size: 10px;
+  color: rgba(74, 222, 128, .60);
+}
+.zonasFinBadgeIcon {
+  font-size: 22px;
+}
+
+/* Ocultar en el picker (no relevante al elegir zona) */
+#zonasPickerMapaInner .zonasFinBadge { display: none; }
+
 /* ── Grid: col-izq | carretera | col-der ── */
 .zonasGrid {
   display: grid;
