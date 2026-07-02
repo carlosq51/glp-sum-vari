@@ -918,27 +918,30 @@ function showSalidaQrResult_(vin) {
 
   const destEl = document.getElementById("movSalidaQrResultDestino");
   if (destEl) {
-    if (row?.destino) {
-      destEl.textContent = `📍 Sale a: ${row.destino}`;
-      destEl.className = "movSalidaQrResultDestino movSalidaQrDestinoOk";
-    } else if (row) {
-      destEl.textContent = "⏳ Destino pendiente de asignación";
-      destEl.className = "movSalidaQrResultDestino movSalidaQrDestinoWait";
-    } else {
+    if (!row) {
       destEl.textContent = "❌ VIN no encontrado en la lista de salida";
       destEl.className = "movSalidaQrResultDestino movSalidaQrDestinoErr";
+    } else if (!row.tiene_ot) {
+      destEl.textContent = "⚠️ Falta #OT — registre en ASIGNACIONES (col E)";
+      destEl.className = "movSalidaQrResultDestino movSalidaQrDestinoErr";
+    } else if (row.destino) {
+      destEl.textContent = `📍 Sale a: ${row.destino}`;
+      destEl.className = "movSalidaQrResultDestino movSalidaQrDestinoOk";
+    } else {
+      destEl.textContent = "⏳ Destino pendiente de asignación";
+      destEl.className = "movSalidaQrResultDestino movSalidaQrDestinoWait";
     }
   }
 
   const confirmBtn = document.getElementById("btnMovConfirmarSalidaQr");
   if (confirmBtn) {
     confirmBtn.dataset.vin = vinClean;
-    if (!row) {
+    if (!row || !row.tiene_ot) {
       confirmBtn.style.display = "none";
     } else {
       confirmBtn.style.display = "";
-      confirmBtn.disabled = !row.tiene_ot;
-      confirmBtn.textContent = row.tiene_ot ? "Confirmar Salida ▶" : "🔒 Sin #OT — regístralo en ASIGNACIONES (col E)";
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = "Confirmar Salida ▶";
     }
   }
 
@@ -1133,6 +1136,22 @@ export function init() {
 
   // VIN Autocomplete for Salida
   createVinAc_("movSalidaVinSearch", "movSalidaVinSuggest", (vin) => showSalidaQrResult_(vin));
+
+  // Auto-buscar cuando el input alcanza 17 chars (VIN completo) — cubre scanners Bluetooth
+  // y Enter al final del código. Sin esto el usuario necesita seleccionar del dropdown.
+  const salidaVinInp = document.getElementById("movSalidaVinSearch");
+  if (salidaVinInp) {
+    salidaVinInp.addEventListener("input", function () {
+      const v = this.value.trim().toUpperCase();
+      if (/^[A-HJ-NPR-Z0-9]{17}$/.test(v)) showSalidaQrResult_(v);
+    });
+    salidaVinInp.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") {
+        const v = this.value.trim().toUpperCase();
+        if (v.length >= 7) showSalidaQrResult_(v);
+      }
+    });
+  }
 
   // QR scanner buttons
   document.getElementById("btnMovQrEntrada")?.addEventListener("click",    () => openMovQr_("entrada").catch(() => {}));
