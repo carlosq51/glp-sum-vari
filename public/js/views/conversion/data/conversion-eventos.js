@@ -246,7 +246,8 @@ export async function enviarEvento(accionOverride, opts = {}) {
 
   // Si es INICIO exitoso y el VIN no tiene zona asignada →
   // popup OBLIGATORIO (no se puede cerrar hasta elegir una zona o Zona Libre).
-  if (accion === "INICIO") {
+  // Excluido para CALIDAD: el inspector no gestiona zonas.
+  if (accion === "INICIO" && CORE.state.currentModule !== "CALIDAD") {
     const vinParaZona = String(vin || "").trim().toUpperCase();
     if (vinParaZona) {
       fetch(`/api/zonas/vin/${encodeURIComponent(vinParaZona)}`)

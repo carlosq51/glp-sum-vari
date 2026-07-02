@@ -151,7 +151,7 @@ export function renderFinalizados_(avgTopHTML = "") {
     const tipo = escapeHtml(String(it.tipoRamal || ""));
     const estado = escapeHtml(String(it.estado || "FINALIZADO").toUpperCase());
     const live = msToHMS_(computeLiveMs_(it, nowMs));
-    const cre = escapeHtml(fmtFechaCreacion_(it.running_since || it.created_at || it.fecha_creacion));
+    const fin = escapeHtml(fmtFechaCreacion_(it.updated_at || ""));
     const motorNombre = escapeHtml(it.motorNombre || "");
     const tanqueroNombre = escapeHtml(it.tanqueroNombre || "");
 
@@ -167,7 +167,7 @@ export function renderFinalizados_(avgTopHTML = "") {
           <div class="small"><b>Estado:</b> ${estado}</div>
           <div class="pill" style="font-size:18px; font-weight:800;">⏱ ${live}</div>
         </div>
-        <div class="small">Inicio: ${cre}</div>
+        <div class="small">Término: ${fin}</div>
         ${CORE.state.currentModule === "CALIDAD" && (motorNombre || tanqueroNombre) ? `
           <div class="small js-personal" style="margin-top:4px;">
             ${motorNombre ? `🔧 MOTOR: <b>${motorNombre}</b>` : ""}

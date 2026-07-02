@@ -67,6 +67,11 @@ function showTecCards_() {
     const el = document.getElementById(id);
     if (el) el.style.display = "none";
   });
+  // Ocultar tarjetas restringidas al módulo actual
+  const mod = CORE.state.currentModule;
+  document.querySelectorAll("#tecCardGrid [data-tec-card-module]").forEach(btn => {
+    btn.style.display = btn.dataset.tecCardModule === mod ? "" : "none";
+  });
   // Update greeting
   const nombre = String(CORE.state.currentProfile?.nombre || "").split(" ")[0];
   const esp    = String(CORE.state.currentProfile?.especialidad || "").toUpperCase();
@@ -436,7 +441,7 @@ function initTecCards_() {
     { key: "validar",     emoji: "🔍", label: "Buscar / Validar", desc: "Verificar un VIN por código o QR"    },
     { key: "rendimiento", emoji: "📊", label: "Mi rendimiento",   desc: "Historial, estadísticas y meta"      },
     { key: "incidencias", emoji: "⚠️", label: "Mis incidencias",  desc: "Registrar y ver fallas detectadas"   },
-    { key: "mapa",        emoji: "🗺",  label: "Mapa de zonas",   desc: "Ve a qué zona ir y con quién trabajar" },
+    { key: "mapa",        emoji: "🗺",  label: "Mapa de zonas",   desc: "Ve a qué zona ir y con quién trabajar", onlyModule: "TECNICO" },
   ];
 
   cards.forEach(c => {
@@ -450,6 +455,7 @@ function initTecCards_() {
         <div class="hubCardDesc">${c.desc}</div>
       </div>
     `;
+    if (c.onlyModule) btn.dataset.tecCardModule = c.onlyModule;
     btn.addEventListener("click", () => {
       if (c.key === "validar")      { openTecBuscarModal_(); return; }
       if (c.key === "miOT")         { showTecPanel_("tecPanelMiOT", null); checkAndShowPairSuggest_(); }
