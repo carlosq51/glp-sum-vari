@@ -1352,13 +1352,13 @@ export function enter(mod) {
     checkVinReadyNotif_();
     vinReadyNotifInterval_ = setInterval(checkVinReadyNotif_, 2 * 60 * 1000);
 
-    // Banner ramal listo: check on enter + poll every 60s
+    // Banner ramal listo: check on enter + poll every 15s
     checkRamalListo_();
-    ramalListoInterval_ = setInterval(checkRamalListo_, 60 * 1000);
+    ramalListoInterval_ = setInterval(checkRamalListo_, 15 * 1000);
 
-    // Banner posición en cola: check on enter + poll every 60s + on solicitud created
+    // Banner posición en cola: check on enter + poll every 15s + on solicitud created
     checkColaPosicion_();
-    colaRamalInterval_ = setInterval(checkColaPosicion_, 60 * 1000);
+    colaRamalInterval_ = setInterval(checkColaPosicion_, 15 * 1000);
     document.addEventListener("glp:ramal-solicitado", checkColaPosicion_);
 
     // Pair suggest popup: check on enter + poll every 90s for OT-finish transition

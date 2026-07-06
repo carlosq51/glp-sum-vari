@@ -176,12 +176,23 @@ function supabaseHeaders_() {
   const SUPABASE_URL = process.env.SUPABASE_URL;
   // Prioridad: SUPABASE_ANON_KEY > VITE_SUPABASE_ANON_KEY
   const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-  
+
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
-  
+
   return {
     "apikey": SUPABASE_ANON_KEY,
     "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+    "Content-Type": "application/json",
+  };
+}
+
+// Usa la service key para operaciones de backend que necesitan bypassear RLS
+function supabaseServiceHeaders_() {
+  const key = process.env.SUPABASE_SERVICE_KEY;
+  if (!key) return supabaseHeaders_();
+  return {
+    "apikey": key,
+    "Authorization": `Bearer ${key}`,
     "Content-Type": "application/json",
   };
 }
@@ -2526,9 +2537,9 @@ app.post("/api/push/subscribe", async (req, res) => {
       p256dh:   subscription.keys?.p256dh || "",
       auth:     subscription.keys?.auth   || "",
     };
-    // Upsert por endpoint (evitar duplicados si el mismo browser re-suscribe)
+    // Upsert por endpoint — service key para bypassear RLS
     const SUPABASE_URL = process.env.SUPABASE_URL;
-    const headers = supabaseHeaders_();
+    const headers = supabaseServiceHeaders_();
     await fetch(
       `${SUPABASE_URL}/rest/v1/push_subscriptions?on_conflict=endpoint`,
       {
@@ -2651,7 +2662,10 @@ app.post("/api/solicitud-ramal/:id/notificar", async (req, res) => {
     // 2. Enviar Web Push a todas las suscripciones del técnico
     if (techEmail) {
       try {
-        const subs = await supabaseGet_("push_subscriptions", { email: techEmail });
+        // Usar service key para bypassear RLS en push_subscriptions
+        const _svcUrl = `${process.env.SUPABASE_URL}/rest/v1/push_subscriptions?email=eq.${encodeURIComponent(techEmail)}`;
+        const _svcR   = await fetch(_svcUrl, { headers: supabaseServiceHeaders_() });
+        const subs    = _svcR.ok ? await _svcR.json() : [];
         const payload = JSON.stringify({
           title: "🔩 ¡Tu ramal está listo!",
           body:  vin ? `VIN: ${vin} — Acércate a recoger tu ramal.` : "Acércate a recoger tu ramal.",
@@ -2665,7 +2679,9 @@ app.post("/api/solicitud-ramal/:id/notificar", async (req, res) => {
             ).catch(err => {
               // 410 = suscripción caducada → limpiar
               if (err.statusCode === 410) {
-                supabaseDelete_("push_subscriptions", { endpoint: s.endpoint }).catch(() => {});
+                // Borrar suscripción caducada con service key
+                const _delUrl = `${process.env.SUPABASE_URL}/rest/v1/push_subscriptions?endpoint=eq.${encodeURIComponent(s.endpoint)}`;
+                fetch(_delUrl, { method: "DELETE", headers: supabaseServiceHeaders_() }).catch(() => {});
               }
               console.warn("[PUSH] send error:", err.statusCode, err.message);
             })
