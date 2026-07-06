@@ -2555,6 +2555,20 @@ app.get("/api/solicitud-ramal/pendientes", async (req, res) => {
       if (a.estado !== b.estado) return a.estado === "PENDIENTE" ? -1 : 1;
       return a.created_at < b.created_at ? -1 : 1;
     });
+
+    // Enriquecer con modelo_normalizado desde tabla vins
+    const vins = [...new Set(items.map(s => s.vin).filter(Boolean))];
+    if (vins.length) {
+      const vinsUrl = `${SUPABASE_URL}/rest/v1/vins?vin=in.(${vins.map(encodeURIComponent).join(",")})&select=vin,modelo_normalizado`;
+      const vr = await fetch(vinsUrl, { method: "GET", headers });
+      if (vr.ok) {
+        const vinsData = await vr.json();
+        const modeloMap = {};
+        vinsData.forEach(v => { if (v.vin) modeloMap[v.vin] = v.modelo_normalizado || ""; });
+        items.forEach(s => { s.modelo_normalizado = modeloMap[s.vin] || ""; });
+      }
+    }
+
     return res.json({ ok: true, items });
   } catch (e) {
     console.error("[GET /api/solicitud-ramal/pendientes]", e.message);

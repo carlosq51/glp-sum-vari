@@ -111,17 +111,36 @@ function closePanel_() {
 
 // ─── render ──────────────────────────────────────────────────────────────────
 
+function tiempoEspera_(created_at) {
+  if (!created_at) return "";
+  const ms = Date.now() - new Date(created_at).getTime();
+  if (ms < 0) return "";
+  const min = Math.floor(ms / 60000);
+  if (min < 1)  return "hace menos de 1 min";
+  if (min < 60) return `hace ${min} min`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m > 0 ? `hace ${h}h ${m}min` : `hace ${h}h`;
+}
+
 function renderCard_(sol) {
   const when = fmtShort_(sol.created_at);
   const nota = sol.nota
     ? `<div style="font-size:.8rem;opacity:.7;margin-top:3px;">${escapeHtml(sol.nota)}</div>`
     : "";
   const isEntregado = sol.estado === "ENTREGADO";
+  const modelo = sol.modelo_normalizado
+    ? `<span style="color:#cba6f7;font-size:.78rem;margin-left:6px;">${escapeHtml(sol.modelo_normalizado)}</span>`
+    : "";
+  const espera = !isEntregado
+    ? `<span style="font-size:.72rem;color:#fab387;margin-left:4px;">(${tiempoEspera_(sol.created_at)})</span>`
+    : "";
 
   const accion = isEntregado
     ? `<div style="text-align:right;flex-shrink:0;">
         <span style="font-size:.8rem;color:#a6e3a1;white-space:nowrap;">✅ Entregado</span><br>
         <span style="opacity:.55;font-size:.72rem;">${fmtShort_(sol.entregado_at)}</span>
+        ${sol.entregado_por ? `<br><span style="opacity:.55;font-size:.72rem;">por ${escapeHtml(sol.entregado_por)}</span>` : ""}
        </div>`
     : `<button data-entregar="${sol.id}" style="
         white-space:nowrap;align-self:flex-start;flex-shrink:0;
@@ -141,10 +160,10 @@ function renderCard_(sol) {
         <div style="min-width:0;">
           <div style="font-weight:600;">${escapeHtml(sol.tecnico_nombre || sol.tecnico_email || "—")}</div>
           <div style="font-size:.82rem;opacity:.8;margin-top:2px;">
-            VIN: <code style="color:#89b4fa;">${escapeHtml(sol.vin || "—")}</code>
+            VIN: <code style="color:#89b4fa;">${escapeHtml(sol.vin || "—")}</code>${modelo}
           </div>
           ${nota}
-          <div style="font-size:.72rem;opacity:.5;margin-top:4px;">${when}</div>
+          <div style="font-size:.72rem;opacity:.5;margin-top:4px;">${when}${espera}</div>
         </div>
         ${accion}
       </div>
