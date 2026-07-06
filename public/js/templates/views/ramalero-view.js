@@ -48,7 +48,7 @@ export function ramaleroView() {
               <span id="solRamalBadge" style="
                 display:none;
                 position:absolute;top:-6px;right:-6px;
-                background:#f38ba8;color:#1e1e2e;
+                background:var(--danger);color:var(--bg0);
                 border-radius:50%;width:18px;height:18px;
                 font-size:.7rem;font-weight:700;
                 align-items:center;justify-content:center;

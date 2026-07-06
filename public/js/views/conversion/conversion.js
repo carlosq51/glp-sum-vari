@@ -433,11 +433,11 @@ function showRamalListoBanner_(item) {
     banner.id = "ramalListoBanner";
     banner.style.cssText = [
       "position:fixed;top:0;left:0;right:0;z-index:8500;",
-      "background:#f38ba8;color:#1e1e2e;",
+      "background:var(--danger);color:var(--bg0);",
       "display:flex;align-items:center;justify-content:space-between;",
       "padding:12px 16px;gap:10px;",
       "font-weight:700;font-size:.95rem;",
-      "box-shadow:0 2px 8px rgba(0,0,0,.4);",
+      "box-shadow:var(--shadowSm);",
     ].join("");
     document.body.appendChild(banner);
   }
@@ -446,7 +446,7 @@ function showRamalListoBanner_(item) {
     <span>🔩 Tu ramal está listo${vin} — ¡acércate a recogerlo!</span>
     <button onclick="this.parentElement.style.display='none'" style="
       background:none;border:none;cursor:pointer;
-      font-size:1.3rem;color:#1e1e2e;line-height:1;padding:2px 4px;
+      font-size:1.3rem;color:var(--bg0);line-height:1;padding:2px 4px;opacity:.8;
     ">×</button>
   `;
   banner.style.display = "flex";
