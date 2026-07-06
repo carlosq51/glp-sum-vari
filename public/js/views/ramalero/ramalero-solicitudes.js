@@ -75,6 +75,29 @@ function createOverlay_() {
 
   // ── delegación ÚNICA en el box — sin acumulación de listeners ──────────
   document.getElementById("solRamalBox")?.addEventListener("click", async (e) => {
+    // Botón Notificar
+    const btnNotif = e.target.closest("[data-notificar]");
+    if (btnNotif && !btnNotif.disabled) {
+      e.stopPropagation();
+      const id = btnNotif.dataset.notificar;
+      btnNotif.disabled = true;
+      btnNotif.textContent = "...";
+      try {
+        const r = await postJSON(`/api/solicitud-ramal/${id}/notificar`, {});
+        if (r?.ok) {
+          await loadAndRender_();
+        } else {
+          btnNotif.disabled = false;
+          btnNotif.textContent = "🔔 Notificar";
+        }
+      } catch {
+        btnNotif.disabled = false;
+        btnNotif.textContent = "🔔 Notificar";
+      }
+      return;
+    }
+
+    // Botón Entregar
     const btn = e.target.closest("[data-entregar]");
     if (!btn) return;
     e.stopPropagation();
@@ -136,19 +159,28 @@ function renderCard_(sol) {
     ? `<span style="font-size:.72rem;color:#fab387;margin-left:4px;">(${tiempoEspera_(sol.created_at)})</span>`
     : "";
 
+  const yaNotificado = !!sol.notificado_at;
   const accion = isEntregado
     ? `<div style="text-align:right;flex-shrink:0;">
         <span style="font-size:.8rem;color:#a6e3a1;white-space:nowrap;">✅ Entregado</span><br>
         <span style="opacity:.55;font-size:.72rem;">${fmtShort_(sol.entregado_at)}</span>
         ${sol.entregado_por ? `<br><span style="opacity:.55;font-size:.72rem;">por ${escapeHtml(sol.entregado_por)}</span>` : ""}
        </div>`
-    : `<button data-entregar="${sol.id}" style="
-        white-space:nowrap;align-self:flex-start;flex-shrink:0;
-        background:#a6e3a1;color:#1e1e2e;
-        border:none;border-radius:6px;
-        padding:8px 12px;font-size:.85rem;font-weight:700;
-        cursor:pointer;
-      ">✅ Entregar</button>`;
+    : `<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;flex-shrink:0;">
+        <button data-notificar="${sol.id}" ${yaNotificado ? 'disabled' : ''} style="
+          white-space:nowrap;
+          background:${yaNotificado ? 'rgba(137,180,250,.15)' : '#89b4fa'};
+          color:${yaNotificado ? '#89b4fa' : '#1e1e2e'};
+          border:${yaNotificado ? '1px solid #89b4fa' : 'none'};
+          border-radius:6px;padding:6px 10px;font-size:.82rem;font-weight:700;cursor:${yaNotificado ? 'default' : 'pointer'};
+        ">${yaNotificado ? '🔔 Notificado' : '🔔 Notificar'}</button>
+        <button data-entregar="${sol.id}" style="
+          white-space:nowrap;
+          background:#a6e3a1;color:#1e1e2e;
+          border:none;border-radius:6px;
+          padding:6px 10px;font-size:.82rem;font-weight:700;cursor:pointer;
+        ">✅ Entregar</button>
+       </div>`;
 
   return `
     <div style="

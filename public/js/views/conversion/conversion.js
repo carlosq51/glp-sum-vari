@@ -52,6 +52,7 @@ let tecCardsInited_      = false;
 let colaBadgeInterval_    = null;
 let vinReadyNotifInterval_ = null;
 const notifiedVins_        = new Set();
+let ramalListoInterval_    = null;
 
 // ── Pair suggest popup ─────────────────────────────────────────────
 let pairSuggestQueue_     = [];    // top-3 free suggestions
@@ -420,6 +421,53 @@ async function checkVinReadyNotif_() {
       });
     }
     for (const k of notifiedVins_) { if (!currentKeys.has(k)) notifiedVins_.delete(k); }
+  } catch {}
+}
+
+// ── Banner "Tu ramal está listo" ──────────────────────────────────────────────
+
+function showRamalListoBanner_(item) {
+  let banner = document.getElementById("ramalListoBanner");
+  if (!banner) {
+    banner = document.createElement("div");
+    banner.id = "ramalListoBanner";
+    banner.style.cssText = [
+      "position:fixed;top:0;left:0;right:0;z-index:8500;",
+      "background:#f38ba8;color:#1e1e2e;",
+      "display:flex;align-items:center;justify-content:space-between;",
+      "padding:12px 16px;gap:10px;",
+      "font-weight:700;font-size:.95rem;",
+      "box-shadow:0 2px 8px rgba(0,0,0,.4);",
+    ].join("");
+    document.body.appendChild(banner);
+  }
+  const vin = item?.vin ? ` · VIN ${item.vin}` : "";
+  banner.innerHTML = `
+    <span>🔩 Tu ramal está listo${vin} — ¡acércate a recogerlo!</span>
+    <button onclick="this.parentElement.style.display='none'" style="
+      background:none;border:none;cursor:pointer;
+      font-size:1.3rem;color:#1e1e2e;line-height:1;padding:2px 4px;
+    ">×</button>
+  `;
+  banner.style.display = "flex";
+}
+
+function hideRamalListoBanner_() {
+  const banner = document.getElementById("ramalListoBanner");
+  if (banner) banner.remove();
+}
+
+async function checkRamalListo_() {
+  if (CORE.state.currentModule !== "TECNICO") return;
+  const email = String(document.getElementById("email")?.value || "").trim().toLowerCase();
+  if (!email) return;
+  try {
+    const j = await getJSON(`/api/solicitud-ramal/mi-ramal?email=${encodeURIComponent(email)}`);
+    if (j?.ok && j.listo) {
+      showRamalListoBanner_(j.item);
+    } else {
+      hideRamalListoBanner_();
+    }
   } catch {}
 }
 
@@ -1254,6 +1302,10 @@ export function enter(mod) {
     checkVinReadyNotif_();
     vinReadyNotifInterval_ = setInterval(checkVinReadyNotif_, 2 * 60 * 1000);
 
+    // Banner ramal listo: check on enter + poll every 60s
+    checkRamalListo_();
+    ramalListoInterval_ = setInterval(checkRamalListo_, 60 * 1000);
+
     // Pair suggest popup: check on enter + poll every 90s for OT-finish transition
     pairSuggestLastHadOT_ = null;
     buildPairSuggestModal_();
@@ -1275,12 +1327,15 @@ export function exit(mod) {
     clearInterval(colaBadgeInterval_);
     clearInterval(vinReadyNotifInterval_);
     clearInterval(pairCheckInterval_);
+    clearInterval(ramalListoInterval_);
     colaBadgeInterval_ = null;
     vinReadyNotifInterval_ = null;
     pairCheckInterval_ = null;
+    ramalListoInterval_ = null;
     notifiedVins_.clear();
     pairSuggestLastHadOT_ = null;
     closePairSuggestModal_();
+    hideRamalListoBanner_();
   }
   destroyRealtime_();
 }
