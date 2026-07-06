@@ -204,6 +204,7 @@ function attachWorkDelegationOnce_(mod) {
         if (res?.ok) {
           btn.textContent = "✓ Solicitado";
           showSolRamalToast_(vin);
+          document.dispatchEvent(new CustomEvent("glp:ramal-solicitado"));
         } else if (res?.errorType === "DUPLICATE_VIN") {
           btn.textContent = "⚠ Ya solicitado";
           btn.disabled = true;
@@ -229,21 +230,21 @@ function showSolRamalToast_(vin) {
   const toast = document.createElement("div");
   toast.style.cssText = [
     "position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:9999;",
-    "background:#1e1e2e;color:#cdd6f4;border:1px solid #a6e3a1;",
-    "border-radius:12px;padding:16px 20px;max-width:340px;width:90%;display:flex;",
-    "flex-direction:column;gap:8px;box-shadow:0 8px 24px rgba(0,0,0,.5);",
+    "background:var(--bg1);color:var(--text);border:1px solid var(--okBg);",
+    "border-radius:var(--radius);padding:16px 20px;max-width:340px;width:90%;display:flex;",
+    "flex-direction:column;gap:8px;box-shadow:var(--shadow);",
   ].join("");
 
   toast.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
-      <strong style="color:#a6e3a1;font-size:1rem;">🔩 Solicitud creada con éxito</strong>
+      <strong style="color:var(--ok);font-size:1rem;">🔩 Solicitud creada con éxito</strong>
       <button id="solRamalToastClose" style="
         background:none;border:none;cursor:pointer;
-        font-size:1.3rem;color:#cdd6f4;line-height:1;padding:0 4px;
+        font-size:1.3rem;color:var(--text);line-height:1;padding:0 4px;
       ">×</button>
     </div>
-    <div style="font-size:.85rem;opacity:.8;">
-      ${vin ? `VIN: <code style="color:#89b4fa;">${vin}</code><br>` : ""}
+    <div style="font-size:.85rem;color:var(--muted);">
+      ${vin ? `VIN: <code style="color:var(--note);">${vin}</code><br>` : ""}
       Enviado a las <strong>${hhmm}</strong>
     </div>
   `;

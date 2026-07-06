@@ -53,6 +53,7 @@ let colaBadgeInterval_    = null;
 let vinReadyNotifInterval_ = null;
 const notifiedVins_        = new Set();
 let ramalListoInterval_    = null;
+let colaRamalInterval_     = null;
 
 // ── Pair suggest popup ─────────────────────────────────────────────
 let pairSuggestQueue_     = [];    // top-3 free suggestions
@@ -467,6 +468,55 @@ async function checkRamalListo_() {
       showRamalListoBanner_(j.item);
     } else {
       hideRamalListoBanner_();
+    }
+  } catch {}
+}
+
+// ── Banner "Posición en cola de ramal" ────────────────────────────────────────
+
+function showColaBanner_(posicion, total) {
+  let banner = document.getElementById("colaRamalBanner");
+  if (!banner) {
+    banner = document.createElement("div");
+    banner.id = "colaRamalBanner";
+    banner.style.cssText = [
+      "position:fixed;top:0;left:0;right:0;z-index:8400;",
+      "background:var(--note);color:var(--bg0);",
+      "display:flex;align-items:center;justify-content:space-between;",
+      "padding:12px 16px;gap:10px;",
+      "font-weight:700;font-size:.95rem;",
+      "box-shadow:var(--shadowSm);",
+    ].join("");
+    document.body.appendChild(banner);
+  }
+  banner.innerHTML = `
+    <span>🔩 Eres #${posicion} de ${total} en la cola de ramales</span>
+    <button onclick="this.parentElement.style.display='none'" style="
+      background:none;border:none;cursor:pointer;
+      font-size:1.3rem;color:var(--bg0);line-height:1;padding:2px 4px;opacity:.8;
+    ">×</button>
+  `;
+  banner.style.display = "flex";
+}
+
+function hideColaBanner_() {
+  const banner = document.getElementById("colaRamalBanner");
+  if (banner) banner.remove();
+}
+
+async function checkColaPosicion_() {
+  if (CORE.state.currentModule !== "TECNICO") return;
+  const email = String(document.getElementById("email")?.value || "").trim().toLowerCase();
+  if (!email) return;
+  // Don't show cola banner if ramal-listo banner is visible
+  const listoBanner = document.getElementById("ramalListoBanner");
+  if (listoBanner && listoBanner.style.display !== "none") { hideColaBanner_(); return; }
+  try {
+    const j = await getJSON(`/api/solicitud-ramal/mi-posicion?email=${encodeURIComponent(email)}`);
+    if (j?.ok && j.enCola) {
+      showColaBanner_(j.posicion, j.total);
+    } else {
+      hideColaBanner_();
     }
   } catch {}
 }
@@ -1294,7 +1344,7 @@ export function enter(mod) {
     const email = String(emailEl?.value || "").trim().toLowerCase();
     if (email) checkPendingAlerts_(email, 12).catch(() => {});
 
-    requestNotifPermission();
+    requestNotifPermission(email);
 
     // Cola badge + VIN-ready notifications (poll every 3 / 2 min)
     updateColaBadge_();
@@ -1305,6 +1355,11 @@ export function enter(mod) {
     // Banner ramal listo: check on enter + poll every 60s
     checkRamalListo_();
     ramalListoInterval_ = setInterval(checkRamalListo_, 60 * 1000);
+
+    // Banner posición en cola: check on enter + poll every 60s + on solicitud created
+    checkColaPosicion_();
+    colaRamalInterval_ = setInterval(checkColaPosicion_, 60 * 1000);
+    document.addEventListener("glp:ramal-solicitado", checkColaPosicion_);
 
     // Pair suggest popup: check on enter + poll every 90s for OT-finish transition
     pairSuggestLastHadOT_ = null;
@@ -1328,14 +1383,18 @@ export function exit(mod) {
     clearInterval(vinReadyNotifInterval_);
     clearInterval(pairCheckInterval_);
     clearInterval(ramalListoInterval_);
+    clearInterval(colaRamalInterval_);
     colaBadgeInterval_ = null;
     vinReadyNotifInterval_ = null;
     pairCheckInterval_ = null;
     ramalListoInterval_ = null;
+    colaRamalInterval_ = null;
+    document.removeEventListener("glp:ramal-solicitado", checkColaPosicion_);
     notifiedVins_.clear();
     pairSuggestLastHadOT_ = null;
     closePairSuggestModal_();
     hideRamalListoBanner_();
+    hideColaBanner_();
   }
   destroyRealtime_();
 }

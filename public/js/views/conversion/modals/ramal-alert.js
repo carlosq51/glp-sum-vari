@@ -7,25 +7,8 @@
 const ALERT_ID = "ramalAlertBanner";
 
 export function showRamalEntregadoAlert({ vin } = {}) {
-  // Vibrar 2 segundos si el dispositivo lo soporta
-  try {
-    if (navigator.vibrate) {
-      navigator.vibrate(2000);
-    }
-  } catch {}
+  try { if (navigator.vibrate) navigator.vibrate(2000); } catch {}
 
-  // Notificación Web si hay permiso (background)
-  try {
-    if (Notification.permission === "granted") {
-      new Notification("🔩 ¡Tu ramal está listo!", {
-        body: vin ? `VIN: ${vin} — Acércate a recoger tu ramal.` : "Acércate a recoger tu ramal.",
-        icon: "/favicon.ico",
-        tag:  "ramal-entregado",
-      });
-    }
-  } catch {}
-
-  // Banner en pantalla (siempre, sin importar permisos)
   document.getElementById(ALERT_ID)?.remove();
 
   const banner = document.createElement("div");
@@ -35,9 +18,9 @@ export function showRamalEntregadoAlert({ vin } = {}) {
     <div style="
       position:fixed; top:16px; left:50%; transform:translateX(-50%);
       z-index:99999; max-width:340px; width:calc(100% - 32px);
-      background:linear-gradient(135deg,#16a34a,#15803d);
-      color:#fff; border-radius:16px; padding:16px 18px;
-      box-shadow:0 8px 32px rgba(0,0,0,.45);
+      background:var(--ok); color:var(--bg0);
+      border-radius:16px; padding:16px 18px;
+      box-shadow:var(--shadow);
       display:flex; align-items:center; gap:14px;
       animation: ramalSlideIn .3s cubic-bezier(.22,1,.36,1);
     ">
@@ -51,7 +34,7 @@ export function showRamalEntregadoAlert({ vin } = {}) {
         </div>
       </div>
       <button id="btnCloseRamalAlert"
-        style="background:none; border:none; color:#fff; font-size:1.2rem;
+        style="background:none; border:none; color:var(--bg0); font-size:1.2rem;
                cursor:pointer; padding:4px; line-height:1; opacity:.8;">
         ✕
       </button>
@@ -72,18 +55,62 @@ export function showRamalEntregadoAlert({ vin } = {}) {
   };
 
   banner.querySelector("#btnCloseRamalAlert")?.addEventListener("click", close);
-
-  // Auto-cierre a los 8 segundos
   setTimeout(close, 8000);
 }
 
-/**
- * Solicita permiso de notificaciones (llamar una vez al entrar al módulo TECNICO).
- */
-export function requestNotifPermission() {
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function urlBase64ToUint8Array_(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64  = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw     = atob(base64);
+  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+}
+
+let _subscribeInFlight = false;
+
+async function subscribeWebPush_(email) {
+  if (_subscribeInFlight) return;
+  _subscribeInFlight = true;
   try {
-    if (Notification.permission === "default") {
-      Notification.requestPermission().catch(() => {});
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+    const reg = await navigator.serviceWorker.ready;
+
+    // Re-register existing subscription so backend always has it
+    let subscription = await reg.pushManager.getSubscription();
+    if (!subscription) {
+      const keyRes = await fetch("/api/push/vapid-public-key");
+      const keyJ   = await keyRes.json();
+      if (!keyJ?.key) return;
+      subscription = await reg.pushManager.subscribe({
+        userVisibleOnly:      true,
+        applicationServerKey: urlBase64ToUint8Array_(keyJ.key),
+      });
     }
-  } catch {}
+
+    await fetch("/api/push/subscribe", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ email, subscription: subscription.toJSON() }),
+    });
+  } catch (e) {
+    console.warn("[WebPush] subscribe:", e.message);
+  } finally {
+    _subscribeInFlight = false;
+  }
+}
+
+/**
+ * Solicita permiso de notificaciones y suscribe al Web Push.
+ * Llamar una vez al entrar al módulo TECNICO con el email del usuario.
+ */
+export async function requestNotifPermission(email) {
+  try {
+    if (!("Notification" in window)) return;
+    let perm = Notification.permission;
+    if (perm === "default") perm = await Notification.requestPermission();
+    if (perm === "granted") await subscribeWebPush_(email || "");
+  } catch (e) {
+    console.warn("[WebPush] requestNotifPermission:", e.message);
+  }
 }

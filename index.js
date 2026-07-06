@@ -1,6 +1,7 @@
 import express from "express";
 import dotenv from "dotenv";
 import { existsSync, readFileSync, writeFileSync } from "fs";
+import webpush from "web-push";
 import {
   r2UploadOne,
   r2UploadFalla,
@@ -13,6 +14,13 @@ import {
 } from "./r2-uploads.js";
 
 dotenv.config();
+
+// ── Web Push (VAPID) ──────────────────────────────────────────────────────────
+webpush.setVapidDetails(
+  process.env.VAPID_SUBJECT,
+  process.env.VAPID_PUBLIC_KEY,
+  process.env.VAPID_PRIVATE_KEY,
+);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -36,7 +44,7 @@ app.get("/env-config.js", (_req, res) => {
 const staticDir = existsSync("dist") ? "dist" : "public";
 
 // Headers especiales para PWA (Service Worker + Manifest)
-app.get("/sw.js", (_req, res, next) => {
+app.get(["/sw.js", "/sw-custom.js"], (_req, res, next) => {
   res.setHeader("Service-Worker-Allowed", "/");
   res.setHeader("Cache-Control", "no-cache");
   next();
@@ -273,6 +281,18 @@ async function supabasePatch_(table, filter = {}, data) {
 
   const result = await res.json();
   return Array.isArray(result) ? result[0] : result;
+}
+
+async function supabaseDelete_(table, filter = {}) {
+  const headers = supabaseHeaders_();
+  if (!headers) throw new Error("Supabase no configurado (.env)");
+  const SUPABASE_URL = process.env.SUPABASE_URL;
+  const url = `${SUPABASE_URL}/rest/v1/${table}${buildSupabaseQuery_(filter)}`;
+  const res = await fetch(url, { method: "DELETE", headers });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Supabase DELETE ${table}: ${res.status} ${text.slice(0, 200)}`);
+  }
 }
 
 // =========================
@@ -2485,6 +2505,46 @@ app.get("/api/search/incidencias", async (req, res) => {
 });
 
 // -----------------------------------------------------------------
+// WEB PUSH
+// -----------------------------------------------------------------
+
+// GET /api/push/vapid-public-key  — el cliente obtiene la clave pública VAPID
+app.get("/api/push/vapid-public-key", (_req, res) => {
+  res.json({ ok: true, key: process.env.VAPID_PUBLIC_KEY });
+});
+
+// POST /api/push/subscribe  — el cliente guarda su suscripción
+app.post("/api/push/subscribe", async (req, res) => {
+  try {
+    const { email, subscription } = req.body || {};
+    if (!email || !subscription?.endpoint) {
+      return res.status(400).json({ ok: false, error: "Faltan datos" });
+    }
+    const record = {
+      email:    String(email).trim().toLowerCase(),
+      endpoint: subscription.endpoint,
+      p256dh:   subscription.keys?.p256dh || "",
+      auth:     subscription.keys?.auth   || "",
+    };
+    // Upsert por endpoint (evitar duplicados si el mismo browser re-suscribe)
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const headers = supabaseHeaders_();
+    await fetch(
+      `${SUPABASE_URL}/rest/v1/push_subscriptions?on_conflict=endpoint`,
+      {
+        method: "POST",
+        headers: { ...headers, "Prefer": "resolution=merge-duplicates" },
+        body: JSON.stringify(record),
+      }
+    );
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error("[POST /api/push/subscribe]", e.message);
+    return res.status(500).json({ ok: false, error: String(e.message) });
+  }
+});
+
+// -----------------------------------------------------------------
 // SOLICITUDES RAMAL
 // -----------------------------------------------------------------
 
@@ -2581,7 +2641,41 @@ app.post("/api/solicitud-ramal/:id/notificar", async (req, res) => {
   try {
     const id = String(req.params.id || "").trim();
     if (!id) return res.status(400).json({ ok: false, error: "Falta id" });
-    await supabasePatch_("solicitudes_ramal", { id }, { notificado_at: new Date().toISOString() });
+
+    // 1. Marcar notificado_at en la solicitud
+    const updated = await supabasePatch_("solicitudes_ramal", { id }, { notificado_at: new Date().toISOString() });
+    const sol = Array.isArray(updated) ? updated[0] : null;
+    const techEmail = sol?.tecnico_email || "";
+    const vin       = sol?.vin || "";
+
+    // 2. Enviar Web Push a todas las suscripciones del técnico
+    if (techEmail) {
+      try {
+        const subs = await supabaseGet_("push_subscriptions", { email: techEmail });
+        const payload = JSON.stringify({
+          title: "🔩 ¡Tu ramal está listo!",
+          body:  vin ? `VIN: ${vin} — Acércate a recoger tu ramal.` : "Acércate a recoger tu ramal.",
+          tag:   "ramal-listo",
+        });
+        await Promise.allSettled(
+          (subs || []).map(s =>
+            webpush.sendNotification(
+              { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
+              payload,
+            ).catch(err => {
+              // 410 = suscripción caducada → limpiar
+              if (err.statusCode === 410) {
+                supabaseDelete_("push_subscriptions", { endpoint: s.endpoint }).catch(() => {});
+              }
+              console.warn("[PUSH] send error:", err.statusCode, err.message);
+            })
+          )
+        );
+      } catch (pushErr) {
+        console.warn("[PUSH] fetch subs error:", pushErr.message);
+      }
+    }
+
     return res.json({ ok: true });
   } catch (e) {
     console.error("[PATCH /api/solicitud-ramal/:id/notificar]", e.message);
@@ -2607,6 +2701,27 @@ app.get("/api/solicitud-ramal/mi-ramal", async (req, res) => {
     return res.json({ ok: true, listo: items.length > 0, item: items[0] || null });
   } catch (e) {
     console.error("[GET /api/solicitud-ramal/mi-ramal]", e.message);
+    return res.status(500).json({ ok: false, error: String(e.message) });
+  }
+});
+
+// GET /api/solicitud-ramal/mi-posicion  — posición del técnico en la cola PENDIENTE
+app.get("/api/solicitud-ramal/mi-posicion", async (req, res) => {
+  try {
+    const email = String(req.query.email || "").trim().toLowerCase();
+    if (!email) return res.status(400).json({ ok: false, error: "Falta email" });
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const headers = supabaseHeaders_();
+    const url = `${SUPABASE_URL}/rest/v1/solicitudes_ramal` +
+      `?estado=eq.PENDIENTE&order=created_at.asc&select=id,tecnico_email`;
+    const r = await fetch(url, { method: "GET", headers });
+    if (!r.ok) throw new Error(`Supabase ${r.status}`);
+    const items = await r.json();
+    const idx = items.findIndex(it => String(it.tecnico_email || "").toLowerCase() === email);
+    if (idx === -1) return res.json({ ok: true, enCola: false, posicion: null, total: items.length });
+    return res.json({ ok: true, enCola: true, posicion: idx + 1, total: items.length });
+  } catch (e) {
+    console.error("[GET /api/solicitud-ramal/mi-posicion]", e.message);
     return res.status(500).json({ ok: false, error: String(e.message) });
   }
 });

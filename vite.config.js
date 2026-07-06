@@ -33,6 +33,9 @@ export default defineConfig({
       targets: ['ios >= 12', 'safari >= 12'],
     }),
     VitePWA({
+      strategies: 'injectManifest',
+      srcDir: 'public',
+      filename: 'sw-custom.js',
       registerType: 'autoUpdate',
       manifest: {
         name: 'Registro GLP',
