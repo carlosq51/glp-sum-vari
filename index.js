@@ -16,11 +16,15 @@ import {
 dotenv.config();
 
 // ── Web Push (VAPID) ──────────────────────────────────────────────────────────
-webpush.setVapidDetails(
-  process.env.VAPID_SUBJECT,
-  process.env.VAPID_PUBLIC_KEY,
-  process.env.VAPID_PRIVATE_KEY,
-);
+if (process.env.VAPID_SUBJECT && process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+  webpush.setVapidDetails(
+    process.env.VAPID_SUBJECT,
+    process.env.VAPID_PUBLIC_KEY,
+    process.env.VAPID_PRIVATE_KEY,
+  );
+} else {
+  console.warn("[WebPush] VAPID keys not set — push notifications disabled. Add VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY to env.");
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
