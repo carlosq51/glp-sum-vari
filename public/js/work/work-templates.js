@@ -74,11 +74,6 @@ export function buildIncidenciasBtnHTML_(it, key = "") {
   const m = Number(it?.inc_moderada || 0);
   const c = Number(it?.inc_critica || 0);
 
-  const badge =
-    l || m || c
-      ? `<span class="pill small" style="margin-left:8px;">L:${l} M:${m} C:${c}</span>`
-      : `<span class="pill small" style="margin-left:8px; opacity:.8;">L:0 M:0 C:0</span>`;
-
   const incActivasLabel = (l + m + c) > 0
     ? `Activas (${l + m + c})`
     : "Activas";

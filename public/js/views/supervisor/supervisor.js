@@ -3,7 +3,7 @@
 // Vista SUPERVISOR (entry): init/enter/exit + fetch + pipeline render
 // =========================
 
-import { CORE, getJSON_user, escapeHtml, fmtShort_, createVinSuggest_ } from "../../core/core.js";
+import { CORE, getJSON_user, escapeHtml, fmtShort_, createVinSuggest_, getEmail } from "../../core/core.js";
 
 import {
   avgRobustWithContextPrior_,
@@ -445,7 +445,7 @@ export function init() {
   document.getElementById("btnSupExportCsv")?.addEventListener("click", exportReportCsv_);
 
   // features
-  bindSupIncidencias_({ CORE, getJSON_user, escapeHtml, fmtShort_ });
+  bindSupIncidencias_({ CORE, getJSON_user, escapeHtml, fmtShort_, getEmail });
   bindSupQuickDates_({ onApply: () => fetchSupervisorReport_().catch(() => {}) });
   bindSupQR_({ CORE, onApply: () => fetchSupervisorReport_().catch(() => {}) });
   bindSupNameSuggest_({ CORE, escapeHtml, onApply: () => fetchSupervisorReport_().catch(() => {}) });

@@ -4,7 +4,6 @@
 // =========================
 
 import { getIncidencias, resolverIncidencia, supabaseEnabled } from "../../core/supabase-client.js";
-import { getEmail } from "../../core/auth.js";
 import { INC_TITULOS } from "../../templates/modals/incidencias-modal.js";
 
 // --------------------------
@@ -176,10 +175,11 @@ export function renderIncidencias_(j, ctx, { escapeHtml, fmtShort_ }) {
 
 const QC_POPUP_ID = "qcIncPopup";
 
-let qcList_    = [];
-let qcIdx_     = 0;
-let qcOpen_    = false;
+let qcList_       = [];
+let qcIdx_        = 0;
+let qcOpen_       = false;
 let qcEscapeHtml_ = null;
+let qcUserEmail_  = "";
 
 const tipoMeta_ = {
   LEVE:     { label: "Incidencia LEVE",     color: "#f59e0b" },
@@ -321,8 +321,7 @@ async function resolveQcCurrent_() {
   if (btn) { btn.disabled = true; btn.textContent = "Guardando..."; }
 
   try {
-    const email = getEmail();
-    await resolverIncidencia(inc.id, email);
+    await resolverIncidencia(inc.id, qcUserEmail_);
   } catch (e) {
     console.warn("[sup-incidencias] error resolviendo:", e.message);
     if (btn) { btn.disabled = false; btn.textContent = "Registrar como Solucionada ✓"; }
@@ -339,8 +338,9 @@ async function resolveQcCurrent_() {
   }
 }
 
-export async function openQCIncPopup_(vin, conversionId, { getJSON_user, escapeHtml } = {}) {
-  qcEscapeHtml_ = escapeHtml || ((x) => x);
+export async function openQCIncPopup_(vin, conversionId, { getJSON_user, escapeHtml, userEmail = "" } = {}) {
+  qcEscapeHtml_  = escapeHtml || ((x) => x);
+  qcUserEmail_   = userEmail;
 
   let activas = [];
 
@@ -385,7 +385,8 @@ export function bindSupIncidencias_({
   CORE,
   getJSON_user,
   escapeHtml,
-  fmtShort_
+  fmtShort_,
+  getEmail,
 }) {
   // Click en badge de incidencias activas → abre popup QC
   document.getElementById("supTable")?.addEventListener("click", async (e) => {
@@ -396,7 +397,8 @@ export function bindSupIncidencias_({
     if (btnQC) {
       const vin = String(btnQC.dataset.vin || "").trim().toUpperCase();
       const cid = String(btnQC.dataset.cid || "").trim();
-      await openQCIncPopup_(vin, cid, { getJSON_user, escapeHtml });
+      const email = typeof getEmail === "function" ? getEmail() : "";
+      await openQCIncPopup_(vin, cid, { getJSON_user, escapeHtml, userEmail: email });
       return;
     }
 

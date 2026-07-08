@@ -6,6 +6,7 @@ import {
   ctx_,
   enforceRolLock_,
   requireEmailOrStop,
+  getEmail,
   getJSON,
   postJSON,
   escapeHtml,
@@ -160,7 +161,7 @@ function attachWorkDelegationOnce_(mod) {
         e.stopPropagation();
         const vin = String(goBtn.dataset.vin || it?.vin || "").trim().toUpperCase();
         const cid = String(goBtn.dataset.cid || it?.conversionId || "").trim();
-        await openQCIncPopup_(vin, cid, { getJSON_user: getJSON, escapeHtml });
+        await openQCIncPopup_(vin, cid, { getJSON_user: getJSON, escapeHtml, userEmail: getEmail() });
         return;
       }
 
@@ -298,7 +299,7 @@ function attachFinalizadosDelegationOnce_(mod) {
         e.stopPropagation();
         const vin = String(btn.dataset.vin || it?.vin || "").trim().toUpperCase();
         const cid = String(btn.dataset.cid || it?.conversionId || "").trim();
-        await openQCIncPopup_(vin, cid, { getJSON_user: getJSON, escapeHtml });
+        await openQCIncPopup_(vin, cid, { getJSON_user: getJSON, escapeHtml, userEmail: getEmail() });
         return;
       }
 
