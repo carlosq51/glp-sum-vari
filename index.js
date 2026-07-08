@@ -92,37 +92,6 @@ function addServerTiming_(res, measurements = []) {
   }
 }
 
-// funci�n para llamar Apps Script
-async function callAppsScript(action, payload = {}) {
-  const APS_URL = process.env.APS_URL;
-  const APS_KEY = process.env.APS_KEY;
-
-  if (!APS_URL) throw new Error("Falta APS_URL en .env");
-  if (!APS_KEY) throw new Error("Falta APS_KEY en .env");
-
-  const reqBody = { action, key: APS_KEY, ...payload };
-
-  const r = await fetch(APS_URL, {
-    method: "POST",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify(reqBody),
-  });
-
-  const text = await r.text();
-
-  let j;
-  try {
-    j = JSON.parse(text);
-  } catch {
-    throw new Error("Respuesta no-JSON desde Apps Script: " + text.slice(0, 500));
-  }
-
-  if (!j.ok) {
-    throw new Error(`[APS:${action}] ${j.error || "Error Apps Script"}`);
-  }
-
-  return j;
-}
 
 // =========================
 // SUPABASE FUNCTIONS (Lectura desde BD)
@@ -626,7 +595,6 @@ app.get("/api/mis-finalizadas", async (req, res) => {
   }
 });
 
-// ?? DUAL-WRITE: Apps Script + Supabase en paralelo
 app.post("/api/evento", async (req, res) => {
   try {
     const body = req.body || {};
@@ -1843,75 +1811,45 @@ app.post("/api/sync", async (req, res) => {
 });
 
 
-// ?? DUAL-WRITE: Apps Script + Supabase en paralelo
 app.post("/api/equipo-conformidad", async (req, res) => {
   try {
     const body = req.body || {};
 
-    // Parallel writes
-    const writeApsPromise = callAppsScript("equipo_conformidad", body).catch(err => {
-      console.warn("[EQUIPO_CONFORMIDAD] Apps Script error (continuando):", err.message);
-      return null;
-    });
+    // Obtener user_id si viene email
+    let userId = body.userId || body.user_id;
+    if (!userId && body.email) {
+      const usuarios = await supabaseGet_("usuarios", { email: body.email });
+      if (usuarios && usuarios.length) userId = usuarios[0].id;
+    }
 
-    const writeSupabasePromise = (async () => {
-      try {
-        // Obtener user_id si viene email
-        let userId = body.userId || body.user_id;
-        if (!userId && body.email) {
-          const usuarios = await supabaseGet_("usuarios", { email: body.email });
-          if (usuarios && usuarios.length) {
-            userId = usuarios[0].id;
-          }
-        }
+    // Leer checks del payload (frontend envía ck1/ck2/ck3 o checks.ck1)
+    const checks = body.checks || {};
+    const ck1 = !!(body.ck1 ?? body.conf_ck1 ?? checks.ck1);
+    const ck2 = !!(body.ck2 ?? body.conf_ck2 ?? checks.ck2);
+    const ck3 = !!(body.ck3 ?? body.conf_ck3 ?? checks.ck3);
 
-        // Leer checks del payload (frontend envía ck1/ck2/ck3 o checks.ck1)
-        const checks = body.checks || {};
-        const ck1 = !!(body.ck1 ?? body.conf_ck1 ?? checks.ck1);
-        const ck2 = !!(body.ck2 ?? body.conf_ck2 ?? checks.ck2);
-        const ck3 = !!(body.ck3 ?? body.conf_ck3 ?? checks.ck3);
+    if (!ck1 || !ck2 || !ck3) {
+      return res.json({ ok: false, error: "Debes marcar los 3 checks de conformidad." });
+    }
 
-        // Validar que los 3 checks estén marcados
-        if (!ck1 || !ck2 || !ck3) {
-          return res.json({ ok: false, error: "Debes marcar los 3 checks de conformidad." });
-        }
+    const conformidadData = {
+      conf_ck1: ck1,
+      conf_ck2: ck2,
+      conf_ck3: ck3,
+      conf_ts: new Date().toISOString(),
+      conf_by: body.email || userId,
+    };
 
-        // Actualizar asignación con estado de conformidad
-        const conformidadData = {
-          conf_ck1: ck1,
-          conf_ck2: ck2,
-          conf_ck3: ck3,
-          conf_ts: new Date().toISOString(),
-          conf_by: body.email || userId,
-        };
+    const equipoTipo  = String(body.equipoTipo  || "").trim().toUpperCase();
+    const equipoCodigo = String(body.equipoCodigo || "").trim().toUpperCase();
+    if (equipoCodigo) {
+      if (equipoTipo === "TANQUE")   conformidadData.tanque_registrado   = equipoCodigo;
+      if (equipoTipo === "REDUCTOR") conformidadData.reductor_registrado = equipoCodigo;
+    }
 
-        // Guardar tanque/reductor registrado según el tipo de equipo
-        const equipoTipo = String(body.equipoTipo || "").trim().toUpperCase();
-        const equipoCodigo = String(body.equipoCodigo || "").trim().toUpperCase();
-        if (equipoCodigo) {
-          if (equipoTipo === "TANQUE") {
-            conformidadData.tanque_registrado = equipoCodigo;
-          } else if (equipoTipo === "REDUCTOR") {
-            conformidadData.reductor_registrado = equipoCodigo;
-          }
-        }
+    await supabasePatch_("work_orders", { id: body.conversionId }, conformidadData);
 
-        // Actualizar el work_order con datos de conformidad
-        await supabasePatch_("work_orders", 
-          { id: body.conversionId }, 
-          conformidadData
-        );
-
-        return { ok: true, _supabase: true };
-      } catch (err) {
-        console.warn("[EQUIPO_CONFORMIDAD] Supabase error (continuando):", err.message);
-        return null;
-      }
-    })();
-
-    const [apsResult, supabaseResult] = await Promise.all([writeApsPromise, writeSupabasePromise]);
-
-    return res.json(apsResult || { ok: true, _supabase: true });
+    return res.json({ ok: true });
   } catch (e) {
     console.error("[POST /api/equipo-conformidad]", e.message);
     res.status(500).json({ ok: false, error: String(e.message || e) });
@@ -5027,19 +4965,3 @@ app.listen(PORT, "0.0.0.0", () => {
   scheduleAutoNormalize_(); // normalización incremental cada 24h
 });
 
-app.get("/api/ping-aps", async (req, res) => {
-  try {
-    const j = await callAppsScript("ping", {});
-    return res.json({
-      ok: true,
-      via: "node_to_apps_script",
-      aps: j
-    });
-  } catch (e) {
-    return res.status(500).json({
-      ok: false,
-      via: "node_to_apps_script",
-      error: String(e.message || e)
-    });
-  }
-});

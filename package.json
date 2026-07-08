@@ -22,7 +22,6 @@
     "date-fns": "^4.1.0",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
-    "googleapis": "^171.4.0",
     "qrcode": "^1.5.4",
     "terser": "^5.46.2",
     "web-push": "^3.6.7"

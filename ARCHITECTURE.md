@@ -186,8 +186,6 @@ Validar transición de estado:
   ↓
 PATCH asignacion (nuevo estado + timestamps)
   ↓
-Si FINALIZADO → POST a Apps Script (dual-write legacy)
-  ↓
 Response { ok, estado, id, … }
 ```
 
@@ -394,6 +392,11 @@ No alterar el orden — cada grupo asume que los anteriores ya están cargados.
 
 ## 6. Google Apps Script (`gas/`)
 
+> **El código GAS corre en Google Cloud, completamente separado de este proyecto.**
+> La carpeta `gas/` existe aquí solo como **referencia** — no se compila, no se despliega
+> desde Node, y está excluida del repositorio de GitHub (ver `.gitignore`).
+> Para aplicar cambios hay que copiarlos manualmente al editor de Apps Script en Google.
+
 Corre en Google Cloud de forma completamente independiente del backend Node.
 **No comparte código** con él — es un sistema paralelo sobre Google Sheets.
 
@@ -493,7 +496,6 @@ POST /api/solicitud-ramal/:id/notificar
 │  BACKEND Express (Render)                                           │
 │                                                                     │
 │  index.js  →  supabasePatch_() / supabasePost_()                   │
-│           →  (si FINALIZADO) callAppsScript()  ← dual-write legacy │
 └──────────────────────────────┬──────────────────────────────────────┘
                                │
               ┌────────────────┴──────────────────┐
@@ -547,7 +549,6 @@ Nunca colores hex directos.
 | `mis-activas` y `mis-finalizadas` son código duplicado | `index.js` L412–627 |
 | `ramalero` importa directamente de `conversion/` | `ramalero-actions.js` L11–13 |
 | Sin tests de ningún tipo | todo el proyecto |
-| Migración GAS → Supabase incompleta (datos en dos fuentes) | `gas/`, `index.js` |
 
 ### 🟠 Media — genera fricción ocasional
 
