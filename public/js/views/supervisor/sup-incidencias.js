@@ -3,7 +3,7 @@
 // INCIDENCIAS: modal histórico (QC ve todas) + popup de resolución para activas
 // =========================
 
-import { getIncidencias, resolverIncidencia, supabaseEnabled } from "../../core/supabase-client.js";
+import { getIncidencias, resolverIncidencia, supabaseEnabled, getNombreByEmail } from "../../core/supabase-client.js";
 import { INC_TITULOS } from "../../templates/modals/incidencias-modal.js";
 
 // --------------------------
@@ -229,14 +229,14 @@ function buildQcFotoHtml_(inc) {
   `;
 }
 
-function buildQcHTML_(inc, idx, total) {
+function buildQcHTML_(inc, idx, total, regDisplay) {
   const esc        = qcEscapeHtml_ || ((x) => x);
   const tipo       = String(inc.tipo || "").toUpperCase();
   const meta       = tipoMeta_[tipo] || tipoMeta_.LEVE;
   const em         = emojiChar_[tipo] || "⚠️";
   const vin        = String(inc.vin  || "—").toUpperCase();
   const nota       = String(inc.nota || "").trim();
-  const reg        = String(inc.registrado_por || "Calidad").trim();
+  const reg        = String(regDisplay || inc.registrado_por || "Calidad").trim();
   const tec        = String(inc.tecnico || "—").trim();
   const foto       = buildQcFotoHtml_(inc);
   const elapsedStr = formatElapsed_(inc.tiempo_inicio);
@@ -266,17 +266,12 @@ function buildQcHTML_(inc, idx, total) {
           </div>
           <div class="incAlertRow">
             <span class="incAlertLbl">Técnico</span>
-            <span class="incAlertVal">${esc(tec)}</span>
+            <span class="incAlertVal">${esc(tec)}${elapsedStr ? `<span id="qcIncElapsed" style="margin-left:10px;font-size:.75rem;opacity:.55;font-weight:400;">⏱ ${esc(elapsedStr)}</span>` : ""}</span>
           </div>
           <div class="incAlertRow">
             <span class="incAlertLbl">VIN</span>
             <span class="incAlertVal mono">${esc(vin)}</span>
           </div>
-          ${elapsedStr ? `
-          <div class="incAlertRow">
-            <span class="incAlertLbl">⏱ Tiempo activa</span>
-            <span class="incAlertVal" id="qcIncElapsed" style="font-weight:700;color:${meta.color};">${esc(elapsedStr)}</span>
-          </div>` : ""}
           ${nota ? `
           <div class="incAlertRow">
             <span class="incAlertLbl">Nota</span>
@@ -285,7 +280,6 @@ function buildQcHTML_(inc, idx, total) {
           ${foto}
         </div>
         <div class="incAlertFooter">
-          <div class="incAlertFooterNote">Control de calidad — puede cerrar sin resolver.</div>
           <button id="btnQcResolver" class="incAlertBtnResolve">
             Registrar como Solucionada &#10003;
           </button>
@@ -303,33 +297,46 @@ function renderQcCurrent_() {
 
   if (qcElapsedTimer_) { clearInterval(qcElapsedTimer_); qcElapsedTimer_ = null; }
 
-  qcPopup_()?.remove();
-  document.body.insertAdjacentHTML("beforeend", buildQcHTML_(inc, qcIdx_, qcList_.length));
+  const regRaw  = String(inc.registrado_por || "").trim();
+  const isEmail = regRaw.includes("@");
 
-  const el = qcPopup_();
-  if (!el) { qcOpen_ = false; return; }
+  const render_ = (regDisplay) => {
+    qcPopup_()?.remove();
+    document.body.insertAdjacentHTML("beforeend", buildQcHTML_(inc, qcIdx_, qcList_.length, regDisplay));
 
-  requestAnimationFrame(() => el.classList.add("incAlertVisible"));
+    const el = qcPopup_();
+    if (!el) { qcOpen_ = false; return; }
 
-  if (inc.tiempo_inicio) {
-    qcElapsedTimer_ = setInterval(() => {
-      const span = document.getElementById("qcIncElapsed");
-      if (span) span.textContent = formatElapsed_(inc.tiempo_inicio) || "";
-      else { clearInterval(qcElapsedTimer_); qcElapsedTimer_ = null; }
-    }, 30000);
+    requestAnimationFrame(() => el.classList.add("incAlertVisible"));
+
+    if (inc.tiempo_inicio) {
+      qcElapsedTimer_ = setInterval(() => {
+        const span = document.getElementById("qcIncElapsed");
+        if (span) span.textContent = `⏱ ${formatElapsed_(inc.tiempo_inicio) || ""}`;
+        else { clearInterval(qcElapsedTimer_); qcElapsedTimer_ = null; }
+      }, 30000);
+    }
+
+    document.getElementById("btnQcClose")?.addEventListener("click", closeQcPopup_);
+    el.addEventListener("click", (e) => { if (e.target === el) closeQcPopup_(); });
+
+    document.getElementById("btnQcPrev")?.addEventListener("click", () => {
+      if (qcIdx_ > 0) { qcIdx_--; renderQcCurrent_(); }
+    });
+    document.getElementById("btnQcNext")?.addEventListener("click", () => {
+      if (qcIdx_ < qcList_.length - 1) { qcIdx_++; renderQcCurrent_(); }
+    });
+
+    document.getElementById("btnQcResolver")?.addEventListener("click", resolveQcCurrent_);
+  };
+
+  if (isEmail) {
+    getNombreByEmail(regRaw)
+      .then(nombre => render_(nombre || regRaw))
+      .catch(() => render_(regRaw));
+  } else {
+    render_(regRaw || "Calidad");
   }
-
-  document.getElementById("btnQcClose")?.addEventListener("click", closeQcPopup_);
-  el.addEventListener("click", (e) => { if (e.target === el) closeQcPopup_(); });
-
-  document.getElementById("btnQcPrev")?.addEventListener("click", () => {
-    if (qcIdx_ > 0) { qcIdx_--; renderQcCurrent_(); }
-  });
-  document.getElementById("btnQcNext")?.addEventListener("click", () => {
-    if (qcIdx_ < qcList_.length - 1) { qcIdx_++; renderQcCurrent_(); }
-  });
-
-  document.getElementById("btnQcResolver")?.addEventListener("click", resolveQcCurrent_);
 }
 
 function closeQcPopup_() {

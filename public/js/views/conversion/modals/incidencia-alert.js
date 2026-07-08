@@ -129,13 +129,8 @@ function buildHTML_(inc, idx, total) {
           </div>
           <div class="incAlertRow">
             <span class="incAlertLbl">VIN</span>
-            <span class="incAlertVal mono">${escapeHtml(vin)}</span>
+            <span class="incAlertVal mono">${escapeHtml(vin)}${elapsedStr ? `<span id="incAlertElapsed" style="margin-left:10px;font-size:.75rem;opacity:.55;font-weight:400;">⏱ ${escapeHtml(elapsedStr)}</span>` : ""}</span>
           </div>
-          ${elapsedStr ? `
-          <div class="incAlertRow">
-            <span class="incAlertLbl">⏱ Tiempo activa</span>
-            <span class="incAlertVal" id="incAlertElapsed" style="font-weight:700;color:var(--alert-color);">${escapeHtml(elapsedStr)}</span>
-          </div>` : ""}
           ${nota ? `
           <div class="incAlertRow">
             <span class="incAlertLbl">Nota</span>
@@ -185,7 +180,7 @@ function renderCurrent_() {
     if (inc.tiempo_inicio) {
       elapsedTimer_ = setInterval(() => {
         const span = document.getElementById("incAlertElapsed");
-        if (span) span.textContent = formatElapsed_(inc.tiempo_inicio) || "";
+        if (span) span.textContent = `⏱ ${formatElapsed_(inc.tiempo_inicio) || ""}`;
         else { clearInterval(elapsedTimer_); elapsedTimer_ = null; }
       }, 30000);
     }
