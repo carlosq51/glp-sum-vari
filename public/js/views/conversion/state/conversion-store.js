@@ -12,7 +12,8 @@ import {
   getJSON,
 } from "../../../core/core.js";
 
-export { normalizeItem_ } from "../../../work/work-normalize.js";
+import { normalizeItem_ } from "../../../work/work-normalize.js";
+export { normalizeItem_ };
 
 // --------------------------
 // NORMALIZE / MERGE
