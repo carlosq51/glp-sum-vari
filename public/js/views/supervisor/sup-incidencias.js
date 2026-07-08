@@ -186,12 +186,13 @@ function formatElapsed_(tiempoInicio) {
   if (!tiempoInicio) return null;
   const ms = Date.now() - new Date(tiempoInicio).getTime();
   if (ms < 0) return null;
-  const totalMin = Math.floor(ms / 60000);
-  if (totalMin < 1) return "< 1 min";
-  if (totalMin < 60) return `${totalMin} min`;
-  const h = Math.floor(totalMin / 60);
-  const m = totalMin % 60;
-  return m > 0 ? `${h}h ${m}min` : `${h}h`;
+  const totalSec = Math.floor(ms / 1000);
+  const s  = totalSec % 60;
+  const m  = Math.floor(totalSec / 60) % 60;
+  const h  = Math.floor(totalSec / 3600);
+  const mm = String(m).padStart(2, "0");
+  const ss = String(s).padStart(2, "0");
+  return h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
 }
 
 const tipoMeta_ = {
@@ -314,7 +315,7 @@ function renderQcCurrent_() {
         const span = document.getElementById("qcIncElapsed");
         if (span) span.textContent = `⏱ ${formatElapsed_(inc.tiempo_inicio) || ""}`;
         else { clearInterval(qcElapsedTimer_); qcElapsedTimer_ = null; }
-      }, 30000);
+      }, 1000);
     }
 
     document.getElementById("btnQcClose")?.addEventListener("click", closeQcPopup_);
