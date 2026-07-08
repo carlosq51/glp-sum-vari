@@ -7,9 +7,8 @@
 // Lista 3: Listos para salir    → calidad finalizada
 // =========================
 
-import { CORE, escapeHtml, fmtShort_, getJSON, getJSON_user, postJSON } from "../../core/core.js";
+import { CORE, escapeHtml, fmtShort_, getJSON, getJSON_user, postJSON, createVinSuggest_ } from "../../core/core.js";
 import { updateHubModuleBadge } from "../../core/ui-shell.js";
-import { getVinSuggest } from "../../core/supabase-client.js";
 import { createScanner } from "../../core/qr-scanner.js";
 import { initZonasMapa, promptZonaForVin } from "../zonas/zonas-mapa.js";
 
@@ -757,109 +756,6 @@ function bindPanelToggles_() {
   });
 }
 
-// ─── VIN Autocomplete (genérico para Entrada / Salida) ─────────────────
-
-function createVinAc_(inputId, suggestId, onPick) {
-  const MIN = 1, LIMIT = 12, DEBOUNCE = 220;
-  let timer = null, items = [], open = false, idx = -1, lastQ = "";
-
-  const input_ = () => document.getElementById(inputId);
-  const box_ = () => document.getElementById(suggestId);
-
-  function hide_() {
-    open = false; idx = -1; items = [];
-    const b = box_();
-    if (b) { b.classList.add("hidden"); b.innerHTML = ""; }
-  }
-
-  function render_() {
-    const b = box_();
-    if (!b) return;
-    if (!items.length) { hide_(); return; }
-    b.innerHTML = items.map((vin, i) => `
-      <div class="vsItem ${i === idx ? "active" : ""}" data-idx="${i}" role="option">
-        <div class="vsVin">${escapeHtml(vin)}</div>
-      </div>
-    `).join("");
-    b.classList.remove("hidden");
-    open = true;
-  }
-
-  async function fetch_(q) {
-    try {
-      const res = await getVinSuggest(q, LIMIT);
-      return (res || [])
-        .map(item => (typeof item === "object" && item?.vin) ? String(item.vin).toUpperCase() : String(item || "").toUpperCase())
-        .filter(Boolean);
-    } catch {
-      return [];
-    }
-  }
-
-  function onInput_() {
-    const q = String(input_()?.value || "").trim().toUpperCase();
-    lastQ = q;
-    // enable/disable button based on input length
-    const btn = document.getElementById(inputId === "movVinEntrada" ? "btnMovRegistrarEntrada" : "btnMovRegistrarSalida");
-    if (btn) btn.disabled = q.length < 7;
-    if (!q || q.length < MIN) { hide_(); return; }
-    clearTimeout(timer);
-    timer = setTimeout(async () => {
-      try {
-        const res = await fetch_(q);
-        if (lastQ !== q) return;
-        items = res;
-        idx = items.length ? 0 : -1;
-        render_();
-      } catch { hide_(); }
-    }, DEBOUNCE);
-  }
-
-  function pick_(vin) {
-    const inp = input_();
-    if (inp) inp.value = String(vin || "").toUpperCase();
-    hide_();
-    const btn = document.getElementById(inputId === "movVinEntrada" ? "btnMovRegistrarEntrada" : "btnMovRegistrarSalida");
-    if (btn) btn.disabled = !vin || vin.length < 7;
-    onPick(String(vin || "").toUpperCase());
-  }
-
-  function onKeyDown_(e) {
-    if (!open) return;
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      idx = Math.min(idx + 1, items.length - 1);
-      render_();
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      idx = Math.max(idx - 1, 0);
-      render_();
-    } else if (e.key === "Enter" && idx >= 0 && items[idx]) {
-      e.preventDefault();
-      pick_(items[idx]);
-    } else if (e.key === "Escape") {
-      hide_();
-    }
-  }
-
-  // Bind events
-  const inp = input_();
-  if (inp) {
-    inp.addEventListener("input", onInput_);
-    inp.addEventListener("keydown", onKeyDown_);
-  }
-
-  const b = box_();
-  if (b && !b.dataset.bound) {
-    b.dataset.bound = "1";
-    b.addEventListener("mousedown", e => {
-      const row = e.target.closest(".vsItem[data-idx]");
-      if (!row) return;
-      e.preventDefault();
-      pick_(items[Number(row.dataset.idx)]);
-    });
-  }
-}
 
 // ─── QR Scanner ────────────────────────────────────────────────────────
 
@@ -1132,26 +1028,43 @@ export function init() {
   });
 
   // VIN Autocomplete for Entrada
-  createVinAc_("movVinEntrada", "movVinEntradaSuggest", () => {});
+  createVinSuggest_({
+    input: "movVinEntrada", box: "movVinEntradaSuggest",
+    min: 1, debounce: 220, limit: 12,
+    onPick: item => {
+      const inp = document.getElementById("movVinEntrada");
+      if (inp) inp.value = item.vin;
+      const btn = document.getElementById("btnMovRegistrarEntrada");
+      if (btn) btn.disabled = item.vin.length < 7;
+    },
+  }).bind();
+  document.getElementById("movVinEntrada")?.addEventListener("input", function () {
+    const btn = document.getElementById("btnMovRegistrarEntrada");
+    if (btn) btn.disabled = this.value.trim().length < 7;
+  });
 
   // VIN Autocomplete for Salida
-  createVinAc_("movSalidaVinSearch", "movSalidaVinSuggest", (vin) => showSalidaQrResult_(vin));
-
+  createVinSuggest_({
+    input: "movSalidaVinSearch", box: "movSalidaVinSuggest",
+    min: 1, debounce: 220, limit: 12,
+    onPick: item => {
+      const inp = document.getElementById("movSalidaVinSearch");
+      if (inp) inp.value = item.vin;
+      showSalidaQrResult_(item.vin);
+    },
+  }).bind();
   // Auto-buscar cuando el input alcanza 17 chars (VIN completo) — cubre scanners Bluetooth
   // y Enter al final del código. Sin esto el usuario necesita seleccionar del dropdown.
-  const salidaVinInp = document.getElementById("movSalidaVinSearch");
-  if (salidaVinInp) {
-    salidaVinInp.addEventListener("input", function () {
+  document.getElementById("movSalidaVinSearch")?.addEventListener("input", function () {
+    const v = this.value.trim().toUpperCase();
+    if (/^[A-HJ-NPR-Z0-9]{17}$/.test(v)) showSalidaQrResult_(v);
+  });
+  document.getElementById("movSalidaVinSearch")?.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" && !e.defaultPrevented) {
       const v = this.value.trim().toUpperCase();
-      if (/^[A-HJ-NPR-Z0-9]{17}$/.test(v)) showSalidaQrResult_(v);
-    });
-    salidaVinInp.addEventListener("keydown", function (e) {
-      if (e.key === "Enter") {
-        const v = this.value.trim().toUpperCase();
-        if (v.length >= 7) showSalidaQrResult_(v);
-      }
-    });
-  }
+      if (v.length >= 7) showSalidaQrResult_(v);
+    }
+  });
 
   // QR scanner buttons
   document.getElementById("btnMovQrEntrada")?.addEventListener("click",    () => openMovQr_("entrada").catch(() => {}));

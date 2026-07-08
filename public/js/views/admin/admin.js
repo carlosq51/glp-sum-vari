@@ -2,7 +2,7 @@
 // public/js/views/admin/admin.js
 // Vista ADMIN – CRUD completo: Usuarios, VINs, OTs, Incidencias
 // =========================
-import { CORE, MODULES } from "../../core/core.js";
+import { CORE, MODULES, createVinSuggest_ } from "../../core/core.js";
 import {
   supabaseGet,
   supabasePost,
@@ -15,58 +15,8 @@ import { createScanner } from "../../core/qr-scanner.js";
 const adminVinScanner_     = createScanner("adminVinQrReader");
 const reasignarScanner_    = createScanner("reasignarQrReader");
 
-// ─── Mini vinSuggest para Reasignar ──────────────────────────────────
-let rSugTimer_  = null;
-let rSugItems_  = [];
-let rSugIdx_    = -1;
-
-function rSugBox_()   { return $id("reasignarVinSuggest"); }
-function rSugInput_() { return $id("reasignarVinInput"); }
-
-function rSugHide_() {
-  const box = rSugBox_();
-  if (box) { box.classList.add("hidden"); box.innerHTML = ""; }
-  rSugItems_ = []; rSugIdx_ = -1;
-}
-
-function rSugRender_() {
-  const box = rSugBox_();
-  if (!box) return;
-  if (!rSugItems_.length) { rSugHide_(); return; }
-  box.innerHTML = rSugItems_.map((vin, i) =>
-    `<div class="vsItem ${i === rSugIdx_ ? "active" : ""}" data-idx="${i}" role="option"
-       aria-selected="${i === rSugIdx_}">
-       <div class="vsVin">${vin}</div>
-     </div>`
-  ).join("");
-  box.classList.remove("hidden");
-}
-
-async function rSugFetch_(q) {
-  try {
-    const r = await fetch(`/api/vin-suggest?q=${encodeURIComponent(q)}&limit=10`);
-    const j = r.ok ? await r.json() : {};
-    const items = Array.isArray(j?.items) ? j.items : [];
-    return items.map(it => (typeof it === "string" ? it : it?.vin || "")).filter(Boolean);
-  } catch { return []; }
-}
-
-function rSugOnInput_() {
-  const q = String(rSugInput_()?.value || "").trim().toUpperCase();
-  if (q.length < 3) { rSugHide_(); return; }
-  clearTimeout(rSugTimer_);
-  rSugTimer_ = setTimeout(async () => {
-    rSugItems_ = await rSugFetch_(q);
-    rSugIdx_ = -1;
-    rSugRender_();
-  }, 220);
-}
-
-function rSugPick_(vin) {
-  rSugHide_();
-  const inp = rSugInput_();
-  if (inp) { inp.value = vin; loadReasignarPanel_(); }
-}
+// ─── VIN suggest para Reasignar (creado cuando se renderiza el tab) ───
+let rSugWidget_ = null;
 
 // ─── State ───────────────────────────────────────────────────────────
 const S = {
@@ -347,25 +297,22 @@ async function loadTab() {
       </div>
     `;
 
-    $id("btnReasignarBuscar")?.addEventListener("click", () => { rSugHide_(); loadReasignarPanel_(); });
-    $id("reasignarVinInput")?.addEventListener("input", rSugOnInput_);
-    $id("reasignarVinInput")?.addEventListener("keydown", e => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        const pick = rSugIdx_ >= 0 ? rSugItems_[rSugIdx_] : null;
-        if (pick) { rSugPick_(pick); return; }
-        rSugHide_(); loadReasignarPanel_();
-      } else if (e.key === "ArrowDown") {
-        e.preventDefault();
-        rSugIdx_ = Math.min(rSugIdx_ + 1, rSugItems_.length - 1); rSugRender_();
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        rSugIdx_ = Math.max(rSugIdx_ - 1, -1); rSugRender_();
-      }
+    $id("btnReasignarBuscar")?.addEventListener("click", loadReasignarPanel_);
+    rSugWidget_?.destroy();
+    rSugWidget_ = createVinSuggest_({
+      input: "reasignarVinInput",
+      box:   "reasignarVinSuggest",
+      min:   3,
+      debounce: 220,
+      onPick: item => {
+        const inp = $id("reasignarVinInput");
+        if (inp) inp.value = item.vin;
+        loadReasignarPanel_();
+      },
     });
-    $id("reasignarVinSuggest")?.addEventListener("click", e => {
-      const item = e.target.closest(".vsItem");
-      if (item) rSugPick_(rSugItems_[parseInt(item.dataset.idx, 10)]);
+    rSugWidget_.bind();
+    $id("reasignarVinInput")?.addEventListener("keydown", e => {
+      if (e.key === "Enter" && !e.defaultPrevented) { e.preventDefault(); loadReasignarPanel_(); }
     });
     $id("btnReasignarQr")?.addEventListener("click", async () => {
       try {
@@ -373,9 +320,9 @@ async function loadTab() {
           mode: "QR",
           onDecoded: async code => {
             await reasignarScanner_.stop().catch(() => {});
-            const inp = rSugInput_();
+            const inp = $id("reasignarVinInput");
             if (inp) inp.value = code;
-            rSugHide_();
+            rSugWidget_?.hide();
             loadReasignarPanel_();
           },
         });

@@ -1,65 +1,25 @@
 // public/js/views/conversion/ui/conversion-validar.js
 // Modal 🔍 Buscar VIN en vista TECNICO — vinSuggest + cámara QR
 
-import { escapeHtml, getJSON } from "../../../core/core.js";
+import { createVinSuggest_ } from "../../../core/core.js";
 import { createScanner } from "../../../core/qr-scanner.js";
 import { refreshEstadoForVinRole } from "../data/conversion-estado.js";
 
 // ── Scanner exclusivo del modal ───────────────────────────────────────────
 const tecBuscarScanner_ = createScanner("tecBuscarQrReader");
 
-// ── Mini VIN suggest ──────────────────────────────────────────────────────
-let bSugTimer_  = null;
-let bSugItems_  = [];
-let bSugIdx_    = -1;
-
-const bSugInput_ = () => document.getElementById("tecBuscarVin");
-const bSugBox_   = () => document.getElementById("tecBuscarSuggest");
-
-function bSugHide_() {
-  const box = bSugBox_();
-  if (box) { box.classList.add("hidden"); box.innerHTML = ""; }
-  bSugItems_ = []; bSugIdx_ = -1;
-}
-
-function bSugRender_() {
-  const box = bSugBox_();
-  if (!box) return;
-  if (!bSugItems_.length) { bSugHide_(); return; }
-  box.innerHTML = bSugItems_.map((vin, i) =>
-    `<div class="vsItem ${i === bSugIdx_ ? "active" : ""}" data-idx="${i}" role="option"
-       aria-selected="${i === bSugIdx_}">
-       <div class="vsVin">${escapeHtml(vin)}</div>
-     </div>`
-  ).join("");
-  box.classList.remove("hidden");
-}
-
-async function bSugFetch_(q) {
-  try {
-    const j = await getJSON(`/api/vin-suggest?q=${encodeURIComponent(q)}&limit=10`);
-    const items = Array.isArray(j?.items) ? j.items : [];
-    return items.map(it => (typeof it === "string" ? it : it?.vin || "")).filter(Boolean);
-  } catch { return []; }
-}
-
-function bSugOnInput_() {
-  const q = String(bSugInput_()?.value || "").trim().toUpperCase();
-  if (q.length < 3) { bSugHide_(); return; }
-  clearTimeout(bSugTimer_);
-  bSugTimer_ = setTimeout(async () => {
-    bSugItems_ = await bSugFetch_(q);
-    bSugIdx_ = -1;
-    bSugRender_();
-  }, 220);
-}
-
-function bSugPick_(vin) {
-  bSugHide_();
-  const inp = bSugInput_();
-  if (inp) inp.value = vin;
-  bSugFetchResult_(vin);
-}
+// ── VIN suggest del modal ────────────────────────────────────────────────
+const bSugAC_ = createVinSuggest_({
+  input:   "tecBuscarVin",
+  box:     "tecBuscarSuggest",
+  min:     3,
+  debounce: 220,
+  onPick: item => {
+    const inp = document.getElementById("tecBuscarVin");
+    if (inp) inp.value = item.vin;
+    bSugFetchResult_(item.vin);
+  },
+});
 
 // ── Open / Close modal ────────────────────────────────────────────────────
 export async function openTecBuscarModal_() {
@@ -67,9 +27,9 @@ export async function openTecBuscarModal_() {
   if (!modal) return;
   modal.style.display = "flex";
   modal.classList.add("show");
-  const inp = bSugInput_();
+  const inp = document.getElementById("tecBuscarVin");
   if (inp) { inp.value = ""; inp.focus(); }
-  bSugHide_();
+  bSugAC_.hide();
   const msg = document.getElementById("tecBuscarMsg");
   if (msg) msg.innerHTML = "";
   const res = document.getElementById("tecBuscarResult");
@@ -82,7 +42,7 @@ async function closeTecBuscarModal_() {
   if (!modal) return;
   modal.classList.remove("show");
   modal.style.display = "none";
-  bSugHide_();
+  bSugAC_.hide();
 }
 
 // ── Fetch + render resultado ──────────────────────────────────────────────
@@ -176,35 +136,16 @@ export function initTecValidar_() {
     if (e.target === e.currentTarget) closeTecBuscarModal_();
   });
 
-  // Input VIN del modal
-  document.getElementById("tecBuscarVin")?.addEventListener("input", bSugOnInput_);
+  // VIN suggest
+  bSugAC_.bind();
   document.getElementById("tecBuscarVin")?.addEventListener("keydown", e => {
-    if (e.key === "Enter") {
+    if (e.key === "Enter" && !e.defaultPrevented) {
       e.preventDefault();
-      const pick = bSugIdx_ >= 0 ? bSugItems_[bSugIdx_] : null;
-      if (pick) { bSugPick_(pick); return; }
-      const vin = String(bSugInput_()?.value || "").trim().toUpperCase();
+      const vin = String(document.getElementById("tecBuscarVin")?.value || "").trim().toUpperCase();
       if (vin) bSugFetchResult_(vin);
-      return;
-    }
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      bSugIdx_ = Math.min(bSugIdx_ + 1, bSugItems_.length - 1);
-      bSugRender_();
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      bSugIdx_ = Math.max(bSugIdx_ - 1, -1);
-      bSugRender_();
-    } else if (e.key === "Escape") {
+    } else if (e.key === "Escape" && !e.defaultPrevented) {
       closeTecBuscarModal_();
     }
-  });
-
-  // Clic en item del suggest
-  document.getElementById("tecBuscarSuggest")?.addEventListener("click", e => {
-    const item = e.target.closest(".vsItem");
-    if (!item) return;
-    bSugPick_(bSugItems_[parseInt(item.dataset.idx, 10)]);
   });
 
   // Cámara QR
@@ -216,9 +157,9 @@ export function initTecValidar_() {
         msgEl: msg,
         onDecoded: async code => {
           await tecBuscarScanner_.stop().catch(() => {});
-          const inp = bSugInput_();
+          const inp = document.getElementById("tecBuscarVin");
           if (inp) inp.value = code;
-          bSugHide_();
+          bSugAC_.hide();
           bSugFetchResult_(code);
         },
       });

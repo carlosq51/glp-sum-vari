@@ -29,8 +29,26 @@ PWA para gestión de conversiones GLP. Los técnicos (MOTOR / TANQUE) registran 
 
 ```
 glp-ui/
-├── index.js                  ← Backend completo (monolito ~5000 LOC)
+├── index.js                  ← Bootstrap del servidor (~90 LOC)
 ├── r2-uploads.js             ← Helpers Cloudflare R2
+├── lib/
+│   ├── supabase.js           ← Helpers Supabase (CRUD + cache)
+│   ├── timing.js             ← measureTime_, addServerTiming_
+│   ├── utils.js              ← isValidOT_, normalizeModelo_
+│   └── ml-state.js           ← pendingSuggestions_ (Map compartido ML↔trabajo)
+├── routes/
+│   ├── uploader.js           ← /api/uploader/*
+│   ├── push.js               ← /api/push/*
+│   ├── ramal.js              ← /api/solicitud-ramal/*
+│   ├── incidencias.js        ← /api/incidencia, /api/incidencias/*
+│   ├── supervisor.js         ← /api/supervisor/*
+│   ├── trabajo.js            ← /api/me, /api/evento, /api/sync, …
+│   ├── admin.js              ← /api/admin/*
+│   ├── movilizador.js        ← /api/movilizador/*, /api/vin-validar
+│   ├── tecnico.js            ← /api/tecnico/*
+│   ├── ml.js                 ← /api/ml/*, /api/omisiones
+│   ├── vins.js               ← /api/vin-suggest, /api/vins-sin-modelo
+│   └── zonas.js              ← /api/zonas/*
 ├── vite.config.js            ← Build + PWA config
 ├── package.json
 ├── .env                      ← Variables locales (no va a producción)
@@ -76,37 +94,32 @@ glp-ui/
 
 ---
 
-## 3. Backend (`index.js`)
+## 3. Backend
 
-### 3.1 Arranque
+### 3.1 Arranque (`index.js`)
 
 ```
+import routes/* + lib/*
+  ↓
 dotenv.config()
   ↓
 webpush.setVapidDetails(...)   ← solo si las 3 vars VAPID están presentes
   ↓
 express.static("dist")         ← sirve el frontend compilado
   ↓
-Rutas API
+app.use(router) × 12
   ↓
-app.listen(PORT)
+app.listen(PORT) → scheduleAutoRetrain_() + scheduleAutoNormalize_()
 ```
 
-### 3.2 Helpers internos
+### 3.2 Helpers compartidos (`lib/`)
 
-Todo vive en el scope global de `index.js` (sin módulos separados — deuda técnica).
-
-| Función | Propósito |
+| Módulo | Exporta |
 |---|---|
-| `supabaseHeaders_()` | Headers con anon key |
-| `supabaseServiceHeaders_()` | Headers con service key (bypasea RLS) |
-| `buildSupabaseQuery_(filter)` | Construye `?col=eq.val&…` |
-| `supabaseGet_(table, filter)` | GET con cache en memoria |
-| `supabasePost_(table, data)` | POST con `return=representation` |
-| `supabasePatch_(table, filter, data)` | PATCH con `return=representation` |
-| `supabaseDelete_(table, filter)` | DELETE |
-| `getCachedData_()` / `setCachedData_()` | Cache en memoria con TTL configurable |
-| `callAppsScript(action, payload)` | Proxy a Google Apps Script (legacy) |
+| `lib/supabase.js` | `supabaseHeaders_()`, `supabaseServiceHeaders_()`, `buildSupabaseQuery_()`, `supabaseGet_/Post_/Patch_/Delete_()`, `getCachedData_/setCachedData_()`, `getCachedUserIdByEmail_/setCachedUserIdByEmail_()`, `CACHE` |
+| `lib/timing.js` | `measureTime_()`, `addServerTiming_()` |
+| `lib/utils.js` | `isValidOT_()`, `normalizeModelo_()` |
+| `lib/ml-state.js` | `pendingSuggestions_` (Map; escrito por `routes/ml.js`, leído por `routes/trabajo.js`) |
 
 ### 3.3 Rutas API
 
@@ -308,8 +321,7 @@ syncNow()                      → sincroniza OTs activas              cada N se
 | `ramalero-render.js` | Render de cards de ramales |
 | `ramalero-eventos.js` | Event delegation |
 
-> ⚠️ `ramalero-actions.js` importa de `conversion/data/conversion-sync.js` y
-> `conversion/state/conversion-store.js`. Acoplamiento innecesario (deuda técnica).
+> `ramalero-actions.js` importa de `../../work/index.js` (desacoplado de `conversion/`).
 
 ### 4.7 `templates/`
 
@@ -545,10 +557,7 @@ Nunca colores hex directos.
 
 | Problema | Dónde |
 |---|---|
-| `index.js` es un monolito de ~5000 líneas | `index.js` |
-| `mis-activas` y `mis-finalizadas` son código duplicado | `index.js` L412–627 |
-| `ramalero` importa directamente de `conversion/` | `ramalero-actions.js` L11–13 |
-| Sin tests de ningún tipo | todo el proyecto |
+| Tests solo en `normalizeItem_` — cobertura mínima | `test/` |
 
 ### 🟠 Media — genera fricción ocasional
 

@@ -5,11 +5,10 @@ import {
   ctx_,
   withLock,
   requireEmailOrStop,
+  getJSON,
 } from "../../core/core.js";
 
-import { renderFinalizados_, rebuildListsFromStore_ } from "../../work/index.js";
-import { syncNow, fetchFinalizados_ } from "../conversion/data/conversion-sync.js";
-import { normalizeItem_ } from "../conversion/state/conversion-store.js";
+import { renderFinalizados_, rebuildListsFromStore_, normalizeItem_ } from "../../work/index.js";
 import { crearNuevoRamal_ } from "./ramalero-eventos.js";
 import { initRamaleroSolicitudes_ } from "./ramalero-solicitudes.js";
 
@@ -21,7 +20,7 @@ export function initRamaleroActions_() {
 
   $("btnActivasR")?.addEventListener("click", async () => {
     if (CORE.state.currentModule !== "RAMALERO") return;
-    await withLock(async () => syncNow({ forceFull: true, showOut: true, _fromLock: true }), "Refrescando...");
+    document.dispatchEvent(new CustomEvent("glp:force-sync"));
   });
 
   $("btnFinalizadosR")?.addEventListener("click", async () => {
@@ -36,7 +35,7 @@ export function initRamaleroActions_() {
       if (c.showFinalizados && !c._finalizadosLoaded) {
         let email;
         try { email = requireEmailOrStop(); } catch { return; }
-        const j = await fetchFinalizados_(email);
+        const j = await getJSON(`/api/mis-finalizadas?email=${encodeURIComponent(email)}`);
         if (j?.ok && Array.isArray(j.items)) {
           for (const raw of j.items) {
             const it = normalizeItem_(raw);

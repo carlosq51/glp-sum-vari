@@ -3,7 +3,7 @@
 // Vista SUPERVISOR (entry): init/enter/exit + fetch + pipeline render
 // =========================
 
-import { CORE, getJSON_user, escapeHtml, fmtShort_ } from "../../core/core.js";
+import { CORE, getJSON_user, escapeHtml, fmtShort_, createVinSuggest_ } from "../../core/core.js";
 
 import {
   avgRobustWithContextPrior_,
@@ -459,36 +459,16 @@ export function init() {
   const supValidarInp = document.getElementById("supValidarVin");
   const supValidarBox = document.getElementById("supValidarVinSuggest");
 
-  supValidarInp?.addEventListener("input", async () => {
-    const q = (supValidarInp.value || "").trim();
-    if (q.length < 2) { supValidarBox?.classList.add("hidden"); if (supValidarBox) supValidarBox.innerHTML = ""; return; }
-    try {
-      const j = await getJSON_user(`/api/vin-suggest?q=${encodeURIComponent(q)}&limit=8`, "");
-      if (!j?.ok || !j.items?.length) { supValidarBox?.classList.add("hidden"); return; }
-      if (supValidarBox) {
-        supValidarBox.innerHTML = j.items.map(it =>
-          `<div class="vinSuggestItem" data-vin="${escapeHtml(it.vin)}">`
-          + `<span class="vinSuggestVin">${escapeHtml(it.vin)}</span>`
-          + (it.modelo ? `<span class="vinSuggestMod">${escapeHtml(it.modelo)}</span>` : "")
-          + `</div>`
-        ).join("");
-        supValidarBox.classList.remove("hidden");
-      }
-    } catch { supValidarBox?.classList.add("hidden"); }
-  });
-
-  supValidarBox?.addEventListener("click", e => {
-    const item = e.target.closest("[data-vin]");
-    if (!item) return;
-    if (supValidarInp) supValidarInp.value = item.dataset.vin;
-    supValidarBox.classList.add("hidden");
-    supValidarBox.innerHTML = "";
-    fetchVinValidar_();
-  });
-
+  createVinSuggest_({
+    input: "supValidarVin", box: "supValidarVinSuggest",
+    min: 2, debounce: 220, limit: 8,
+    onPick: item => {
+      if (supValidarInp) supValidarInp.value = item.vin;
+      fetchVinValidar_();
+    },
+  }).bind();
   supValidarInp?.addEventListener("keydown", e => {
-    if (e.key === "Enter") { supValidarBox?.classList.add("hidden"); fetchVinValidar_(); }
-    if (e.key === "Escape") { supValidarBox?.classList.add("hidden"); if (supValidarBox) supValidarBox.innerHTML = ""; }
+    if (e.key === "Enter" && !e.defaultPrevented) fetchVinValidar_();
   });
 
   document.getElementById("btnSupValidarBuscar")?.addEventListener("click", fetchVinValidar_);

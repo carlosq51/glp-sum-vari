@@ -70,3 +70,6 @@ export { escapeHtml, cssEsc_, fmtShort_, fmtFechaCreacion_, msToHMS_, keyOfItem_
 
 // --- Links externos ---
 export { REG_FALLAS_BASE, openRegistroFallas_ } from "./links.js";
+
+// --- Suggest widgets ---
+export { createSuggest_, createVinSuggest_, createNameSuggest_ } from "./suggest.js";

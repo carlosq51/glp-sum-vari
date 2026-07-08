@@ -9,3 +9,4 @@ export { buildBotonesByEstado_, buildAsignadoHTML_, buildIncidenciasBtnHTML_ } f
 export { snapshotNotasActivas_, restoreNotasActivas_ } from "./work-notes.js";
 export { rebuildListsFromStore_ } from "./work-store.js";
 export { renderActivas_, renderFinalizados_, patchVisibleCards_ } from "./work-render.js";
+export { normalizeItem_ } from "./work-normalize.js";

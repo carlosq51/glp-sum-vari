@@ -4,8 +4,7 @@
 // Layout: 9 zonas izquierda | carretera | 6 zonas derecha | Zona Libre
 // =========================
 
-import { escapeHtml, postJSON } from "../../core/core.js";
-import { getVinSuggest } from "../../core/supabase-client.js";
+import { escapeHtml, postJSON, createVinSuggest_ } from "../../core/core.js";
 import { createScanner } from "../../core/qr-scanner.js";
 
 // ── Layout físico del taller ─────────────────────────────────────────────────
@@ -280,8 +279,10 @@ function openPickerForZone_(zonaId, onRefresh) {
   const confirmBtn = sheet.querySelector("#zpForZoneConfirm");
   const statusEl   = sheet.querySelector("#zpForZoneStatus");
 
+  let acZonas_;
   const closeMe = async () => {
     await zpScanner.stop().catch(() => {});
+    acZonas_?.destroy();
     removeEl_(sheet);
   };
 
@@ -289,62 +290,17 @@ function openPickerForZone_(zonaId, onRefresh) {
   sheet.querySelector("#zpForZoneClose").addEventListener("click", closeMe);
 
   // ── VIN Suggest ──────────────────────────────────────────────────────
-  const MIN = 1, LIMIT = 10, DEBOUNCE = 220;
-  let acTimer = null, acItems = [], acIdx = -1, acLastQ = "";
-
-  function acHide_() {
-    acItems = []; acIdx = -1;
-    suggestBox.classList.add("hidden");
-    suggestBox.innerHTML = "";
-  }
-
-  function acRender_() {
-    if (!acItems.length) { acHide_(); return; }
-    suggestBox.innerHTML = acItems.map((vin, i) => `
-      <div class="vsItem ${i === acIdx ? "active" : ""}" data-idx="${i}" role="option">
-        <div class="vsVin">${escapeHtml(vin)}</div>
-      </div>`).join("");
-    suggestBox.classList.remove("hidden");
-  }
-
-  function acPick_(vin) {
-    vinInput.value = String(vin || "").toUpperCase();
-    acHide_();
-    confirmBtn.disabled = vinInput.value.length < 5;
-  }
-
+  acZonas_ = createVinSuggest_({
+    input: vinInput, box: suggestBox,
+    min: 1, debounce: 220, limit: 10,
+    onPick: item => {
+      vinInput.value = item.vin;
+      confirmBtn.disabled = item.vin.length < 5;
+    },
+  });
+  acZonas_.bind();
   vinInput.addEventListener("input", () => {
-    const q = vinInput.value.trim().toUpperCase();
-    acLastQ = q;
-    confirmBtn.disabled = q.length < 5;
-    if (!q || q.length < MIN) { acHide_(); return; }
-    clearTimeout(acTimer);
-    acTimer = setTimeout(async () => {
-      try {
-        const res = await getVinSuggest(q, LIMIT);
-        if (acLastQ !== q) return;
-        acItems = (res || [])
-          .map(it => (typeof it === "object" && it?.vin) ? String(it.vin).toUpperCase() : String(it || "").toUpperCase())
-          .filter(Boolean);
-        acIdx = acItems.length ? 0 : -1;
-        acRender_();
-      } catch { acHide_(); }
-    }, DEBOUNCE);
-  });
-
-  vinInput.addEventListener("keydown", e => {
-    if (!acItems.length) return;
-    if (e.key === "ArrowDown") { e.preventDefault(); acIdx = Math.min(acIdx + 1, acItems.length - 1); acRender_(); }
-    else if (e.key === "ArrowUp") { e.preventDefault(); acIdx = Math.max(acIdx - 1, 0); acRender_(); }
-    else if (e.key === "Enter" && acIdx >= 0 && acItems[acIdx]) { e.preventDefault(); acPick_(acItems[acIdx]); }
-    else if (e.key === "Escape") { acHide_(); }
-  });
-
-  suggestBox.addEventListener("mousedown", e => {
-    const row = e.target.closest(".vsItem[data-idx]");
-    if (!row) return;
-    e.preventDefault();
-    acPick_(acItems[Number(row.dataset.idx)]);
+    confirmBtn.disabled = vinInput.value.trim().length < 5;
   });
 
   // ── QR Scanner ───────────────────────────────────────────────────────

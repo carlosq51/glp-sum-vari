@@ -9,7 +9,7 @@
     "build": "vite build || true",
     "preview": "vite preview",
     "start": "node index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "vitest run"
   },
   "keywords": [],
   "author": "",
@@ -41,6 +41,7 @@
     "autoprefixer": "^10.4.27",
     "sharp": "^0.34.5",
     "vite": "^6.4.1",
-    "vite-plugin-pwa": "^1.2.0"
+    "vite-plugin-pwa": "^1.2.0",
+    "vitest": "^4.1.10"
   }
 }

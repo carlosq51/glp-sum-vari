@@ -1400,3 +1400,7 @@ export function exit(mod) {
 }
 
 export { syncNow } from "./data/conversion-sync.js";
+
+document.addEventListener("glp:force-sync", () => {
+  withLock(async () => syncNow({ forceFull: true, showOut: true, _fromLock: true }), "Refrescando...");
+});
