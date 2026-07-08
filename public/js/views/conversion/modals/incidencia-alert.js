@@ -2,47 +2,28 @@
 // public/js/views/conversion/modals/incidencia-alert.js
 // Popup de alerta cuando el tecnico recibe una incidencia a su nombre.
 // - Tiempo real: se activa por el realtime de Supabase (mientras conectado).
-// - Historico: al entrar al modulo, verifica incidencias no vistas de las
-//   ultimas N horas (cubre el caso offline -> online).
+// - Historico: al entrar al modulo, verifica incidencias SIN RESOLVER (tiempo_fin IS NULL).
+// - Sin X para el tecnico: debe marcar como solucionada (click para armar, 2do click confirma).
 // =========================
 
 import { escapeHtml } from "../../../core/format.js";
-import { getNombreByEmail, getIncidenciasByTecnico, supabaseEnabled } from "../../../core/supabase-client.js";
+import { getNombreByEmail, getIncidenciasByTecnico, resolverIncidencia, supabaseEnabled } from "../../../core/supabase-client.js";
 
 // --------------------------
-// Cola y estado
+// Estado del popup
 // --------------------------
-const alertQueue_ = [];
-let alertOpen_ = false;
+let incList_   = [];   // lista de incidencias pendientes (navegables)
+let incIdx_    = 0;    // índice actual
+let popupOpen_ = false;
+let userEmail_ = "";   // email del técnico logueado (seteado en checkPendingAlerts_)
+
+// estado del botón de confirmar
+let confirmArmed_  = false;
+let confirmTimer_  = null;
 
 const POPUP_ID = "incAlertPopup";
 
-// Nombre del técnico logueado (se cachea tras el primer lookup)
 let cachedNombre_ = null;
-
-// --------------------------
-// localStorage "ya vistas"
-// Las IDs se guardan al cerrar el popup para no mostrarlas de nuevo.
-// --------------------------
-const SEEN_KEY = "glp_inc_seen";
-const SEEN_MAX = 300;
-
-function getSeenIds_() {
-  try { return new Set(JSON.parse(localStorage.getItem(SEEN_KEY) || "[]")); }
-  catch { return new Set(); }
-}
-
-function markSeen_(id) {
-  if (!id) return;
-  try {
-    const arr = JSON.parse(localStorage.getItem(SEEN_KEY) || "[]");
-    if (!arr.includes(id)) {
-      arr.push(id);
-      if (arr.length > SEEN_MAX) arr.splice(0, arr.length - SEEN_MAX);
-      localStorage.setItem(SEEN_KEY, JSON.stringify(arr));
-    }
-  } catch {}
-}
 
 // --------------------------
 // Metadatos por tipo
@@ -54,18 +35,15 @@ const tipoMeta_ = {
 };
 
 const emojiChar_ = {
-  LEVE:     "\u26A0\uFE0F",
-  MODERADA: "\uD83D\uDD36",
-  CRITICA:  "\uD83D\uDEA8",
+  LEVE:     "⚠️",
+  MODERADA: "🔶",
+  CRITICA:  "🚨",
 };
 
 // --------------------------
 // HTML del popup
 // --------------------------
-// R2: foto_file_id contiene "/" (ej. "incidencias/2026-01/abc.jpg")
-// Drive (legacy): solo el fileId sin "/"
 function buildFotoHtml_(inc) {
-  // Preferir URLs pre-construidas por el backend (cuando vienen del endpoint)
   const thumbUrl = inc.fotoThumbUrl || inc.fotoImgUrl || (() => {
     const fileId = String(inc.foto_file_id || inc.fotoFileId || "").trim();
     if (!fileId) return "";
@@ -102,14 +80,22 @@ function buildFotoHtml_(inc) {
   `;
 }
 
-function buildHTML_(inc) {
+function buildHTML_(inc, idx, total) {
   const tipo    = String(inc.tipo || "").toUpperCase();
-  const vin     = String(inc.vin  || "\u2014").toUpperCase();
+  const vin     = String(inc.vin  || "—").toUpperCase();
   const nota    = String(inc.nota || "").trim();
   const reg     = String(inc._regDisplay || inc.registrado_por || inc.calidad_email || "Calidad").trim();
   const meta    = tipoMeta_[tipo] || tipoMeta_.LEVE;
   const em      = emojiChar_[tipo] || emojiChar_.LEVE;
   const fotoHtml = buildFotoHtml_(inc);
+
+  const navHtml = total > 1 ? `
+    <div class="incAlertNav">
+      <button class="incAlertNavBtn" id="btnIncPrev" ${idx === 0 ? "disabled" : ""} aria-label="Anterior">&#8592;</button>
+      <span class="incAlertNavCount">${idx + 1} de ${total}</span>
+      <button class="incAlertNavBtn" id="btnIncNext" ${idx === total - 1 ? "disabled" : ""} aria-label="Siguiente">&#8594;</button>
+    </div>
+  ` : "";
 
   return `
     <div id="${POPUP_ID}" class="incAlertOverlay" role="alertdialog" aria-modal="true"
@@ -117,7 +103,7 @@ function buildHTML_(inc) {
       <div class="incAlertBox" style="--alert-color:${meta.color};">
         <div class="incAlertHead">
           <span class="incAlertBadge">${em} ${escapeHtml(meta.label)}</span>
-          <button id="btnCloseIncAlert" class="incAlertClose" aria-label="Cerrar alerta">\u2715</button>
+          ${navHtml}
         </div>
         <div class="incAlertBody">
           <div class="incAlertRow">
@@ -137,10 +123,10 @@ function buildHTML_(inc) {
         </div>
         <div class="incAlertFooter">
           <div class="incAlertFooterNote">
-            Revisa los detalles con tu supervisor.
+            Corrige el problema antes de continuar.
           </div>
-          <button id="btnCloseIncAlert2" class="incAlertBtn">
-            Entendido \u2713
+          <button id="btnSolucionada" class="incAlertBtnResolve">
+            Incidencia Solucionada &#10003;
           </button>
         </div>
       </div>
@@ -149,51 +135,28 @@ function buildHTML_(inc) {
 }
 
 // --------------------------
-// Core show/close
+// Core show/navigate/resolve
 // --------------------------
 function popup_() { return document.getElementById(POPUP_ID); }
 
-function closeAlert_(inc) {
-  if (inc && inc.id) markSeen_(inc.id);
-  const el = popup_();
-  if (el) {
-    el.classList.remove("incAlertVisible");
-    setTimeout(() => {
-      el.remove();
-      alertOpen_ = false;
-      showNext_();
-    }, 280);
-  } else {
-    alertOpen_ = false;
-    showNext_();
-  }
-}
+function renderCurrent_() {
+  if (!incList_.length) return;
+  const inc = incList_[incIdx_];
 
-function showNext_() {
-  if (alertOpen_ || !alertQueue_.length) return;
-  const inc = alertQueue_.shift();
-  showAlert_(inc);
-}
-
-function showAlert_(inc) {
-  popup_()?.remove();
-  alertOpen_ = true;
-
-  // Resolver nombre del registrador si lo guardado parece un email
   const regRaw = String(inc.registrado_por || inc.calidad_email || "").trim();
   const isEmail = regRaw.includes("@");
 
   const render_ = (regDisplay) => {
     const incWithNombre = { ...inc, _regDisplay: regDisplay };
-    document.body.insertAdjacentHTML("beforeend", buildHTML_(incWithNombre));
+    popup_()?.remove();
+    document.body.insertAdjacentHTML("beforeend", buildHTML_(incWithNombre, incIdx_, incList_.length));
 
     const el = popup_();
-    if (!el) { alertOpen_ = false; return; }
+    if (!el) { popupOpen_ = false; return; }
 
     requestAnimationFrame(() => el.classList.add("incAlertVisible"));
-
-    el.querySelector("#btnCloseIncAlert")?.addEventListener("click",  () => closeAlert_(inc));
-    el.querySelector("#btnCloseIncAlert2")?.addEventListener("click", () => closeAlert_(inc));
+    resetConfirm_();
+    bindPopupEvents_(inc);
   };
 
   if (isEmail) {
@@ -205,52 +168,134 @@ function showAlert_(inc) {
   }
 }
 
+function bindPopupEvents_(inc) {
+  document.getElementById("btnIncPrev")?.addEventListener("click", () => {
+    if (incIdx_ > 0) { incIdx_--; renderCurrent_(); }
+  });
+  document.getElementById("btnIncNext")?.addEventListener("click", () => {
+    if (incIdx_ < incList_.length - 1) { incIdx_++; renderCurrent_(); }
+  });
+
+  const btnSol = document.getElementById("btnSolucionada");
+  if (!btnSol) return;
+
+  btnSol.addEventListener("click", () => {
+    if (!confirmArmed_) {
+      // Primer clic: armar confirmación
+      confirmArmed_ = true;
+      btnSol.textContent = "⚠️ ¿Confirmar solución? Clic de nuevo";
+      btnSol.classList.add("armed");
+      confirmTimer_ = setTimeout(() => resetConfirm_(), 4000);
+    } else {
+      // Segundo clic: resolver
+      clearTimeout(confirmTimer_);
+      confirmArmed_ = false;
+      resolveCurrentInc_();
+    }
+  });
+}
+
+function resetConfirm_() {
+  confirmArmed_ = false;
+  clearTimeout(confirmTimer_);
+  const btn = document.getElementById("btnSolucionada");
+  if (btn) {
+    btn.textContent = "Incidencia Solucionada ✓";
+    btn.classList.remove("armed");
+  }
+}
+
+async function resolveCurrentInc_() {
+  const inc = incList_[incIdx_];
+  if (!inc) return;
+
+  const btn = document.getElementById("btnSolucionada");
+  if (btn) { btn.disabled = true; btn.textContent = "Guardando..."; }
+
+  try {
+    await resolverIncidencia(inc.id, userEmail_);
+  } catch (e) {
+    console.warn("[incidencia-alert] error al resolver:", e.message);
+  }
+
+  // Quitar de la lista y mostrar siguiente (o cerrar si no quedan)
+  incList_.splice(incIdx_, 1);
+  if (incIdx_ >= incList_.length) incIdx_ = Math.max(0, incList_.length - 1);
+
+  if (!incList_.length) {
+    closePopup_();
+  } else {
+    renderCurrent_();
+  }
+}
+
+function closePopup_() {
+  const el = popup_();
+  if (el) {
+    el.classList.remove("incAlertVisible");
+    setTimeout(() => { el.remove(); popupOpen_ = false; }, 280);
+  } else {
+    popupOpen_ = false;
+  }
+}
+
 // --------------------------
 // API publica
 // --------------------------
 
 /**
- * Muestra (o encola) una alerta de incidencia.
- * Llamado desde el realtime cuando llega un INSERT mientras el tecnico esta conectado.
+ * Muestra (o encola) una alerta de incidencia (via realtime INSERT).
  */
 export function showIncidenciaAlert(inc) {
-  if (!inc) return;
-  if (inc.id && getSeenIds_().has(inc.id)) return; // ya la vio antes
-  alertQueue_.push(inc);
-  showNext_();
+  if (!inc || !inc.id) return;
+  // Evitar duplicados
+  if (incList_.some(i => i.id === inc.id)) return;
+  incList_.push(inc);
+
+  if (!popupOpen_) {
+    popupOpen_ = true;
+    incIdx_ = incList_.length - 1;
+    renderCurrent_();
+  }
 }
 
 /**
- * Verifica incidencias historicas para el tecnico logueado y muestra
- * popups por las que todavia no haya cerrado.
+ * Verifica incidencias SIN RESOLVER para el técnico logueado y abre el popup.
+ * Solo muestra las que tienen tiempo_fin IS NULL (pendientes en BD).
  *
- * Llamar al entrar al modulo TECNICO (cubre caso offline -> reconexion).
- *
- * @param {string} email       - email del tecnico logueado
- * @param {number} lookbackHours - cuantas horas hacia atras revisar (default 12)
+ * @param {string} email         - email del técnico logueado
+ * @param {number} lookbackHours - cuántas horas hacia atrás revisar (default 12)
  */
 export async function checkPendingAlerts_(email, lookbackHours = 12) {
   const em = String(email || "").trim().toLowerCase();
   if (!em || !supabaseEnabled()) return;
 
+  userEmail_ = em;
+
   try {
-    // Obtener nombre del técnico (con cache para no repetir el lookup)
     if (!cachedNombre_) cachedNombre_ = await getNombreByEmail(em);
     if (!cachedNombre_) return;
 
     const sinceIso = new Date(Date.now() - lookbackHours * 3600 * 1000).toISOString();
+    // getIncidenciasByTecnico ya filtra tiempo_fin IS NULL
     const rows = await getIncidenciasByTecnico(cachedNombre_, sinceIso);
     if (!Array.isArray(rows) || !rows.length) return;
 
-    const seen = getSeenIds_();
+    // Agregar las que no están ya en la lista
+    const existingIds = new Set(incList_.map(i => i.id));
+    const nuevas = rows
+      .filter(r => r && r.id && !existingIds.has(r.id))
+      .sort((a, b) => new Date(a.fecha_hora || 0) - new Date(b.fecha_hora || 0));
 
-    // Ordenar cronologicamente y filtrar las ya vistas
-    rows
-      .filter(r => r && r.id && !seen.has(r.id))
-      .sort((a, b) => new Date(a.fecha_hora || 0) - new Date(b.fecha_hora || 0))
-      .forEach(r => alertQueue_.push(r));
+    if (!nuevas.length) return;
 
-    showNext_();
+    nuevas.forEach(r => incList_.push(r));
+
+    if (!popupOpen_) {
+      popupOpen_ = true;
+      incIdx_ = 0;
+      renderCurrent_();
+    }
   } catch (e) {
     console.warn("[incidencia-alert] checkPendingAlerts_ error:", e);
   }
@@ -258,7 +303,6 @@ export async function checkPendingAlerts_(email, lookbackHours = 12) {
 
 /**
  * Devuelve el nombre cacheado del técnico logueado.
- * Útil para que otros módulos comparen sin hacer otro lookup.
  */
 export async function getMyNombre_(email) {
   const em = String(email || "").trim().toLowerCase();

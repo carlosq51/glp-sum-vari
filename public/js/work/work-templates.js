@@ -79,16 +79,25 @@ export function buildIncidenciasBtnHTML_(it, key = "") {
       ? `<span class="pill small" style="margin-left:8px;">L:${l} M:${m} C:${c}</span>`
       : `<span class="pill small" style="margin-left:8px; opacity:.8;">L:0 M:0 C:0</span>`;
 
+  const incActivasLabel = (l + m + c) > 0
+    ? `Activas (${l + m + c})`
+    : "Activas";
+
   return `
     <div class="jobActionsGrid" style="margin-bottom:10px;">
       <button class="btnRF" type="button" data-go="INC" data-key="${escapeHtml(key)}"
         style="margin-top:0;">
         Registrar Inc.
       </button>
+      <button class="btnRF" type="button" data-go="QC_INC"
+        data-vin="${escapeHtml(vin)}" data-cid="${escapeHtml(cid)}"
+        style="margin-top:0; background:#16a34a; color:#fff;">
+        ${escapeHtml(incActivasLabel)}
+      </button>
       <button class="btnRF" type="button" data-go="VER_INC"
         data-vin="${escapeHtml(vin)}" data-cid="${escapeHtml(cid)}"
         style="margin-top:0;">
-        Ver incidencias
+        Historial
       </button>
     </div>
   `;

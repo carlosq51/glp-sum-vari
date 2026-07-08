@@ -19,7 +19,7 @@ import { openRFTecModalForVin_ } from "../modals/rf-tecnico-modal.js";
 import { openConformidadModalForKey_ } from "../modals/conformidad.js";
 import { askConfirmFinish_ } from "../modals/confirm-finish.js";
 
-import { openSupIncModal_, fetchIncidencias_, renderIncidencias_ } from "../../supervisor/sup-incidencias.js";
+import { openSupIncModal_, fetchIncidencias_, renderIncidencias_, openQCIncPopup_ } from "../../supervisor/sup-incidencias.js";
 
 function attachWorkDelegationOnce_(mod) {
   const prev = CORE.state.currentModule;
@@ -156,6 +156,14 @@ function attachWorkDelegationOnce_(mod) {
         return;
       }
 
+      if (go === "QC_INC") {
+        e.stopPropagation();
+        const vin = String(goBtn.dataset.vin || it?.vin || "").trim().toUpperCase();
+        const cid = String(goBtn.dataset.cid || it?.conversionId || "").trim();
+        await openQCIncPopup_(vin, cid, { getJSON_user: getJSON, escapeHtml });
+        return;
+      }
+
       if (go === "VER_INC") {
         e.stopPropagation();
         const vin = String(goBtn.dataset.vin || it?.vin || "").trim().toUpperCase();
@@ -283,6 +291,14 @@ function attachFinalizadosDelegationOnce_(mod) {
         e.stopPropagation();
         if (!k) return;
         await openIncidenciaModalForKey_(k);
+        return;
+      }
+
+      if (go === "QC_INC") {
+        e.stopPropagation();
+        const vin = String(btn.dataset.vin || it?.vin || "").trim().toUpperCase();
+        const cid = String(btn.dataset.cid || it?.conversionId || "").trim();
+        await openQCIncPopup_(vin, cid, { getJSON_user: getJSON, escapeHtml });
         return;
       }
 

@@ -465,11 +465,15 @@ export async function getEstadoTrabajo(email, vin, rolTrabajo) {
 
 /**
  * GET incidencias de un VIN — lectura directa Supabase
+ * @param {string} vin
+ * @param {{ soloActivas?: boolean }} opts - soloActivas=true filtra las no resueltas (tiempo_fin IS NULL)
  */
-export async function getIncidencias(vin) {
+export async function getIncidencias(vin, { soloActivas = false } = {}) {
   if (!supabaseEnabled()) throw new Error("Supabase no configurado");
-  
-  const incidencias = await supabaseGet("incidencias", { vin });
+
+  const filter = { vin };
+  if (soloActivas) filter.tiempo_fin = { op: "is", val: "null" };
+  const incidencias = await supabaseGet("incidencias", filter);
 
   // R2 keys contienen "/" (ej: incidencias/2026-04/VIN/archivo.jpg)
   // Drive legacy IDs NO contienen "/"
@@ -491,6 +495,8 @@ export async function getIncidencias(vin) {
   return incidencias
     .map(inc => {
       const urls = photoUrls(inc.foto_file_id);
+      const tInicio = inc.tiempo_inicio ? new Date(inc.tiempo_inicio) : null;
+      const tFin    = inc.tiempo_fin    ? new Date(inc.tiempo_fin)    : null;
       return {
         id: inc.id,
         fecha: inc.fecha_hora,
@@ -506,9 +512,29 @@ export async function getIncidencias(vin) {
         fotoImgUrl: urls.imgUrl,
         fotoFolderId: inc.foto_folder_id || "",
         fotoBatchId: inc.foto_batch_id || "",
+        tiempo_inicio: inc.tiempo_inicio || null,
+        tiempo_fin:    inc.tiempo_fin    || null,
+        resuelta_por:  inc.resuelta_por  || null,
+        duracion_min: (tInicio && tFin) ? Math.round((tFin - tInicio) / 60000) : null,
       };
     })
-    .sort((a, b) => new Date(b.fecha_hora) - new Date(a.fecha_hora));
+    .sort((a, b) => new Date(a.fecha_hora) - new Date(b.fecha_hora));
+}
+
+/**
+ * Marca una incidencia como resuelta vía el backend.
+ * @param {string} id    - UUID de la incidencia
+ * @param {string} email - email del usuario que la resuelve
+ */
+export async function resolverIncidencia(id, email) {
+  const res = await fetch(`/api/incidencia/${encodeURIComponent(id)}/resolver`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json.ok) throw new Error(json.error || `HTTP ${res.status}`);
+  return json;
 }
 
 /**
@@ -532,6 +558,7 @@ export async function getIncidenciasByTecnico(nombre, sinceIso) {
   return supabaseGet("incidencias", {
     tecnico: nombre,
     fecha_hora: { op: "gte", val: sinceIso },
+    tiempo_fin: { op: "is", val: "null" },
   });
 }
 

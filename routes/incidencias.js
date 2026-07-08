@@ -32,6 +32,7 @@ router.post("/api/incidencia", async (req, res) => {
         foto_file_id: "",
         foto_folder_id: "",
         foto_batch_id: "",
+        tiempo_inicio: new Date().toISOString(),
       };
 
       supabaseResult = await supabasePost_("incidencias", incidenciaData);
@@ -76,6 +77,26 @@ router.post("/api/incidencia", async (req, res) => {
     if (!res.headersSent) {
       res.status(500).json({ ok: false, error: String(e.message || e) });
     }
+  }
+});
+
+// PATCH /api/incidencia/:id/resolver — marca una incidencia como resuelta
+router.patch("/api/incidencia/:id/resolver", async (req, res) => {
+  try {
+    const id = String(req.params.id || "").trim();
+    const email = String(req.body?.email || "").trim();
+    if (!id) return res.status(400).json({ ok: false, error: "Falta id" });
+
+    const ahora = new Date().toISOString();
+    const updated = await supabasePatch_("incidencias", { id }, {
+      tiempo_fin: ahora,
+      resuelta_por: email || null,
+    });
+
+    return res.json({ ok: true, tiempo_fin: ahora, updated });
+  } catch (e) {
+    console.error("[PATCH /api/incidencia/:id/resolver]", e.message);
+    return res.status(500).json({ ok: false, error: String(e.message || e) });
   }
 });
 
@@ -125,6 +146,9 @@ router.get("/api/incidencias/by-tecnico", async (req, res) => {
           fotoUrl:       urls.url,
           fotoThumbUrl:  urls.thumbUrl,
           fotoImgUrl:    urls.imgUrl,
+          tiempo_inicio: inc.tiempo_inicio || null,
+          tiempo_fin:    inc.tiempo_fin    || null,
+          resuelta_por:  inc.resuelta_por  || null,
         };
       });
 
@@ -163,8 +187,10 @@ router.get("/api/incidencias/list", async (req, res) => {
     }
 
     const t2 = Date.now();
+    const soloActivas = req.query.activas === "true";
     const items = incidencias
       .slice(0, limit)
+      .filter(inc => !soloActivas || !inc.tiempo_fin)
       .map(inc => {
         const urls = photoUrls(inc.foto_file_id);  // R2 si key tiene "/", Drive si no
         return {
@@ -182,6 +208,9 @@ router.get("/api/incidencias/list", async (req, res) => {
           fotoImgUrl:   urls.imgUrl,
           fotoFolderId: inc.foto_folder_id || "",
           fotoBatchId:  inc.foto_batch_id  || "",
+          tiempo_inicio: inc.tiempo_inicio || null,
+          tiempo_fin:    inc.tiempo_fin    || null,
+          resuelta_por:  inc.resuelta_por  || null,
         };
       });
     timings.push({ label: "map_response", duration: Date.now() - t2 });
@@ -252,6 +281,11 @@ router.get("/api/incidencias/report", async (req, res) => {
     // Map items
     const items = rows.map(inc => {
       const urls = photoUrls(inc.foto_file_id);
+      const tInicio = inc.tiempo_inicio ? new Date(inc.tiempo_inicio) : null;
+      const tFin    = inc.tiempo_fin    ? new Date(inc.tiempo_fin)    : null;
+      const duracionMin = (tInicio && tFin)
+        ? Math.round((tFin - tInicio) / 60000)
+        : null;
       return {
         id:             inc.id,
         fecha_hora:     inc.fecha_hora,
@@ -265,6 +299,10 @@ router.get("/api/incidencias/report", async (req, res) => {
         fotoUrl:        urls.url,
         fotoThumbUrl:   urls.thumbUrl,
         fotoImgUrl:     urls.imgUrl,
+        tiempo_inicio:  inc.tiempo_inicio || null,
+        tiempo_fin:     inc.tiempo_fin    || null,
+        resuelta_por:   inc.resuelta_por  || null,
+        duracion_min:   duracionMin,
       };
     });
 

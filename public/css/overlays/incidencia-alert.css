@@ -169,3 +169,77 @@
   object-fit: cover;
   max-height: 260px;
 }
+
+/* Navegación multi-incidencia */
+.incAlertNav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.incAlertNavBtn {
+  background: rgba(255,255,255,.1);
+  border: 1px solid rgba(255,255,255,.2);
+  color: #fff;
+  border-radius: 6px;
+  width: 30px;
+  height: 30px;
+  font-size: .95rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background .15s;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.incAlertNavBtn:hover:not(:disabled) {
+  background: rgba(255,255,255,.22);
+}
+
+.incAlertNavBtn:disabled {
+  opacity: .3;
+  cursor: default;
+}
+
+.incAlertNavCount {
+  font-size: .78rem;
+  font-weight: 700;
+  color: rgba(255,255,255,.7);
+  white-space: nowrap;
+}
+
+/* Botón de resolución — verde */
+.incAlertBtnResolve {
+  width: 100%;
+  height: 52px;
+  border: none;
+  border-radius: var(--radiusSm);
+  background: #16a34a;
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 900;
+  cursor: pointer;
+  transition: background .2s, opacity .15s;
+}
+
+.incAlertBtnResolve:hover:not(:disabled) {
+  background: #15803d;
+}
+
+.incAlertBtnResolve:disabled {
+  opacity: .55;
+  cursor: default;
+}
+
+/* Estado "armado" — naranja con pulso */
+.incAlertBtnResolve.armed {
+  background: #ea580c;
+  animation: incArmPulse .6s ease-in-out infinite alternate;
+}
+
+@keyframes incArmPulse {
+  from { opacity: 1; }
+  to   { opacity: .78; }
+}
