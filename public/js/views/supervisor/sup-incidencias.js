@@ -263,33 +263,20 @@ function buildQcHTML_(inc, idx, total, regDisplay) {
   return `
     <div id="${QC_POPUP_ID}" class="incAlertOverlay" role="dialog" aria-modal="true">
       <div class="incAlertBox" style="--alert-color:${meta.color};">
-        <div class="incAlertHead">
-          <span class="incAlertBadge">${em} ${esc(meta.label)}</span>
+        <div class="incAlertHead" style="background:${meta.color};border-radius:var(--radius) var(--radius) 0 0;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+          <span style="color:#fff;font-weight:800;font-size:.95rem;letter-spacing:.04em;line-height:1.2;">
+            ${em} INCIDENCIA ${esc(tipo)}${elapsedStr ? ` — <span id="qcIncElapsed">${esc(elapsedStr)}</span>` : ""}
+          </span>
           <div style="display:flex;align-items:center;gap:8px;">
             ${navHtml}
-            <button id="btnQcClose" class="incAlertClose" aria-label="Cerrar">&#10005;</button>
+            <button id="btnQcClose" class="incAlertClose" aria-label="Cerrar" style="color:#fff;opacity:.85;">&#10005;</button>
           </div>
         </div>
+        ${nota || foto ? `
         <div class="incAlertBody">
-          <div class="incAlertRow">
-            <span class="incAlertLbl">Registrado por</span>
-            <span class="incAlertVal">${esc(reg)}</span>
-          </div>
-          <div class="incAlertRow">
-            <span class="incAlertLbl">Técnico</span>
-            <span class="incAlertVal">${esc(tec)}${elapsedStr ? `<span id="qcIncElapsed" style="margin-left:10px;font-size:.75rem;opacity:.55;font-weight:400;">⏱ ${esc(elapsedStr)}</span>` : ""}</span>
-          </div>
-          <div class="incAlertRow">
-            <span class="incAlertLbl">VIN</span>
-            <span class="incAlertVal mono">${esc(vin)}</span>
-          </div>
-          ${nota ? `
-          <div class="incAlertRow">
-            <span class="incAlertLbl">Nota</span>
-            <span class="incAlertVal">${esc(nota)}</span>
-          </div>` : ""}
+          ${nota ? `<p style="margin:0 0 ${foto ? "12px" : "0"};white-space:pre-wrap;font-size:.9rem;opacity:.9;">${esc(nota)}</p>` : ""}
           ${foto}
-        </div>
+        </div>` : ""}
         <div class="incAlertFooter">
           <button id="btnQcResolver" class="incAlertBtnResolve">
             Registrar como Solucionada &#10003;
@@ -323,7 +310,7 @@ function renderQcCurrent_() {
     if (inc.tiempo_inicio) {
       qcElapsedTimer_ = setInterval(() => {
         const span = document.getElementById("qcIncElapsed");
-        if (span) span.textContent = `⏱ ${formatElapsed_(inc.tiempo_inicio) || ""}`;
+        if (span) span.textContent = formatElapsed_(inc.tiempo_inicio) || "";
         else { clearInterval(qcElapsedTimer_); qcElapsedTimer_ = null; }
       }, 1000);
     }

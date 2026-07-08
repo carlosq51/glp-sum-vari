@@ -119,30 +119,18 @@ function buildHTML_(inc, idx, total) {
     <div id="${POPUP_ID}" class="incAlertOverlay" role="alertdialog" aria-modal="true"
          aria-label="Alerta de incidencia">
       <div class="incAlertBox" style="--alert-color:${meta.color};">
-        <div class="incAlertHead">
-          <span class="incAlertBadge">${em} ${escapeHtml(meta.label)}</span>
+        <div class="incAlertHead" style="background:${meta.color};border-radius:var(--radius) var(--radius) 0 0;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+          <span style="color:#fff;font-weight:800;font-size:.95rem;letter-spacing:.04em;line-height:1.2;">
+            ${em} INCIDENCIA ${escapeHtml(tipo)}${elapsedStr ? ` — <span id="incAlertElapsed">${escapeHtml(elapsedStr)}</span>` : ""}
+          </span>
           ${navHtml}
         </div>
+        ${nota || fotoHtml ? `
         <div class="incAlertBody">
-          <div class="incAlertRow">
-            <span class="incAlertLbl">Registrado por</span>
-            <span class="incAlertVal">${escapeHtml(reg)}</span>
-          </div>
-          <div class="incAlertRow">
-            <span class="incAlertLbl">VIN</span>
-            <span class="incAlertVal mono">${escapeHtml(vin)}${elapsedStr ? `<span id="incAlertElapsed" style="margin-left:10px;font-size:.75rem;opacity:.55;font-weight:400;">⏱ ${escapeHtml(elapsedStr)}</span>` : ""}</span>
-          </div>
-          ${nota ? `
-          <div class="incAlertRow">
-            <span class="incAlertLbl">Nota</span>
-            <span class="incAlertVal">${escapeHtml(nota)}</span>
-          </div>` : ""}
+          ${nota ? `<p style="margin:0 0 ${fotoHtml ? "12px" : "0"};white-space:pre-wrap;font-size:.9rem;opacity:.9;">${escapeHtml(nota)}</p>` : ""}
           ${fotoHtml}
-        </div>
+        </div>` : ""}
         <div class="incAlertFooter">
-          <div class="incAlertFooterNote">
-            Corrige el problema antes de continuar.
-          </div>
           <button id="btnSolucionada" class="incAlertBtnResolve">
             Incidencia Solucionada &#10003;
           </button>
@@ -181,7 +169,7 @@ function renderCurrent_() {
     if (inc.tiempo_inicio) {
       elapsedTimer_ = setInterval(() => {
         const span = document.getElementById("incAlertElapsed");
-        if (span) span.textContent = `⏱ ${formatElapsed_(inc.tiempo_inicio) || ""}`;
+        if (span) span.textContent = formatElapsed_(inc.tiempo_inicio) || "";
         else { clearInterval(elapsedTimer_); elapsedTimer_ = null; }
       }, 1000);
     }
