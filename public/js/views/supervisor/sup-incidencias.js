@@ -142,15 +142,20 @@ export function renderIncidencias_(j, ctx, { escapeHtml, fmtShort_ }) {
       <div style="margin-top:10px;border-radius:var(--radius);border:1px solid rgba(255,255,255,.1);
                   border-left:3px solid ${color};padding:12px 14px;
                   background:var(--bg2,rgba(255,255,255,.04));opacity:${resuelta ? ".7" : "1"};">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;">
-          <span style="background:${color}22;color:${color};border:1px solid ${color}55;
-                       border-radius:6px;padding:3px 10px;font-weight:800;font-size:.82rem;
-                       letter-spacing:.03em;">
-            ${emoji} ${escapeHtml(tipo || "INC")}
-          </span>
-          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:10px;">
+          <div style="display:flex;flex-direction:column;gap:5px;">
+            <span style="background:${color}22;color:${color};border:1px solid ${color}55;
+                         border-radius:6px;padding:4px 12px;font-weight:800;font-size:.85rem;
+                         letter-spacing:.04em;">
+              ${emoji} INCIDENCIA ${escapeHtml(tipo || "—")}
+            </span>
+            ${it.duracion_min != null
+              ? `<span style="color:${color};font-size:.8rem;font-weight:700;padding-left:4px;">⏱ ${fmtDurMin(it.duracion_min)}</span>`
+              : ""}
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
             ${estadoBadge}
-            <span style="font-size:.72rem;opacity:.5;">${fmtIncFecha_(fecha, { escapeHtml, fmtShort_ })}</span>
+            <span style="font-size:.7rem;opacity:.45;">${fmtIncFecha_(fecha, { escapeHtml, fmtShort_ })}</span>
           </div>
         </div>
 
@@ -167,7 +172,6 @@ export function renderIncidencias_(j, ctx, { escapeHtml, fmtShort_ }) {
                         ${escapeHtml(extra)}</div>`
                  : (!titulo ? `<div class="small" style="margin-top:6px;opacity:.4;">Sin nota.</div>` : "")}
 
-        ${duracionHtml}
         ${fotoHtml}
       </div>
     `;
