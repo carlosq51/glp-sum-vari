@@ -10,6 +10,18 @@
 <body>
   <div id="appRoot"></div>
 
+  <!-- Auto-recarga cuando el service worker se actualiza (nuevos deploys) -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      var _swRefreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', function () {
+        if (_swRefreshing) return;
+        _swRefreshing = true;
+        window.location.reload();
+      });
+    }
+  </script>
+
   <script src="/env-config.js"></script>
   <script src="https://unpkg.com/html5-qrcode" defer></script>
   <script type="module" src="./app.js"></script>
