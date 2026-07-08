@@ -73,10 +73,7 @@ export function buildIncidenciasBtnHTML_(it, key = "") {
   const l = Number(it?.inc_leve || 0);
   const m = Number(it?.inc_moderada || 0);
   const c = Number(it?.inc_critica || 0);
-
-  const incActivasLabel = (l + m + c) > 0
-    ? `Activas (${l + m + c})`
-    : "Activas";
+  const total = l + m + c;
 
   return `
     <div class="jobActionsGrid" style="margin-bottom:10px;">
@@ -84,15 +81,10 @@ export function buildIncidenciasBtnHTML_(it, key = "") {
         style="margin-top:0;">
         Registrar Inc.
       </button>
-      <button class="btnRF" type="button" data-go="QC_INC"
-        data-vin="${escapeHtml(vin)}" data-cid="${escapeHtml(cid)}"
-        style="margin-top:0; background:#16a34a; color:#fff;">
-        ${escapeHtml(incActivasLabel)}
-      </button>
       <button class="btnRF" type="button" data-go="VER_INC"
         data-vin="${escapeHtml(vin)}" data-cid="${escapeHtml(cid)}"
         style="margin-top:0;">
-        Historial
+        📋 Ver incidencias${total > 0 ? ` (${total})` : ""}
       </button>
     </div>
   `;

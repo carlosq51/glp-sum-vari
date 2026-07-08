@@ -86,81 +86,86 @@ export function renderIncidencias_(j, ctx, { escapeHtml, fmtShort_ }) {
 
   if (!list) return;
 
+  const TIPO_COLOR = { LEVE: "#f59e0b", MODERADA: "#f97316", CRITICA: "#ef4444" };
+  const TIPO_EMOJI = { LEVE: "⚠️", MODERADA: "🔶", CRITICA: "🚨" };
+
   list.innerHTML = items.map((it) => {
-    const tipo = String(it.tipo || "").toUpperCase();
-    const tecnico = it.tecnico || "-";
-    const rawNota = it.nota || "";
-    const fecha = it.fecha_hora || it.fecha || "";
+    const tipo     = String(it.tipo || "").toUpperCase();
+    const tecnico  = it.tecnico || "-";
+    const rawNota  = it.nota || "";
+    const fecha    = it.fecha_hora || it.fecha || "";
     const { titulo, extra } = parseNota_(rawNota);
     const resuelta = !!it.tiempo_fin;
+    const color    = TIPO_COLOR[tipo] || "#f59e0b";
+    const emoji    = TIPO_EMOJI[tipo] || "⚠️";
 
-    const hasFoto = !!(it.fotoThumbUrl || it.fotoUrl || it.fotoImgUrl);
+    const hasFoto   = !!(it.fotoThumbUrl || it.fotoUrl || it.fotoImgUrl);
     const isR2Photo = !!(it.fotoThumbUrl && !it.fotoThumbUrl.includes("drive.google"));
-    const fotoHtml = hasFoto ? `
+    const fotoHtml  = hasFoto ? `
       <div style="margin-top:10px;">
         ${isR2Photo ? `
-          <img
-            src="${escapeHtml(it.fotoThumbUrl || it.fotoImgUrl)}"
-            alt="Foto incidencia"
-            style="width:100%; max-width:280px; height:auto; border-radius:10px;
-                   border:1px solid rgba(255,255,255,.18); display:block;"
-            loading="lazy"
-          />
+          <img src="${escapeHtml(it.fotoThumbUrl || it.fotoImgUrl)}" alt="Foto incidencia"
+               style="width:100%; max-width:280px; height:auto; border-radius:8px;
+                      border:1px solid rgba(255,255,255,.15); display:block;" loading="lazy" />
         ` : `
           <a href="${escapeHtml(it.fotoUrl || it.fotoImgUrl)}" target="_blank" rel="noopener">
-            <img
-              src="${escapeHtml(it.fotoThumbUrl || it.fotoImgUrl)}"
-              alt="Foto incidencia"
-              style="width:140px; height:auto; border-radius:10px;
-                     border:1px solid rgba(255,255,255,.18);"
-              loading="lazy"
-            />
+            <img src="${escapeHtml(it.fotoThumbUrl || it.fotoImgUrl)}" alt="Foto incidencia"
+                 style="width:140px; height:auto; border-radius:8px;
+                        border:1px solid rgba(255,255,255,.15);" loading="lazy" />
           </a>
-          <div class="small" style="opacity:.85; margin-top:6px;">(clic para abrir en Drive)</div>
+          <div class="small" style="opacity:.7; margin-top:4px;">(clic para abrir en Drive)</div>
         `}
       </div>
     ` : "";
 
+    const fmtDurMin = (min) => {
+      if (min < 60) return `${min} min`;
+      const h = Math.floor(min / 60), m = min % 60;
+      return m > 0 ? `${h}h ${m}min` : `${h}h`;
+    };
+
     const duracionHtml = it.duracion_min != null
-      ? `<div class="small" style="margin-top:4px; opacity:.7;">⏱ Duración: ${it.duracion_min} min</div>`
-      : (resuelta ? `<div class="small" style="margin-top:4px; opacity:.7;">⏱ Tiempo no disponible</div>` : "");
+      ? `<span style="display:inline-flex;align-items:center;gap:4px;margin-top:10px;
+                      background:${color}22;color:${color};border:1px solid ${color}44;
+                      border-radius:20px;padding:3px 10px;font-size:.78rem;font-weight:700;">
+           ⏱ ${fmtDurMin(it.duracion_min)}
+         </span>`
+      : "";
 
     const estadoBadge = resuelta
-      ? `<span style="font-size:.7rem; background:#16a34a; color:#fff; border-radius:4px; padding:2px 6px; margin-left:6px;">Resuelta</span>`
-      : `<span style="font-size:.7rem; background:#dc2626; color:#fff; border-radius:4px; padding:2px 6px; margin-left:6px;">Pendiente</span>`;
+      ? `<span style="font-size:.7rem;background:#16a34a22;color:#4ade80;border:1px solid #16a34a44;
+                      border-radius:20px;padding:2px 8px;font-weight:600;">✓ Resuelta</span>`
+      : `<span style="font-size:.7rem;background:#dc262622;color:#f87171;border:1px solid #dc262644;
+                      border-radius:20px;padding:2px 8px;font-weight:600;">● Activa</span>`;
 
     return `
-      <div class="card" style="margin-top:10px; border:1px solid rgba(255,255,255,.14); opacity:${resuelta ? ".65" : "1"};">
-        <div class="row space-between" style="gap:10px;">
-          <div style="font-weight:900;">
-            ${escapeHtml(tipo || "INCIDENCIA")}${estadoBadge}
-          </div>
-          <div class="small" style="opacity:.9;">
-            ${fmtIncFecha_(fecha, { escapeHtml, fmtShort_ })}
+      <div style="margin-top:10px;border-radius:var(--radius);border:1px solid rgba(255,255,255,.1);
+                  border-left:3px solid ${color};padding:12px 14px;
+                  background:var(--bg2,rgba(255,255,255,.04));opacity:${resuelta ? ".7" : "1"};">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;">
+          <span style="background:${color}22;color:${color};border:1px solid ${color}55;
+                       border-radius:6px;padding:3px 10px;font-weight:800;font-size:.82rem;
+                       letter-spacing:.03em;">
+            ${emoji} ${escapeHtml(tipo || "INC")}
+          </span>
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
+            ${estadoBadge}
+            <span style="font-size:.72rem;opacity:.5;">${fmtIncFecha_(fecha, { escapeHtml, fmtShort_ })}</span>
           </div>
         </div>
 
-        <div class="small" style="margin-top:8px;">
+        <div class="small" style="margin-bottom:3px;">
           <b>Técnico:</b> ${escapeHtml(tecnico)}
         </div>
+        ${it.vin ? `<div class="small" style="margin-bottom:6px;opacity:.8;">
+          <b>VIN:</b> <span class="mono">${escapeHtml(it.vin)}</span>
+        </div>` : ""}
 
-        ${it.vin ? `
-          <div class="small" style="margin-top:4px;">
-            <b>VIN:</b> <span class="mono">${escapeHtml(it.vin)}</span>
-          </div>
-        ` : ""}
-
-        ${titulo ? `
-          <div class="small incTituloChip" style="margin-top:8px;">
-            📌 ${escapeHtml(titulo)}
-          </div>
-        ` : ""}
-
-        ${extra ? `
-          <div class="small" style="margin-top:6px; white-space:pre-wrap; opacity:.85;">
-            ${escapeHtml(extra)}
-          </div>
-        ` : (!titulo ? `<div class="small" style="margin-top:8px; opacity:.6;">Sin nota.</div>` : "")}
+        ${titulo ? `<div class="small" style="margin-top:6px;padding:4px 8px;background:rgba(255,255,255,.06);
+                        border-radius:4px;">📌 ${escapeHtml(titulo)}</div>` : ""}
+        ${extra  ? `<div class="small" style="margin-top:6px;white-space:pre-wrap;opacity:.8;">
+                        ${escapeHtml(extra)}</div>`
+                 : (!titulo ? `<div class="small" style="margin-top:6px;opacity:.4;">Sin nota.</div>` : "")}
 
         ${duracionHtml}
         ${fotoHtml}
@@ -175,12 +180,13 @@ export function renderIncidencias_(j, ctx, { escapeHtml, fmtShort_ }) {
 
 const QC_POPUP_ID = "qcIncPopup";
 
-let qcList_         = [];
-let qcIdx_          = 0;
-let qcOpen_         = false;
-let qcEscapeHtml_   = null;
-let qcUserEmail_    = "";
-let qcElapsedTimer_ = null;
+let qcList_          = [];
+let qcIdx_           = 0;
+let qcOpen_          = false;
+let qcEscapeHtml_    = null;
+let qcUserEmail_     = "";
+let qcElapsedTimer_  = null;
+let qcResolveClose_  = null;
 
 function formatElapsed_(tiempoInicio) {
   if (!tiempoInicio) return null;
@@ -343,11 +349,15 @@ function renderQcCurrent_() {
 function closeQcPopup_() {
   if (qcElapsedTimer_) { clearInterval(qcElapsedTimer_); qcElapsedTimer_ = null; }
   const el = qcPopup_();
+  const done = () => {
+    qcOpen_ = false;
+    if (qcResolveClose_) { qcResolveClose_(); qcResolveClose_ = null; }
+  };
   if (el) {
     el.classList.remove("incAlertVisible");
-    setTimeout(() => { el.remove(); qcOpen_ = false; }, 280);
+    setTimeout(() => { el.remove(); done(); }, 280);
   } else {
-    qcOpen_ = false;
+    done();
   }
 }
 
@@ -405,15 +415,15 @@ export async function openQCIncPopup_(vin, conversionId, { getJSON_user, escapeH
     }
   }
 
-  if (!activas.length) {
-    alert("No hay incidencias activas para esta OT.");
-    return;
-  }
+  if (!activas.length) return false;
 
   qcList_ = activas;
   qcIdx_  = 0;
   qcOpen_ = true;
-  renderQcCurrent_();
+  return new Promise(resolve => {
+    qcResolveClose_ = resolve;
+    renderQcCurrent_();
+  });
 }
 
 // --------------------------
@@ -426,30 +436,21 @@ export function bindSupIncidencias_({
   fmtShort_,
   getEmail,
 }) {
-  // Click en badge de incidencias activas → abre popup QC
   document.getElementById("supTable")?.addEventListener("click", async (e) => {
     if (CORE.state.currentModule !== "SUPERVISOR") return;
 
-    // Botón para popup de resolución QC (incidencias activas)
-    const btnQC = e.target?.closest?.("button[data-qc-inc]");
-    if (btnQC) {
-      const vin = String(btnQC.dataset.vin || "").trim().toUpperCase();
-      const cid = String(btnQC.dataset.cid || "").trim();
-      const email = typeof getEmail === "function" ? getEmail() : "";
-      await openQCIncPopup_(vin, cid, { getJSON_user, escapeHtml, userEmail: email });
-      return;
-    }
+    const btn = e.target?.closest?.("button[data-sup-inc]");
+    if (!btn) return;
 
-    // Botón para modal histórico (todas las incidencias)
-    const btnHist = e.target?.closest?.("button[data-sup-inc]");
-    if (!btnHist) return;
+    const vin          = String(btn.dataset.vin || "").trim().toUpperCase();
+    const conversionId = String(btn.dataset.cid || "").trim();
+    const who          = String(btn.dataset.who || "").trim();
+    const email        = typeof getEmail === "function" ? getEmail() : "";
 
-    const vin = String(btnHist.dataset.vin || "").trim().toUpperCase();
-    const conversionId = String(btnHist.dataset.cid || "").trim();
-    const who = String(btnHist.dataset.who || "").trim();
+    // Primero intenta mostrar activas, luego siempre abre histórico
+    await openQCIncPopup_(vin, conversionId, { getJSON_user, escapeHtml, userEmail: email });
 
     openSupIncModal_();
-
     const msg = document.getElementById("supIncMsg");
     if (msg) msg.textContent = "Cargando...";
 

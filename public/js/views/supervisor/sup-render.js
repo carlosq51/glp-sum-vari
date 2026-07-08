@@ -269,22 +269,12 @@ export function renderRowGroup_(row, { escapeHtml, fmtShort_ }) {
               <button
                 type="button"
                 class="btn3"
-                data-qc-inc="1"
-                data-vin="${escapeHtml(vin)}"
-                data-cid="${escapeHtml(cidAny)}"
-                style="background:#16a34a; color:#fff;"
-              >
-                Activas
-              </button>
-              <button
-                type="button"
-                class="btn3"
                 data-sup-inc="1"
                 data-vin="${escapeHtml(vin)}"
                 data-cid="${escapeHtml(cidAny)}"
                 data-who="${escapeHtml("VIN " + vin)}"
               >
-                📋 Historial
+                📋 Incidencias
               </button>
             </div>
           `
@@ -339,22 +329,12 @@ export function renderRowNormal_(it, { escapeHtml, fmtShort_ }) {
               <button
                 type="button"
                 class="btn3"
-                data-qc-inc="1"
-                data-vin="${escapeHtml(vinCard)}"
-                data-cid="${escapeHtml(conversionIdCard)}"
-                style="background:#16a34a; color:#fff;"
-              >
-                Activas
-              </button>
-              <button
-                type="button"
-                class="btn3"
                 data-sup-inc="1"
                 data-vin="${escapeHtml(vinCard)}"
                 data-cid="${escapeHtml(conversionIdCard)}"
                 data-who="${escapeHtml(who)}"
               >
-                📋 Historial
+                📋 Incidencias
               </button>
               ${String(it?.estado||'').toUpperCase() === 'TRABAJANDO' ? `
               <button type="button" class="btn3"
