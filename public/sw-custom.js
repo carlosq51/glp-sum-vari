@@ -10,7 +10,12 @@ cleanupOutdatedCaches();
 registerRoute(new NavigationRoute(createHandlerBoundToURL('index.html')));
 
 self.skipWaiting();
-self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
+self.addEventListener('activate', e => e.waitUntil(
+  self.clients.claim().then(() =>
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+      .then(clients => Promise.all(clients.map(c => c.navigate(c.url).catch(() => {}))))
+  )
+));
 
 // ── Push: mostrar notificación cuando el backend avisa ───────────────────────
 self.addEventListener('push', event => {
