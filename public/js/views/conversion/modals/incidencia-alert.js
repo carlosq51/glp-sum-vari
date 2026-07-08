@@ -20,6 +20,7 @@ let userEmail_ = "";   // email del técnico logueado (seteado en checkPendingAl
 // estado del botón de confirmar
 let confirmArmed_  = false;
 let confirmTimer_  = null;
+let elapsedTimer_  = null;
 
 const POPUP_ID = "incAlertPopup";
 
@@ -39,6 +40,21 @@ const emojiChar_ = {
   MODERADA: "🔶",
   CRITICA:  "🚨",
 };
+
+// --------------------------
+// Helpers
+// --------------------------
+function formatElapsed_(tiempoInicio) {
+  if (!tiempoInicio) return null;
+  const ms = Date.now() - new Date(tiempoInicio).getTime();
+  if (ms < 0) return null;
+  const totalMin = Math.floor(ms / 60000);
+  if (totalMin < 1) return "< 1 min";
+  if (totalMin < 60) return `${totalMin} min`;
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return m > 0 ? `${h}h ${m}min` : `${h}h`;
+}
 
 // --------------------------
 // HTML del popup
@@ -81,13 +97,14 @@ function buildFotoHtml_(inc) {
 }
 
 function buildHTML_(inc, idx, total) {
-  const tipo    = String(inc.tipo || "").toUpperCase();
-  const vin     = String(inc.vin  || "—").toUpperCase();
-  const nota    = String(inc.nota || "").trim();
-  const reg     = String(inc._regDisplay || inc.registrado_por || inc.calidad_email || "Calidad").trim();
-  const meta    = tipoMeta_[tipo] || tipoMeta_.LEVE;
-  const em      = emojiChar_[tipo] || emojiChar_.LEVE;
-  const fotoHtml = buildFotoHtml_(inc);
+  const tipo       = String(inc.tipo || "").toUpperCase();
+  const vin        = String(inc.vin  || "—").toUpperCase();
+  const nota       = String(inc.nota || "").trim();
+  const reg        = String(inc._regDisplay || inc.registrado_por || inc.calidad_email || "Calidad").trim();
+  const meta       = tipoMeta_[tipo] || tipoMeta_.LEVE;
+  const em         = emojiChar_[tipo] || emojiChar_.LEVE;
+  const fotoHtml   = buildFotoHtml_(inc);
+  const elapsedStr = formatElapsed_(inc.tiempo_inicio);
 
   const navHtml = total > 1 ? `
     <div class="incAlertNav">
@@ -114,6 +131,11 @@ function buildHTML_(inc, idx, total) {
             <span class="incAlertLbl">VIN</span>
             <span class="incAlertVal mono">${escapeHtml(vin)}</span>
           </div>
+          ${elapsedStr ? `
+          <div class="incAlertRow">
+            <span class="incAlertLbl">⏱ Tiempo activa</span>
+            <span class="incAlertVal" id="incAlertElapsed" style="font-weight:700;color:var(--alert-color);">${escapeHtml(elapsedStr)}</span>
+          </div>` : ""}
           ${nota ? `
           <div class="incAlertRow">
             <span class="incAlertLbl">Nota</span>
@@ -143,6 +165,8 @@ function renderCurrent_() {
   if (!incList_.length) return;
   const inc = incList_[incIdx_];
 
+  if (elapsedTimer_) { clearInterval(elapsedTimer_); elapsedTimer_ = null; }
+
   const regRaw = String(inc.registrado_por || inc.calidad_email || "").trim();
   const isEmail = regRaw.includes("@");
 
@@ -157,6 +181,14 @@ function renderCurrent_() {
     requestAnimationFrame(() => el.classList.add("incAlertVisible"));
     resetConfirm_();
     bindPopupEvents_(inc);
+
+    if (inc.tiempo_inicio) {
+      elapsedTimer_ = setInterval(() => {
+        const span = document.getElementById("incAlertElapsed");
+        if (span) span.textContent = formatElapsed_(inc.tiempo_inicio) || "";
+        else { clearInterval(elapsedTimer_); elapsedTimer_ = null; }
+      }, 30000);
+    }
   };
 
   if (isEmail) {
@@ -230,6 +262,7 @@ async function resolveCurrentInc_() {
 }
 
 function closePopup_() {
+  if (elapsedTimer_) { clearInterval(elapsedTimer_); elapsedTimer_ = null; }
   const el = popup_();
   if (el) {
     el.classList.remove("incAlertVisible");

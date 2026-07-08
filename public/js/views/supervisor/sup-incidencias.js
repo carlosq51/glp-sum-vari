@@ -175,11 +175,24 @@ export function renderIncidencias_(j, ctx, { escapeHtml, fmtShort_ }) {
 
 const QC_POPUP_ID = "qcIncPopup";
 
-let qcList_       = [];
-let qcIdx_        = 0;
-let qcOpen_       = false;
-let qcEscapeHtml_ = null;
-let qcUserEmail_  = "";
+let qcList_         = [];
+let qcIdx_          = 0;
+let qcOpen_         = false;
+let qcEscapeHtml_   = null;
+let qcUserEmail_    = "";
+let qcElapsedTimer_ = null;
+
+function formatElapsed_(tiempoInicio) {
+  if (!tiempoInicio) return null;
+  const ms = Date.now() - new Date(tiempoInicio).getTime();
+  if (ms < 0) return null;
+  const totalMin = Math.floor(ms / 60000);
+  if (totalMin < 1) return "< 1 min";
+  if (totalMin < 60) return `${totalMin} min`;
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return m > 0 ? `${h}h ${m}min` : `${h}h`;
+}
 
 const tipoMeta_ = {
   LEVE:     { label: "Incidencia LEVE",     color: "#f59e0b" },
@@ -217,15 +230,16 @@ function buildQcFotoHtml_(inc) {
 }
 
 function buildQcHTML_(inc, idx, total) {
-  const esc  = qcEscapeHtml_ || ((x) => x);
-  const tipo = String(inc.tipo || "").toUpperCase();
-  const meta = tipoMeta_[tipo] || tipoMeta_.LEVE;
-  const em   = emojiChar_[tipo] || "⚠️";
-  const vin  = String(inc.vin  || "—").toUpperCase();
-  const nota = String(inc.nota || "").trim();
-  const reg  = String(inc.registrado_por || "Calidad").trim();
-  const tec  = String(inc.tecnico || "—").trim();
-  const foto = buildQcFotoHtml_(inc);
+  const esc        = qcEscapeHtml_ || ((x) => x);
+  const tipo       = String(inc.tipo || "").toUpperCase();
+  const meta       = tipoMeta_[tipo] || tipoMeta_.LEVE;
+  const em         = emojiChar_[tipo] || "⚠️";
+  const vin        = String(inc.vin  || "—").toUpperCase();
+  const nota       = String(inc.nota || "").trim();
+  const reg        = String(inc.registrado_por || "Calidad").trim();
+  const tec        = String(inc.tecnico || "—").trim();
+  const foto       = buildQcFotoHtml_(inc);
+  const elapsedStr = formatElapsed_(inc.tiempo_inicio);
 
   const navHtml = total > 1 ? `
     <div class="incAlertNav">
@@ -258,6 +272,11 @@ function buildQcHTML_(inc, idx, total) {
             <span class="incAlertLbl">VIN</span>
             <span class="incAlertVal mono">${esc(vin)}</span>
           </div>
+          ${elapsedStr ? `
+          <div class="incAlertRow">
+            <span class="incAlertLbl">⏱ Tiempo activa</span>
+            <span class="incAlertVal" id="qcIncElapsed" style="font-weight:700;color:${meta.color};">${esc(elapsedStr)}</span>
+          </div>` : ""}
           ${nota ? `
           <div class="incAlertRow">
             <span class="incAlertLbl">Nota</span>
@@ -282,6 +301,8 @@ function renderQcCurrent_() {
   if (!qcList_.length) return;
   const inc = qcList_[qcIdx_];
 
+  if (qcElapsedTimer_) { clearInterval(qcElapsedTimer_); qcElapsedTimer_ = null; }
+
   qcPopup_()?.remove();
   document.body.insertAdjacentHTML("beforeend", buildQcHTML_(inc, qcIdx_, qcList_.length));
 
@@ -289,6 +310,14 @@ function renderQcCurrent_() {
   if (!el) { qcOpen_ = false; return; }
 
   requestAnimationFrame(() => el.classList.add("incAlertVisible"));
+
+  if (inc.tiempo_inicio) {
+    qcElapsedTimer_ = setInterval(() => {
+      const span = document.getElementById("qcIncElapsed");
+      if (span) span.textContent = formatElapsed_(inc.tiempo_inicio) || "";
+      else { clearInterval(qcElapsedTimer_); qcElapsedTimer_ = null; }
+    }, 30000);
+  }
 
   document.getElementById("btnQcClose")?.addEventListener("click", closeQcPopup_);
   el.addEventListener("click", (e) => { if (e.target === el) closeQcPopup_(); });
@@ -304,6 +333,7 @@ function renderQcCurrent_() {
 }
 
 function closeQcPopup_() {
+  if (qcElapsedTimer_) { clearInterval(qcElapsedTimer_); qcElapsedTimer_ = null; }
   const el = qcPopup_();
   if (el) {
     el.classList.remove("incAlertVisible");
