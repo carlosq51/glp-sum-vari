@@ -1,242 +1,569 @@
-// ==========================================================================
-// ARCHITECTURE.md — Mapa de la arquitectura del frontend GLP Control
-// ==========================================================================
-//
-// Este archivo documenta cómo está organizado el código para que cualquier
-// desarrollador nuevo (o tú mismo en 6 meses) pueda orientarse rápido.
-//
-// ==========================================================================
+# Arquitectura y Lógica — glp-ui
 
-# Arquitectura del Frontend — GLP Control
-
-## Resumen
-
-SPA (Single Page Application) vanilla JS con ES Modules nativos.
-Sin framework, sin bundler — los archivos se sirven directamente desde `public/`.
+> Estado actual del proyecto. Última revisión: 2026-07-08.
+> Este documento describe lo que ES, no lo que debería ser.
 
 ---
 
-## Estructura de carpetas
+## 1. Visión General
+
+PWA para gestión de conversiones GLP. Los técnicos (MOTOR / TANQUE) registran eventos de trabajo, el ramalero gestiona solicitudes de ramales, y los supervisores ven reportes en tiempo real.
+
+**Stack:**
+
+| Capa | Tecnología |
+|---|---|
+| Frontend | Vanilla JS ES Modules + Vite 6 |
+| Backend | Node.js + Express 5 |
+| Base de datos | Supabase (PostgreSQL vía REST API — sin SDK) |
+| Almacenamiento fotos | Cloudflare R2 (compatible S3) |
+| Reportes legacy | Google Apps Script + Google Sheets |
+| PWA / SW | Vite Plugin PWA + Workbox (`injectManifest`) |
+| Push notifications | Web Push API (VAPID) |
+| Gráficos | Chart.js 4 |
+| QR | `qrcode` npm + `html5-qrcode` |
+
+---
+
+## 2. Estructura de Carpetas
 
 ```
-public/
-├── app.js                     ← Entry point (bootstrap)
-├── index.html                 ← HTML mínimo (<div id="appRoot">)
-├── styles.css                 ← Punto de entrada CSS (@import cascada)
+glp-ui/
+├── index.js                  ← Backend completo (monolito ~5000 LOC)
+├── r2-uploads.js             ← Helpers Cloudflare R2
+├── vite.config.js            ← Build + PWA config
+├── package.json
+├── .env                      ← Variables locales (no va a producción)
 │
-├── css/                           ← Estilos modularizados (orden de cascada)
-│   ├── 00-token.css               ← Variables CSS (colores, espaciados, radios)
-│   ├── 01-base.css                ← Reset + tipografía base
-│   ├── 02-layout.css              ← Grid, flex, utilidades de layout
-│   ├── components/                ← Componentes reutilizables (antes 03-components.css)
-│   │   ├── cards.css              ← .card, .innerCard
-│   │   ├── inputs.css             ← input, select, textarea
-│   │   ├── buttons.css            ← Botones base + variantes (.btn2, .btn3)
-│   │   ├── buttons-action.css     ← INICIO / PAUSA / FIN / NOTA + jobActionsGrid
-│   │   ├── pills.css              ← .pill / tags
-│   │   ├── badges.css             ← .badge-ok, .badge-warn, .badge-danger, .badge-note
-│   │   ├── code.css               ← pre, .status
-│   │   ├── checkboxes.css         ← .ckRow
-│   │   ├── topbar.css             ← .topbar genérica
-│   │   ├── thumbs.css             ← .thumb, .thumbGrid (miniaturas de fotos)
-│   │   └── utilities.css          ← .hidden, .truncate, .divider
-│   ├── overlays/                  ← Overlays y modales (antes 04-overlay.css)
-│   │   ├── loading.css            ← .overlay, .spinner, animaciones
-│   │   ├── modal.css              ← .modal, .modalBox, .modalHead, .modalBody
-│   │   └── confirm-modal.css      ← .modalConfirm (FIN trabajo)
-│   ├── 05-autocomplete.css        ← Dropdowns de autocomplete (posición absoluta)
-│   ├── views/                     ← Estilos por vista (antes 06-views.css)
-│   │   ├── topbar-shell.css       ← .topbarShell, .topbarMain, responsive
-│   │   ├── vin-row.css            ← .vinRow3, botones QR, inputs VIN mono
-│   │   ├── supervisor.css         ← Filtros, fechas, marca, VIN supervisor
-│   │   ├── ramalero.css           ← .ramalRow3
-│   │   ├── asignado.css           ← .asignadoRow (chip técnico asignado)
-│   │   ├── movilizador.css        ← #viewMOVILIZADOR (tabla completa)
-│   │   ├── incidencias.css        ← #incModal ajustes
-│   │   ├── qr-reader.css          ← .qrReader (html5-qrcode)
-│   │   └── debug.css              ← Stubs ocultos, debug-hidden
-│   └── 07-uploader.css            ← Módulo uploader (aislado al final)
+├── public/
+│   ├── app.js                ← Bootstrap del frontend (punto de entrada)
+│   ├── sw-custom.js          ← Fuente del Service Worker (Vite lo procesa)
+│   ├── index.html
+│   │
+│   ├── js/
+│   │   ├── core/             ← Utilidades compartidas (barrel: core.js)
+│   │   ├── work/             ← Lógica de trabajo cross-módulo (barrel: index.js)
+│   │   ├── views/            ← Lógica por módulo de usuario
+│   │   │   ├── conversion/   ← Técnicos MOTOR/TANQUE + CALIDAD (módulo más grande)
+│   │   │   ├── ramalero/     ← Vista y acciones del ramalero
+│   │   │   ├── supervisor/   ← Dashboard y reportes
+│   │   │   ├── admin/        ← Configuración global
+│   │   │   ├── movilizador/  ← Vista movilizador
+│   │   │   ├── uploader/     ← Upload de fotos
+│   │   │   └── zonas/        ← Mapa de zonas
+│   │   └── templates/        ← Funciones puras que retornan HTML string
+│   │       ├── layout/       ← Shell, topbar, loading overlay
+│   │       ├── views/        ← HTML de cada módulo
+│   │       └── modals/       ← HTML de modales
+│   │
+│   └── css/
+│       ├── 00-token.css      ← Design tokens + temas (fuente de verdad)
+│       ├── 01-base.css
+│       ├── 02-layout.css
+│       ├── components/       ← Botones, inputs, badges, cards…
+│       ├── overlays/         ← Modales, loading, alerts
+│       └── views/            ← CSS específico por módulo
 │
-├── js/
-│   ├── core/                  ← Módulos fundamentales (sin lógica de vista)
-│   │   ├── core.js            ← BARREL — re-exporta todo lo de core/
-│   │   ├── state.js           ← Estado global (CORE, MODULES, ctx_)
-│   │   ├── dom.js             ← Helpers DOM ($, el_, modSuffix_)
-│   │   ├── api.js             ← fetch wrappers + UI lock (withLock)
-│   │   ├── auth.js            ← Perfil, módulos efectivos, email
-│   │   ├── ui-shell.js        ← Toggle login/app/hub UI
-│   │   ├── router-lite.js     ← Router mínimo (register + open)
-│   │   ├── loops.js           ← Timers por módulo (sync, clock, estado)
-│   │   ├── theme.js           ← Tema día/noche
-│   │   ├── format.js          ← Helpers puros (escapeHtml, fechas, tiempo)
-│   │   ├── links.js           ← URLs externas (registro fallas)
-│   │   └── cache-local.js     ← Caches en localStorage (VIN, ramal)
-│   │
-│   ├── templates/             ← HTML puro (template strings)
-│   │   ├── layout/
-│   │   │   ├── shell.js       ← appShell() — ensambla toda la UI
-│   │   │   ├── topbar.js      ← Barra superior
-│   │   │   └── loading-overlay.js
-│   │   ├── views/
-│   │   │   ├── login-view.js
-│   │   │   ├── hub-view.js
-│   │   │   ├── tecnico-view.js
-│   │   │   ├── calidad-view.js
-│   │   │   ├── ramalero-view.js
-│   │   │   ├── supervisor-view.js
-│   │   │   ├── admin-view.js
-│   │   │   ├── movilizador-view.js
-│   │   │   └── uploader-view.js
-│   │   └── modals/
-│   │       ├── qr-modal.js
-│   │       ├── conformidad-modal.js
-│   │       ├── incidencias-modal.js
-│   │       ├── confirm-finish-modal.js
-│   │       ├── rf-calidad-modal.js
-│   │       └── rf-tecnico-modal.js
-│   │
-│   ├── work/                  ← Lógica compartida de "trabajo" (cross-module)
-│   │   ├── index.js           ← BARREL
-│   │   ├── work-status.js     ← isFinalizado_, allowedActions, filtro módulo
-│   │   ├── work-time.js       ← computeLiveMs_ (cálculo de tiempo live)
-│   │   ├── work-store.js      ← rebuildListsFromStore_
-│   │   ├── work-render.js     ← renderActivas_, renderFinalizados_, patch
-│   │   ├── work-templates.js  ← HTML de botones, asignado, incidencias
-│   │   └── work-notes.js      ← Snapshot/restore de textareas de notas
-│   │
-│   └── views/                 ← Lógica de cada vista (init/enter/exit)
-│       ├── conversion/        ← TECNICO + CALIDAD comparten código
-│       │   ├── conversion.js  ← Entry: init/enter/exit + tick clocks
-│       │   ├── data/
-│       │   │   ├── conversion-estado.js   ← Buscar/crear OT por VIN
-│       │   │   ├── conversion-eventos.js  ← Enviar acción (INICIO/PAUSA/FIN/NOTA)
-│       │   │   └── conversion-sync.js     ← Sincronización periódica
-│       │   ├── state/
-│       │   │   └── conversion-store.js    ← Normalizar, merge, cache nombres
-│       │   ├── modals/
-│       │   │   ├── index.js               ← BARREL
-│       │   │   ├── confirm-finish.js      ← Confirmación de FIN
-│       │   │   ├── conformidad.js         ← Conformidad de equipo (TANQUE/REDUCTOR)
-│       │   │   ├── incidencias.js         ← Registrar incidencia (CALIDAD)
-│       │   │   ├── rf-modal.js            ← Fotos/fallas (CALIDAD)
-│       │   │   └── rf-tecnico-modal.js    ← Parámetros/fallas (TECNICO)
-│       │   └── ui/
-│       │       ├── conversion-delegation.js ← Event delegation en cards
-│       │       ├── conversion-qr.js         ← Escaneo QR de VIN
-│       │       └── conversion-vin-autocomplete.js ← Autocomplete de VIN
-│       │
-│       ├── ramalero/
-│       │   ├── ramalero.js             ← Entry: init/enter/exit
-│       │   ├── ramalero-actions.js     ← Botones refrescar/nuevo ramal
-│       │   ├── ramalero-delegation.js  ← Event delegation en cards
-│       │   └── ramalero-eventos.js     ← Crear ramal / enviar evento
-│       │
-│       ├── supervisor/
-│       │   ├── index.js            ← BARREL
-│       │   ├── supervisor.js       ← Entry: init/enter/exit + fetch + render
-│       │   ├── sup-filters.js      ← Filtros (finalizado, marca, duración)
-│       │   ├── sup-grouping.js     ← Agrupar por VIN (MOTOR+TANQUE)
-│       │   ├── sup-stats.js        ← Mediana + MAD + prior contextual
-│       │   ├── sup-render.js       ← Render tabla + avg card
-│       │   ├── sup-incidencias.js  ← Modal ver incidencias
-│       │   ├── sup-name-suggest.js ← Autocomplete nombre/email
-│       │   ├── sup-qr.js           ← QR para supervisor
-│       │   └── sup-quick-dates.js  ← Botones Hoy/Ayer/Este Mes
-│       │
-│       ├── admin/
-│       │   └── admin.js            ← Stub (init/enter/exit)
-│       │
-│       ├── movilizador/
-│       │   └── movilizador.js      ← Pendientes para calidad
-│       │
-│       └── uploader/
-│           ├── uploader.js         ← Wrapper (init/show/hide)
-│           ├── uploader-ui.js      ← Controller de pantallas
-│           └── uploader-api.js     ← Llamadas API del uploader
+├── gas/                      ← Google Apps Script (corre en Google Cloud)
+│   ├── 00_config_core.js
+│   ├── REPORTE_PRINCIPAL_obtencion_vin.js
+│   ├── Codigo_ASIGNACIONES_COMPLETO.js
+│   ├── REP_DASHBOARD.js
+│   └── … 10 archivos más
+│
+└── dist/                     ← Output del build (vite build) — lo sirve Express
 ```
 
 ---
 
-## Patrón de cada vista
+## 3. Backend (`index.js`)
 
-Todas las vistas siguen el mismo contrato:
+### 3.1 Arranque
+
+```
+dotenv.config()
+  ↓
+webpush.setVapidDetails(...)   ← solo si las 3 vars VAPID están presentes
+  ↓
+express.static("dist")         ← sirve el frontend compilado
+  ↓
+Rutas API
+  ↓
+app.listen(PORT)
+```
+
+### 3.2 Helpers internos
+
+Todo vive en el scope global de `index.js` (sin módulos separados — deuda técnica).
+
+| Función | Propósito |
+|---|---|
+| `supabaseHeaders_()` | Headers con anon key |
+| `supabaseServiceHeaders_()` | Headers con service key (bypasea RLS) |
+| `buildSupabaseQuery_(filter)` | Construye `?col=eq.val&…` |
+| `supabaseGet_(table, filter)` | GET con cache en memoria |
+| `supabasePost_(table, data)` | POST con `return=representation` |
+| `supabasePatch_(table, filter, data)` | PATCH con `return=representation` |
+| `supabaseDelete_(table, filter)` | DELETE |
+| `getCachedData_()` / `setCachedData_()` | Cache en memoria con TTL configurable |
+| `callAppsScript(action, payload)` | Proxy a Google Apps Script (legacy) |
+
+### 3.3 Rutas API
+
+```
+── Identidad ─────────────────────────────────────────────────────────────
+GET  /api/me                       → perfil del usuario (nombre, rol, especialidad)
+GET  /env-config.js                → inyecta VITE_* como window.__ENV__
+
+── Trabajo activo ────────────────────────────────────────────────────────
+POST /api/evento                   → INICIO / PAUSA / REANUDAR / FIN / NOTA
+GET  /api/mis-activas              → OTs TRABAJANDO/PAUSADO del usuario hoy
+GET  /api/mis-finalizadas          → OTs FINALIZADO del usuario hoy
+GET  /api/estado                   → estado actual de un VIN+rol
+POST /api/refresh-estado           → fuerza re-fetch de un ítem
+
+── Técnico ───────────────────────────────────────────────────────────────
+GET  /api/tecnico/cola             → VINs disponibles + compañeros libres
+GET  /api/ml/suggest-next          → próximo VIN sugerido (ML)
+GET  /api/ml/suggest-pair          → compañero sugerido (ML)
+
+── Ramal ─────────────────────────────────────────────────────────────────
+POST /api/solicitud-ramal                 → técnico solicita un ramal
+GET  /api/solicitud-ramal/pendientes      → ramalero: lista solicitudes
+GET  /api/solicitud-ramal/mi-ramal        → técnico: ¿mi ramal está listo?
+GET  /api/solicitud-ramal/mi-posicion     → técnico: posición en cola PENDIENTE
+POST /api/solicitud-ramal/:id/notificar   → ramalero avisa + envía Web Push
+POST /api/solicitud-ramal/:id/entregar    → ramalero marca como entregado
+
+── Push Notifications ────────────────────────────────────────────────────
+GET  /api/push/vapid-public-key    → clave pública VAPID para el cliente
+POST /api/push/subscribe           → guarda suscripción del browser
+
+── Supervisor ────────────────────────────────────────────────────────────
+GET  /api/supervisor/live          → snapshot en tiempo real de todos
+POST /api/supervisor/report        → reporte histórico con filtros
+
+── Admin ─────────────────────────────────────────────────────────────────
+GET  /api/admin/config             → configuración global (horarios, flags)
+POST /api/admin/config             → actualiza config
+
+── Zonas ─────────────────────────────────────────────────────────────────
+GET  /api/zonas/vin/:vin           → zona asignada a un VIN
+POST /api/zonas/asignar            → asigna zona a VIN
+
+── Fotos ─────────────────────────────────────────────────────────────────
+POST /api/uploader/proxy           → proxy de upload a Cloudflare R2
+GET  /api/uploader/status/:vin     → estado de fotos de un VIN
+
+── VINs / Normalización ──────────────────────────────────────────────────
+GET  /api/vins/normalizar-preview  → preview de normalización de modelos
+POST /api/vins/normalizar          → aplica normalización
+GET  /api/vins/modelo/:vin         → modelo_normalizado de un VIN
+
+── Incidencias ───────────────────────────────────────────────────────────
+POST /api/incidencia               → registra incidencia/falla
+GET  /api/mis-incidencias          → incidencias del usuario
+GET  /api/supervisor/incidencias   → todas las incidencias
+```
+
+### 3.4 Flujo de un evento (ruta más crítica)
+
+```
+POST /api/evento { email, vin, rolTrabajo, accion, nota }
+  ↓
+Lookup user_id por email  (cache 30 min)
+  ↓
+Validar VIN en tabla `vins`
+  ↓
+Buscar asignación activa del usuario en `asignaciones`
+  ↓
+Validar transición de estado:
+  SIN_INICIAR → TRABAJANDO   (INICIO)
+  TRABAJANDO  → PAUSADO      (PAUSA)
+  PAUSADO     → TRABAJANDO   (REANUDAR)
+  TRABAJANDO  → FINALIZADO   (FIN)
+  cualquier   → cualquier    (NOTA — sin cambio de estado)
+  ↓
+PATCH asignacion (nuevo estado + timestamps)
+  ↓
+Si FINALIZADO → POST a Apps Script (dual-write legacy)
+  ↓
+Response { ok, estado, id, … }
+```
+
+---
+
+## 4. Frontend (`public/js/`)
+
+### 4.1 Bootstrap (`public/app.js`)
+
+```
+index.html carga app.js
+  ↓
+Carga window.__ENV__  (desde /env-config.js)
+  ↓
+Monta appShell() en #appRoot  (HTML completo de la UI)
+  ↓
+Inicializa CORE.state (objeto global)
+  ↓
+Registra vistas en router-lite
+  ↓
+Auto-login si hay email en localStorage
+  ↓
+openView(módulo)  →  exit() anterior + enter() nueva
+```
+
+### 4.2 Patrón de cada vista
+
+Todas las vistas exponen el mismo contrato:
 
 ```js
-export function init()  { /* Bind listeners una vez (se llama al arranque) */ }
-export function enter() { /* Se activa cuando el usuario entra al módulo   */ }
-export function exit()  { /* Limpieza al salir (timers, UI, etc.)          */ }
+export function init()  { /* bind de listeners, se llama UNA VEZ al arranque */ }
+export function enter() { /* activar timers, cargar datos, mostrar UI         */ }
+export function exit()  { /* limpiar timers, ocultar UI, reset de estado      */ }
+```
+
+### 4.3 `core/` — Utilidades base (barrel: `core.js`)
+
+| Archivo | Exporta |
+|---|---|
+| `core.js` | Re-exporta todo lo de abajo |
+| `state.js` | `CORE.state` — estado global de la app; `ctx_()` — estado de conversión |
+| `api.js` | `getJSON()`, `postJSON()`, `postJSON_user()`, `withLock()` |
+| `auth.js` | `requireEmailOrStop()`, perfil del usuario |
+| `dom.js` | `$()`, `el_()`, `setOut()` |
+| `format.js` | `escapeHtml()`, `fmtShort_()`, `fmtFechaCreacion_()` |
+| `router-lite.js` | `register()`, `openView()` — navegación entre módulos |
+| `ui-shell.js` | Toggle login/app/hub |
+| `theme.js` | Toggle Day/Night, persiste en localStorage |
+| `loops.js` | `startLoopsFor_()`, `stopLoopsFor_()` — pollers por módulo |
+| `format.js` | Helpers de fecha y texto |
+| `links.js` | URLs externas |
+| `cache-local.js` | Cache en localStorage |
+| `vin.js` | `getVin()`, `normVin_()` |
+
+### 4.4 `work/` — Lógica compartida de trabajo (barrel: `index.js`)
+
+Usada por `conversion/` y parcialmente por `ramalero/`.
+
+| Archivo | Propósito |
+|---|---|
+| `work-store.js` | Listas activas/finalizados en memoria; `rebuildListsFromStore_()` |
+| `work-render.js` | `renderActivas_()`, `renderFinalizados_()` — genera HTML de cards |
+| `work-status.js` | `allowedActionsByEstado()` — transiciones válidas por estado |
+| `work-time.js` | `computeLiveMs_()` — cálculo de tiempo transcurrido |
+| `work-loops.js` | Polling intervals: sync, clock, estado |
+| `work-templates.js` | HTML de botones de acción, chip de técnico asignado |
+| `work-notes.js` | `snapshotNotasActivas_()` / `restoreNotasActivas_()` |
+
+### 4.5 `views/conversion/` — Módulo principal (técnicos + calidad)
+
+```
+conversion/
+├── conversion.js               ← Orquestador: init(), enter(), exit()
+│                                  Contiene también: banners de ramal, pair suggest,
+│                                  cola badge, QR, tec-cards hub
+├── data/
+│   ├── conversion-sync.js      ← Polling al servidor, merge de datos
+│   └── conversion-eventos.js   ← enviarEvento(), autoStartFromScan_()
+├── state/
+│   └── conversion-store.js     ← normalizeItem_(), mergePrevAndCache_()
+├── ui/
+│   ├── conversion-delegation.js    ← Event delegation en cards activas/finalizados
+│   ├── conversion-vin-autocomplete.js
+│   ├── conversion-qr.js
+│   └── conversion-validar.js
+└── modals/
+    ├── ramal-alert.js          ← Banner ramal listo + suscripción Web Push
+    ├── error-modal.js
+    ├── confirm-finish.js
+    ├── incidencias.js
+    ├── incidencia-alert.js
+    ├── rf-modal.js
+    ├── rf-tecnico-modal.js
+    └── conformidad.js
+```
+
+**Flujo al entrar al módulo TECNICO:**
+
+```
+enter("TECNICO")
+  ↓
+showTecCards_()                → grid de opciones del técnico
+checkPendingAlerts_(email)     → alertas de incidencias pendientes
+requestNotifPermission(email)  → pide permiso + suscribe al Web Push
+updateColaBadge_()             → badge de compañeros disponibles
+checkVinReadyNotif_()          → notificación VIN disponible       ─┐ cada 2 min
+checkRamalListo_()             → banner "tu ramal está listo"      ─┤ cada 15s
+checkColaPosicion_()           → banner "eres #X en la cola"       ─┘ cada 15s
+checkAndShowPairSuggest_()     → popup sugerencia compañero          cada 90s
+syncNow()                      → sincroniza OTs activas              cada N seg
+```
+
+### 4.6 `views/ramalero/`
+
+| Archivo | Propósito |
+|---|---|
+| `ramalero.js` | Orquestador: init, enter, exit |
+| `ramalero-actions.js` | Crear ramal, ver activos/finalizados |
+| `ramalero-solicitudes.js` | Panel de solicitudes: cards, Notificar, Entregar |
+| `ramalero-render.js` | Render de cards de ramales |
+| `ramalero-eventos.js` | Event delegation |
+
+> ⚠️ `ramalero-actions.js` importa de `conversion/data/conversion-sync.js` y
+> `conversion/state/conversion-store.js`. Acoplamiento innecesario (deuda técnica).
+
+### 4.7 `templates/`
+
+Funciones puras que retornan strings HTML. Sin lógica ni binding.
+Los módulos las usan con `innerHTML = templateFn()`.
+
+```
+templates/
+├── layout/
+│   ├── shell.js          ← appShell() — ensambla toda la UI
+│   ├── topbar.js
+│   └── loading-overlay.js
+├── views/
+│   ├── tecnico-view.js / calidad-view.js / ramalero-view.js …
+└── modals/
+    ├── qr-modal.js / incidencias-modal.js / confirm-finish-modal.js …
+```
+
+### 4.8 Imports: cómo y desde dónde
+
+```
+Vistas          → importan desde "../../core/core.js"   (barrel)
+work/           → importa directo desde "../core/state.js", etc.
+                  (evita dependencias circulares)
+Módulos internos → importan directo entre ellos dentro de su carpeta
+```
+
+**API calls desde el frontend:**
+
+| Función | Uso |
+|---|---|
+| `getJSON(url)` | GET sin feedback visual |
+| `postJSON(url, body)` | POST sin feedback visual |
+| `postJSON_user(url, body, msg)` | POST con overlay de loading visible al usuario |
+
+---
+
+## 5. Design System CSS
+
+### 5.1 Tokens (`00-token.css`) — Fuente de verdad
+
+```css
+/* Modo noche (default) */
+:root {
+  --bg0:       #060b14;   /* fondo más profundo */
+  --bg1:       #0a1322;   /* fondo de cards */
+  --surface:   #1e3a8a;
+  --surfaceLine: …;
+  --text:      #eef0ff;
+  --muted:     #94a3b8;
+  --ok:        #22c55e;   + --okBg
+  --danger:    #f87171;   + --dangerBg
+  --warn:      #fbbf24;   + --warnBg
+  --note:      #7dd3fc;   + --noteBg
+  --shadow / --shadowSm / --backdrop / --radius / --radiusSm
+}
+
+/* Modo día */
+:root[data-theme="day"] { /* todos los tokens redefinidos */ }
+```
+
+**Regla:** Todo componente nuevo usa tokens. **Nunca colores hex hardcodeados**, ni en CSS ni en JS inline.
+
+### 5.2 Cascada CSS (orden estricto)
+
+```
+1. 00-token.css         → variables (sin efecto visual)
+2. 01-base.css          → reset + tipografía
+3. 02-layout.css        → estructura
+4. components/          → cards, inputs, botones, pills, badges…
+5. overlays/            → modales, loading
+6. 05-autocomplete.css  → dropdowns
+7. views/               → estilos específicos por módulo
+8. 07-uploader.css      → módulo aislado, siempre al final
+```
+
+No alterar el orden — cada grupo asume que los anteriores ya están cargados.
+
+---
+
+## 6. Google Apps Script (`gas/`)
+
+Corre en Google Cloud de forma completamente independiente del backend Node.
+**No comparte código** con él — es un sistema paralelo sobre Google Sheets.
+
+**Trigger principal:** `enriquecerListaDiaria()` cada 10 minutos.
+
+```
+Sheets "REPORTES"  ←─── GAS ───→  Supabase (vía REST)
+                          │
+                   Sheets "ASIGNACIONES"
+```
+
+| Archivo | Función |
+|---|---|
+| `00_config_core.js` | Constantes: IDs de Spreadsheet, nombres de columnas |
+| `REPORTE_PRINCIPAL_obtencion_vin.js` | Enriquece LISTA DIARIA: cruza VINs, OTs, escribe fecha cierre |
+| `Codigo_ASIGNACIONES_COMPLETO.js` | Actualiza hoja ASIG, sincroniza estados con Supabase |
+| `REP_DASHBOARD.js` | Dashboard agregado para supervisores |
+| `REP_PROD.js` | Reportes de productividad por técnico |
+| `REP_INC.js` | Reporte de incidencias |
+| `99_webapp_router.js` | HTTP doGet/doPost para webhooks desde el backend |
+
+---
+
+## 7. Service Worker y Web Push
+
+### 7.1 Build del SW
+
+```
+vite.config.js  →  strategies: 'injectManifest', filename: 'sw-custom.js'
+  ↓
+Workbox inyecta self.__WB_MANIFEST en public/sw-custom.js
+  ↓
+Output: dist/sw-custom.js
+  ↓
+dist/registerSW.js  →  navigator.serviceWorker.register('/sw-custom.js')
+```
+
+### 7.2 Capabilities del SW
+
+- Precache de assets estáticos (Workbox)
+- `push` event → muestra notificación del OS
+- `notificationclick` → enfoca o abre la app
+
+### 7.3 Flujo Web Push completo
+
+```
+── Suscripción (al entrar al módulo TECNICO) ──────────────────────────────
+enter("TECNICO")
+  → requestNotifPermission(email)
+    → Notification.requestPermission()
+    → navigator.serviceWorker.ready
+    → pushManager.subscribe({ applicationServerKey: VAPID_PUBLIC_KEY })
+    → POST /api/push/subscribe  →  INSERT en push_subscriptions (con service key)
+
+── Envío de push (cuando ramalero notifica) ───────────────────────────────
+POST /api/solicitud-ramal/:id/notificar
+  → PATCH solicitudes_ramal (notificado_at = now)
+  → SELECT push_subscriptions WHERE email = tecnico_email  (service key)
+  → webpush.sendNotification(subscription, payload)
+  → SW recibe 'push' event → self.registration.showNotification(…)
+  → Usuario toca notificación → 'notificationclick' → abre app
 ```
 
 ---
 
-## Flujo de datos
+## 8. Tablas Supabase
+
+| Tabla | Descripción |
+|---|---|
+| `usuarios` | Perfil: nombre, email, rol, especialidad |
+| `vins` | Catálogo: vin, modelo, modelo_normalizado |
+| `asignaciones` | OTs: work_order_id, vin, user_id, rol_trabajo, estado_actual, timestamps |
+| `solicitudes_ramal` | vin, tecnico_email, estado, notificado_at, entregado_por, entregado_at |
+| `push_subscriptions` | email, endpoint, p256dh, auth (RLS deshabilitado — operaciones de backend) |
+| `zonas` | Zonas del taller y asignación de VINs |
+| `incidencias` | Fallas y observaciones |
+| `app_config` | Configuración global key-value (horarios, flags de pausa) |
+
+---
+
+## 9. Flujo de Datos Global
 
 ```
-         ┌──────────────────────────────────────────┐
-         │              app.js (bootstrap)           │
-         │  1. Monta appShell() en #appRoot          │
-         │  2. Registra vistas en router-lite        │
-         │  3. Auto-login si hay email guardado      │
-         └──────────────┬───────────────────────────┘
-                        │
-           ┌────────────▼────────────┐
-           │    router-lite.js       │
-           │  openView("TECNICO")    │
-           │    → exit() anterior    │
-           │    → enter() nueva      │
-           └────────────┬────────────┘
-                        │
-        ┌───────────────▼───────────────┐
-        │    Vista activa (ej. TECNICO) │
-        │  - startLoopsFor_() → sync    │
-        │  - renderActivas_()           │
-        │  - event delegation en cards  │
-        └───────────────┬───────────────┘
-                        │
-            ┌───────────▼───────────┐
-            │     API (/api/...)    │
-            │  getJSON / postJSON   │
-            │  withLock (overlay)   │
-            └───────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│  BROWSER / MÓVIL (PWA)                                              │
+│                                                                     │
+│  app.js → router → enter(módulo)                                   │
+│     ↓                                                               │
+│  conversion-sync.js ──── polling ──→ GET /api/mis-activas           │
+│  work-store.js      ←─── merge  ──                                  │
+│  work-render.js     → renderiza cards                               │
+│     ↓                                                               │
+│  enviarEvento()     ──────────────→  POST /api/evento               │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               │
+┌──────────────────────────────▼──────────────────────────────────────┐
+│  BACKEND Express (Render)                                           │
+│                                                                     │
+│  index.js  →  supabasePatch_() / supabasePost_()                   │
+│           →  (si FINALIZADO) callAppsScript()  ← dual-write legacy │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               │
+              ┌────────────────┴──────────────────┐
+              ▼                                   ▼
+┌──────────────────────────┐       ┌──────────────────────────────┐
+│  SUPABASE (PostgreSQL)   │       │  GOOGLE APPS SCRIPT          │
+│  usuarios, asignaciones, │       │  Sheets REPORTES             │
+│  vins, solicitudes_ramal │       │  Sheets ASIGNACIONES         │
+│  push_subscriptions, …   │       │  Trigger cada 10 min         │
+└──────────────────────────┘       └──────────────────────────────┘
 ```
 
 ---
 
-## Convenciones de nombres
+## 10. Convenciones
 
-| Patrón          | Significado                                     |
-|-----------------|------------------------------------------------|
-| `xxx_`          | Función "privada" / interna del módulo          |
-| `initXxxUI_()`  | Bind de listeners (se llama una vez)            |
-| `openXxx_()`    | Abre un modal o vista                           |
-| `closeXxx_()`   | Cierra un modal o vista                         |
-| `renderXxx_()`  | Genera/actualiza HTML en el DOM                 |
-| `el_(id)`       | `document.getElementById` con sufijo de módulo  |
-| `$(id)`         | `document.getElementById` directo               |
+### Naming de funciones
+
+| Patrón | Significado |
+|---|---|
+| `nombre_()` | "Privada" / interna del módulo (trailing underscore) |
+| `initXxx_()` | Bind de listeners — se llama una sola vez |
+| `openXxx_()` | Abre modal o panel |
+| `closeXxx_()` / `hideXxx_()` | Cierra o oculta |
+| `renderXxx_()` | Genera o actualiza HTML en el DOM |
+| `checkXxx_()` | Consulta estado y actualiza UI (usado en pollers) |
+| `$(id)` | `document.getElementById(id)` |
+| `el_(id)` | `getElementById` con sufijo de módulo |
+
+### Estilos inline en JS
+
+Usados para banners, toasts y cards generadas por JS.
+**Siempre con tokens**: `var(--ok)`, `var(--bg1)`, `var(--radius)`.
+Nunca colores hex directos.
+
+### Módulos
+
+- Todo ES Modules (`import` / `export`). Sin CommonJS.
+- Barrel exports para core y work.
+- Las vistas con muchos archivos usan imports directos entre ellos.
 
 ---
 
-## Importación: barrel vs directa
+## 11. Deuda Técnica Conocida
 
-- **Vistas** → importan desde `../../core/core.js` (barrel)
-- **work/** → importa directo desde `../core/state.js`, `../core/format.js` etc.
-  (evita dependencias circulares)
-- **Módulos dentro de una vista** → pueden importar directo entre ellos
+### 🔴 Alta — afecta mantenimiento diario
 
----
+| Problema | Dónde |
+|---|---|
+| `index.js` es un monolito de ~5000 líneas | `index.js` |
+| `mis-activas` y `mis-finalizadas` son código duplicado | `index.js` L412–627 |
+| `ramalero` importa directamente de `conversion/` | `ramalero-actions.js` L11–13 |
+| Sin tests de ningún tipo | todo el proyecto |
+| Migración GAS → Supabase incompleta (datos en dos fuentes) | `gas/`, `index.js` |
 
-## CSS: orden de cascada
+### 🟠 Media — genera fricción ocasional
 
-Los archivos CSS se importan desde `styles.css` en este orden estricto:
+| Problema | Dónde |
+|---|---|
+| Magic strings por todo el código (`"LISTA DE VIN GLP"`, etc.) | `gas/`, `index.js` |
+| CSS naming inconsistente (`.btn` vs `.btn3` vs `.btnText`) | `public/css/` |
+| Archivos GAS de 2000–3000 LOC c/u | `gas/REP_*.js` |
+| Estado distribuido sin patrón claro | `CORE.state`, `ctx_()`, vars locales de módulo |
+| `work/` mezcla store + render + status en un mismo "cajón" | `public/js/work/` |
 
-1. **Tokens** → variables (sin efecto visual propio)
-2. **Base/Reset** → usa las variables
-3. **Layout** → estructura (filas, grids, stacks)
-4. **Componentes** → `components/` — cards, inputs, botones, pills, badges…
-5. **Overlays** → `overlays/` — loading, modales, confirm
-6. **Autocomplete** → dropdowns posición absoluta
-7. **Vistas** → `views/` — page-specific (topbar, supervisor, ramalero…)
-8. **Uploader** → módulo aislado, siempre al final
+### 🟢 Baja — calidad a largo plazo
 
-**No cambiar el orden** — cada grupo asume que los anteriores ya están cargados.
-Dentro de cada carpeta el orden de import tampoco debe alterarse.
+| Problema |
+|---|
+| Sin ESLint ni Prettier |
+| Sin TypeScript ni JSDoc sistemático |
+| Sin estrategia de cache offline para API calls |
+| Logging sin niveles ni estructura (mix de `console.log/error/warn`) |
