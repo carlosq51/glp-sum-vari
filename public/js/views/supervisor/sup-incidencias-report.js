@@ -48,6 +48,45 @@ function fmtDateTime_(iso) {
     day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit",
   }).format(d);
 }
+function fmtMin_(min) {
+  const m = Math.round(min);
+  if (m < 60) return m + "m";
+  return Math.floor(m / 60) + "h " + (m % 60) + "m";
+}
+
+// ── Tiempo promedio de resolución (por categoría y por técnico) ─────────────
+// Solo cuenta incidencias resueltas (duracion_min viene de tiempo_fin - tiempo_inicio).
+function buildTimeStats_(items) {
+  const resueltas = items.filter(it => Number.isFinite(it.duracion_min) && it.duracion_min >= 0);
+
+  const byCat = {};
+  const byTec = {};
+  let sumAll = 0;
+
+  for (const it of resueltas) {
+    const cat = parseCategoria_(it.nota);
+    const tec = String(it.tecnico || "").trim() || "Sin técnico";
+
+    (byCat[cat] ||= { n: 0, sum: 0 }).n++;
+    byCat[cat].sum += it.duracion_min;
+
+    (byTec[tec] ||= { n: 0, sum: 0 }).n++;
+    byTec[tec].sum += it.duracion_min;
+
+    sumAll += it.duracion_min;
+  }
+
+  const toRanked = (map) => Object.entries(map)
+    .map(([name, { n, sum }]) => ({ name, n, avg: sum / n }))
+    .sort((a, b) => b.avg - a.avg);
+
+  return {
+    nResueltas:   resueltas.length,
+    avgGlobal:    resueltas.length ? sumAll / resueltas.length : 0,
+    porCategoria: toRanked(byCat),
+    porTecnico:   toRanked(byTec),
+  };
+}
 
 // ── Paleta de colores ───────────────────────────────────────────────────────────────
 const GRADE = [
@@ -128,7 +167,7 @@ async function fetchIncReport_() {
 }
 
 // ── KPI cards + barra de riesgo + impacto VIN ─────────────────────────────────────
-function renderKpis_(s) {
+function renderKpis_(s, timeStats) {
   const el = document.getElementById("incRepKpis");
   if (!el) return;
   const total = s.total    || 0;
@@ -157,6 +196,7 @@ function renderKpis_(s) {
 
   const TOTAL_G = { color:"#94a3b8", dimC:"rgba(148,163,184,.7)", bg:"rgba(148,163,184,.10)", border:"rgba(148,163,184,.35)" };
   const VIN_G   = { color:"#818cf8", dimC:"rgba(129,140,248,.7)", bg:"rgba(129,140,248,.10)", border:"rgba(129,140,248,.35)" };
+  const TIME_G  = { color:"#22d3ee", dimC:"rgba(34,211,238,.7)",  bg:"rgba(34,211,238,.10)",  border:"rgba(34,211,238,.35)" };
 
   // Pill de estado para VIN impact
   function vinPill(val, label, color) {
@@ -210,6 +250,7 @@ function renderKpis_(s) {
     + kpiCard(M,     "MODERADA", GRADE_MAP.MODERADA)
     + kpiCard(L,     "LEVE",     GRADE_MAP.LEVE)
     + (totalVins ? kpiCard(totalVins, "VINS", VIN_G) : "")
+    + (timeStats?.nResueltas ? kpiCard(fmtMin_(timeStats.avgGlobal), "⏱ T. RESOL.", TIME_G) : "")
     + "</div>"
     + (total > 0
       ? "<div style=\"background:rgba(255,255,255,.055);border-radius:11px;padding:10px 14px;\">"
@@ -228,8 +269,28 @@ function renderKpis_(s) {
   el.style.display = "";
 }
 
+// ── Fila de ranking de tiempo promedio (categoría o técnico) ────────────────────
+function timeRow(name, avgMin, n, maxAvg, rank) {
+  const pct   = maxAvg > 0 ? Math.max(6, Math.round(avgMin / maxAvg * 100)) : 0;
+  const color = avgMin <= 15 ? "#4ade80" : avgMin <= 45 ? "#f97316" : "#ef4444";
+  return "<div style=\"display:flex;align-items:center;gap:8px;padding:7px 0;"
+    + (rank > 0 ? "border-top:1px solid rgba(255,255,255,.06);" : "") + "\">"
+    + "<span style=\"font-size:.67em;font-weight:900;opacity:.3;min-width:16px;text-align:right;\">#" + (rank+1) + "</span>"
+    + "<div style=\"flex:1;min-width:0;\">"
+    +   "<div style=\"display:flex;justify-content:space-between;gap:6px;\">"
+    +     "<span style=\"font-size:.8em;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;\">" + _escape(name) + "</span>"
+    +     "<span style=\"font-size:.82em;font-weight:1000;color:" + color + ";flex-shrink:0;\">" + fmtMin_(avgMin) + "</span>"
+    +   "</div>"
+    +   "<div style=\"height:5px;background:rgba(255,255,255,.07);border-radius:3px;margin-top:4px;overflow:hidden;\">"
+    +     "<div style=\"height:100%;width:" + pct + "%;background:" + color + ";border-radius:3px;\"></div>"
+    +   "</div>"
+    + "</div>"
+    + "<span style=\"font-size:.65em;opacity:.4;flex-shrink:0;min-width:46px;text-align:right;\">" + n + " res.</span>"
+    + "</div>";
+}
+
 // ── Rankings ─────────────────────────────────────────────────────────────────────
-function renderRanking_(catGroups, summary) {
+function renderRanking_(catGroups, summary, timeStats) {
   const el = document.getElementById("incRepRanking");
   if (!el || !summary.total) { if (el) el.style.display = "none"; return; }
 
@@ -333,11 +394,25 @@ function renderRanking_(catGroups, summary) {
     }
   }
 
+  // Ranking de tiempo promedio de resolución (solo incidencias con tiempo_fin)
+  let catTimeRows = "";
+  let tecTimeRows = "";
+  if (timeStats?.nResueltas) {
+    const maxCatAvg = Math.max(...timeStats.porCategoria.map(c => c.avg), 1);
+    const maxTecAvg = Math.max(...timeStats.porTecnico.map(t => t.avg), 1);
+    catTimeRows = timeStats.porCategoria.slice(0, 10)
+      .map((c, i) => timeRow(c.name, c.avg, c.n, maxCatAvg, i)).join("");
+    tecTimeRows = timeStats.porTecnico.slice(0, 10)
+      .map((t, i) => timeRow(t.name, t.avg, t.n, maxTecAvg, i)).join("");
+  }
+
   // Layout: paneles apilados verticalmente — evita overflow en contenedores estrechos
   el.innerHTML =
     panel("📊 CATEGORÍAS", catRows, "#818cf8")
     + "<div style=\"height:10px;\"></div>"
     + (tecRows ? panel("👷 TÉCNICOS", tecRows, "#f97316") + "<div style=\"height:10px;\"></div>" : "")
+    + (catTimeRows ? panel("⏱ TIEMPO PROMEDIO POR CATEGORÍA", catTimeRows, "#22d3ee") + "<div style=\"height:10px;\"></div>" : "")
+    + (tecTimeRows ? panel("⏱ TIEMPO PROMEDIO POR TÉCNICO", tecTimeRows, "#22d3ee") + "<div style=\"height:10px;\"></div>" : "")
     + (vinRows
         ? panel(
             "🚗 VINs CON INCIDENCIAS CRÍTICAS O REINCIDENTES",
@@ -535,13 +610,14 @@ function renderTrend_(items) {
 
 function exportCsv_() {
   if (!_lastItems.length) return;
-  const headers = ["Fecha", "VIN", "Técnico", "Tipo", "Categoría", "Nota extra", "Foto URL"];
+  const headers = ["Fecha", "VIN", "Técnico", "Tipo", "Categoría", "Duración (min)", "Nota extra", "Foto URL"];
   const rows = _lastItems.map(it => [
     it.fecha_hora ? new Date(it.fecha_hora).toLocaleString("es-PE") : "",
     it.vin        || "",
     it.tecnico    || "",
     it.tipo       || "",
     parseCategoria_(it.nota),
+    Number.isFinite(it.duracion_min) ? it.duracion_min : "",
     parseExtra_(it.nota),
     it.fotoUrl || it.fotoImgUrl || "",
   ]);
@@ -562,10 +638,11 @@ function exportCsv_() {
 
 function renderIncReport_(j) {
   _lastItems = Array.isArray(j.items) ? j.items : [];
-  renderKpis_(j.summary);
+  const timeStats = buildTimeStats_(_lastItems);
+  renderKpis_(j.summary, timeStats);
   renderTrend_(_lastItems);
   const cats = renderList_(_lastItems);
-  if (cats) renderRanking_(cats, j.summary);
+  if (cats) renderRanking_(cats, j.summary, timeStats);
 }
 
 // ── bind ────────────────────────────────────────────────────────────────────────
