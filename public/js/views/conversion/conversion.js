@@ -486,22 +486,109 @@ function showColaBanner_(posicion, total) {
       "padding:12px 16px;gap:10px;",
       "font-weight:700;font-size:.95rem;",
       "box-shadow:var(--shadowSm);",
+      "cursor:pointer;",
     ].join("");
+    banner.addEventListener("click", (e) => {
+      if (e.target.closest("[data-cola-close]")) return;
+      openColaDetalleModal_();
+    });
     document.body.appendChild(banner);
   }
   banner.innerHTML = `
-    <span>🔩 Eres #${posicion} de ${total} en la cola de ramales</span>
-    <button onclick="this.parentElement.style.display='none'" style="
+    <span>🔩 Eres #${posicion} de ${total} en la cola de ramales · <u>ver detalle</u></span>
+    <button data-cola-close style="
       background:none;border:none;cursor:pointer;
       font-size:1.3rem;color:var(--bg0);line-height:1;padding:2px 4px;opacity:.8;
     ">×</button>
   `;
+  banner.querySelector("[data-cola-close]")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    banner.style.display = "none";
+  });
   banner.style.display = "flex";
 }
 
 function hideColaBanner_() {
   const banner = document.getElementById("colaRamalBanner");
   if (banner) banner.remove();
+  document.getElementById("colaDetalleModal")?.remove();
+}
+
+// ── Modal "Detalle de la cola de ramales" (transparencia) ─────────────────────
+
+async function openColaDetalleModal_() {
+  let modal = document.getElementById("colaDetalleModal");
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.id = "colaDetalleModal";
+    modal.style.cssText = [
+      "position:fixed;inset:0;z-index:9100;",
+      "background:var(--backdrop);",
+      "display:flex;align-items:center;justify-content:center;",
+      "padding:16px;",
+    ].join("");
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) modal.remove();
+    });
+    document.body.appendChild(modal);
+  }
+
+  modal.innerHTML = `
+    <div style="
+      background:var(--bg1);color:var(--text);border-radius:var(--radius);
+      padding:20px;width:100%;max-width:480px;max-height:82vh;overflow-y:auto;
+      box-shadow:var(--shadow);display:flex;flex-direction:column;gap:12px;
+      border:1px solid var(--surfaceLine);
+    ">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <strong style="font-size:1.05rem;">🔩 Cola de ramales</strong>
+        <button id="colaDetalleClose" style="
+          background:none;border:none;cursor:pointer;font-size:1.4rem;
+          color:var(--text);line-height:1;padding:2px 6px;opacity:.7;
+        ">×</button>
+      </div>
+      <div id="colaDetalleList" style="display:flex;flex-direction:column;gap:8px;">
+        <p style="opacity:.5;font-size:.85rem;">Cargando...</p>
+      </div>
+    </div>
+  `;
+  modal.querySelector("#colaDetalleClose")?.addEventListener("click", () => modal.remove());
+
+  const list = modal.querySelector("#colaDetalleList");
+  const myEmail = String(document.getElementById("email")?.value || "").trim().toLowerCase();
+
+  try {
+    const j = await getJSON("/api/solicitud-ramal/cola");
+    if (!j?.ok) {
+      list.innerHTML = `<p style="color:var(--danger);">${escapeHtml(j?.error || "Error al cargar")}</p>`;
+      return;
+    }
+    const items = j.items || [];
+    if (!items.length) {
+      list.innerHTML = `<p style="color:var(--muted);font-size:.85rem;">Sin solicitudes pendientes 🎉</p>`;
+      return;
+    }
+    list.innerHTML = items.map((s, i) => {
+      const isMe = String(s.tecnico_email || "").toLowerCase() === myEmail;
+      return `
+        <div style="
+          display:flex;align-items:center;gap:10px;
+          background:${isMe ? "var(--noteBg)" : "var(--surface)"};
+          border-radius:var(--radiusSm);padding:10px 12px;
+          border-left:3px solid ${isMe ? "var(--note)" : "transparent"};
+        ">
+          <div style="font-weight:800;min-width:26px;">#${i + 1}</div>
+          <div style="min-width:0;flex:1;">
+            <div style="font-weight:600;">${escapeHtml(s.tecnico_nombre || s.tecnico_email || "—")}${isMe ? " (tú)" : ""}</div>
+            <div style="font-size:.8rem;color:var(--muted);">VIN: <code>${escapeHtml(s.vin || "—")}</code></div>
+          </div>
+          <div style="font-size:.78rem;color:var(--muted);white-space:nowrap;text-align:right;">${fmtShort_(s.created_at)}</div>
+        </div>
+      `;
+    }).join("");
+  } catch {
+    list.innerHTML = `<p style="color:var(--danger);">Error de red</p>`;
+  }
 }
 
 async function checkColaPosicion_() {

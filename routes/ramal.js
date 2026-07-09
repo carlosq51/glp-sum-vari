@@ -180,6 +180,26 @@ router.get("/api/solicitud-ramal/mi-ramal", async (req, res) => {
   }
 });
 
+// GET /api/solicitud-ramal/cola  — detalle completo y ordenado de la cola PENDIENTE
+// (transparencia: quién solicitó qué y a qué hora, visible para cualquier técnico)
+router.get("/api/solicitud-ramal/cola", async (req, res) => {
+  try {
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const headers = supabaseHeaders_();
+    // Mismo filtro que /mi-posicion: solo solicitudes cuya OT vinculada sigue activa.
+    const url = `${SUPABASE_URL}/rest/v1/solicitudes_ramal` +
+      `?estado=eq.PENDIENTE&select=id,vin,tecnico_nombre,tecnico_email,created_at,work_orders!inner(estado_general)` +
+      `&work_orders.estado_general=neq.FINALIZADO&order=created_at.asc`;
+    const r = await fetch(url, { method: "GET", headers });
+    if (!r.ok) throw new Error(`Supabase ${r.status}`);
+    const items = (await r.json()).map(({ work_orders, ...rest }) => rest);
+    return res.json({ ok: true, items });
+  } catch (e) {
+    console.error("[GET /api/solicitud-ramal/cola]", e.message);
+    return res.status(500).json({ ok: false, error: String(e.message) });
+  }
+});
+
 // GET /api/solicitud-ramal/mi-posicion  — posición del técnico en la cola PENDIENTE
 router.get("/api/solicitud-ramal/mi-posicion", async (req, res) => {
   try {
