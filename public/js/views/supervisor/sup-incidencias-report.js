@@ -289,42 +289,58 @@ function renderKpis_(s, timeStats) {
   el.style.display = "";
 }
 
-// ── Fila de ranking de tiempo promedio (categoría o técnico) ────────────────────
-function timeRow(name, avgMin, n, maxAvg, rank) {
+// ── Columnas PROM / TOTAL — cabecera compartida por los 3 paneles de tiempo ─────
+const TIME_COL_W = 46; // px, ancho fijo de cada columna numérica
+function timeColsHeader_() {
+  return "<div style=\"display:flex;align-items:center;gap:8px;padding:0 0 6px;\">"
+    + "<span style=\"min-width:16px;\"></span>"
+    + "<span style=\"flex:1;\"></span>"
+    + "<span style=\"font-size:.62em;font-weight:800;letter-spacing:.4px;opacity:.4;min-width:" + TIME_COL_W + "px;text-align:right;\">PROM</span>"
+    + "<span style=\"font-size:.62em;font-weight:800;letter-spacing:.4px;opacity:.4;min-width:" + TIME_COL_W + "px;text-align:right;\">TOTAL</span>"
+    + "</div>";
+}
+function timeCol_(val, color) {
+  return "<span style=\"font-size:.8em;font-weight:900;color:" + color + ";flex-shrink:0;min-width:" + TIME_COL_W + "px;text-align:right;\">" + val + "</span>";
+}
+
+// ── Fila de ranking de tiempo (categoría o técnico) — dos columnas: prom · total ─
+function timeRow(name, avgMin, sumMin, n, maxAvg, rank) {
   const pct   = maxAvg > 0 ? Math.max(6, Math.round(avgMin / maxAvg * 100)) : 0;
   const color = avgMin <= 15 ? "#4ade80" : avgMin <= 45 ? "#f97316" : "#ef4444";
   return "<div style=\"display:flex;align-items:center;gap:8px;padding:7px 0;"
     + (rank > 0 ? "border-top:1px solid rgba(255,255,255,.06);" : "") + "\">"
     + "<span style=\"font-size:.67em;font-weight:900;opacity:.3;min-width:16px;text-align:right;\">#" + (rank+1) + "</span>"
     + "<div style=\"flex:1;min-width:0;\">"
-    +   "<div style=\"display:flex;justify-content:space-between;gap:6px;\">"
-    +     "<span style=\"font-size:.8em;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;\">" + _escape(name) + "</span>"
-    +     "<span style=\"font-size:.82em;font-weight:1000;color:" + color + ";flex-shrink:0;\">" + fmtMin_(avgMin) + "</span>"
+    +   "<div style=\"font-size:.8em;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;\">"
+    +     _escape(name)
+    +     "<span style=\"opacity:.35;font-weight:600;font-size:.85em;\"> · " + n + " res.</span>"
     +   "</div>"
     +   "<div style=\"height:5px;background:rgba(255,255,255,.07);border-radius:3px;margin-top:4px;overflow:hidden;\">"
     +     "<div style=\"height:100%;width:" + pct + "%;background:" + color + ";border-radius:3px;\"></div>"
     +   "</div>"
     + "</div>"
-    + "<span style=\"font-size:.65em;opacity:.4;flex-shrink:0;min-width:46px;text-align:right;\">" + n + " res.</span>"
+    + timeCol_(fmtMin_(avgMin), color)
+    + timeCol_(fmtMin_(sumMin), "#22d3ee")
     + "</div>";
 }
 
-// ── Fila de tendencia mensual (tiempo total + promedio) ─────────────────────────
+// ── Fila de tendencia mensual — mismas dos columnas: prom · total ───────────────
 function monthRow_(mes, avgMin, sumMin, n, maxSum, rank) {
   const pct = maxSum > 0 ? Math.max(6, Math.round(sumMin / maxSum * 100)) : 0;
   return "<div style=\"display:flex;align-items:center;gap:8px;padding:7px 0;"
     + (rank > 0 ? "border-top:1px solid rgba(255,255,255,.06);" : "") + "\">"
     + "<span style=\"font-size:.67em;font-weight:900;opacity:.3;min-width:16px;text-align:right;\">#" + (rank+1) + "</span>"
     + "<div style=\"flex:1;min-width:0;\">"
-    +   "<div style=\"display:flex;justify-content:space-between;gap:6px;align-items:baseline;\">"
-    +     "<span style=\"font-size:.8em;font-weight:800;\">" + _escape(fmtMesLabel_(mes)) + "</span>"
-    +     "<span style=\"font-size:.82em;font-weight:1000;color:#22d3ee;flex-shrink:0;\">" + fmtMin_(sumMin) + " <span style=\"opacity:.5;font-weight:700;\">total</span></span>"
+    +   "<div style=\"font-size:.8em;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;\">"
+    +     _escape(fmtMesLabel_(mes))
+    +     "<span style=\"opacity:.35;font-weight:600;font-size:.85em;\"> · " + n + " res.</span>"
     +   "</div>"
     +   "<div style=\"height:5px;background:rgba(255,255,255,.07);border-radius:3px;margin-top:4px;overflow:hidden;\">"
     +     "<div style=\"height:100%;width:" + pct + "%;background:#22d3ee;border-radius:3px;\"></div>"
     +   "</div>"
-    +   "<div style=\"font-size:.68em;opacity:.5;margin-top:3px;\">prom. " + fmtMin_(avgMin) + " · " + n + " res.</div>"
     + "</div>"
+    + timeCol_(fmtMin_(avgMin), "#94a3b8")
+    + timeCol_(fmtMin_(sumMin), "#22d3ee")
     + "</div>";
 }
 
@@ -433,22 +449,22 @@ function renderRanking_(catGroups, summary, timeStats) {
     }
   }
 
-  // Ranking de tiempo promedio de resolución (solo incidencias con tiempo_fin)
+  // Ranking de tiempo de resolución (solo incidencias con tiempo_fin) — prom · total
   let catTimeRows = "";
   let tecTimeRows = "";
   let mesRows     = "";
   if (timeStats?.nResueltas) {
     const maxCatAvg = Math.max(...timeStats.porCategoria.map(c => c.avg), 1);
     const maxTecAvg = Math.max(...timeStats.porTecnico.map(t => t.avg), 1);
-    catTimeRows = timeStats.porCategoria.slice(0, 10)
-      .map((c, i) => timeRow(c.name, c.avg, c.n, maxCatAvg, i)).join("");
-    tecTimeRows = timeStats.porTecnico.slice(0, 10)
-      .map((t, i) => timeRow(t.name, t.avg, t.n, maxTecAvg, i)).join("");
+    catTimeRows = timeColsHeader_() + timeStats.porCategoria.slice(0, 10)
+      .map((c, i) => timeRow(c.name, c.avg, c.sum, c.n, maxCatAvg, i)).join("");
+    tecTimeRows = timeColsHeader_() + timeStats.porTecnico.slice(0, 10)
+      .map((t, i) => timeRow(t.name, t.avg, t.sum, t.n, maxTecAvg, i)).join("");
 
     // Tendencia mensual: agrupa según el intervalo de búsqueda (1 mes seleccionado
     // → 1 fila con el total del período; rango amplio → varias filas, una por mes).
     const maxMesSum = Math.max(...timeStats.porMes.map(m => m.sum), 1);
-    mesRows = timeStats.porMes
+    mesRows = timeColsHeader_() + timeStats.porMes
       .map((m, i) => monthRow_(m.mes, m.avg, m.sum, m.n, maxMesSum, i)).join("");
   }
 
