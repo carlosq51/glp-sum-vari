@@ -20,7 +20,7 @@ import { openRFTecModalForVin_ } from "../modals/rf-tecnico-modal.js";
 import { openConformidadModalForKey_ } from "../modals/conformidad.js";
 import { askConfirmFinish_ } from "../modals/confirm-finish.js";
 
-import { openSupIncModal_, fetchIncidencias_, renderIncidencias_, openQCIncPopup_ } from "../../supervisor/sup-incidencias.js";
+import { openSupIncModal_, fetchIncidencias_, renderIncidencias_, openQCIncPopup_, countIncidenciasActivas_ } from "../../supervisor/sup-incidencias.js";
 
 function attachWorkDelegationOnce_(mod) {
   const prev = CORE.state.currentModule;
@@ -105,6 +105,36 @@ function attachWorkDelegationOnce_(mod) {
                 cancelText: "Cancelar",
               });
               if (!okAnyway) return;
+            }
+          }
+
+          // ── CALIDAD: no permitir cerrar la OT con incidencia activa ─────
+          if (rolUp === "CALIDAD") {
+            let nActivas = 0;
+            try {
+              nActivas = await countIncidenciasActivas_(it.vin, it.conversionId, { getJSON_user: getJSON });
+            } catch (e) {
+              console.warn("[FIN] No se pudo verificar incidencias activas:", e);
+            }
+
+            if (nActivas > 0) {
+              const irAIncidencia = await askConfirmFinish_({
+                title: "⛔ Incidencia sin resolver",
+                message: `Esta OT tiene ${nActivas} incidencia${nActivas > 1 ? "s" : ""} activa${nActivas > 1 ? "s" : ""}.<br><br>Debes subsanarla antes de finalizar calidad.`,
+                acceptText: "Marcar finalizado",
+                cancelText: "Cerrar",
+              });
+
+              if (irAIncidencia) {
+                await openQCIncPopup_(it.vin, it.conversionId, { getJSON_user: getJSON, escapeHtml, userEmail: getEmail() });
+                openSupIncModal_();
+                const msg = document.getElementById("supIncMsg");
+                if (msg) msg.textContent = "Cargando...";
+                fetchIncidencias_(it.vin, it.conversionId, { getJSON_user: getJSON })
+                  .then(j => renderIncidencias_(j, { vin: it.vin, conversionId: it.conversionId, who: it.vin }, { escapeHtml, fmtShort_ }))
+                  .catch(err => renderIncidencias_({ ok: false, error: String(err?.message || err) }, { vin: it.vin }, { escapeHtml, fmtShort_ }));
+              }
+              return;   // bloquear FIN
             }
           }
 

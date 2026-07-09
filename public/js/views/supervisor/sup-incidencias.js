@@ -377,17 +377,14 @@ async function resolveQcCurrent_() {
   }
 }
 
-export async function openQCIncPopup_(vin, conversionId, { getJSON_user, escapeHtml, userEmail = "" } = {}) {
-  qcEscapeHtml_  = escapeHtml || ((x) => x);
-  qcUserEmail_   = userEmail;
-
+async function fetchIncidenciasActivas_(vin, conversionId, { getJSON_user } = {}) {
   let activas = [];
 
   if (supabaseEnabled() && vin) {
     try {
       activas = await getIncidencias(vin, { soloActivas: true });
     } catch (err) {
-      console.warn("[openQCIncPopup_] Supabase error:", err.message);
+      console.warn("[fetchIncidenciasActivas_] Supabase error:", err.message);
     }
   }
 
@@ -402,10 +399,25 @@ export async function openQCIncPopup_(vin, conversionId, { getJSON_user, escapeH
       const r = getJSON_user ? await getJSON_user(url) : await fetch(url).then(x => x.json());
       if (r?.ok && Array.isArray(r.items)) activas = r.items;
     } catch (err) {
-      console.warn("[openQCIncPopup_] fallback error:", err.message);
+      console.warn("[fetchIncidenciasActivas_] fallback error:", err.message);
     }
   }
 
+  return activas;
+}
+
+// Cuenta incidencias activas (tiempo_fin IS NULL) sin abrir ningún popup —
+// usado para bloquear el cierre de OT (ej. FIN de CALIDAD) antes de mostrar UI.
+export async function countIncidenciasActivas_(vin, conversionId, { getJSON_user } = {}) {
+  const activas = await fetchIncidenciasActivas_(vin, conversionId, { getJSON_user });
+  return activas.length;
+}
+
+export async function openQCIncPopup_(vin, conversionId, { getJSON_user, escapeHtml, userEmail = "" } = {}) {
+  qcEscapeHtml_  = escapeHtml || ((x) => x);
+  qcUserEmail_   = userEmail;
+
+  const activas = await fetchIncidenciasActivas_(vin, conversionId, { getJSON_user });
   if (!activas.length) return false;
 
   qcList_ = activas;

@@ -555,10 +555,12 @@ router.get("/api/ml/suggest-next", async (req, res) => {
     const [rPairActive, rMyActive] = await Promise.all([
       fetch(`${SUPABASE_URL}/rest/v1/asignaciones?rol_trabajo=eq.${pairEsp}&activo=eq.true&estado_actual=neq.FINALIZADO&select=user_id,work_order_id`,
         { method: "GET", headers: supabaseHeaders_() }),
-      fetch(`${SUPABASE_URL}/rest/v1/asignaciones?rol_trabajo=eq.${myEsp}&activo=eq.true&estado_actual=neq.FINALIZADO&select=work_order_id`,
+      fetch(`${SUPABASE_URL}/rest/v1/asignaciones?rol_trabajo=eq.${myEsp}&activo=eq.true&select=work_order_id`,
         { method: "GET", headers: supabaseHeaders_() }),
     ]);
     const pairActiveRows = rPairActive.ok ? await rPairActive.json() : [];
+    // Cualquier asignación mía (activa, en cualquier estado, incluido FINALIZADO) ya "cubre"
+    // ese work_order — si mi rol ya terminó ahí, no debe sugerirse como "carro sin dupla".
     const myActiveWoIds  = new Set((rMyActive.ok ? await rMyActive.json() : []).map(a => a.work_order_id));
 
     const soloRows = pairActiveRows.filter(a => !myActiveWoIds.has(a.work_order_id));

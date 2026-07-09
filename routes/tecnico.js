@@ -31,7 +31,9 @@ router.get("/api/tecnico/cola", async (req, res) => {
     if (pairEsp) {
       const [rPairAct, rMyAct] = await Promise.all([
         fetch(`${SUPABASE_URL}/rest/v1/asignaciones?rol_trabajo=eq.${pairEsp}&activo=eq.true&estado_actual=neq.FINALIZADO&select=work_order_id,estado_actual,usuarios(nombre),work_orders(id,vin)`, { method: "GET", headers }),
-        fetch(`${SUPABASE_URL}/rest/v1/asignaciones?rol_trabajo=eq.${esp}&activo=eq.true&estado_actual=neq.FINALIZADO&select=work_order_id`, { method: "GET", headers }),
+        // Sin filtro de estado_actual: si mi rol ya tiene asignación aquí (incluido FINALIZADO),
+        // el carro ya está cubierto por mí y no debe listarse como pendiente de mi especialidad.
+        fetch(`${SUPABASE_URL}/rest/v1/asignaciones?rol_trabajo=eq.${esp}&activo=eq.true&select=work_order_id`, { method: "GET", headers }),
       ]);
       const pairRows = rPairAct.ok ? await rPairAct.json() : [];
       const myActIds = new Set((rMyAct.ok ? await rMyAct.json() : []).map(a => a.work_order_id));
