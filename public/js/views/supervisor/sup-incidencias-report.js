@@ -61,11 +61,13 @@ function buildTimeStats_(items) {
 
   const byCat = {};
   const byTec = {};
+  const byMes = {};
   let sumAll = 0;
 
   for (const it of resueltas) {
     const cat = parseCategoria_(it.nota);
     const tec = String(it.tecnico || "").trim() || "Sin técnico";
+    const mes = String(it.fecha_hora || "").slice(0, 7) || "—"; // YYYY-MM
 
     (byCat[cat] ||= { n: 0, sum: 0 }).n++;
     byCat[cat].sum += it.duracion_min;
@@ -73,19 +75,36 @@ function buildTimeStats_(items) {
     (byTec[tec] ||= { n: 0, sum: 0 }).n++;
     byTec[tec].sum += it.duracion_min;
 
+    (byMes[mes] ||= { n: 0, sum: 0 }).n++;
+    byMes[mes].sum += it.duracion_min;
+
     sumAll += it.duracion_min;
   }
 
   const toRanked = (map) => Object.entries(map)
-    .map(([name, { n, sum }]) => ({ name, n, avg: sum / n }))
+    .map(([name, { n, sum }]) => ({ name, n, sum, avg: sum / n }))
     .sort((a, b) => b.avg - a.avg);
+
+  // Por mes: orden cronológico (no por promedio) — es una línea de tiempo, no un ranking.
+  const porMes = Object.entries(byMes)
+    .map(([mes, { n, sum }]) => ({ mes, n, sum, avg: sum / n }))
+    .sort((a, b) => a.mes.localeCompare(b.mes));
 
   return {
     nResueltas:   resueltas.length,
     avgGlobal:    resueltas.length ? sumAll / resueltas.length : 0,
+    totalGlobal:  sumAll,
     porCategoria: toRanked(byCat),
     porTecnico:   toRanked(byTec),
+    porMes,
   };
+}
+
+const MESES_ES_ = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+function fmtMesLabel_(mes) {
+  const [y, m] = String(mes).split("-").map(Number);
+  if (!y || !m || m < 1 || m > 12) return String(mes);
+  return MESES_ES_[m - 1] + " " + y;
 }
 
 // ── Paleta de colores ───────────────────────────────────────────────────────────────
@@ -250,7 +269,8 @@ function renderKpis_(s, timeStats) {
     + kpiCard(M,     "MODERADA", GRADE_MAP.MODERADA)
     + kpiCard(L,     "LEVE",     GRADE_MAP.LEVE)
     + (totalVins ? kpiCard(totalVins, "VINS", VIN_G) : "")
-    + (timeStats?.nResueltas ? kpiCard(fmtMin_(timeStats.avgGlobal), "⏱ T. RESOL.", TIME_G) : "")
+    + (timeStats?.nResueltas ? kpiCard(fmtMin_(timeStats.avgGlobal),   "⏱ T. RESOL.", TIME_G) : "")
+    + (timeStats?.nResueltas ? kpiCard(fmtMin_(timeStats.totalGlobal), "⏱ T. TOTAL",  TIME_G) : "")
     + "</div>"
     + (total > 0
       ? "<div style=\"background:rgba(255,255,255,.055);border-radius:11px;padding:10px 14px;\">"
@@ -286,6 +306,25 @@ function timeRow(name, avgMin, n, maxAvg, rank) {
     +   "</div>"
     + "</div>"
     + "<span style=\"font-size:.65em;opacity:.4;flex-shrink:0;min-width:46px;text-align:right;\">" + n + " res.</span>"
+    + "</div>";
+}
+
+// ── Fila de tendencia mensual (tiempo total + promedio) ─────────────────────────
+function monthRow_(mes, avgMin, sumMin, n, maxSum, rank) {
+  const pct = maxSum > 0 ? Math.max(6, Math.round(sumMin / maxSum * 100)) : 0;
+  return "<div style=\"display:flex;align-items:center;gap:8px;padding:7px 0;"
+    + (rank > 0 ? "border-top:1px solid rgba(255,255,255,.06);" : "") + "\">"
+    + "<span style=\"font-size:.67em;font-weight:900;opacity:.3;min-width:16px;text-align:right;\">#" + (rank+1) + "</span>"
+    + "<div style=\"flex:1;min-width:0;\">"
+    +   "<div style=\"display:flex;justify-content:space-between;gap:6px;align-items:baseline;\">"
+    +     "<span style=\"font-size:.8em;font-weight:800;\">" + _escape(fmtMesLabel_(mes)) + "</span>"
+    +     "<span style=\"font-size:.82em;font-weight:1000;color:#22d3ee;flex-shrink:0;\">" + fmtMin_(sumMin) + " <span style=\"opacity:.5;font-weight:700;\">total</span></span>"
+    +   "</div>"
+    +   "<div style=\"height:5px;background:rgba(255,255,255,.07);border-radius:3px;margin-top:4px;overflow:hidden;\">"
+    +     "<div style=\"height:100%;width:" + pct + "%;background:#22d3ee;border-radius:3px;\"></div>"
+    +   "</div>"
+    +   "<div style=\"font-size:.68em;opacity:.5;margin-top:3px;\">prom. " + fmtMin_(avgMin) + " · " + n + " res.</div>"
+    + "</div>"
     + "</div>";
 }
 
@@ -397,6 +436,7 @@ function renderRanking_(catGroups, summary, timeStats) {
   // Ranking de tiempo promedio de resolución (solo incidencias con tiempo_fin)
   let catTimeRows = "";
   let tecTimeRows = "";
+  let mesRows     = "";
   if (timeStats?.nResueltas) {
     const maxCatAvg = Math.max(...timeStats.porCategoria.map(c => c.avg), 1);
     const maxTecAvg = Math.max(...timeStats.porTecnico.map(t => t.avg), 1);
@@ -404,6 +444,12 @@ function renderRanking_(catGroups, summary, timeStats) {
       .map((c, i) => timeRow(c.name, c.avg, c.n, maxCatAvg, i)).join("");
     tecTimeRows = timeStats.porTecnico.slice(0, 10)
       .map((t, i) => timeRow(t.name, t.avg, t.n, maxTecAvg, i)).join("");
+
+    // Tendencia mensual: agrupa según el intervalo de búsqueda (1 mes seleccionado
+    // → 1 fila con el total del período; rango amplio → varias filas, una por mes).
+    const maxMesSum = Math.max(...timeStats.porMes.map(m => m.sum), 1);
+    mesRows = timeStats.porMes
+      .map((m, i) => monthRow_(m.mes, m.avg, m.sum, m.n, maxMesSum, i)).join("");
   }
 
   // Layout: paneles apilados verticalmente — evita overflow en contenedores estrechos
@@ -411,6 +457,7 @@ function renderRanking_(catGroups, summary, timeStats) {
     panel("📊 CATEGORÍAS", catRows, "#818cf8")
     + "<div style=\"height:10px;\"></div>"
     + (tecRows ? panel("👷 TÉCNICOS", tecRows, "#f97316") + "<div style=\"height:10px;\"></div>" : "")
+    + (mesRows     ? panel("⏱ TENDENCIA DE TIEMPOS (por mes / intervalo)", mesRows, "#22d3ee") + "<div style=\"height:10px;\"></div>" : "")
     + (catTimeRows ? panel("⏱ TIEMPO PROMEDIO POR CATEGORÍA", catTimeRows, "#22d3ee") + "<div style=\"height:10px;\"></div>" : "")
     + (tecTimeRows ? panel("⏱ TIEMPO PROMEDIO POR TÉCNICO", tecTimeRows, "#22d3ee") + "<div style=\"height:10px;\"></div>" : "")
     + (vinRows
