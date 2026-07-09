@@ -73,7 +73,7 @@ export function renderActivas_() {
               : ""}
 
           ${String(it?.rolTrabajo || "").toUpperCase() === "MOTOR" &&
-            String(it?.estado || "").toUpperCase() === "TRABAJANDO" &&
+            ["TRABAJANDO", "PAUSADO"].includes(String(it?.estado || "").toUpperCase()) &&
             CORE.state.currentModule === "TECNICO"
               ? `<button class="btn btnSolicitarRamal" type="button"
                   data-solicitar-ramal="1"

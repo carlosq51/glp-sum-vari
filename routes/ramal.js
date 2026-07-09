@@ -59,17 +59,27 @@ router.get("/api/solicitud-ramal/pendientes", async (req, res) => {
   try {
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const headers = supabaseHeaders_();
-    // PENDIENTES (todas) + ENTREGADOS de hoy — últimos 100 ordenados por fecha
-    const url = `${SUPABASE_URL}/rest/v1/solicitudes_ramal?order=created_at.desc&limit=100`;
-    const r = await fetch(url, { method: "GET", headers });
-    if (!r.ok) throw new Error(`Supabase ${r.status}`);
-    const all = await r.json();
-    // Filtrar: pendientes siempre + entregados solo del día de hoy (local)
+
+    // PENDIENTES: solo las cuya OT vinculada sigue activa (no FINALIZADA).
+    // Sin este filtro, solicitudes de OTs ya cerradas (nunca marcadas "Entregado")
+    // quedan huérfanas para siempre e inflan la cola indefinidamente.
+    const pendUrl = `${SUPABASE_URL}/rest/v1/solicitudes_ramal` +
+      `?estado=eq.PENDIENTE&select=*,work_orders!inner(estado_general)` +
+      `&work_orders.estado_general=neq.FINALIZADO&order=created_at.asc`;
+    const pendRes = await fetch(pendUrl, { method: "GET", headers });
+    if (!pendRes.ok) throw new Error(`Supabase ${pendRes.status}`);
+    const pendientes = (await pendRes.json()).map(({ work_orders, ...rest }) => rest);
+
+    // ENTREGADOS de hoy — últimos 200 por fecha de creación
+    const entrUrl = `${SUPABASE_URL}/rest/v1/solicitudes_ramal?estado=eq.ENTREGADO&order=created_at.desc&limit=200`;
+    const entrRes = await fetch(entrUrl, { method: "GET", headers });
+    if (!entrRes.ok) throw new Error(`Supabase ${entrRes.status}`);
     const todayStr = new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD
-    const items = all.filter(s =>
-      s.estado === "PENDIENTE" ||
-      (s.estado === "ENTREGADO" && (s.entregado_at || s.created_at || "").startsWith(todayStr))
+    const entregados = (await entrRes.json()).filter(s =>
+      (s.entregado_at || s.created_at || "").startsWith(todayStr)
     );
+
+    const items = [...pendientes, ...entregados];
     // Ordenar: pendientes primero, luego entregados; dentro de cada grupo por created_at asc
     items.sort((a, b) => {
       if (a.estado !== b.estado) return a.estado === "PENDIENTE" ? -1 : 1;
@@ -177,8 +187,11 @@ router.get("/api/solicitud-ramal/mi-posicion", async (req, res) => {
     if (!email) return res.status(400).json({ ok: false, error: "Falta email" });
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const headers = supabaseHeaders_();
+    // Solo cuenta solicitudes cuya OT vinculada sigue activa (no FINALIZADA) —
+    // evita contar solicitudes huérfanas de trabajos ya terminados.
     const url = `${SUPABASE_URL}/rest/v1/solicitudes_ramal` +
-      `?estado=eq.PENDIENTE&order=created_at.asc&select=id,tecnico_email`;
+      `?estado=eq.PENDIENTE&select=id,tecnico_email,work_orders!inner(estado_general)` +
+      `&work_orders.estado_general=neq.FINALIZADO&order=created_at.asc`;
     const r = await fetch(url, { method: "GET", headers });
     if (!r.ok) throw new Error(`Supabase ${r.status}`);
     const items = await r.json();
