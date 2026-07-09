@@ -5,6 +5,7 @@
 
 import { getIncidencias, resolverIncidencia, supabaseEnabled, getNombreByEmail } from "../../core/supabase-client.js";
 import { INC_TITULOS } from "../../templates/modals/incidencias-modal.js";
+import { formatElapsed_ } from "../../core/format.js";
 
 // --------------------------
 // Modal historico (sin cambios)
@@ -191,19 +192,6 @@ let qcEscapeHtml_    = null;
 let qcUserEmail_     = "";
 let qcElapsedTimer_  = null;
 let qcResolveClose_  = null;
-
-function formatElapsed_(tiempoInicio) {
-  if (!tiempoInicio) return null;
-  const ms = Date.now() - new Date(tiempoInicio).getTime();
-  if (ms < 0) return null;
-  const totalSec = Math.floor(ms / 1000);
-  const s  = totalSec % 60;
-  const m  = Math.floor(totalSec / 60) % 60;
-  const h  = Math.floor(totalSec / 3600);
-  const mm = String(m).padStart(2, "0");
-  const ss = String(s).padStart(2, "0");
-  return h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
-}
 
 const tipoMeta_ = {
   LEVE:     { label: "Incidencia LEVE",     color: "#f59e0b" },

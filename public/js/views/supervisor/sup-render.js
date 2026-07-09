@@ -3,7 +3,7 @@
 // RENDER: avg card + tabla (group + normal)
 // =========================
 
-import { fmtDur_ } from "./sup-stats.js";
+import { fmtDur_ } from "../../core/format.js";
 import { durationMsFromItem_, isFinalizado_ } from "./sup-filters.js";
 
 function isFin_(estado) {

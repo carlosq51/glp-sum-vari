@@ -6,7 +6,7 @@
 // - Sin X para el tecnico: debe marcar como solucionada (click para armar, 2do click confirma).
 // =========================
 
-import { escapeHtml } from "../../../core/format.js";
+import { escapeHtml, formatElapsed_ } from "../../../core/format.js";
 import { getNombreByEmail, getIncidenciasByTecnico, resolverIncidencia, supabaseEnabled } from "../../../core/supabase-client.js";
 
 // --------------------------
@@ -40,22 +40,6 @@ const emojiChar_ = {
   MODERADA: "🔶",
   CRITICA:  "🚨",
 };
-
-// --------------------------
-// Helpers
-// --------------------------
-function formatElapsed_(tiempoInicio) {
-  if (!tiempoInicio) return null;
-  const ms = Date.now() - new Date(tiempoInicio).getTime();
-  if (ms < 0) return null;
-  const totalSec = Math.floor(ms / 1000);
-  const s  = totalSec % 60;
-  const m  = Math.floor(totalSec / 60) % 60;
-  const h  = Math.floor(totalSec / 3600);
-  const mm = String(m).padStart(2, "0");
-  const ss = String(s).padStart(2, "0");
-  return h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
-}
 
 // --------------------------
 // HTML del popup

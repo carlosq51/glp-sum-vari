@@ -66,7 +66,18 @@ export {
 export { vinCacheSet_, vinCacheGet_, ramalCacheSet_, ramalCacheGet_ } from "./cache-local.js";
 
 // --- Format helpers ---
-export { escapeHtml, cssEsc_, fmtShort_, fmtFechaCreacion_, msToHMS_, keyOfItem_ } from "./format.js";
+export {
+  escapeHtml,
+  cssEsc_,
+  fmtShort_,
+  fmtFechaCreacion_,
+  msToHMS_,
+  formatElapsed_,
+  fmtDur_,
+  fmtTiempo_,
+  formatHours_,
+  keyOfItem_,
+} from "./format.js";
 
 // --- Links externos ---
 export { REG_FALLAS_BASE, openRegistroFallas_ } from "./links.js";

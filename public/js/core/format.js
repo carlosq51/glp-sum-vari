@@ -52,6 +52,51 @@ export function msToHMS_(ms) {
   return `${hh}:${mm}:${ss}`;
 }
 
+// Elapsed compacto desde un timestamp ISO: "m:ss" si dura menos de 1h, "h:mm:ss" si dura más.
+// Usado para popups/alertas de incidencias en curso (ex-duplicado en sup-incidencias.js y conversion/modals/incidencia-alert.js).
+export function formatElapsed_(tiempoInicio) {
+  if (!tiempoInicio) return null;
+  const ms = Date.now() - new Date(tiempoInicio).getTime();
+  if (ms < 0) return null;
+  const totalSec = Math.floor(ms / 1000);
+  const s  = totalSec % 60;
+  const m  = Math.floor(totalSec / 60) % 60;
+  const h  = Math.floor(totalSec / 3600);
+  const mm = String(m).padStart(2, "0");
+  const ss = String(s).padStart(2, "0");
+  return h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
+}
+
+// Duración en ms -> "Xh YYm ZZs". Usado en tablas/promedios del supervisor (ex sup-stats.js).
+export function fmtDur_(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const hh = Math.floor(s / 3600);
+  const mm = Math.floor((s % 3600) / 60);
+  const ss = s % 60;
+
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${hh}h ${pad(mm)}m ${pad(ss)}s`;
+}
+
+// Tiempo acumulado (ms) + opcional timestamp "running_since" a sumar en vivo -> "Xh YYm" / "Ym". Usado en el panel LIVE del supervisor (ex sup-live.js).
+export function fmtTiempo_(ms, runningSince) {
+  let total = Number(ms) || 0;
+  if (runningSince) total += Date.now() - new Date(runningSince).getTime();
+  total = Math.max(0, total);
+  const h = Math.floor(total / 3_600_000);
+  const m = Math.floor((total % 3_600_000) / 60_000);
+  if (h > 0) return `${h}h ${String(m).padStart(2, "0")}m`;
+  return `${m}m`;
+}
+
+// Horas en formato decimal (float) -> "Xh Ym". Unidad distinta a las demás (horas, no ms) — usado en KPIs del supervisor (ex sup-kpis.js).
+export function formatHours_(hours) {
+  if (!hours || hours < 0) return "0h 0m";
+  const h = Math.floor(hours);
+  const m = Math.floor((hours - h) * 60);
+  return `${h}h ${m}m`;
+}
+
 export function keyOfItem_(it) {
   const cid = String(it?.conversionId || "").trim();
   const rol = String(it?.rolTrabajo || "").toUpperCase();

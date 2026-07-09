@@ -286,16 +286,6 @@ export function calculateKPIs_(items, track = "CONVERSION", isIndividual = false
 }
 
 /**
- * Formatea horas a string legible
- */
-export function formatHours_(hours) {
-  if (!hours || hours < 0) return "0h 0m";
-  const h = Math.floor(hours);
-  const m = Math.floor((hours - h) * 60);
-  return `${h}h ${m}m`;
-}
-
-/**
  * Formatea porcentaje con signo
  */
 export function formatPct_(pct) {

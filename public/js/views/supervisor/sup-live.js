@@ -4,7 +4,7 @@
 // =========================
 
 import { getJSON } from "../../core/api.js";
-import { escapeHtml } from "../../core/format.js";
+import { escapeHtml, fmtTiempo_ } from "../../core/format.js";
 
 let liveTimer_    = null;
 let liveActive_   = false;
@@ -41,16 +41,6 @@ function fmtHora_(iso) {
   const d = new Date(iso);
   if (isNaN(d)) return "--:--";
   return new Intl.DateTimeFormat("es-PE", { hour: "2-digit", minute: "2-digit" }).format(d);
-}
-
-function fmtTiempo_(ms, runningSince) {
-  let total = Number(ms) || 0;
-  if (runningSince) total += Date.now() - new Date(runningSince).getTime();
-  total = Math.max(0, total);
-  const h = Math.floor(total / 3_600_000);
-  const m = Math.floor((total % 3_600_000) / 60_000);
-  if (h > 0) return `${h}h ${String(m).padStart(2, "0")}m`;
-  return `${m}m`;
 }
 
 // ── Render principal ──────────────────────────────────────────────────

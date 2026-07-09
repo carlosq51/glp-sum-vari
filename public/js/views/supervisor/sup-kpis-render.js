@@ -3,7 +3,8 @@
 // Renderizado de KPIs para la vista de supervisor
 // ============================================================
 
-import { formatHours_, formatPct_ } from "./sup-kpis.js";
+import { formatPct_ } from "./sup-kpis.js";
+import { formatHours_ } from "../../core/format.js";
 
 /**
  * Renderiza el panel completo de KPIs
