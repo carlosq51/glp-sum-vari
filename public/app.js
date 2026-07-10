@@ -186,5 +186,27 @@ window.addEventListener("load", async () => {
   await doLogin(saved);
 });
 
+// ---------- PWA: forzar chequeo de actualización al recuperar foco ----------
+// El registro base (dist/registerSW.js) solo revisa si hay una versión nueva
+// en el evento "load" de la página. Un celular que retoma la PWA desde
+// segundo plano (sin recargar) no vuelve a disparar ese evento, así que se
+// queda pegado en la versión vieja hasta que alguien la cierre del todo.
+// Esto complementa el forceReload de sw-custom.js: cuando reg.update()
+// encuentra una versión nueva, activa el SW (skipWaiting) y éste fuerza el
+// reload de todas las pestañas/ventanas abiertas.
+if ("serviceWorker" in navigator) {
+  const checkForSwUpdate_ = () => {
+    navigator.serviceWorker.getRegistration()
+      .then((reg) => reg?.update())
+      .catch(() => {});
+  };
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") checkForSwUpdate_();
+  });
+  window.addEventListener("focus", checkForSwUpdate_);
+  setInterval(checkForSwUpdate_, 60_000);
+}
+
 // 🔌 Exponer funciones de debug en consola
 window.getRealtimeStatus = getRealtimeStatus;
