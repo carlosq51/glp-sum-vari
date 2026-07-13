@@ -75,3 +75,32 @@ h4 { margin: 0 0 var(--gap-sm);  font-size: var(--fs-body); font-weight: var(--f
 #tecValidarDetails summary::-webkit-details-marker { display: none; }
 #tecValidarDetails summary { outline: none; }
 #tecValidarDetails[open] summary { color: var(--text); }
+
+/* ─── Entrada de vista/módulo ───────────────────────────────────────
+   Los módulos (viewMOVILIZADOR, viewSUPERVISOR, viewHub, …) alternan
+   display:none → block por JS (openModule). Al re-aparecer, el motor
+   destruye y rehace layout, así que la animación se re-dispara sola:
+   basta con declararla, sin tocar JS. ─────────────────────────────── */
+[id^="view"] {
+  animation: viewEnter var(--dur-slower) var(--ease-out);
+}
+
+/* ─── Smoothing global de tema (día/noche) ───────────────────────────
+   Al alternar tema, que colores de superficie cambien con transición
+   en vez de "saltar". No incluye transform/layout para no interferir
+   con animaciones propias de cada componente. ──────────────────────── */
+body, .card, .innerCard, .statTile, .gauge, .trendBox,
+.pill, .badge, button, input, select, textarea {
+  transition: background-color var(--dur-slow), border-color var(--dur-slow),
+              color var(--dur-slow), box-shadow var(--dur-slow);
+}
+
+/* ─── Accesibilidad: respetar reduce-motion ─── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

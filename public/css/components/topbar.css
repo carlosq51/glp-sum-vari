@@ -9,7 +9,12 @@
   gap: var(--gap);
   padding: 6px 0 14px;
   flex-wrap: wrap;
+  animation: fadeIn var(--dur-slow) var(--ease-out);
 }
 
 .topbar h2,
 .topbar h3 { margin: 0; }
+
+/* Rotación breve del icono de tema al alternar día/noche */
+#btnTheme { transition: transform var(--dur-slow) var(--ease-spring), filter var(--dur-base); }
+#btnTheme:active { transform: rotate(-18deg) scale(.94); }

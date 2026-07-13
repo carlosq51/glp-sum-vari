@@ -17,13 +17,22 @@
 /* Card elevada con hover-lift (dashboards) */
 .card.lift {
   box-shadow: var(--elev-1);
-  transition: transform var(--dur-base), box-shadow var(--dur-base), border-color var(--dur-base);
+  transition: transform var(--dur-base) var(--ease-out), box-shadow var(--dur-base), border-color var(--dur-base);
 }
 .card.lift:hover {
   transform: translateY(-2px);
   box-shadow: var(--elev-2);
   border-color: var(--surfaceLine);
 }
+.card.lift:active { transform: translateY(-1px) scale(.99); }
+
+/* Card interactiva (fila/ítem tocable: VIN, trabajo, incidencia…) */
+.card--tap {
+  cursor: pointer;
+  transition: transform var(--dur-fast) var(--ease-out), box-shadow var(--dur-base), border-color var(--dur-base);
+}
+.card--tap:hover  { border-color: var(--surfaceLine); box-shadow: var(--elev-1); }
+.card--tap:active { transform: scale(.985); }
 
 /* Card interna (dentro de modal / card padre) */
 .innerCard {

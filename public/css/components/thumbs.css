@@ -13,6 +13,7 @@
   justify-content: center;
   overflow: hidden;
   position: relative;
+  animation: popIn var(--dur-base) var(--ease-out);
 }
 
 .thumb img {
@@ -21,7 +22,10 @@
   object-fit: cover;
   display: block;
   cursor: zoom-in;
+  transition: transform var(--dur-base) var(--ease-out);
 }
+.thumb img:hover  { transform: scale(1.06); }
+.thumb img:active { transform: scale(.96); }
 
 /* Grid 4 miniaturas */
 .thumbGrid {

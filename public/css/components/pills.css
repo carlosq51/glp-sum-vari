@@ -14,4 +14,34 @@
   font-weight: var(--fw-bold);
   line-height: 1;
   white-space: nowrap;
+  transition: background-color var(--dur-slow), border-color var(--dur-slow),
+              color var(--dur-slow), transform var(--dur-fast) var(--ease-out);
+}
+
+/* Pill accionable (filtro/selector tocable) */
+button.pill,
+.pill--tap {
+  cursor: pointer;
+}
+button.pill:hover,
+.pill--tap:hover  { border-color: var(--surfaceLine); }
+button.pill:active,
+.pill--tap:active { transform: scale(.95); }
+
+/* Punto "vivo" reutilizable — proceso en curso, en cualquier pill/badge */
+.liveDot {
+  position: relative;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+.liveDot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: currentColor;
+  animation: liveDot 1.6s ease-out infinite;
 }

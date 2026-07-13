@@ -15,7 +15,7 @@ textarea {
   background: var(--inputBg);
   color: var(--text);
   outline: none;
-  transition: border-color var(--dur-base), box-shadow var(--dur-base);
+  transition: border-color var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out);
   appearance: none;
   -webkit-appearance: none;
 }
@@ -24,7 +24,13 @@ input:focus,
 select:focus,
 textarea:focus {
   border-color: var(--inputFocus);
-  box-shadow: 0 0 0 3px var(--focusGlow);
+  box-shadow: 0 0 0 4px var(--focusGlow);
+}
+
+input:not([type="checkbox"]):not([type="radio"]):hover:not(:focus):not(:disabled),
+select:hover:not(:focus):not(:disabled),
+textarea:hover:not(:focus):not(:disabled) {
+  border-color: var(--muted);
 }
 
 /* Select — flecha custom (dark) */

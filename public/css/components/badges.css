@@ -12,9 +12,13 @@
   font-weight: var(--fw-extrabold);
   letter-spacing: .2px;
   white-space: nowrap;
+  transition: background-color var(--dur-slow), color var(--dur-slow);
 }
 
 .badge-ok     { color: var(--ok);     background: var(--okBg); }
 .badge-warn   { color: var(--warn);   background: var(--warnBg); }
 .badge-danger { color: var(--danger); background: var(--dangerBg); }
 .badge-note   { color: var(--note);   background: var(--noteBg); }
+
+/* Badge "vivo" — proceso en curso (punto pulsante, ver .liveDot en pills.css) */
+.badge-live { padding-left: 6px; }
