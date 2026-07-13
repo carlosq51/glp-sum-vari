@@ -552,18 +552,30 @@ router.get("/api/ml/suggest-next", async (req, res) => {
     if (!pairEsp) return res.json({ ok: true, suggestions: [], mode: "new_car" });
 
     // ── Paso 1: complementarios trabajando en carros sin su dupla ────────────
-    const [rPairActive, rMyActive] = await Promise.all([
-      fetch(`${SUPABASE_URL}/rest/v1/asignaciones?rol_trabajo=eq.${pairEsp}&activo=eq.true&estado_actual=neq.FINALIZADO&select=user_id,work_order_id`,
-        { method: "GET", headers: supabaseHeaders_() }),
-      fetch(`${SUPABASE_URL}/rest/v1/asignaciones?rol_trabajo=eq.${myEsp}&activo=eq.true&select=work_order_id`,
-        { method: "GET", headers: supabaseHeaders_() }),
-    ]);
+    // Complementarios (pairEsp) con trabajo EN CURSO (no finalizado).
+    const rPairActive = await fetch(
+      `${SUPABASE_URL}/rest/v1/asignaciones?rol_trabajo=eq.${pairEsp}&activo=eq.true&estado_actual=neq.FINALIZADO&select=user_id,work_order_id&limit=2000`,
+      { method: "GET", headers: supabaseHeaders_() }
+    );
     const pairActiveRows = rPairActive.ok ? await rPairActive.json() : [];
-    // Cualquier asignación mía (activa, en cualquier estado, incluido FINALIZADO) ya "cubre"
-    // ese work_order — si mi rol ya terminó ahí, no debe sugerirse como "carro sin dupla".
-    const myActiveWoIds  = new Set((rMyActive.ok ? await rMyActive.json() : []).map(a => a.work_order_id));
 
-    const soloRows = pairActiveRows.filter(a => !myActiveWoIds.has(a.work_order_id));
+    // Excluir carros cuyo lado de MI rol ya está TOMADO o TERMINADO.
+    // ⚠️ Se consulta SOLO por los work_orders candidatos (in.(…), en lotes) en
+    // vez de "todas mis asignaciones": `activo` nunca vuelve a false (ni al
+    // FINALIZAR), así que un query global choca con el límite de 1000 filas de
+    // Supabase y deja pasar carros que ya tienen tanquero (activo o finalizado).
+    const pairWoIds = [...new Set(pairActiveRows.map(a => a.work_order_id).filter(Boolean))];
+    const myTakenWoIds = new Set();
+    for (let i = 0; i < pairWoIds.length; i += 200) {
+      const batch = pairWoIds.slice(i, i + 200);
+      const rMine = await fetch(
+        `${SUPABASE_URL}/rest/v1/asignaciones?rol_trabajo=eq.${myEsp}&activo=eq.true&work_order_id=in.(${batch.join(",")})&select=work_order_id`,
+        { method: "GET", headers: supabaseHeaders_() }
+      );
+      if (rMine.ok) (await rMine.json()).forEach(a => myTakenWoIds.add(a.work_order_id));
+    }
+
+    const soloRows = pairActiveRows.filter(a => !myTakenWoIds.has(a.work_order_id));
     const soloByUser = {};   // userId → work_order_id
     soloRows.forEach(a => { soloByUser[a.user_id] = a.work_order_id; });
     const soloUserIds = new Set(Object.keys(soloByUser));
