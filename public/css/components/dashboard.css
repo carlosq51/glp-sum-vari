@@ -1,0 +1,248 @@
+/* =====================================================================
+   components/dashboard.css — Primitivas de dashboard (token-driven)
+   ---------------------------------------------------------------------
+   Reutilizables en cualquier vista. Funcionan en ambos temas porque
+   solo consumen variables de 00-token.css. Sin colores hardcodeados.
+   ===================================================================== */
+
+/* ─── Grid responsivo auto-fit ─── */
+.dashGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  width: 100%;
+}
+.dashGrid--wide { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.dashGrid--gauges { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+
+/* ─── Cabecera de sección ─── */
+.sectionHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 6px 0 14px;
+  flex-wrap: wrap;
+}
+.sectionHead__title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: var(--fs-2xl);
+  font-weight: var(--fw-black);
+  letter-spacing: -.2px;
+  color: var(--text);
+}
+.sectionHead__title .accentBar {
+  width: 4px;
+  height: 20px;
+  border-radius: 2px;
+  background: var(--grad-accent);
+  flex-shrink: 0;
+}
+.sectionHead__actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ─── Stat tile (KPI card) ─── */
+.statTile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 18px;
+  background: var(--surface);
+  border: var(--border-w) solid var(--surfaceLine);
+  border-radius: var(--radius);
+  box-shadow: var(--elev-1);
+  min-width: 0;
+  overflow: hidden;
+}
+.statTile__label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-extrabold);
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: var(--muted);
+}
+.statTile__value {
+  font-size: 30px;
+  font-weight: var(--fw-black);
+  line-height: 1;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.statTile__value.sm { font-size: 22px; }
+.statTile__value .unit { font-size: var(--fs-sm); font-weight: var(--fw-bold); color: var(--muted); }
+.statTile__foot { font-size: var(--fs-xs); color: var(--muted); }
+
+/* Tile héroe con gradiente de acento */
+.statTile--accent {
+  background: var(--grad-accent);
+  border-color: transparent;
+  box-shadow: var(--elev-2), var(--glow);
+}
+.statTile--accent .statTile__label { color: rgba(255,255,255,.82); }
+.statTile--accent .statTile__value,
+.statTile--accent .statTile__foot  { color: #fff; }
+.statTile--accent .statTile__value .unit { color: rgba(255,255,255,.82); }
+
+/* ─── Delta badge (reusa tokens semánticos, correcto en ambos temas) ─── */
+.delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-extrabold);
+  white-space: nowrap;
+}
+.delta--good    { color: var(--ok);     background: var(--okBg); }
+.delta--bad     { color: var(--danger); background: var(--dangerBg); }
+.delta--warn    { color: var(--warn);   background: var(--warnBg); }
+.delta--neutral { color: var(--muted);  background: var(--pillBg); }
+
+/* ─── Gauge (anillo circular) — el SVG lo pinta viz.js ─── */
+.gauge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 10px;
+  background: var(--surface);
+  border: var(--border-w) solid var(--surfaceLine);
+  border-radius: var(--radius);
+  box-shadow: var(--elev-1);
+  min-width: 0;
+}
+.gauge__ring { position: relative; width: 132px; height: 132px; }
+.gauge__ring svg { display: block; width: 100%; height: 100%; }
+.gauge__center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0 8px;
+}
+.gauge__value {
+  font-size: 26px;
+  font-weight: var(--fw-black);
+  line-height: 1;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.gauge__sub {
+  margin-top: 3px;
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  color: var(--muted);
+}
+.gauge__label {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-extrabold);
+  color: var(--text);
+  text-align: center;
+}
+.gauge__foot { font-size: var(--fs-2xs); color: var(--muted); text-align: center; }
+
+/* ─── Meter (barra segmentada con gradiente) ─── */
+.meter { display: flex; flex-direction: column; gap: 8px; }
+.meter__track {
+  height: 12px;
+  border-radius: var(--radius-full);
+  background: var(--ring-track);
+  overflow: hidden;
+  display: flex;
+}
+.meter__seg { height: 100%; min-width: 2px; }
+.meter__seg + .meter__seg { box-shadow: -2px 0 0 var(--surface); } /* gap de 2px (dataviz) */
+.meter__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+.meter__key { display: inline-flex; align-items: center; gap: 6px; font-weight: var(--fw-bold); }
+.meter__dot { width: 9px; height: 9px; border-radius: 3px; flex-shrink: 0; }
+.meter__num { color: var(--text); font-weight: var(--fw-extrabold); font-variant-numeric: tabular-nums; }
+
+/* ─── Barra de ranking (inline en tablas) ─── */
+.rankBar {
+  position: relative;
+  height: 8px;
+  min-width: 48px;
+  border-radius: var(--radius-full);
+  background: var(--ring-track);
+  overflow: hidden;
+}
+.rankBar__fill { height: 100%; border-radius: var(--radius-full); background: var(--grad-accent); }
+
+/* ─── Contenedor de gráfico ─── */
+.trendBox {
+  background: var(--dv-surface);
+  border: var(--border-w) solid var(--surfaceLine);
+  border-radius: var(--radius);
+  padding: 16px;
+  box-shadow: var(--elev-1);
+}
+.trendBox__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.trendBox__title { font-size: var(--fs-lg); font-weight: var(--fw-extrabold); color: var(--dv-ink); }
+.trendCanvasWrap { position: relative; width: 100%; height: 300px; }
+
+/* ─── Leyenda de gráfico (identidad nunca solo-color) ─── */
+.dvLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-top: 12px;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-bold);
+  color: var(--muted);
+}
+.dvLegend__item { display: inline-flex; align-items: center; gap: 6px; }
+.dvLegend__swatch { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+
+/* ─── Tabla de datos reutilizable ─── */
+.dataTable { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+.dataTable th {
+  text-align: left;
+  padding: 10px 12px;
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-extrabold);
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: var(--muted);
+  border-bottom: var(--border-w) solid var(--surfaceLine);
+  white-space: nowrap;
+}
+.dataTable td {
+  padding: 10px 12px;
+  border-bottom: var(--border-w) solid var(--surfaceLine);
+  color: var(--text);
+  vertical-align: middle;
+  line-height: 1.4;
+}
+.dataTable td.num { text-align: right; font-variant-numeric: tabular-nums; font-weight: var(--fw-bold); }
+.dataTable tr:last-child td { border-bottom: none; }
+.dataTable tbody tr:hover td { background: var(--glass); }
+.dataTableScroll { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }

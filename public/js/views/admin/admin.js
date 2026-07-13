@@ -483,7 +483,7 @@ async function loadTab() {
               Convierte variantes de texto (<i>X70FL 1.5T 6DCT 4X2 LIMITED</i>, <i>X70 1,5T MEC...</i>) a nombres canónicos
               (<b>Jetour X70</b>, <b>KYC V3</b>, <b>KYC V5</b>, <b>KYC V7</b>, etc.) y los guarda en la columna <code>modelo_normalizado</code> de la tabla <code>vins</code>.
             </p>
-            <div style="background:rgba(0,0,0,.25);border-radius:6px;padding:10px 12px;font-family:monospace;font-size:var(--fs-xs);color:#a5f3fc;margin-bottom:12px;line-height:1.7;">
+            <div style="background:var(--codeBg);border:1px solid var(--codeLine);border-radius:6px;padding:10px 12px;font-family:var(--font-mono);font-size:var(--fs-xs);color:var(--note);margin-bottom:12px;line-height:1.7;">
               <div style="opacity:.5;margin-bottom:4px;">-- 1. Ejecuta esto UNA VEZ en Supabase Dashboard → SQL Editor:</div>
               ALTER TABLE vins ADD COLUMN IF NOT EXISTS modelo_normalizado text;<br>
               CREATE INDEX IF NOT EXISTS idx_vins_modelo_normalizado ON vins(modelo_normalizado);

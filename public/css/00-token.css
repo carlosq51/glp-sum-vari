@@ -12,8 +12,8 @@
   --bg1: #0a1322;
   --bgAccent: #0e1d38;
 
-  /* Texto */
-  --text: #eef0ff;
+  /* Texto — off-white ligeramente atenuado (menos halación de noche) */
+  --text: #e8ebf7;
   --muted: rgba(220,228,255,.62);
   --placeholder: rgba(220,228,255,.36);
 
@@ -141,28 +141,66 @@
   /* ── Focus ── */
   --focusRing: rgba(96,165,250,.70);
   --focusGlow: rgba(96,165,250,.18);
+
+  /* ═══════════════════════════════════════════════════════════════
+     SISTEMA DE DASHBOARD (night) — acento, elevación, data-viz
+     ═══════════════════════════════════════════════════════════════ */
+
+  /* Acento: gradiente púrpura→azul (estilo dashboard de referencia) */
+  --accent:  #8b5cf6;
+  --accent2: #3b82f6;
+  --grad-accent: linear-gradient(135deg, #8b5cf6 0%, #6366f1 50%, #3b82f6 100%);
+
+  /* Elevación glassy + glow */
+  --elev-1: 0 2px 8px rgba(0,0,0,.35);
+  --elev-2: 0 8px 24px rgba(0,0,0,.48);
+  --elev-3: 0 18px 48px rgba(0,0,0,.60);
+  --glow:   0 0 32px rgba(124,58,237,.28);
+
+  /* Data-viz: superficie y chrome de gráficos */
+  --dv-surface: #101d38;
+  --dv-ink:  #eef0ff;
+  --dv-ink2: rgba(220,228,255,.62);
+  --dv-grid: rgba(255,255,255,.10);
+  --dv-axis: rgba(255,255,255,.24);
+
+  /* Paleta categórica — steps para superficie oscura (skill dataviz, validada) */
+  --dv-1: #3987e5;  --dv-2: #199e70;  --dv-3: #c98500;  --dv-4: #008300;
+  --dv-5: #9085e9;  --dv-6: #e66767;  --dv-7: #d55181;  --dv-8: #d95926;
+
+  /* Estado (fijo entre temas; siempre acompañado de icono + label) */
+  --dv-good: #0ca30c;  --dv-warn: #fab219;  --dv-serious: #ec835a;  --dv-bad: #d03b3b;
+
+  /* Tracks del taller (mapeados a slots categóricos bien separados) */
+  --track-motor:   var(--dv-1);
+  --track-tanque:  var(--dv-8);
+  --track-ramal:   var(--dv-5);
+  --track-calidad: var(--dv-2);
+
+  /* Gauges (anillo de fondo) */
+  --ring-track: rgba(255,255,255,.10);
 }
 
 /* ─── TEMA DAY ─── */
 :root[data-theme="day"] {
-  /* Fondos — periwinkle suave, no blanco */
-  --bg0: #ced8f4;
-  --bg1: #dce5fb;
-  --bgAccent: #c4d0ef;
+  /* Fondos — periwinkle más marcado para que las cards blancas resalten al sol */
+  --bg0: #bfcbea;
+  --bg1: #d0daf4;
+  --bgAccent: #b2c1e4;
 
-  /* Texto — navy oscuro */
-  --text: #0f172a;
-  --muted: rgba(15,23,42,.60);
-  --placeholder: rgba(15,23,42,.36);
+  /* Texto — casi negro navy (máximo contraste bajo sol) */
+  --text: #0b1220;
+  --muted: rgba(15,23,42,.64);
+  --placeholder: rgba(15,23,42,.40);
 
-  /* Cards — blanco con tinte índigo (contraste real vs fondo periwinkle) */
-  --surface: #eef1ff;
-  --surface2: #e3e8ff;
-  --surfaceLine: rgba(15,23,42,.12);
+  /* Cards — blanco puro: máximo contraste vs fondo y vs texto */
+  --surface: #ffffff;
+  --surface2: #f3f5ff;
+  --surfaceLine: rgba(15,23,42,.16);
 
   /* Inputs */
-  --inputBg: #f5f7ff;
-  --inputLine: rgba(15,23,42,.20);
+  --inputBg: #ffffff;
+  --inputLine: rgba(15,23,42,.24);
   --inputFocus: #4f46e5;
 
   /* Botones — índigo sólido */
@@ -187,9 +225,9 @@
   --danger: #dc2626; --dangerBg: rgba(220,38,38,.14);
   --note: #4f46e5;   --noteBg: rgba(79,70,229,.14);
 
-  /* Sombras */
-  --shadow: 0 6px 22px rgba(15,23,42,.13);
-  --shadowSm: 0 2px 8px rgba(15,23,42,.09);
+  /* Sombras — definidas y nítidas (plano de alto contraste) */
+  --shadow: 0 8px 24px rgba(15,23,42,.16);
+  --shadowSm: 0 2px 8px rgba(15,23,42,.11);
 
   /* Texto de botones de acción en day */
    --actionTextOk: #064e1d;
@@ -210,4 +248,42 @@
 
   --focusRing: rgba(79,70,229,.65);
   --focusGlow: rgba(79,70,229,.15);
+
+  /* ═══════════════════════════════════════════════════════════════
+     SISTEMA DE DASHBOARD (day) — acento, elevación, data-viz
+     ═══════════════════════════════════════════════════════════════ */
+
+  /* Acento: gradiente más profundo/saturado para contraste al sol */
+  --accent:  #7c3aed;
+  --accent2: #4338ca;
+  --grad-accent: linear-gradient(135deg, #7c3aed 0%, #4f46e5 55%, #4338ca 100%);
+
+  /* Elevación — plana pero definida, sin glow */
+  --elev-1: 0 1px 2px rgba(15,23,42,.10), 0 2px 6px rgba(15,23,42,.08);
+  --elev-2: 0 4px 14px rgba(15,23,42,.14);
+  --elev-3: 0 10px 30px rgba(15,23,42,.18);
+  --glow:   none;
+
+  /* Data-viz: superficie blanca para máximo contraste bajo sol */
+  --dv-surface: #ffffff;
+  --dv-ink:  #0b1220;
+  --dv-ink2: rgba(15,23,42,.62);
+  --dv-grid: rgba(15,23,42,.10);
+  --dv-axis: rgba(15,23,42,.28);
+
+  /* Paleta categórica — steps para superficie clara (skill dataviz, validada) */
+  --dv-1: #2a78d6;  --dv-2: #1baf7a;  --dv-3: #eda100;  --dv-4: #008300;
+  --dv-5: #4a3aa7;  --dv-6: #e34948;  --dv-7: #e87ba4;  --dv-8: #eb6834;
+
+  /* Estado (fijo entre temas) */
+  --dv-good: #0ca30c;  --dv-warn: #fab219;  --dv-serious: #ec835a;  --dv-bad: #d03b3b;
+
+  /* Tracks del taller */
+  --track-motor:   var(--dv-1);
+  --track-tanque:  var(--dv-8);
+  --track-ramal:   var(--dv-5);
+  --track-calidad: var(--dv-2);
+
+  /* Gauges */
+  --ring-track: rgba(15,23,42,.10);
 }

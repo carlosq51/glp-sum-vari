@@ -897,14 +897,14 @@ async function loadTecRendimiento_() {
         <div style="display:flex;align-items:center;justify-content:center;gap:24px;flex-wrap:wrap;">
           <div style="text-align:center;">
             <svg viewBox="0 0 108 108" width="108" height="108">
-              <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="rgba(255,255,255,.15)" stroke-width="12"/>
+              <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" style="stroke:var(--ring-track)" stroke-width="12"/>
               <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${color}" stroke-width="12"
                 stroke-dasharray="${fill.toFixed(1)} ${(circ-fill).toFixed(1)}" stroke-linecap="round"
                 transform="rotate(-90 ${cx} ${cy})"/>
-              <text x="${cx}" y="${cy - 6}" text-anchor="middle" fill="#fff" font-size="20" font-weight="700">${mesItems.length}</text>
-              <text x="${cx}" y="${cy + 14}" text-anchor="middle" fill="rgba(255,255,255,.7)" font-size="10">de ${meta}</text>
+              <text x="${cx}" y="${cy - 6}" text-anchor="middle" style="fill:var(--text)" font-size="20" font-weight="700">${mesItems.length}</text>
+              <text x="${cx}" y="${cy + 14}" text-anchor="middle" style="fill:var(--muted)" font-size="10">de ${meta}</text>
             </svg>
-            <div style="color:rgba(255,255,255,.8);font-size:12px;margin-top:4px;">Meta del mes</div>
+            <div style="color:var(--muted);font-size:12px;margin-top:4px;">Meta del mes</div>
           </div>
           <div class="sup-kpis-grid" style="flex:1;min-width:200px;">
             <div class="sup-kpi-card">

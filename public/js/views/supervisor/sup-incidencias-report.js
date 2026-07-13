@@ -220,7 +220,7 @@ function renderKpis_(s, timeStats) {
   // Pill de estado para VIN impact
   function vinPill(val, label, color) {
     return "<span style=\"display:inline-flex;flex-direction:column;align-items:center;"
-      + "background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);"
+      + "background:var(--glass);border:1px solid var(--surfaceLine);"
       + "border-radius:10px;padding:6px 10px;min-width:56px;\">"
       + "<span style=\"font-size:1.4em;font-weight:1000;color:" + color + ";line-height:1;\">" + val + "</span>"
       + "<span style=\"font-size:.65em;font-weight:800;letter-spacing:.5px;opacity:.55;margin-top:3px;\">" + label + "</span>"
@@ -244,7 +244,7 @@ function renderKpis_(s, timeStats) {
             + "1 de cada <b style=\"color:#ef4444;\">" + (pctVinCrit > 0 ? Math.round(100/pctVinCrit) : "—")
             + "</b> VINs tiene crítica</div>"
           : "<div style=\"font-size:.76em;opacity:.4;margin-bottom:4px;\">Sin VINs con crítica</div>")
-      +   "<div style=\"height:8px;background:rgba(255,255,255,.08);border-radius:4px;overflow:hidden;\">"
+      +   "<div style=\"height:8px;background:var(--surfaceLine);border-radius:4px;overflow:hidden;\">"
       +     (pctVinCrit > 0
             ? "<div style=\"height:100%;width:" + pctVinCrit + "%;background:linear-gradient(90deg,#ef4444,#f97316);border-radius:4px;\"></div>"
             : "")
@@ -254,7 +254,7 @@ function renderKpis_(s, timeStats) {
       +   "</div>"
       + "</div></div>"
       + (vinsReinc > 0
-          ? "<div style=\"font-size:.72em;margin-top:7px;padding-top:7px;border-top:1px solid rgba(255,255,255,.06);"
+          ? "<div style=\"font-size:.72em;margin-top:7px;padding-top:7px;border-top:1px solid var(--surfaceLine);"
             + "color:#f97316;opacity:.7;\">"
             + "⚠️ " + vinsReinc + " vehículo" + (vinsReinc > 1 ? "s" : "") + " con incidencias repetidas — revisar acciones correctivas"
             + "</div>"
@@ -273,7 +273,7 @@ function renderKpis_(s, timeStats) {
     + (timeStats?.nResueltas ? kpiCard(fmtMin_(timeStats.totalGlobal), "⏱ T. TOTAL",  TIME_G) : "")
     + "</div>"
     + (total > 0
-      ? "<div style=\"background:rgba(255,255,255,.055);border-radius:11px;padding:10px 14px;\">"
+      ? "<div style=\"background:var(--glass);border-radius:11px;padding:10px 14px;\">"
         + "<div style=\"display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;\">"
         + "<span style=\"font-size:.73em;font-weight:900;letter-spacing:.6px;opacity:.65;\">ÍNDICE DE RIESGO</span>"
         + "<span style=\"font-size:.88em;font-weight:1000;color:" + riskColor + ";\">" + pctRisk + "%</span>"
@@ -308,14 +308,14 @@ function timeRow(name, avgMin, sumMin, n, maxAvg, rank) {
   const pct   = maxAvg > 0 ? Math.max(6, Math.round(avgMin / maxAvg * 100)) : 0;
   const color = avgMin <= 15 ? "#4ade80" : avgMin <= 45 ? "#f97316" : "#ef4444";
   return "<div style=\"display:flex;align-items:center;gap:8px;padding:7px 0;"
-    + (rank > 0 ? "border-top:1px solid rgba(255,255,255,.06);" : "") + "\">"
+    + (rank > 0 ? "border-top:1px solid var(--surfaceLine);" : "") + "\">"
     + "<span style=\"font-size:.67em;font-weight:900;opacity:.3;min-width:16px;text-align:right;\">#" + (rank+1) + "</span>"
     + "<div style=\"flex:1;min-width:0;\">"
     +   "<div style=\"font-size:.8em;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;\">"
     +     _escape(name)
     +     "<span style=\"opacity:.35;font-weight:600;font-size:.85em;\"> · " + n + " res.</span>"
     +   "</div>"
-    +   "<div style=\"height:5px;background:rgba(255,255,255,.07);border-radius:3px;margin-top:4px;overflow:hidden;\">"
+    +   "<div style=\"height:5px;background:var(--ring-track);border-radius:3px;margin-top:4px;overflow:hidden;\">"
     +     "<div style=\"height:100%;width:" + pct + "%;background:" + color + ";border-radius:3px;\"></div>"
     +   "</div>"
     + "</div>"
@@ -328,14 +328,14 @@ function timeRow(name, avgMin, sumMin, n, maxAvg, rank) {
 function monthRow_(mes, avgMin, sumMin, n, maxSum, rank) {
   const pct = maxSum > 0 ? Math.max(6, Math.round(sumMin / maxSum * 100)) : 0;
   return "<div style=\"display:flex;align-items:center;gap:8px;padding:7px 0;"
-    + (rank > 0 ? "border-top:1px solid rgba(255,255,255,.06);" : "") + "\">"
+    + (rank > 0 ? "border-top:1px solid var(--surfaceLine);" : "") + "\">"
     + "<span style=\"font-size:.67em;font-weight:900;opacity:.3;min-width:16px;text-align:right;\">#" + (rank+1) + "</span>"
     + "<div style=\"flex:1;min-width:0;\">"
     +   "<div style=\"font-size:.8em;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;\">"
     +     _escape(fmtMesLabel_(mes))
     +     "<span style=\"opacity:.35;font-weight:600;font-size:.85em;\"> · " + n + " res.</span>"
     +   "</div>"
-    +   "<div style=\"height:5px;background:rgba(255,255,255,.07);border-radius:3px;margin-top:4px;overflow:hidden;\">"
+    +   "<div style=\"height:5px;background:var(--ring-track);border-radius:3px;margin-top:4px;overflow:hidden;\">"
     +     "<div style=\"height:100%;width:" + pct + "%;background:#22d3ee;border-radius:3px;\"></div>"
     +   "</div>"
     + "</div>"
@@ -360,7 +360,7 @@ function renderRanking_(catGroups, summary, timeStats) {
   function catRow(name, C, M, L, total, rank) {
     const accentColor = C ? "#ef4444" : M ? "#f97316" : "#eab308";
     return "<div style=\"display:flex;align-items:center;gap:8px;padding:7px 0;"
-      + (rank > 0 ? "border-top:1px solid rgba(255,255,255,.06);" : "") + "\">"
+      + (rank > 0 ? "border-top:1px solid var(--surfaceLine);" : "") + "\">"
       + "<span style=\"font-size:.68em;font-weight:900;opacity:.35;min-width:16px;text-align:right;\">#" + (rank+1) + "</span>"
       + "<div style=\"flex:1;min-width:0;\">"
       +   "<div style=\"font-size:.8em;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;\">" + _escape(name) + "</div>"
@@ -377,7 +377,7 @@ function renderRanking_(catGroups, summary, timeStats) {
     const color = C ? "#ef4444" : M ? "#f97316" : "#eab308";
     const initials = name.trim().split(/\s+/).slice(0,2).map(w => w[0]||"").join("").toUpperCase();
     return "<div style=\"display:flex;align-items:center;gap:8px;padding:7px 0;"
-      + (rank > 0 ? "border-top:1px solid rgba(255,255,255,.06);" : "") + "\">"
+      + (rank > 0 ? "border-top:1px solid var(--surfaceLine);" : "") + "\">"
       + "<span style=\"font-size:.67em;font-weight:900;opacity:.3;min-width:16px;text-align:right;\">#" + (rank+1) + "</span>"
       + "<div style=\"flex-shrink:0;width:26px;height:26px;border-radius:50%;background:" + color
       +   ";opacity:.85;display:flex;align-items:center;justify-content:center;"
@@ -399,7 +399,7 @@ function renderRanking_(catGroups, summary, timeStats) {
     // Mostrar solo últimos 8 chars del VIN para no ocupar espacio
     const shortVin = vin.length > 9 ? "…" + vin.slice(-9) : vin;
     return "<div style=\"display:flex;align-items:center;gap:8px;padding:7px 0;"
-      + (rank > 0 ? "border-top:1px solid rgba(255,255,255,.06);" : "") + "\">"
+      + (rank > 0 ? "border-top:1px solid var(--surfaceLine);" : "") + "\">"
       + "<span style=\"font-size:.67em;font-weight:900;opacity:.3;min-width:16px;text-align:right;\">#" + (rank+1) + "</span>"
       // indicador cuadrado con color
       + "<div style=\"flex-shrink:0;width:8px;height:28px;border-radius:3px;background:" + color + ";opacity:.85;\"></div>"
@@ -418,12 +418,12 @@ function renderRanking_(catGroups, summary, timeStats) {
   }
 
   function panel(title, rows, accentColor) {
-    accentColor = accentColor || "rgba(255,255,255,.25)";
-    return "<div style=\"background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);"
+    accentColor = accentColor || "var(--surfaceLine)";
+    return "<div style=\"background:var(--glass);border:1px solid var(--surfaceLine);"
       + "border-top:2px solid " + accentColor + ";"
       + "border-radius:14px;padding:12px 14px;min-width:0;\">"
       + "<div style=\"font-weight:900;font-size:.76em;letter-spacing:.7px;margin-bottom:8px;"
-      + "opacity:.7;border-bottom:1px solid rgba(255,255,255,.07);padding-bottom:6px;\">"
+      + "opacity:.7;border-bottom:1px solid var(--ring-track);padding-bottom:6px;\">"
       + title + "</div>"
       + rows
       + "</div>";
@@ -494,7 +494,7 @@ function renderCard_(it) {
   const hasImg  = it.fotoThumbUrl || it.fotoUrl;
   const imgSrc  = it.fotoThumbUrl || it.fotoImgUrl || it.fotoUrl || "";
   const imgFull = it.fotoImgUrl   || it.fotoUrl    || "";
-  return "<div style=\"background:rgba(255,255,255,.03);"
+  return "<div style=\"background:var(--glass);"
     + "border:1px solid " + g.border + ";"
     + "border-left:4px solid " + g.color + ";"
     + "border-radius:10px;padding:8px 10px;margin-bottom:6px;"
@@ -503,13 +503,13 @@ function renderCard_(it) {
       ? "<div style=\"flex-shrink:0;\">"
         + "<img src=\"" + _escape(imgSrc) + "\" alt=\"foto\" loading=\"lazy\""
         + " style=\"width:44px;height:44px;object-fit:cover;border-radius:7px;"
-        + "border:1px solid rgba(255,255,255,.12);cursor:pointer;\""
+        + "border:1px solid var(--surfaceLine);cursor:pointer;\""
         + " onclick=\"window.open('" + _escape(imgFull) + "','_blank','noopener')\"/>"
         + "</div>"
       : "")
     + "<div style=\"flex:1;min-width:0;\">"
     +   "<div style=\"display:flex;gap:5px;align-items:center;flex-wrap:wrap;margin-bottom:3px;\">"
-    +     "<code style=\"font-size:.75em;background:rgba(255,255,255,.07);border-radius:4px;padding:1px 5px;\">" + _escape(it.vin || "—") + "</code>"
+    +     "<code style=\"font-size:.75em;background:var(--ring-track);border-radius:4px;padding:1px 5px;\">" + _escape(it.vin || "—") + "</code>"
     +     chip_(g.abbr, g.label, g)
     +     "<span style=\"margin-left:auto;font-size:.73em;opacity:.45;flex-shrink:0;\">" + fmtDateTime_(it.fecha_hora) + "</span>"
     +   "</div>"
@@ -656,7 +656,7 @@ function renderTrend_(items) {
   }).join("");
 
   const monthLabel = entries[0]?.[0]?.slice(0, 7) || "";
-  const trendHtml = "<div style=\"margin-top:10px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:11px;padding:10px 14px;\">"
+  const trendHtml = "<div style=\"margin-top:10px;background:var(--glass);border:1px solid var(--surfaceLine);border-radius:11px;padding:10px 14px;\">"
     + "<div style=\"font-size:.72em;font-weight:900;letter-spacing:.6px;opacity:.65;margin-bottom:8px;\">TENDENCIA DIARIA " + monthLabel + "</div>"
     + "<div style=\"display:flex;gap:3px;align-items:flex-end;overflow-x:auto;padding-bottom:4px;\">"
     + bars

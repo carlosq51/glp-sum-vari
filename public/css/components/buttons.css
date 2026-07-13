@@ -47,6 +47,17 @@ button.btn3 {
   color: var(--muted);
 }
 
+/* Variante acento — CTA con gradiente púrpura→azul (dashboards) */
+button.btn-accent,
+.btn-accent {
+  background: var(--grad-accent);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: var(--elev-1);
+}
+button.btn-accent:hover,
+.btn-accent:hover { filter: brightness(1.06); box-shadow: var(--elev-2); }
+
 :root[data-theme="day"] #incModal .btn3 {
   color: var(--text);
 }

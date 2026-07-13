@@ -36,4 +36,9 @@ export function applyTheme_(t) {
   try {
     localStorage.setItem(THEME_KEY, theme);
   } catch {}
+
+  // Avisar a gráficos/gauges que necesiten re-render con los nuevos tokens.
+  try {
+    window.dispatchEvent(new CustomEvent("glp:themechange", { detail: { theme } }));
+  } catch {}
 }

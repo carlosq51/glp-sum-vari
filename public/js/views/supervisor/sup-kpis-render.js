@@ -1,294 +1,190 @@
 // ============================================================
 // sup-kpis-render.js
-// Renderizado de KPIs para la vista de supervisor
+// Renderizado de KPIs para la vista de supervisor.
+// Rediseño: gauges circulares + stat tiles, 100% token-driven
+// (sin colores hardcodeados → correcto en tema claro y oscuro).
 // ============================================================
 
 import { formatPct_ } from "./sup-kpis.js";
 import { formatHours_ } from "../../core/format.js";
+import { gaugeHTML, clamp01 } from "../../core/viz.js";
 
 /**
- * Renderiza el panel completo de KPIs
+ * Renderiza el panel completo de KPIs.
+ * Devuelve solo el contenido interno — el wrapper #supKPIsPanel vive en el DOM.
  */
 export function renderKPIsPanel_(kpis, techName = "", track = "CONVERSION") {
-  if (!kpis || kpis.totalVins === 0) {
-    return "";
-  }
+  if (!kpis || kpis.totalVins === 0) return "";
 
-  const trackLabel = track === "RAMAL" ? "Ramal" : 
+  const trackLabel = track === "RAMAL" ? "Ramal" :
                      track === "CALIDAD" ? "Calidad" : "Conversión";
-  
-  const title = techName 
-    ? `KPIs de ${trackLabel} - ${techName}` 
-    : `KPIs de ${trackLabel}`;
+  const title = techName ? `${trackLabel} · ${techName}` : `KPIs de ${trackLabel}`;
 
   const isConversion = track === "CONVERSION";
-  const isIndividual = !!techName; // Si hay nombre, es búsqueda individual
+  const isIndividual = !!techName;
 
-  // Devuelve solo el contenido interno — el wrapper #supKPIsPanel vive en el DOM
+  const gaugesRow = isIndividual
+    ? renderIndividualGauge_(kpis, track, techName)
+    : (isConversion ? renderConversionGauges_(kpis) : renderGeneralGauge_(kpis));
+
   return `
-    <h4 class="sup-kpis-title">${title}</h4>
-    <div class="sup-kpis-grid">
-      ${isIndividual
-        ? renderIndividualKPIs_(kpis, track, techName)
-        : (isConversion ? renderConversionKPIs_(kpis) : renderGeneralKPIs_(kpis, track))
-      }
-      ${renderCarrosPorDiaKPI_(kpis)}
-      ${renderStateCountKPI_(kpis, track)}
-      ${renderModelKPIs_(kpis)}
-      ${renderOutliersKPI_(kpis, track)}
+    <div class="sectionHead">
+      <h4 class="sectionHead__title"><span class="accentBar"></span>${title}</h4>
     </div>
+
+    <div class="dashGrid dashGrid--gauges" style="margin-bottom:12px;">
+      ${gaugesRow}
+      ${renderCarrosPorDiaTile_(kpis)}
+    </div>
+
+    ${renderStateCountMeter_(kpis, track)}
+
+    ${renderModelTiles_(kpis)}
+
+    ${renderOutliersTile_(kpis, track)}
   `;
 }
 
-/**
- * Renderiza KPIs para búsqueda individual (por persona)
- */
-function renderIndividualKPIs_(kpis, track, techName) {
-  const targetClass = kpis.individual.vsTarget <= 0 ? "positive" : "negative";
-  
-  // Determinar rol predominante
+/* ── Gauge genérico tiempo-vs-objetivo ──
+   El anillo se llena con avg/target; el color indica desempeño
+   (verde si está en/bajo objetivo, rojo si lo supera). */
+function timeGauge_({ label, avgHours, targetHours, vsTarget, count, icon = "" }) {
+  const frac = clamp01(targetHours > 0 ? avgHours / targetHours : 0);
+  const under = vsTarget <= 0;
+  const tone = under ? "--dv-good" : "--dv-bad";
+  const deltaCls = under ? "delta--good" : "delta--bad";
+  const deltaTxt = `${vsTarget > 0 ? "+" : "−"}${formatHours_(Math.abs(vsTarget))}`;
+  return gaugeHTML({
+    fraction: frac,
+    tone,
+    display: formatHours_(avgHours),
+    sub: `obj ${formatHours_(targetHours)}`,
+    label: `${icon} ${label}`.trim(),
+    foot: `<span class="delta ${deltaCls}">${deltaTxt}</span> · ${count} items`,
+  });
+}
+
+function renderConversionGauges_(kpis) {
+  return (
+    timeGauge_({ label: "Motor",    icon: "🔧", avgHours: kpis.motor.avgHours,  targetHours: kpis.motor.targetHours,  vsTarget: kpis.motor.vsTarget,  count: kpis.motor.count }) +
+    timeGauge_({ label: "Tanquero", icon: "⛽", avgHours: kpis.tanque.avgHours, targetHours: kpis.tanque.targetHours, vsTarget: kpis.tanque.vsTarget, count: kpis.tanque.count })
+  );
+}
+
+function renderGeneralGauge_(kpis) {
+  return timeGauge_({
+    label: "Tiempo prom.", icon: "⏱️",
+    avgHours: kpis.individual.avgHours, targetHours: kpis.individual.targetHours,
+    vsTarget: kpis.individual.vsTarget, count: kpis.individual.count,
+  });
+}
+
+function renderIndividualGauge_(kpis, track, techName) {
   let rolLabel = "Técnico";
-  const motorCount = kpis.motor?.count || 0;
-  const tanqueCount = kpis.tanque?.count || 0;
-  
-  if (motorCount > 0 && tanqueCount === 0) {
-    rolLabel = "Motor";
-  } else if (tanqueCount > 0 && motorCount === 0) {
-    rolLabel = "Tanquero";
-  } else if (motorCount > 0 && tanqueCount > 0) {
-    rolLabel = "Motor + Tanquero";
-  }
+  const m = kpis.motor?.count || 0, t = kpis.tanque?.count || 0;
+  if (m > 0 && t === 0) rolLabel = "Motor";
+  else if (t > 0 && m === 0) rolLabel = "Tanquero";
+  else if (m > 0 && t > 0) rolLabel = "Motor + Tanquero";
 
+  return timeGauge_({
+    label: rolLabel, icon: "👤",
+    avgHours: kpis.individual.avgHours, targetHours: kpis.individual.targetHours,
+    vsTarget: kpis.individual.vsTarget, count: kpis.individual.count,
+  });
+}
+
+/* ── Carros por día: stat tile héroe con gradiente de acento ── */
+function renderCarrosPorDiaTile_(kpis) {
+  const carros = Math.round((kpis.carrosPorDia || 0) * 10) / 10;
   return `
-    <div class="sup-kpi-card main-kpi individual-kpi">
-      <div class="kpi-header">
-        <span class="kpi-icon">👤</span>
-        <span class="kpi-label">${techName} - ${rolLabel}</span>
-      </div>
-      <div class="kpi-value">${formatHours_(kpis.individual.avgHours)}</div>
-      <div class="kpi-detail">
-        <span>Objetivo: ${formatHours_(kpis.individual.targetHours)}</span>
-        <span class="kpi-badge ${targetClass}">
-          ${kpis.individual.vsTarget > 0 ? "+" : ""}${formatHours_(Math.abs(kpis.individual.vsTarget))}
-        </span>
-      </div>
-      <div class="kpi-bar">
-        <div class="kpi-bar-fill ${targetClass}" 
-             style="width: ${Math.min(100, Math.abs(kpis.individual.vsTargetPct))}%">
-        </div>
-      </div>
-      <div class="kpi-note">*Promedio robusto (${kpis.individual.count} items | ${kpis.totalVins} VINs)</div>
+    <div class="statTile statTile--accent" style="justify-content:center;">
+      <div class="statTile__label">🚗 Carros por día</div>
+      <div class="statTile__value" style="font-size:44px;">${carros}</div>
+      <div class="statTile__foot">${kpis.totalVins} carros · ${kpis.totalDias} días</div>
     </div>
   `;
 }
 
-/**
- * Renderiza KPIs para conversión vista general (motor + tanquero separados)
- */
-function renderConversionKPIs_(kpis) {
-  const motorClass = kpis.motor.vsTarget <= 0 ? "positive" : "negative";
-  const tanqueClass = kpis.tanque.vsTarget <= 0 ? "positive" : "negative";
-
-  return `
-    <!-- Tiempo Motor -->
-    <div class="sup-kpi-card main-kpi">
-      <div class="kpi-header">
-        <span class="kpi-icon">🔧</span>
-        <span class="kpi-label">Motor</span>
-      </div>
-      <div class="kpi-value">${formatHours_(kpis.motor.avgHours)}</div>
-      <div class="kpi-detail">
-        <span>Objetivo: ${formatHours_(kpis.motor.targetHours)}</span>
-        <span class="kpi-badge ${motorClass}">
-          ${kpis.motor.vsTarget > 0 ? "+" : ""}${formatHours_(Math.abs(kpis.motor.vsTarget))}
-        </span>
-      </div>
-      <div class="kpi-bar">
-        <div class="kpi-bar-fill ${motorClass}" 
-             style="width: ${Math.min(100, Math.abs(kpis.motor.vsTargetPct))}%">
-        </div>
-      </div>
-      <div class="kpi-note">*Promedio robusto (${kpis.motor.count} items)</div>
-    </div>
-
-    <!-- Tiempo Tanquero -->
-    <div class="sup-kpi-card main-kpi">
-      <div class="kpi-header">
-        <span class="kpi-icon">⛽</span>
-        <span class="kpi-label">Tanquero</span>
-      </div>
-      <div class="kpi-value">${formatHours_(kpis.tanque.avgHours)}</div>
-      <div class="kpi-detail">
-        <span>Objetivo: ${formatHours_(kpis.tanque.targetHours)}</span>
-        <span class="kpi-badge ${tanqueClass}">
-          ${kpis.tanque.vsTarget > 0 ? "+" : ""}${formatHours_(Math.abs(kpis.tanque.vsTarget))}
-        </span>
-      </div>
-      <div class="kpi-bar">
-        <div class="kpi-bar-fill ${tanqueClass}" 
-             style="width: ${Math.min(100, Math.abs(kpis.tanque.vsTargetPct))}%">
-        </div>
-      </div>
-      <div class="kpi-note">*Promedio robusto (${kpis.tanque.count} items)</div>
-    </div>
-  `;
-}
-
-/**
- * Renderiza KPIs para ramal/calidad vista general
- */
-function renderGeneralKPIs_(kpis, track = "RAMAL") {
-  const targetClass = kpis.individual.vsTarget <= 0 ? "positive" : "negative";
-
-  return `
-    <div class="sup-kpi-card main-kpi">
-      <div class="kpi-header">
-        <span class="kpi-icon">⏱️</span>
-        <span class="kpi-label">Tiempo Promedio</span>
-      </div>
-      <div class="kpi-value">${formatHours_(kpis.individual.avgHours)}</div>
-      <div class="kpi-detail">
-        <span>Objetivo: ${formatHours_(kpis.individual.targetHours)}</span>
-        <span class="kpi-badge ${targetClass}">
-          ${kpis.individual.vsTarget > 0 ? "+" : ""}${formatHours_(Math.abs(kpis.individual.vsTarget))}
-        </span>
-      </div>
-      <div class="kpi-bar">
-        <div class="kpi-bar-fill ${targetClass}" 
-             style="width: ${Math.min(100, Math.abs(kpis.individual.vsTargetPct))}%">
-        </div>
-      </div>
-      <div class="kpi-note">*Promedio robusto (${kpis.individual.count} items)</div>
-    </div>
-  `;
-}
-
-/**
- * Renderiza KPI de carros convertidos por día (destacado)
- */
-function renderCarrosPorDiaKPI_(kpis) {
-  const carrosPorDia = kpis.carrosPorDia || 0;
-  const carrosPorDiaRedondeado = Math.round(carrosPorDia * 10) / 10; // 1 decimal
-  
-  // Clase para determinar si ocupa 1 o 2 columnas
-  const spanClass = kpis.isIndividual ? "individual-kpi" : "";
-  
-  return `
-    <div class="sup-kpi-card carros-dia-kpi ${spanClass}">
-      <div class="kpi-header">
-        <span class="kpi-icon">🚗</span>
-        <span class="kpi-label">Carros por Día</span>
-      </div>
-      <div class="kpi-value" style="color: #10b981; font-size: 48px; font-weight: 700;">${carrosPorDiaRedondeado}</div>
-      <div class="kpi-detail">
-        <span style="font-size: 13px;">${kpis.totalVins} carros • ${kpis.totalDias} días</span>
-      </div>
-      <div class="kpi-note">*Promedio de VINs únicos por día</div>
-    </div>
-  `;
-}
-
-/**
- * Renderiza KPI de outliers (al final de todos los KPIs)
- */
-function renderOutliersKPI_(kpis, track) {
-  const isRamal = track === "RAMAL";
-  const outlierClass = kpis.outlierPct < 5 ? "positive" : 
-                        kpis.outlierPct < 15 ? "warning" : "negative";
-
-  const outlierLabel = isRamal 
-    ? "Outliers (<0.5h o >4h)" 
-    : "Outliers (<1h o >10h)";
-
-  return `
-    <div class="sup-kpi-card compact-kpi outliers-kpi">
-      <div class="kpi-header-compact">
-        <span class="kpi-icon-small">⚠️</span>
-        <span class="kpi-label-small">${outlierLabel}</span>
-      </div>
-      <div class="kpi-value-compact">
-        ${kpis.outliers} <span class="kpi-badge-inline ${outlierClass}">${kpis.outlierPct.toFixed(1)}%</span>
-      </div>
-      <div class="kpi-detail-compact">VINs: ${kpis.totalVins} | Total: ${kpis.totalItems}</div>
-    </div>
-  `;
-}
-
-/**
- * Renderiza card de estado del trabajo: Terminados | En proceso | Sin iniciar
- */
-function renderStateCountKPI_(kpis, track) {
+/* ── Estado del trabajo: barra segmentada (meter) ── */
+function renderStateCountMeter_(kpis, track) {
   const sc = kpis.stateCount;
   if (!sc) return "";
-
   const total = sc.finalizado + sc.enProceso + sc.sinIniciar;
   if (total === 0) return "";
 
   const isCalidad = track === "CALIDAD";
   const itemLabel = isCalidad ? "inspección" : "asignación";
 
-  const rows = [
-    { icon: "🏁", label: "Terminados",  val: sc.finalizado,  color: "#4ade80" },
-    { icon: "⚙️", label: "En proceso",  val: sc.enProceso,   color: "#fbbf24" },
-    { icon: "⭕", label: "Sin iniciar", val: sc.sinIniciar,  color: "#94a3b8" },
-  ];
+  const segs = [
+    { label: "Terminados",  val: sc.finalizado, tone: "var(--dv-good)" },
+    { label: "En proceso",  val: sc.enProceso,  tone: "var(--dv-warn)" },
+    { label: "Sin iniciar", val: sc.sinIniciar, tone: "var(--muted)" },
+  ].filter(s => s.val > 0);
 
-  const rowsHtml = rows
-    .filter(r => r.val > 0)
-    .map(r => `
-      <div style="display:flex; align-items:center; justify-content:space-between; padding:4px 0; border-bottom:1px solid rgba(255,255,255,.06);">
-        <span style="font-size:.8em; color:rgba(255,255,255,.7);">${r.icon} ${r.label}</span>
-        <span style="font-weight:900; font-size:1.05em; color:${r.color};">${r.val}</span>
-      </div>`)
-    .join("");
+  const bars = segs.map(s =>
+    `<div class="meter__seg" style="width:${(s.val / total * 100).toFixed(2)}%; background:${s.tone};"></div>`
+  ).join("");
+
+  const legend = segs.map(s =>
+    `<span class="meter__key"><span class="meter__dot" style="background:${s.tone};"></span>${s.label} <span class="meter__num">${s.val}</span></span>`
+  ).join("");
 
   return `
-    <div class="sup-kpi-card compact-kpi" style="grid-column: span 1;">
-      <div class="kpi-header-compact" style="margin-bottom:8px;">
-        <span class="kpi-icon-small">📋</span>
-        <span class="kpi-label-small">Estado del trabajo</span>
+    <div class="card" style="margin-top:0;">
+      <div class="statTile__label" style="margin-bottom:10px;">📋 Estado del trabajo · ${total} ${itemLabel}${total !== 1 ? "s" : ""}</div>
+      <div class="meter">
+        <div class="meter__track">${bars}</div>
+        <div class="meter__legend">${legend}</div>
       </div>
-      ${rowsHtml}
-      <div style="margin-top:6px; font-size:.68em; opacity:.45;">${total} ${itemLabel}${total !== 1 ? "s" : ""} en total</div>
     </div>
   `;
 }
 
-/**
- * Renderiza KPIs por modelo
- */
-function renderModelKPIs_(kpis) {
+/* ── KPIs por modelo: grid de stat tiles compactos ── */
+function renderModelTiles_(kpis) {
   const models = [
-    { key: "JETOUR X70", icon: "🚙", color: "#3b82f6" },
-    { key: "VOLKSWAGEN", icon: "🚗", color: "#8b5cf6" },
-    { key: "KYC V3-V5", icon: "🚕", color: "#10b981" },
-    { key: "KYC X5", icon: "🚐", color: "#f59e0b" },
-    { key: "KYC V7", icon: "🚙", color: "#ef4444" },
-    { key: "T3", icon: "🚕", color: "#06b6d4" },
-    { key: "OTRO", icon: "🚐", color: "#64748b" },
-    { key: "DESCONOCIDO", icon: "❓", color: "#6b7280" },
+    { key: "JETOUR X70", icon: "🚙" }, { key: "VOLKSWAGEN", icon: "🚗" },
+    { key: "KYC V3-V5", icon: "🚕" },  { key: "KYC X5", icon: "🚐" },
+    { key: "KYC V7", icon: "🚙" },     { key: "T3", icon: "🚕" },
+    { key: "OTRO", icon: "🚐" },       { key: "DESCONOCIDO", icon: "❓" },
   ];
 
-  return models.map(model => {
+  const tiles = models.map(model => {
     const data = kpis.byModel[model.key];
     if (!data || data.vinCount === 0) return "";
-
-    const targetClass = data.vsTarget <= 0 ? "positive" : "negative";
-
+    const under = data.vsTarget <= 0;
+    const deltaCls = under ? "delta--good" : "delta--bad";
     return `
-      <div class="sup-kpi-card model-kpi">
-        <div class="kpi-header">
-          <span class="kpi-icon">${model.icon}</span>
-          <span class="kpi-label">${model.key}</span>
-        </div>
-        <div class="kpi-value-small">${formatHours_(data.avgHours)}</div>
-        <div class="kpi-detail">
-          <span>VINs: ${data.vinCount}</span>
-          <span class="kpi-badge ${targetClass}">
-            ${formatPct_(data.vsTargetPct)}
-          </span>
+      <div class="statTile">
+        <div class="statTile__label">${model.icon} ${model.key}</div>
+        <div class="statTile__value sm">${formatHours_(data.avgHours)}</div>
+        <div class="statTile__foot">
+          ${data.vinCount} VINs · <span class="delta ${deltaCls}">${formatPct_(data.vsTargetPct)}</span>
         </div>
       </div>
     `;
   }).join("");
+
+  if (!tiles.trim()) return "";
+  return `
+    <div class="statTile__label" style="margin:16px 0 10px;">🚘 Por modelo</div>
+    <div class="dashGrid">${tiles}</div>
+  `;
+}
+
+/* ── Outliers ── */
+function renderOutliersTile_(kpis, track) {
+  const isRamal = track === "RAMAL";
+  const cls = kpis.outlierPct < 5 ? "delta--good" : kpis.outlierPct < 15 ? "delta--warn" : "delta--bad";
+  const label = isRamal ? "Outliers (<0.5h o >4h)" : "Outliers (<1h o >10h)";
+  return `
+    <div class="statTile" style="margin-top:12px;">
+      <div class="statTile__label">⚠️ ${label}</div>
+      <div class="statTile__value sm">
+        ${kpis.outliers}
+        <span class="delta ${cls}">${kpis.outlierPct.toFixed(1)}%</span>
+      </div>
+      <div class="statTile__foot">VINs: ${kpis.totalVins} · Total items: ${kpis.totalItems}</div>
+    </div>
+  `;
 }

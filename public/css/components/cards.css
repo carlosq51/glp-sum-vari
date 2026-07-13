@@ -14,6 +14,17 @@
 
 .card.flat { margin-top: 0; } /* para anidar sin margen */
 
+/* Card elevada con hover-lift (dashboards) */
+.card.lift {
+  box-shadow: var(--elev-1);
+  transition: transform var(--dur-base), box-shadow var(--dur-base), border-color var(--dur-base);
+}
+.card.lift:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--elev-2);
+  border-color: var(--surfaceLine);
+}
+
 /* Card interna (dentro de modal / card padre) */
 .innerCard {
   background: var(--glass);

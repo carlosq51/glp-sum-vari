@@ -17,6 +17,16 @@
   }
 }
 
+/* Cartillas de sección: elevación + hover-lift */
+#adminCardGrid .hubCard {
+  box-shadow: var(--elev-1);
+  transition: transform var(--dur-base), box-shadow var(--dur-base), border-color var(--dur-base);
+}
+#adminCardGrid .hubCard:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--elev-2);
+}
+
 /* ── Cabecera del detalle ── */
 .adminDetailHead {
   display: flex;

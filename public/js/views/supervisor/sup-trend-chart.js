@@ -4,8 +4,17 @@
 // =========================
 
 import { Chart } from "chart.js/auto";
+import { readVizColors, chartBaseOptions, verticalFill, hexA } from "../../core/viz.js";
 
 let chartInstance = null;
+let _last = null; // { canvasEl, items, techName } para re-render al cambiar de tema
+
+// Re-render automático cuando cambia el tema (colores desde tokens)
+window.addEventListener("glp:themechange", () => {
+  if (_last && chartInstance) {
+    renderTrendChart_(_last.canvasEl, _last.items, _last.techName);
+  }
+});
 
 /**
  * Renderiza gráfico de tendencias de tiempo de conversión
@@ -29,6 +38,8 @@ export function renderTrendChart_(canvasEl, items, techName) {
     if (container) container.style.display = "none";
     return;
   }
+
+  _last = { canvasEl, items, techName };
 
   const container = canvasEl.closest("#supTrendContainer");
   if (container) container.style.display = "block";
@@ -92,10 +103,10 @@ export function renderTrendChart_(canvasEl, items, techName) {
   // Crear gráfico
   const ctx = canvasEl.getContext("2d");
 
-  // Detectar tema actual
-  const isDarkTheme = document.documentElement.dataset.theme === "night";
-  const textColor = isDarkTheme ? "#fff" : "#1f2937"; // Blanco en oscuro, gris oscuro en claro
-  const gridColor = isDarkTheme ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)";
+  // Colores desde los tokens del tema activo (day/night)
+  const c = readVizColors();
+  const line = c.accent2; // azul del acento
+  const base = chartBaseOptions(c);
 
   chartInstance = new Chart(ctx, {
     type: "line",
@@ -103,112 +114,67 @@ export function renderTrendChart_(canvasEl, items, techName) {
       labels: labels,
       datasets: [
         {
-          label: "Tiempo promedio (horas)",
+          label: "Tiempo de conversión (h)",
           data: filteredPoints.map(p => p.y),
-          borderColor: "rgba(75, 192, 192, 1)",
-          backgroundColor: "rgba(75, 192, 192, 0.2)",
+          borderColor: line,
+          backgroundColor: (context) => {
+            const { ctx: cx, chartArea } = context.chart;
+            if (!chartArea) return hexA(line, 0.14);
+            return verticalFill(cx, chartArea, line, 0.30, 0.0);
+          },
           borderWidth: 2,
-          tension: 0.3,
-          pointRadius: 4,
+          tension: 0.35,
+          pointRadius: 3,
           pointHoverRadius: 6,
-          pointBackgroundColor: "rgba(75, 192, 192, 1)",
+          pointBackgroundColor: line,
+          pointBorderColor: c.surface,
+          pointBorderWidth: 2,
           fill: true,
         },
       ],
     },
     options: {
-      responsive: true,
-      maintainAspectRatio: false,
+      ...base,
       plugins: {
-        title: {
-          display: true,
-          text: `Tendencia de tiempo de conversión - ${techName}`,
-          color: textColor,
-          font: {
-            size: 18,
-            weight: "bold",
-          },
-          padding: 20,
-        },
+        ...base.plugins,
+        title: { display: false }, // el título vive en el marco .trendBox
+        legend: { display: false },
         tooltip: {
-          backgroundColor: "rgba(0, 0, 0, 0.8)",
-          titleColor: "#fff",
-          bodyColor: "#fff",
-          borderColor: "rgba(75, 192, 192, 1)",
-          borderWidth: 1,
+          ...base.plugins.tooltip,
           callbacks: {
-            title: function(context) {
-              const index = context[0].dataIndex;
-              const point = filteredPoints[index];
-              return formatDate(point.date);
-            },
-            label: function (context) {
-              const index = context.dataIndex;
-              const point = filteredPoints[index];
-              return [
-                `Tiempo: ${point.y.toFixed(2)} horas`,
-                `VIN: ${point.vin}`,
-              ];
+            title: (context) => formatDate(filteredPoints[context[0].dataIndex].date),
+            label: (context) => {
+              const p = filteredPoints[context.dataIndex];
+              return [`Tiempo: ${p.y.toFixed(2)} h`, `VIN: ${p.vin}`];
             },
           },
-        },
-        legend: {
-          display: false,
         },
       },
       scales: {
         x: {
-          title: {
-            display: true,
-            text: "Fecha",
-            color: textColor,
-            font: {
-              size: 14,
-              weight: "bold",
-            },
-          },
+          ...base.scales.x,
           ticks: {
-            color: textColor,
+            ...base.scales.x.ticks,
             maxRotation: 0,
             autoSkip: true,
-            maxTicksLimit: 5, // Mostrar ~5 labels distribuidos
-            callback: function(value, index) {
-              // Mostrar fechas distribuidas uniformemente
+            maxTicksLimit: 5,
+            callback: function (value, index) {
               const totalPoints = filteredPoints.length;
-              const step = Math.floor(totalPoints / 5);
-              
-              // Mostrar primera, última y algunas intermedias
+              const step = Math.max(1, Math.floor(totalPoints / 5));
               if (index === 0 || index === totalPoints - 1 || index % step === 0) {
                 const point = filteredPoints[index];
                 if (point) return formatDate(point.date);
               }
-              return '';
+              return "";
             },
-          },
-          grid: {
-            color: gridColor,
-            drawOnChartArea: true,
           },
         },
         y: {
+          ...base.scales.y,
           beginAtZero: true,
-          title: {
-            display: true,
-            text: "Duración (horas)",
-            color: textColor,
-            font: {
-              size: 14,
-              weight: "bold",
-            },
-          },
           ticks: {
-            color: textColor,
-            callback: function (value) {
-              return value.toFixed(1) + "h";
-            },
-          },
-          grid: {
-            color: gridColor,
+            ...base.scales.y.ticks,
+            callback: (value) => value.toFixed(1) + "h",
           },
         },
       },
