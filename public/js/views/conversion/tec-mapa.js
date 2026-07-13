@@ -33,6 +33,10 @@ function classifyZona_(z, mySlot, partnerSlot, suggestedNames, hasSuggestedAnywh
   return "neutral";  // VIN sin técnicos, pero hay sugeridos en otras zonas
 }
 
+// Colores que permiten click directo para iniciar trabajo en ese VIN.
+// "rojo" (mi rol ya ocupado) y "azul" (ya finalizado) quedan bloqueados.
+const CLICKABLE_COLORS = new Set(["verde", "verde-soft", "gris", "neutral"]);
+
 function renderCard_(z, color) {
   const isOcupada  = !!z.vin;
   const vinShort   = z.vin ? z.vin.slice(-8) : "";
@@ -48,9 +52,17 @@ function renderCard_(z, color) {
   else if (color !== "neutral") primaryCss = `tec-${color}`;
   else                          primaryCss = "tec-neutral";
 
+  // Interactivo: cualquier spot vacío (para escanear/empezar) o carro con mi
+  // rol libre y estado ≠ finalizado (verde/verde-soft/gris/neutral).
+  const clickable = !isOcupada || CLICKABLE_COLORS.has(color);
+  const roClass   = clickable ? "" : " readOnly";
+
   return `
-    <div class="zonaCard zonaCard--${primaryCss} readOnly"
-         data-zona="${z.zona_id}" role="presentation" tabindex="-1">
+    <div class="zonaCard zonaCard--${primaryCss}${roClass}"
+         data-zona="${z.zona_id}"
+         data-vin="${escapeHtml(z.vin || "")}"
+         data-clickable="${clickable ? "1" : "0"}"
+         role="${clickable ? "button" : "presentation"}" tabindex="${clickable ? "0" : "-1"}">
       <span class="zonaNum">Z${z.zona_id}</span>
       ${isOcupada ? `
         <div class="zonaCarOuter">
@@ -122,7 +134,34 @@ function renderLeyenda_(leyendaEl, colorMap, myRole, suggestions) {
     </div>`;
 }
 
-export async function loadTecMapa_(containerId, email, especialidad) {
+/**
+ * @param {string} containerId
+ * @param {string} email
+ * @param {string} especialidad
+ * @param {{ onStartVin?: (vin:string)=>void, onEmptyZone?: ()=>void }} [callbacks]
+ *   onStartVin: se llama al tocar un carro con mi rol libre (criterios cumplidos) →
+ *               el llamador debe iniciar la OT para ese VIN.
+ *   onEmptyZone: se llama al tocar un spot vacío → no hay VIN con el que crear la OT
+ *                directamente, el llamador debe ofrecer escanear/ingresar uno.
+ */
+function bindMapaClicks_(container, onStartVin, onEmptyZone) {
+  const old = container._tecMapaClickHandler;
+  if (old) container.removeEventListener("click", old);
+
+  const handler = (e) => {
+    const card = e.target.closest(".zonaCard[data-clickable='1']");
+    if (!card) return;
+    const vin = card.dataset.vin;
+    if (vin && onStartVin) onStartVin(vin);
+    else if (!vin && onEmptyZone) onEmptyZone();
+  };
+
+  container._tecMapaClickHandler = handler;
+  container.addEventListener("click", handler);
+}
+
+export async function loadTecMapa_(containerId, email, especialidad, callbacks = {}) {
+  const { onStartVin = null, onEmptyZone = null } = callbacks;
   const container = document.getElementById(containerId);
   if (!container) return;
 
@@ -160,6 +199,7 @@ export async function loadTecMapa_(containerId, email, especialidad) {
       }
 
       renderMapa_(container, zonas, colorMap);
+      bindMapaClicks_(container, onStartVin, onEmptyZone);
 
       const leyendaEl = document.getElementById("tecMapaLeyenda");
       if (leyendaEl) renderLeyenda_(leyendaEl, colorMap, myRole, suggestions);

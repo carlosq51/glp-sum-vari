@@ -33,7 +33,7 @@ import {
   refreshEstadoForVinRole,
   initEstadoUI_,
 } from "./data/conversion-estado.js";
-import { PAUSA_AUTO_RESUME_MS, autoResumingKeys_, enviarEvento, SCHEDULED_PAUSES, isInfinitePauseWindow_ } from "./data/conversion-eventos.js";
+import { PAUSA_AUTO_RESUME_MS, autoResumingKeys_, enviarEvento, autoStartFromScan_, SCHEDULED_PAUSES, isInfinitePauseWindow_ } from "./data/conversion-eventos.js";
 import { initConversionDelegation_ } from "./ui/conversion-delegation.js";
 import { initVinAutocomplete_ } from "./ui/conversion-vin-autocomplete.js";
 import { checkPendingAlerts_, getMyNombre_ } from "./modals/incidencia-alert.js";
@@ -59,6 +59,7 @@ let colaRamalInterval_     = null;
 let pairSuggestQueue_     = [];    // top-3 free suggestions
 let pairSuggestIdx_       = 0;    // current card index
 let pairSuggestMode_      = "pair"; // "pair" | "new_car"
+let pairSuggestShowingSolo_ = false; // true cuando se muestra la pantalla "trabajar solo" (rechazó todos)
 let pairSuggestLastHadOT_ = null;  // tracks OT presence for transition detection
 let pairCheckInterval_    = null;
 
@@ -168,6 +169,29 @@ async function loadPairingSuggestion_() {
 
 // ── Pair suggest popup ─────────────────────────────────────────────────────
 
+/**
+ * Inicia (INICIO) el trabajo del técnico actual sobre un VIN puntual y lo
+ * lleva a "Mi OT". Reutiliza autoStartFromScan_, que ya maneja errores
+ * (VIN ya asignado, no encontrado, transición inválida, timeout) con modales.
+ */
+async function startWorkOnVin_(vin) {
+  const v = String(vin || "").trim().toUpperCase();
+  if (!v) { showTecPanel_("tecPanelMiOT", null); return; }
+  const rol = String(CORE.state.currentProfile?.especialidad || "").toUpperCase();
+  showTecPanel_("tecPanelMiOT", null);
+  await autoStartFromScan_(v, rol);
+}
+
+/**
+ * Zona vacía en el mapa: no hay VIN con el que crear la OT directamente.
+ * Lleva a "Mi OT" y enfoca el input de VIN para escanear/escribir uno nuevo.
+ */
+function focusVinScanForNewCar_() {
+  showTecPanel_("tecPanelMiOT", null);
+  const vinInput = document.getElementById("vin");
+  if (vinInput) { vinInput.focus(); vinInput.select?.(); }
+}
+
 function buildPairSuggestModal_() {
   if (document.getElementById("pairSuggestModal")) return;
   const el = document.createElement("div");
@@ -192,9 +216,15 @@ function buildPairSuggestModal_() {
     </div>`;
   document.body.appendChild(el);
 
-  el.querySelector("#btnPairSuggestAccept")?.addEventListener("click", () => {
+  el.querySelector("#btnPairSuggestAccept")?.addEventListener("click", async () => {
+    const s = pairSuggestQueue_[pairSuggestIdx_];
+    const shouldAutoStart = pairSuggestMode_ === "pair" && !pairSuggestShowingSolo_ && s?.vin;
     closePairSuggestModal_();
-    showTecPanel_("tecPanelMiOT", null);
+    if (shouldAutoStart) {
+      await startWorkOnVin_(s.vin);
+    } else {
+      showTecPanel_("tecPanelMiOT", null);
+    }
   });
 
   el.querySelector("#btnPairSuggestNext")?.addEventListener("click", () => {
@@ -208,6 +238,7 @@ function buildPairSuggestModal_() {
 }
 
 function renderPairSuggestCard_() {
+  pairSuggestShowingSolo_ = false;
   const s       = pairSuggestQueue_[pairSuggestIdx_];
   const total   = pairSuggestQueue_.length;
   const isLast  = pairSuggestIdx_ >= total - 1;
@@ -266,6 +297,7 @@ function renderPairSuggestCard_() {
 
 // Se muestra cuando el servidor indica mode="new_car": no hay compañeros libres.
 function renderPairSuggestNewCar_() {
+  pairSuggestShowingSolo_ = false;
   const body    = document.getElementById("pairSuggestBody");
   const counter = document.getElementById("pairSuggestCounter");
   const btnNext = document.getElementById("btnPairSuggestNext");
@@ -291,6 +323,7 @@ function renderPairSuggestNewCar_() {
 
 // Se muestra cuando el técnico rechaza los 3 compañeros sugeridos.
 function renderPairSuggestSolo_() {
+  pairSuggestShowingSolo_ = true;
   const body    = document.getElementById("pairSuggestBody");
   const counter = document.getElementById("pairSuggestCounter");
   const btnNext = document.getElementById("btnPairSuggestNext");
@@ -650,7 +683,10 @@ function initTecCards_() {
       if (c.key === "mapa") {
         const email = String(document.getElementById("email")?.value || "").trim().toLowerCase();
         const esp   = String(CORE.state.currentProfile?.especialidad || "").toUpperCase();
-        showTecPanel_("tecPanelMapa", () => loadTecMapa_("tecMapaContainer", email, esp));
+        showTecPanel_("tecPanelMapa", () => loadTecMapa_("tecMapaContainer", email, esp, {
+          onStartVin:  (vin) => { startWorkOnVin_(vin); },
+          onEmptyZone: () => { focusVinScanForNewCar_(); },
+        }));
       }
     });
     grid.appendChild(btn);

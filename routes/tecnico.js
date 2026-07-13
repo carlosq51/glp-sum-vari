@@ -29,14 +29,29 @@ router.get("/api/tecnico/cola", async (req, res) => {
     // ── 2. VINs en proceso: par activo pero mi especialidad libre ──────
     let vins = [];
     if (pairEsp) {
-      const [rPairAct, rMyAct] = await Promise.all([
-        fetch(`${SUPABASE_URL}/rest/v1/asignaciones?rol_trabajo=eq.${pairEsp}&activo=eq.true&estado_actual=neq.FINALIZADO&select=work_order_id,estado_actual,usuarios(nombre),work_orders(id,vin)`, { method: "GET", headers }),
-        // Sin filtro de estado_actual: si mi rol ya tiene asignación aquí (incluido FINALIZADO),
-        // el carro ya está cubierto por mí y no debe listarse como pendiente de mi especialidad.
-        fetch(`${SUPABASE_URL}/rest/v1/asignaciones?rol_trabajo=eq.${esp}&activo=eq.true&select=work_order_id`, { method: "GET", headers }),
-      ]);
+      const rPairAct = await fetch(
+        `${SUPABASE_URL}/rest/v1/asignaciones?rol_trabajo=eq.${pairEsp}&activo=eq.true&estado_actual=neq.FINALIZADO&select=work_order_id,estado_actual,usuarios(nombre),work_orders(id,vin)&limit=2000`,
+        { method: "GET", headers }
+      );
       const pairRows = rPairAct.ok ? await rPairAct.json() : [];
-      const myActIds = new Set((rMyAct.ok ? await rMyAct.json() : []).map(a => a.work_order_id));
+
+      // Sin filtro de estado_actual: si mi rol ya tiene asignación aquí (incluido FINALIZADO),
+      // el carro ya está cubierto por mí y no debe listarse como pendiente de mi especialidad.
+      // ⚠️ Se consulta SOLO por los work_orders candidatos (in.(…), en lotes) en vez de
+      // "todas mis asignaciones": MOTOR y TANQUE superan las 1000 filas de tope de Supabase
+      // (2422 y 2437 respectivamente), así que un query global dejaba pasar carros donde mi
+      // rol ya había trabajado o terminado.
+      const candWoIds = [...new Set(pairRows.map(a => a.work_order_id).filter(Boolean))];
+      const myActIds  = new Set();
+      for (let i = 0; i < candWoIds.length; i += 200) {
+        const batch = candWoIds.slice(i, i + 200);
+        const rMine = await fetch(
+          `${SUPABASE_URL}/rest/v1/asignaciones?rol_trabajo=eq.${esp}&activo=eq.true&work_order_id=in.(${batch.join(",")})&select=work_order_id`,
+          { method: "GET", headers }
+        );
+        if (rMine.ok) (await rMine.json()).forEach(a => myActIds.add(a.work_order_id));
+      }
+
       vins = pairRows
         .filter(a => a.work_orders?.vin && !myActIds.has(a.work_order_id))
         .map(a => ({

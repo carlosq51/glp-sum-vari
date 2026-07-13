@@ -659,11 +659,13 @@ router.get("/api/ml/suggest-next", async (req, res) => {
 
       for (const { userId, sim, modelo, ml } of rankedSolo) {
         const f = ml?.features;
+        const woId = soloByUser[userId];
         suggestions.push({
           id:           userId,
           nombre:       candUserMap[userId] || ml?.nombre || "",
           especialidad: pairEsp,
           modelo:       modelo,
+          vin:          soloWoVin[woId] || null,
           similarity:   sim,
           quality:      sim >= 85 ? "great" : sim >= 75 ? "good" : "ok",
           trend:        ml?.trend    || "unknown",
@@ -688,6 +690,7 @@ router.get("/api/ml/suggest-next", async (req, res) => {
         suggestions.push({
           id: u.id, nombre: u.nombre || "", especialidad: pairEsp,
           modelo: soloWoModelo[woId] || null,
+          vin: soloWoVin[woId] || null,
           similarity: 50, quality: "ok", trend: "unknown", trendPct: 0,
           features: null, hasMLData: false,
         });
