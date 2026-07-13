@@ -618,6 +618,6 @@ button[data-suptrack].active {
 }
 
 :root[data-theme="day"] .calSugCard {
-  background: rgba(79,70,229,.07);
+  background: var(--glass);
   border-color: rgba(15,23,42,.12);
 }

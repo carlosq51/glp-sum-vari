@@ -4,17 +4,19 @@
 
 const KEY = "glpAppSettings";
 
-// Cada acento fija también --btnText para asegurar contraste del texto del botón.
-// El acento de marca SUM (ámbar) es el default.
+// El color del picker controla el BOTÓN primario. El acento de marca (ámbar)
+// vive en tokens (--accent/--grad-accent) y no lo toca el picker.
+// Default = grafito neutro (SUM): botones grafito, acentos ámbar. --inputFocus
+// se mantiene ámbar en todas las opciones para que el foco sea siempre de marca.
 export const ACCENT_COLORS = {
-  amber:  { "--btnBg": "#f59e0b", "--btnBg2": "#ea7317", "--inputFocus": "#f59e0b", "--btnText": "#241a08", "--grad-btn": "linear-gradient(160deg,#f7b733 0%,#ea7317 100%)" },
-  orange: { "--btnBg": "#f97316", "--btnBg2": "#ea580c", "--inputFocus": "#fb923c", "--btnText": "#241a08", "--grad-btn": "linear-gradient(160deg,#fb8c3b 0%,#ea580c 100%)" },
-  slate:  { "--btnBg": "#334155", "--btnBg2": "#1e293b", "--inputFocus": "#64748b", "--btnText": "#ffffff", "--grad-btn": "linear-gradient(160deg,#3b4759 0%,#1e293b 100%)" },
-  blue:   { "--btnBg": "#1d4ed8", "--btnBg2": "#1a42c0", "--inputFocus": "#60a5fa", "--btnText": "#ffffff", "--grad-btn": "linear-gradient(160deg,#1d4ed8 0%,#1a42c0 100%)" },
-  teal:   { "--btnBg": "#0d9488", "--btnBg2": "#0f766e", "--inputFocus": "#14b8a6", "--btnText": "#ffffff", "--grad-btn": "linear-gradient(160deg,#0d9488 0%,#0f766e 100%)" },
+  graphite: { "--btnBg": "#3a3f47", "--btnBg2": "#282c33", "--inputFocus": "#f59e0b", "--btnText": "#ffffff", "--grad-btn": "linear-gradient(160deg,#40454e 0%,#282c33 100%)" },
+  amber:    { "--btnBg": "#f59e0b", "--btnBg2": "#ea7317", "--inputFocus": "#f59e0b", "--btnText": "#241a08", "--grad-btn": "linear-gradient(160deg,#f7b733 0%,#ea7317 100%)" },
+  orange:   { "--btnBg": "#f97316", "--btnBg2": "#ea580c", "--inputFocus": "#f59e0b", "--btnText": "#241a08", "--grad-btn": "linear-gradient(160deg,#fb8c3b 0%,#ea580c 100%)" },
+  blue:     { "--btnBg": "#1d4ed8", "--btnBg2": "#1a42c0", "--inputFocus": "#f59e0b", "--btnText": "#ffffff", "--grad-btn": "linear-gradient(160deg,#1d4ed8 0%,#1a42c0 100%)" },
+  teal:     { "--btnBg": "#0d9488", "--btnBg2": "#0f766e", "--inputFocus": "#f59e0b", "--btnText": "#ffffff", "--grad-btn": "linear-gradient(160deg,#0d9488 0%,#0f766e 100%)" },
 };
 
-const DEFAULTS = { size: "md", accent: "amber" };
+const DEFAULTS = { size: "md", accent: "graphite" };
 
 export function loadSettings() {
   try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) || "{}") }; }
