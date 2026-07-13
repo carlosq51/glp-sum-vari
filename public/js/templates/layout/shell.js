@@ -11,6 +11,7 @@ import { supervisorView, supIncModal, liveDetailModal, supValidarQrModalTemplate
 
 import { topbarView } from "./topbar.js";
 import { loadingOverlay } from "./loading-overlay.js";
+import { bootSplash } from "./brand.js";
 import { conformidadModal } from "../modals/conformidad-modal.js";
 import { incidenciasModal } from "../modals/incidencias-modal.js";
 import { qrModal } from "../modals/qr-modal.js";
@@ -22,6 +23,8 @@ import { errorModal } from "../modals/error-modal.js";
 
 export function appShell() {
   return `
+    ${bootSplash()}
+
     ${loginView()}
 
     <!-- =========================

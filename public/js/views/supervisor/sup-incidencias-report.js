@@ -185,7 +185,7 @@ async function fetchIncReport_() {
   }
 }
 
-// ── KPI cards + barra de riesgo + impacto VIN ─────────────────────────────────────
+// ── Informe: stat tiles + índice de riesgo + impacto VIN ──────────────────────────
 function renderKpis_(s, timeStats) {
   const el = document.getElementById("incRepKpis");
   if (!el) return;
@@ -196,96 +196,78 @@ function renderKpis_(s, timeStats) {
   const score    = C * 3 + M * 2 + L;
   const maxScore = total * 3 || 1;
   const pctRisk  = Math.round(score / maxScore * 100);
-  const riskColor = pctRisk > 66 ? "#ef4444" : pctRisk > 33 ? "#f97316" : "#4ade80";
+  const riskTone = pctRisk > 66 ? "--dv-bad" : pctRisk > 33 ? "--dv-serious" : "--dv-good";
+  const gc = GRADE_MAP;
 
-  // VIN impact
   const totalVins  = s.totalVins      || 0;
   const vinsCrit   = s.vinsConCritica || 0;
   const vinsReinc  = s.vinsConReinci  || 0;
   const pctVinCrit = totalVins ? Math.round(vinsCrit / totalVins * 100) : 0;
 
-  function kpiCard(val, lbl, g) {
-    return "<div style=\"flex:1 1 65px;min-width:60px;background:" + g.bg
-      + ";border:1px solid " + g.border
-      + ";border-radius:14px;padding:13px 10px;text-align:center;\">"
-      + "<div style=\"font-size:2em;font-weight:1000;color:" + g.color + ";line-height:1;\">" + val + "</div>"
-      + "<div style=\"font-size:.68em;font-weight:900;letter-spacing:.5px;margin-top:5px;color:" + g.dimC + ";\">" + lbl + "</div>"
-      + "</div>";
+  function tile(val, label, color) {
+    const c = color ? ` style="color:${color}"` : "";
+    return `<div class="statTile"><div class="statTile__label">${label}</div>`
+      + `<div class="statTile__value"${c}>${val}</div></div>`;
   }
 
-  const TOTAL_G = { color:"#94a3b8", dimC:"rgba(148,163,184,.7)", bg:"rgba(148,163,184,.10)", border:"rgba(148,163,184,.35)" };
-  const VIN_G   = { color:"#818cf8", dimC:"rgba(129,140,248,.7)", bg:"rgba(129,140,248,.10)", border:"rgba(129,140,248,.35)" };
-  const TIME_G  = { color:"#22d3ee", dimC:"rgba(34,211,238,.7)",  bg:"rgba(34,211,238,.10)",  border:"rgba(34,211,238,.35)" };
+  const tiles = [
+    tile(total, "Total"),
+    tile(C, "🔴 Crítica",  gc.CRITICA.color),
+    tile(M, "🟠 Moderada", gc.MODERADA.color),
+    tile(L, "🟡 Leve",     gc.LEVE.color),
+    totalVins ? tile(totalVins, "🚗 VINs") : "",
+    (timeStats?.nResueltas ? tile(fmtMin_(timeStats.avgGlobal),   "⏱ T. resol.") : ""),
+    (timeStats?.nResueltas ? tile(fmtMin_(timeStats.totalGlobal), "⏱ T. total")  : ""),
+  ].join("");
 
-  // Pill de estado para VIN impact
-  function vinPill(val, label, color) {
-    return "<span style=\"display:inline-flex;flex-direction:column;align-items:center;"
-      + "background:var(--glass);border:1px solid var(--surfaceLine);"
-      + "border-radius:10px;padding:6px 10px;min-width:56px;\">"
-      + "<span style=\"font-size:1.4em;font-weight:1000;color:" + color + ";line-height:1;\">" + val + "</span>"
-      + "<span style=\"font-size:.65em;font-weight:800;letter-spacing:.5px;opacity:.55;margin-top:3px;\">" + label + "</span>"
-      + "</span>";
-  }
+  const riskBlock = total > 0 ? `
+    <div class="statTile" style="margin-top:12px;">
+      <div class="statTile__label">⚠️ Índice de riesgo
+        <span style="margin-left:auto;font-size:1.15em;font-weight:900;color:var(${riskTone});">${pctRisk}%</span>
+      </div>
+      <div class="meter" style="margin-top:8px;">
+        <div class="meter__track">
+          ${C ? `<div class="meter__seg" style="width:${(C/total*100).toFixed(1)}%;background:${gc.CRITICA.barBg};"></div>` : ""}
+          ${M ? `<div class="meter__seg" style="width:${(M/total*100).toFixed(1)}%;background:${gc.MODERADA.barBg};"></div>` : ""}
+          ${L ? `<div class="meter__seg" style="width:${(L/total*100).toFixed(1)}%;background:${gc.LEVE.barBg};"></div>` : ""}
+        </div>
+        <div class="meter__legend">
+          <span class="meter__key"><span class="meter__dot" style="background:${gc.CRITICA.color};"></span>Crítica <span class="meter__num">${C}</span></span>
+          <span class="meter__key"><span class="meter__dot" style="background:${gc.MODERADA.color};"></span>Moderada <span class="meter__num">${M}</span></span>
+          <span class="meter__key"><span class="meter__dot" style="background:${gc.LEVE.color};"></span>Leve <span class="meter__num">${L}</span></span>
+        </div>
+      </div>
+    </div>` : "";
 
-  let vinImpactHtml = "";
+  let vinBlock = "";
   if (totalVins > 0) {
-    vinImpactHtml =
-      "<div style=\"margin-top:10px;background:rgba(129,140,248,.07);"
-      + "border:1px solid rgba(129,140,248,.2);border-radius:11px;padding:10px 14px;\">"
-      + "<div style=\"font-size:.72em;font-weight:900;letter-spacing:.6px;opacity:.65;margin-bottom:8px;\">"
-      + "🚗 IMPACTO POR VIN</div>"
-      + "<div style=\"display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;\">"
-      + vinPill(totalVins, "VINS AFECT.", "#818cf8")
-      + vinPill(vinsCrit,  "CON CRÍTICA", "#ef4444")
-      + (vinsReinc > 0 ? vinPill(vinsReinc, "REINCID.", "#f97316") : "")
-      + "<div style=\"flex:1;min-width:120px;\">"
-      +   (pctVinCrit > 0
-          ? "<div style=\"font-size:.76em;opacity:.55;margin-bottom:4px;\">"
-            + "1 de cada <b style=\"color:#ef4444;\">" + (pctVinCrit > 0 ? Math.round(100/pctVinCrit) : "—")
-            + "</b> VINs tiene crítica</div>"
-          : "<div style=\"font-size:.76em;opacity:.4;margin-bottom:4px;\">Sin VINs con crítica</div>")
-      +   "<div style=\"height:8px;background:var(--surfaceLine);border-radius:4px;overflow:hidden;\">"
-      +     (pctVinCrit > 0
-            ? "<div style=\"height:100%;width:" + pctVinCrit + "%;background:linear-gradient(90deg,#ef4444,#f97316);border-radius:4px;\"></div>"
-            : "")
-      +   "</div>"
-      +   "<div style=\"display:flex;justify-content:space-between;font-size:.65em;margin-top:3px;opacity:.4;\">"
-      +     "<span>0%</span><span style=\"color:#ef4444;font-weight:700;\">" + pctVinCrit + "% con crítica</span><span>100%</span>"
-      +   "</div>"
-      + "</div></div>"
-      + (vinsReinc > 0
-          ? "<div style=\"font-size:.72em;margin-top:7px;padding-top:7px;border-top:1px solid var(--surfaceLine);"
-            + "color:#f97316;opacity:.7;\">"
-            + "⚠️ " + vinsReinc + " vehículo" + (vinsReinc > 1 ? "s" : "") + " con incidencias repetidas — revisar acciones correctivas"
-            + "</div>"
-          : "")
-      + "</div>";
+    const heroStat = (val, lbl, color) =>
+      `<div style="display:flex;flex-direction:column;gap:2px;">
+        <span style="font-size:26px;font-weight:900;line-height:1;${color ? `color:${color};` : ""}">${val}</span>
+        <span class="statTile__foot">${lbl}</span>
+      </div>`;
+    vinBlock = `
+      <div class="statTile" style="margin-top:12px;">
+        <div class="statTile__label">🚗 Impacto por VIN</div>
+        <div style="display:flex;gap:22px;flex-wrap:wrap;">
+          ${heroStat(totalVins, "afectados")}
+          ${heroStat(vinsCrit, "con crítica", gc.CRITICA.color)}
+          ${vinsReinc > 0 ? heroStat(vinsReinc, "reincidentes", gc.MODERADA.color) : ""}
+        </div>
+        ${pctVinCrit > 0 ? `
+          <div class="meter" style="margin-top:10px;">
+            <div class="meter__track"><div class="meter__seg" style="width:${pctVinCrit}%;background:${gc.CRITICA.barBg};"></div></div>
+            <div class="statTile__foot">1 de cada <b style="color:${gc.CRITICA.color};">${Math.round(100 / pctVinCrit)}</b> VINs tiene una incidencia crítica (${pctVinCrit}%)</div>
+          </div>` : `<div class="statTile__foot" style="margin-top:8px;">Sin VINs con incidencia crítica 👍</div>`}
+        ${vinsReinc > 0 ? `<div class="statTile__foot" style="margin-top:10px;color:${gc.MODERADA.color};">⚠️ ${vinsReinc} vehículo${vinsReinc > 1 ? "s" : ""} con incidencias repetidas — revisar acciones correctivas</div>` : ""}
+      </div>`;
   }
 
   el.innerHTML =
-    "<div style=\"display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;\">"
-    + kpiCard(total, "TOTAL",    TOTAL_G)
-    + kpiCard(C,     "CRÍTICA",  GRADE_MAP.CRITICA)
-    + kpiCard(M,     "MODERADA", GRADE_MAP.MODERADA)
-    + kpiCard(L,     "LEVE",     GRADE_MAP.LEVE)
-    + (totalVins ? kpiCard(totalVins, "VINS", VIN_G) : "")
-    + (timeStats?.nResueltas ? kpiCard(fmtMin_(timeStats.avgGlobal),   "⏱ T. RESOL.", TIME_G) : "")
-    + (timeStats?.nResueltas ? kpiCard(fmtMin_(timeStats.totalGlobal), "⏱ T. TOTAL",  TIME_G) : "")
-    + "</div>"
-    + (total > 0
-      ? "<div style=\"background:var(--glass);border-radius:11px;padding:10px 14px;\">"
-        + "<div style=\"display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;\">"
-        + "<span style=\"font-size:.73em;font-weight:900;letter-spacing:.6px;opacity:.65;\">ÍNDICE DE RIESGO</span>"
-        + "<span style=\"font-size:.88em;font-weight:1000;color:" + riskColor + ";\">" + pctRisk + "%</span>"
-        + "</div>"
-        + stackedBar_(C, M, L, 11)
-        + "<div style=\"display:flex;justify-content:space-between;margin-top:6px;font-size:.69em;\">"
-        + "<span style=\"color:#ef4444;font-weight:700;\">" + C + " crítica</span>"
-        + "<span style=\"color:#f97316;font-weight:700;\">" + M + " moderada</span>"
-        + "<span style=\"color:#eab308;font-weight:700;\">" + L + " leve</span>"
-        + "</div></div>"
-      : "")
-    + vinImpactHtml;
+    `<div class="sectionHead"><h4 class="sectionHead__title"><span class="accentBar"></span>Informe de incidencias</h4></div>`
+    + `<div class="dashGrid">${tiles}</div>`
+    + riskBlock
+    + vinBlock;
   el.style.display = "";
 }
 

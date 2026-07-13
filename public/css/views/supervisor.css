@@ -111,7 +111,7 @@
 
 /* Track pill activo (CONVERSIÓN / CALIDAD / RAMAL) */
 button[data-suptrack].active {
-  outline: 2px solid rgba(125,211,252,.85);
+  outline: 2px solid var(--accent);
   outline-offset: 1px;
   transform: translateY(-1px);
 }
@@ -160,7 +160,7 @@ button[data-suptrack].active {
 }
 .sup-tab-row > .btn.active {
   opacity: 1;
-  outline: 2px solid rgba(125,211,252,.85);
+  outline: 2px solid var(--accent);
   outline-offset: 1px;
   transform: translateY(-1px);
 }

@@ -56,11 +56,11 @@ export function hubView() {
         <div class="hubSettingRow">
           <div class="hubSettingLabel">Color de acento</div>
           <div class="hubSettingOpts" id="hubOptAccent">
+            <button class="hubColorBtn" data-val="amber"  style="background:#f59e0b;" title="Ámbar (SUM)"></button>
+            <button class="hubColorBtn" data-val="orange" style="background:#f97316;" title="Naranja"></button>
+            <button class="hubColorBtn" data-val="slate"  style="background:#334155;" title="Grafito"></button>
             <button class="hubColorBtn" data-val="blue"   style="background:#1d4ed8;" title="Azul"></button>
-            <button class="hubColorBtn" data-val="indigo" style="background:#4f46e5;" title="Índigo"></button>
-            <button class="hubColorBtn" data-val="violet" style="background:#7c3aed;" title="Violeta"></button>
             <button class="hubColorBtn" data-val="teal"   style="background:#0d9488;" title="Verde"></button>
-            <button class="hubColorBtn" data-val="rose"   style="background:#e11d48;" title="Rosa"></button>
           </div>
         </div>
 

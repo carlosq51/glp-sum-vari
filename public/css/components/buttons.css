@@ -52,7 +52,7 @@ button.btn-accent,
 .btn-accent {
   background: var(--grad-accent);
   border-color: transparent;
-  color: #fff;
+  color: #241a08;
   box-shadow: var(--elev-1);
 }
 button.btn-accent:hover,

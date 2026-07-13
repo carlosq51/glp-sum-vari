@@ -1,0 +1,94 @@
+/* =====================================================================
+   components/brand.css — Wordmark SUM Vehículos + boot splash
+   ===================================================================== */
+
+.sumBrand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font-family: var(--font-body);
+  user-select: none;
+}
+
+.sumWord {
+  display: flex;
+  align-items: flex-end;
+  font-weight: var(--fw-extrabold);
+  line-height: .9;
+  letter-spacing: -.04em;
+  color: var(--brandInk);
+}
+.sumLetter { display: inline-block; }
+
+/* La "u" alberga el punto ámbar (el "spark" del logo) */
+.sumU {
+  position: relative;
+  display: inline-block;
+}
+.sumDot {
+  position: absolute;
+  left: 50%;
+  bottom: .16em;
+  width: .30em;
+  height: .30em;
+  border-radius: 50%;
+  transform: translateX(-50%);
+  background: radial-gradient(circle at 35% 30%, #ffdca6 0%, #f7a833 42%, #ea7317 82%);
+  box-shadow: 0 0 .18em rgba(245,158,11,.85), 0 0 .5em rgba(234,115,23,.45);
+}
+
+.sumSub {
+  font-weight: var(--fw-bold);
+  letter-spacing: .30em;
+  text-transform: none;
+  color: var(--brandInk);
+  opacity: .85;
+  margin-right: -.30em; /* compensa el tracking a la derecha */
+}
+
+/* Tamaños */
+.sumBrand--sm .sumWord { font-size: 30px; }
+.sumBrand--sm .sumSub  { font-size: 10px; margin-top: 1px; }
+.sumBrand--md .sumWord { font-size: 48px; }
+.sumBrand--md .sumSub  { font-size: 14px; margin-top: 2px; }
+.sumBrand--lg .sumWord { font-size: 76px; }
+.sumBrand--lg .sumSub  { font-size: 20px; margin-top: 4px; }
+
+/* ─── Pantalla de login con marca ─── */
+.loginScreen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22px;
+  padding-top: 6vh;
+}
+.loginBrand { margin-bottom: 2px; }
+.loginCard { width: 100%; max-width: 420px; margin-top: 0; }
+
+/* ─── Boot splash ─── */
+.bootSplash {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-overlay);
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 34px;
+  background:
+    radial-gradient(ellipse 120% 70% at 50% -10%, var(--bgAccent), transparent 70%),
+    linear-gradient(180deg, var(--bg1) 0%, var(--bg0) 100%);
+  opacity: 1;
+  transition: opacity .45s ease;
+}
+.bootSplash.is-hiding { opacity: 0; }
+.bootSplash.is-gone   { display: none; }
+
+.bootSpinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--surfaceLine);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+}

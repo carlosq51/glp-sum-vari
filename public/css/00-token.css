@@ -1,40 +1,44 @@
 /* =====================================================================
    00-tokens.css — Design Tokens + Temas (Night / Day)
    ---------------------------------------------------------------------
+   Marca SUM Vehículos: base grafito neutro + acento ÁMBAR/NARANJA
+   (el "punto" del logo). Herramienta de taller para técnicos mecánicos:
+   alta visibilidad al sol, cálido y sin fatiga de noche.
+
    SOLO custom properties. Nada de selectores reales.
    Los componentes consumen variables; los temas solo las redefinen.
    ===================================================================== */
 
-/* ─── TEMA NIGHT (default) ─── */
+/* ─── TEMA NIGHT (default) — grafito ─── */
 :root {
-  /* Fondos — navy profundo */
-  --bg0: #060b14;
-  --bg1: #0a1322;
-  --bgAccent: #0e1d38;
+  /* Fondos — grafito neutro profundo */
+  --bg0: #0c0e11;
+  --bg1: #14171c;
+  --bgAccent: #1b1f26;
 
-  /* Texto — off-white ligeramente atenuado (menos halación de noche) */
-  --text: #e8ebf7;
-  --muted: rgba(220,228,255,.62);
-  --placeholder: rgba(220,228,255,.36);
+  /* Texto — off-white neutro (menos halación de noche) */
+  --text: #e9eaec;
+  --muted: rgba(233,234,236,.60);
+  --placeholder: rgba(233,234,236,.34);
 
-  /* Cards / superficies — índigo rico */
-  --surface: #1e3a8a;
-  --surface2: #193278;
-  --surfaceLine: rgba(255,255,255,.16);
+  /* Cards / superficies — slate grafito */
+  --surface: #1e232b;
+  --surface2: #181c23;
+  --surfaceLine: rgba(255,255,255,.12);
 
   /* Inputs */
-  --inputBg: #0f1d38;
-  --inputLine: rgba(255,255,255,.22);
-  --inputFocus: #60a5fa;
+  --inputBg: #12161c;
+  --inputLine: rgba(255,255,255,.18);
+  --inputFocus: #f59e0b;
 
-  /* Botones base — azul eléctrico */
-  --btnBg: #1d4ed8;
-  --btnBg2: #1a42c0;
-  --btnLine: rgba(255,255,255,.18);
+  /* Botones primarios — ámbar→naranja (acción de marca, alta visibilidad) */
+  --btnBg: #f59e0b;
+  --btnBg2: #ea7317;
+  --btnLine: rgba(255,255,255,.14);
 
   /* Pills / chips */
-  --pillBg: rgba(255,255,255,.10);
-  --pillLine: rgba(255,255,255,.18);
+  --pillBg: rgba(255,255,255,.08);
+  --pillLine: rgba(255,255,255,.16);
 
   /* Code / pre */
   --codeBg: rgba(255,255,255,.05);
@@ -45,9 +49,9 @@
 
   /* Estados semánticos */
   --ok: #22c55e;     --okBg: rgba(34,197,94,.18);
-  --warn: #fbbf24;   --warnBg: rgba(251,191,36,.18);
+  --warn: #facc15;   --warnBg: rgba(250,204,21,.16);
   --danger: #f87171; --dangerBg: rgba(248,113,113,.18);
-  --note: #7dd3fc;   --noteBg: rgba(125,211,252,.18);
+  --note: #7dd3fc;   --noteBg: rgba(125,211,252,.16);
 
   /* Forma */
   --radius: 16px;
@@ -114,15 +118,18 @@
   --z-modal:    10000;
   --z-overlay:  11000;
 
-  /* ── Texto de botones ── */
-  --btnText: rgba(240,244,255,.92);
+  /* ── Texto de botones — oscuro para leer sobre ámbar ── */
+  --btnText: #241a08;
 
   /* ── Backdrops ── */
-  --backdrop:      rgba(6,11,20,.74);
-  --backdropHeavy: rgba(6,11,20,.82);
+  --backdrop:      rgba(8,10,13,.74);
+  --backdropHeavy: rgba(8,10,13,.84);
 
   /* ── Glass ── */
   --glass: rgba(255,255,255,.05);
+
+  /* ── Marca (tinta del wordmark SUM) ── */
+  --brandInk: #d3d6db;
 
   /* ── Gradientes compartidos ── */
   --grad-btn:       linear-gradient(160deg, var(--btnBg) 0%, var(--btnBg2) 100%);
@@ -138,31 +145,31 @@
   --dur-fast: .1s;
   --dur-base: .15s;
 
-  /* ── Focus ── */
-  --focusRing: rgba(96,165,250,.70);
-  --focusGlow: rgba(96,165,250,.18);
+  /* ── Focus (ámbar de marca) ── */
+  --focusRing: rgba(245,158,11,.70);
+  --focusGlow: rgba(245,158,11,.20);
 
   /* ═══════════════════════════════════════════════════════════════
      SISTEMA DE DASHBOARD (night) — acento, elevación, data-viz
      ═══════════════════════════════════════════════════════════════ */
 
-  /* Acento: gradiente púrpura→azul (estilo dashboard de referencia) */
-  --accent:  #8b5cf6;
-  --accent2: #3b82f6;
-  --grad-accent: linear-gradient(135deg, #8b5cf6 0%, #6366f1 50%, #3b82f6 100%);
+  /* Acento: gradiente ámbar→naranja (el "punto" del logo SUM) */
+  --accent:  #f59e0b;
+  --accent2: #ea7317;
+  --grad-accent: linear-gradient(135deg, #f7b733 0%, #f59e0b 45%, #ea7317 100%);
 
-  /* Elevación glassy + glow */
-  --elev-1: 0 2px 8px rgba(0,0,0,.35);
-  --elev-2: 0 8px 24px rgba(0,0,0,.48);
-  --elev-3: 0 18px 48px rgba(0,0,0,.60);
-  --glow:   0 0 32px rgba(124,58,237,.28);
+  /* Elevación glassy + glow ámbar */
+  --elev-1: 0 2px 8px rgba(0,0,0,.38);
+  --elev-2: 0 8px 24px rgba(0,0,0,.50);
+  --elev-3: 0 18px 48px rgba(0,0,0,.62);
+  --glow:   0 0 32px rgba(245,158,11,.24);
 
   /* Data-viz: superficie y chrome de gráficos */
-  --dv-surface: #101d38;
-  --dv-ink:  #eef0ff;
-  --dv-ink2: rgba(220,228,255,.62);
-  --dv-grid: rgba(255,255,255,.10);
-  --dv-axis: rgba(255,255,255,.24);
+  --dv-surface: #12161c;
+  --dv-ink:  #e9eaec;
+  --dv-ink2: rgba(233,234,236,.60);
+  --dv-grid: rgba(255,255,255,.09);
+  --dv-axis: rgba(255,255,255,.22);
 
   /* Paleta categórica — steps para superficie oscura (skill dataviz, validada) */
   --dv-1: #3987e5;  --dv-2: #199e70;  --dv-3: #c98500;  --dv-4: #008300;
@@ -181,53 +188,53 @@
   --ring-track: rgba(255,255,255,.10);
 }
 
-/* ─── TEMA DAY ─── */
+/* ─── TEMA DAY — gris claro neutro (a plena luz del día) ─── */
 :root[data-theme="day"] {
-  /* Fondos — periwinkle más marcado para que las cards blancas resalten al sol */
-  --bg0: #bfcbea;
-  --bg1: #d0daf4;
-  --bgAccent: #b2c1e4;
+  /* Fondos — gris neutro (como el fondo del logo), cards blancas resaltan */
+  --bg0: #d0d2d7;
+  --bg1: #e1e3e8;
+  --bgAccent: #c6c9cf;
 
-  /* Texto — casi negro navy (máximo contraste bajo sol) */
-  --text: #0b1220;
-  --muted: rgba(15,23,42,.64);
-  --placeholder: rgba(15,23,42,.40);
+  /* Texto — casi negro neutro (máximo contraste bajo sol) */
+  --text: #15171b;
+  --muted: rgba(21,23,27,.62);
+  --placeholder: rgba(21,23,27,.40);
 
   /* Cards — blanco puro: máximo contraste vs fondo y vs texto */
   --surface: #ffffff;
-  --surface2: #f3f5ff;
-  --surfaceLine: rgba(15,23,42,.16);
+  --surface2: #f4f5f7;
+  --surfaceLine: rgba(21,23,27,.15);
 
   /* Inputs */
   --inputBg: #ffffff;
-  --inputLine: rgba(15,23,42,.24);
-  --inputFocus: #4f46e5;
+  --inputLine: rgba(21,23,27,.22);
+  --inputFocus: #ea7317;
 
-  /* Botones — índigo sólido */
-  --btnBg: #4f46e5;
-  --btnBg2: #4338ca;
-  --btnLine: rgba(79,70,229,.22);
+  /* Botones primarios — ámbar→naranja (misma acción de marca) */
+  --btnBg: #f59e0b;
+  --btnBg2: #e8890f;
+  --btnLine: rgba(180,110,10,.30);
 
   /* Pills / chips */
-  --pillBg: rgba(79,70,229,.08);
-  --pillLine: rgba(79,70,229,.18);
+  --pillBg: rgba(21,23,27,.06);
+  --pillLine: rgba(21,23,27,.14);
 
   /* Code / pre */
-  --codeBg: rgba(15,23,42,.05);
-  --codeLine: rgba(15,23,42,.12);
+  --codeBg: rgba(21,23,27,.05);
+  --codeLine: rgba(21,23,27,.12);
 
   /* Modal */
-  --modalLine: rgba(15,23,42,.10);
+  --modalLine: rgba(21,23,27,.10);
 
   /* Estados semánticos */
   --ok: #16a34a;     --okBg: rgba(22,163,74,.14);
-  --warn: #d97706;   --warnBg: rgba(217,119,6,.14);
-  --danger: #dc2626; --dangerBg: rgba(220,38,38,.14);
-  --note: #4f46e5;   --noteBg: rgba(79,70,229,.14);
+  --warn: #b45309;   --warnBg: rgba(180,83,9,.13);
+  --danger: #dc2626; --dangerBg: rgba(220,38,38,.13);
+  --note: #2563eb;   --noteBg: rgba(37,99,235,.12);
 
   /* Sombras — definidas y nítidas (plano de alto contraste) */
-  --shadow: 0 8px 24px rgba(15,23,42,.16);
-  --shadowSm: 0 2px 8px rgba(15,23,42,.11);
+  --shadow: 0 8px 24px rgba(21,23,27,.16);
+  --shadowSm: 0 2px 8px rgba(21,23,27,.11);
 
   /* Texto de botones de acción en day */
    --actionTextOk: #064e1d;
@@ -236,40 +243,42 @@
    --actionTextNote: #fff;
 
   /* ── Overrides Day ── */
-  --btnText: #fff;
-  --glass:   rgba(15,23,42,.04);
+  --btnText: #241a08;
+  --glass:   rgba(21,23,27,.04);
 
-  --backdrop:      rgba(15,23,42,.60);
-  --backdropHeavy: rgba(15,23,42,.70);
+  --brandInk: #4a4d52;
+
+  --backdrop:      rgba(21,23,27,.60);
+  --backdropHeavy: rgba(21,23,27,.72);
 
   --okBgFade:     rgba(22,163,74,.03);
-  --warnBgFade:   rgba(217,119,6,.03);
+  --warnBgFade:   rgba(180,83,9,.03);
   --dangerBgFade: rgba(220,38,38,.03);
 
-  --focusRing: rgba(79,70,229,.65);
-  --focusGlow: rgba(79,70,229,.15);
+  --focusRing: rgba(234,115,23,.62);
+  --focusGlow: rgba(234,115,23,.16);
 
   /* ═══════════════════════════════════════════════════════════════
      SISTEMA DE DASHBOARD (day) — acento, elevación, data-viz
      ═══════════════════════════════════════════════════════════════ */
 
-  /* Acento: gradiente más profundo/saturado para contraste al sol */
-  --accent:  #7c3aed;
-  --accent2: #4338ca;
-  --grad-accent: linear-gradient(135deg, #7c3aed 0%, #4f46e5 55%, #4338ca 100%);
+  /* Acento ámbar→naranja (algo más profundo para contraste al sol) */
+  --accent:  #ea7317;
+  --accent2: #d9600d;
+  --grad-accent: linear-gradient(135deg, #f59e0b 0%, #ea7317 55%, #d9600d 100%);
 
   /* Elevación — plana pero definida, sin glow */
-  --elev-1: 0 1px 2px rgba(15,23,42,.10), 0 2px 6px rgba(15,23,42,.08);
-  --elev-2: 0 4px 14px rgba(15,23,42,.14);
-  --elev-3: 0 10px 30px rgba(15,23,42,.18);
+  --elev-1: 0 1px 2px rgba(21,23,27,.10), 0 2px 6px rgba(21,23,27,.08);
+  --elev-2: 0 4px 14px rgba(21,23,27,.14);
+  --elev-3: 0 10px 30px rgba(21,23,27,.18);
   --glow:   none;
 
   /* Data-viz: superficie blanca para máximo contraste bajo sol */
   --dv-surface: #ffffff;
-  --dv-ink:  #0b1220;
-  --dv-ink2: rgba(15,23,42,.62);
-  --dv-grid: rgba(15,23,42,.10);
-  --dv-axis: rgba(15,23,42,.28);
+  --dv-ink:  #15171b;
+  --dv-ink2: rgba(21,23,27,.62);
+  --dv-grid: rgba(21,23,27,.10);
+  --dv-axis: rgba(21,23,27,.28);
 
   /* Paleta categórica — steps para superficie clara (skill dataviz, validada) */
   --dv-1: #2a78d6;  --dv-2: #1baf7a;  --dv-3: #eda100;  --dv-4: #008300;
@@ -285,5 +294,5 @@
   --track-calidad: var(--dv-2);
 
   /* Gauges */
-  --ring-track: rgba(15,23,42,.10);
+  --ring-track: rgba(21,23,27,.10);
 }

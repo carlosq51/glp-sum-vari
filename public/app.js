@@ -33,6 +33,17 @@ initAppSettings();
 const root = document.getElementById("appRoot");
 if (root) root.innerHTML = appShell();
 
+// ---------- BOOT SPLASH (logo SUM en el arranque / al despertar) ----------
+function hideBootSplash_() {
+  const el = document.getElementById("bootSplash");
+  if (!el || el.classList.contains("is-hiding")) return;
+  el.classList.add("is-hiding");
+  setTimeout(() => el.classList.add("is-gone"), 500);
+}
+// Mantener el splash un mínimo visible y ocultarlo cuando la app está lista.
+window.addEventListener("load", () => setTimeout(hideBootSplash_, 650));
+setTimeout(hideBootSplash_, 2500); // failsafe
+
 // ---------- LOGIN FLOW ----------
 async function doLogin(email) {
   if (!email) return showLoginUI("Pon tu email.");

@@ -88,10 +88,10 @@
   border-color: transparent;
   box-shadow: var(--elev-2), var(--glow);
 }
-.statTile--accent .statTile__label { color: rgba(255,255,255,.82); }
+.statTile--accent .statTile__label { color: rgba(36,26,8,.72); }
 .statTile--accent .statTile__value,
-.statTile--accent .statTile__foot  { color: #fff; }
-.statTile--accent .statTile__value .unit { color: rgba(255,255,255,.82); }
+.statTile--accent .statTile__foot  { color: #241a08; }
+.statTile--accent .statTile__value .unit { color: rgba(36,26,8,.72); }
 
 /* ─── Delta badge (reusa tokens semánticos, correcto en ambos temas) ─── */
 .delta {
