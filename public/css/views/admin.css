@@ -10,6 +10,13 @@
 .hubCard[data-section="reasignar"]   { border-left-color: #fbbf24; }
 .hubCard[data-section="config"]      { border-left-color: #67e8f9; }
 
+/* ── Grid de secciones: 3 columnas en desktop (solo Admin) ── */
+@media (min-width: 860px) {
+  body[data-app-module="ADMIN"] #adminCardGrid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
 /* ── Cabecera del detalle ── */
 .adminDetailHead {
   display: flex;
@@ -130,6 +137,17 @@
   line-height: 1.4;
 }
 
+/* Desktop: hay ancho de sobra, las columnas respiran sin depender del scroll */
+@media (min-width: 860px) {
+  body[data-app-module="ADMIN"] .adminTable {
+    font-size: var(--fs-body, 14px);
+  }
+  body[data-app-module="ADMIN"] .adminTable th,
+  body[data-app-module="ADMIN"] .adminTable td {
+    padding: 11px 14px;
+  }
+}
+
 .adminTable tr:last-child td {
   border-bottom: none;
 }
@@ -217,6 +235,13 @@
 /* ── Modal específico Admin ── */
 .adminModalBox {
   width: min(100%, 520px);
+}
+
+/* Desktop: el tab config es denso (pausa/horarios/metas/ML), da más ancho */
+@media (min-width: 860px) {
+  body[data-app-module="ADMIN"] .adminModalBox {
+    width: min(100%, 720px);
+  }
 }
 
 .adminModalFoot {

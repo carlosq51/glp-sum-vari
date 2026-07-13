@@ -38,6 +38,8 @@ export function hideAllModulesUI() {
     const el = document.getElementById(`view${m}`);
     if (el) el.style.display = "none";
   });
+
+  document.body.dataset.appModule = "";
 }
 
 export function showHubUI(mods, onPick) {

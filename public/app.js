@@ -97,6 +97,7 @@ function openModule(m) {
   CORE.state.currentModule = m;
 
   hideAllModulesUI();
+  document.body.dataset.appModule = m;
   const el = document.getElementById(`view${m}`);
   if (el) el.style.display = "block";
   const hub = $("viewHub");

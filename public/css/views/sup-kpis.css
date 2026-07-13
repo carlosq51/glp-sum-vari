@@ -47,8 +47,11 @@
 }
 
 @media (min-width: 1024px) {
-  .sup-kpis-grid {
-    grid-template-columns: repeat(2, 1fr);
+  body[data-app-module="SUPERVISOR"] .sup-kpis-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+  body[data-app-module="SUPERVISOR"] .sup-kpi-card.main-kpi {
+    grid-column: span 2;
   }
 }
 

@@ -43,6 +43,13 @@ body {
     margin: 0 auto;
     padding: 20px 16px 80px;
   }
+
+  /* Supervisor y Admin se usan desde PC: aprovechar el ancho completo */
+  body[data-app-module="SUPERVISOR"],
+  body[data-app-module="ADMIN"] {
+    max-width: 1360px;
+    padding: 24px 32px 80px;
+  }
 }
 
 /* ─── Tipografía ─── */

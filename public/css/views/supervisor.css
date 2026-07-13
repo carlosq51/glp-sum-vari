@@ -120,6 +120,19 @@ button[data-suptrack].active {
 #viewSUPERVISOR .supNameWrap,
 #viewSUPERVISOR #supName { width: 100%; }
 
+/* REPORTE — cards de resultado en grid en desktop */
+@media (min-width: 860px) {
+  body[data-app-module="SUPERVISOR"] #supTable {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 10px;
+    align-items: start;
+  }
+  body[data-app-module="SUPERVISOR"] #supTable .card {
+    margin-top: 0;
+  }
+}
+
 /* Botones rápidos con estilo azul oscuro */
 #btnSupAyer,
 #btnSupHoy,
@@ -220,11 +233,20 @@ button[data-suptrack].active {
   50%       { opacity: .5; transform: scale(1.35); }
 }
 
-/* Grid de cards de técnicos — 1 por fila */
+/* Grid de cards de técnicos — 1 por fila (mobile) */
 .live-cards {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+/* Desktop (Supervisor): varias cards por fila */
+@media (min-width: 860px) {
+  body[data-app-module="SUPERVISOR"] .live-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 10px;
+  }
 }
 
 /* Card de técnico — fila horizontal */
@@ -291,6 +313,12 @@ button[data-suptrack].active {
   overflow: hidden;
   text-overflow: ellipsis;
   flex-shrink: 1;
+}
+
+@media (min-width: 860px) {
+  body[data-app-module="SUPERVISOR"] .live-tech-name {
+    max-width: 160px;
+  }
 }
 /* Indicador numérico de carros (ej: 🚗 2.5) */
 .live-cars-pill {
@@ -499,6 +527,39 @@ button[data-suptrack].active {
 /* Responsive */
 @media (max-width: 480px) {
   .live-vin-section { display: none; }
+}
+
+/* =====================================================================
+   UBICACIONES — cards de zona en grid en desktop
+   ===================================================================== */
+@media (min-width: 860px) {
+  body[data-app-module="SUPERVISOR"] #supPanelUbicaciones .movCardList {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 8px;
+  }
+}
+
+/* =====================================================================
+   INCIDENCIAS — reporte global: ranking + lista lado a lado en desktop
+   ===================================================================== */
+@media (min-width: 1024px) {
+  body[data-app-module="SUPERVISOR"] #supPanelIncidencias {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    align-items: flex-start;
+  }
+  body[data-app-module="SUPERVISOR"] #supPanelIncidencias > .inc-rep-filters,
+  body[data-app-module="SUPERVISOR"] #incRepKpis {
+    flex: 1 1 100%;
+  }
+  body[data-app-module="SUPERVISOR"] #incRepRanking,
+  body[data-app-module="SUPERVISOR"] #incRepList {
+    flex: 1 1 calc(50% - 7px);
+    min-width: 0;
+    margin-top: 0;
+  }
 }
 
 /* =====================================================================
