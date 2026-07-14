@@ -375,7 +375,14 @@
   margin-bottom: 0;
 }
 
-/* ─── Panel de ajustes ─── */
+/* ─── Panel de ajustes global (modal) ─── */
+.appSettingsBox { width: min(100%, 440px); }
+.appSettingsBox .modalBody { padding: 18px 18px 22px; }
+.appSettingsBox .modalTitle { display: inline-flex; align-items: center; gap: 8px; }
+.appSettingsBox .modalTitle .icn { vertical-align: -3px; }
+.appSettingsBox .hubOptBtn .icn { vertical-align: -2px; }
+
+/* ─── Panel de ajustes (legacy inline; conservado por compatibilidad) ─── */
 .hubSettingsPanel {
   margin-top: 16px;
   padding: 18px 16px;

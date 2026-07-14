@@ -5,9 +5,8 @@
 
 import { CORE, MODULES } from "./state.js";
 import { $, el_ } from "./dom.js";
-import { applyTheme_, loadTheme_ } from "./theme.js";
-import { loadSettings, saveSettings, applySettings } from "./app-settings.js";
 import { icon } from "./icons.js";
+import { openSettingsSheet } from "./settings-sheet.js";
 
 // ─── Metadata de módulos ─────────────────────────────────────────────
 const MODULE_META = {
@@ -54,10 +53,6 @@ export function showHubUI(mods, onPick) {
   const greeting = $("hubGreeting");
   if (greeting) greeting.textContent = nombre ? `Hola, ${nombre} 👋` : "Bienvenido";
 
-  // Cerrar settings panel al volver al hub
-  const panel = $("hubSettingsPanel");
-  if (panel) panel.style.display = "none";
-
   // Renderizar cartillas
   const box = $("hubButtons");
   if (!box) return;
@@ -80,68 +75,17 @@ export function showHubUI(mods, onPick) {
     box.appendChild(card);
   });
 
-  // Inicializar settings panel (una sola vez)
+  // Botón de ajustes del hub → abre el panel global (mismo que el topbar)
   initHubSettings_();
 }
 
 // ─── Settings panel ──────────────────────────────────────────────────
 let hubSettingsInited_ = false;
 
-function refreshSettingsUI_() {
-  const s   = loadSettings();
-  const cur = document.documentElement.dataset.theme || "night";
-
-  $("hubOptTheme")?.querySelectorAll(".hubOptBtn").forEach(b =>
-    b.classList.toggle("active", b.dataset.val === cur)
-  );
-  $("hubOptSize")?.querySelectorAll(".hubOptBtn").forEach(b =>
-    b.classList.toggle("active", b.dataset.val === (s.size || "md"))
-  );
-  $("hubOptAccent")?.querySelectorAll(".hubColorBtn").forEach(b =>
-    b.classList.toggle("active", b.dataset.val === (s.accent || "blue"))
-  );
-}
-
 function initHubSettings_() {
   if (hubSettingsInited_) return;
   hubSettingsInited_ = true;
-
-  const panel = $("hubSettingsPanel");
-
-  $("btnHubSettings")?.addEventListener("click", () => {
-    if (!panel) return;
-    const isOpen = panel.style.display !== "none";
-    panel.style.display = isOpen ? "none" : "block";
-    if (!isOpen) refreshSettingsUI_();
-  });
-
-  $("btnHubSettingsClose")?.addEventListener("click", () => {
-    if (panel) panel.style.display = "none";
-  });
-
-  // Tema (usa el mecanismo existente de theme.js)
-  $("hubOptTheme")?.addEventListener("click", e => {
-    const btn = e.target.closest(".hubOptBtn");
-    if (!btn) return;
-    applyTheme_(btn.dataset.val);
-    refreshSettingsUI_();
-  });
-
-  // Tamaño de fuente
-  $("hubOptSize")?.addEventListener("click", e => {
-    const btn = e.target.closest(".hubOptBtn");
-    if (!btn) return;
-    applySettings(saveSettings({ size: btn.dataset.val }));
-    refreshSettingsUI_();
-  });
-
-  // Acento de color
-  $("hubOptAccent")?.addEventListener("click", e => {
-    const btn = e.target.closest(".hubColorBtn");
-    if (!btn) return;
-    applySettings(saveSettings({ accent: btn.dataset.val }));
-    refreshSettingsUI_();
-  });
+  $("btnHubSettings")?.addEventListener("click", openSettingsSheet);
 }
 
 /**

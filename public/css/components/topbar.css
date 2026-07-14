@@ -15,6 +15,6 @@
 .topbar h2,
 .topbar h3 { margin: 0; }
 
-/* Rotación breve del icono de tema al alternar día/noche */
-#btnTheme { transition: transform var(--dur-slow) var(--ease-spring), filter var(--dur-base); }
-#btnTheme:active { transform: rotate(-18deg) scale(.94); }
+/* Giro breve del engranaje de ajustes al presionar */
+#btnAppSettings { transition: transform var(--dur-slow) var(--ease-spring), filter var(--dur-base); }
+#btnAppSettings:active { transform: rotate(30deg) scale(.94); }

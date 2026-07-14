@@ -94,9 +94,13 @@
   min-width: 0;
 }
 
-#btnTheme {
+#btnAppSettings {
   width: 100%;
+  display: grid;
+  place-items: center;
 }
+#btnAppSettings .icn { display: block; }
+#btnRegistroFallas .icn { vertical-align: -3px; }
 
 #btnRegistroFallas {
   width: 100%;
@@ -169,7 +173,7 @@
     gap: var(--gap-sm);
   }
 
-  #btnTheme,
+  #btnAppSettings,
   #btnRegistroFallas,
   #btnGoHome {
     width: 100%;

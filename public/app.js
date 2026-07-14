@@ -11,7 +11,7 @@ import {
   showLoginUI, showAppUI, setUserPillUI, applyDebugVisibilityUI,
   effectiveModulos, computeRolLock_, enforceRolLock_,
   hideAllModulesUI, showHubUI, syncTopbarHomeButtonUI,
-  getJSON_user, getEmail, toggleTheme_, setLocked, withLock,
+  getJSON_user, getEmail, setLocked, withLock,
   getJSON, postJSON,
 } from "./js/core/core.js";
 
@@ -26,6 +26,7 @@ import * as VSupervisor from "./js/views/supervisor/supervisor.js";
 import * as VAdmin from "./js/views/admin/admin.js";
 import * as VMovilizador from "./js/views/movilizador/movilizador.js";
 import { initAppSettings } from "./js/core/app-settings.js";
+import { openSettingsSheet } from "./js/core/settings-sheet.js";
 import { loadConfig } from "./js/core/config.js";
 import { initLive } from "./js/core/live.js";
 
@@ -147,7 +148,10 @@ VMovilizador.init();
 initUploaderView();
 
 // ---------- GLOBAL LISTENERS ----------
-$("btnTheme")?.addEventListener("click", toggleTheme_);
+// Ajustes de apariencia (tema + tamaño + acento) — disponible en TODOS los
+// módulos vía topbar, no solo en el hub. Técnicos/calidad que entran directo
+// a su vista ahora también pueden cambiar tema, tamaño de letra y color.
+$("btnAppSettings")?.addEventListener("click", openSettingsSheet);
 
 $("btnRegistroFallas")?.addEventListener("click", () => {
   // Oculta vistas actuales

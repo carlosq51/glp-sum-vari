@@ -3,6 +3,8 @@
 // Template HTML: barra superior (título, user pill, acciones)
 // =========================
 
+import { icon } from "../../core/icons.js";
+
 export function topbarView() {
   return `
     <div class="topbarShell">
@@ -26,10 +28,10 @@ export function topbarView() {
       </div>
 
       <div class="topbarActions">
-        <button id="btnTheme" type="button" title="Cambiar tema">☀️ / 🌙</button>
+        <button id="btnAppSettings" type="button" title="Ajustes de apariencia (tema, tamaño, color)">${icon("settings", 18)}</button>
 
         <button id="btnRegistroFallas" type="button" title="Abrir Registro / Fallas">
-          📸 Registro / Fallas
+          ${icon("camera", 15)} Registro / Fallas
         </button>
 
         <button
