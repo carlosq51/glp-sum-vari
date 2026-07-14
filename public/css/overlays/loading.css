@@ -43,7 +43,14 @@
 
 /* ─── Toro (usuarios especiales) ─── */
 .toroWrap { display: none; }
-.toroSvg  { width: 88px; height: 88px; display: block; }
+.toroWrap .toroSvg {
+  width: 96px;
+  height: 96px;
+  display: block;
+  border-radius: 50%;
+  border: 2px solid var(--surfaceLine);
+  box-shadow: var(--elev-1);
+}
 
 /* Cuando el usuario es especial: mostrar el toro y ocultar el spinner genérico */
 body[data-toro="1"] #loadingOverlay .toroWrap { display: block; animation: toroBob 1.5s ease-in-out infinite; }

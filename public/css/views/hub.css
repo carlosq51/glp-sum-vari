@@ -58,10 +58,10 @@
   display: block;
 }
 
-/* Toro como avatar: el disco ámbar del SVG ES el círculo, sin doble fondo */
+/* Toro como avatar: el SVG (bust ejecutivo) llena el círculo */
 .hubAvatar--toro {
   background: none;
-  border-color: color-mix(in srgb, #ea7317 55%, transparent);
+  border-color: var(--surfaceLine);
 }
 .hubAvatarImg .toroSvg {
   width: 100%;

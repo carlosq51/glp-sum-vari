@@ -114,28 +114,58 @@ export function icon(name, size = 20) {
  *   colisiones si hay varios toros en la misma página).
  */
 export function toroSvg(idSuffix = "") {
-  const gid = `toroDisc${idSuffix}`;
+  const bg = `toroBg${idSuffix}`;
+  const hn = `toroHorn${idSuffix}`;
   return `
-    <svg class="toroSvg" viewBox="0 0 120 120" role="img" aria-label="Toro">
+    <svg class="toroSvg" viewBox="0 0 120 120" role="img" aria-label="Toro ejecutivo">
       <defs>
-        <linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stop-color="#f7b733"/>
-          <stop offset="1" stop-color="#ea7317"/>
+        <linearGradient id="${bg}" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#fcfcfd"/>
+          <stop offset="1" stop-color="#e6e8ee"/>
+        </linearGradient>
+        <linearGradient id="${hn}" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#efe1b6"/>
+          <stop offset="1" stop-color="#cdb572"/>
         </linearGradient>
       </defs>
-      <circle cx="60" cy="60" r="58" fill="url(#${gid})"/>
-      <g fill="#241a08">
-        <path d="M40 46 C 26 40 17 41 12 28 C 23 30 33 35 44 41 Z"/>
-        <path d="M80 46 C 94 40 103 41 108 28 C 97 30 87 35 76 41 Z"/>
-        <path d="M60 40 C 44 40 36 50 36 64 C 36 82 47 96 60 96 C 73 96 84 82 84 64 C 84 50 76 40 60 40 Z"/>
-      </g>
-      <path d="M52 34 C 54 27 58 25 60 25 C 62 25 66 27 68 34 Z" fill="#241a08"/>
-      <ellipse cx="60" cy="78" rx="16" ry="12" fill="#3a2a12"/>
-      <circle cx="49" cy="60" r="3.6" fill="#f7b733"/>
-      <circle cx="71" cy="60" r="3.6" fill="#f7b733"/>
-      <path d="M53 75 q 3 6 6 1" fill="none" stroke="#f7b733" stroke-width="2.4" stroke-linecap="round"/>
-      <path d="M67 75 q -3 6 -6 1" fill="none" stroke="#f7b733" stroke-width="2.4" stroke-linecap="round"/>
-      <circle cx="60" cy="88" r="6" fill="none" stroke="#f7b733" stroke-width="2.4"/>
+      <rect width="120" height="120" fill="url(#${bg})"/>
+
+      <!-- Saco -->
+      <path d="M12 120 C 12 94 32 82 60 82 C 88 82 108 94 108 120 Z" fill="#26262a"/>
+      <!-- Camisa -->
+      <path d="M60 82 L46 90 L52 120 L68 120 L74 90 Z" fill="#f2f3f5"/>
+      <!-- Solapas -->
+      <path d="M60 82 L45 89 L55 101 L60 87 Z" fill="#1b1b1e"/>
+      <path d="M60 82 L75 89 L65 101 L60 87 Z" fill="#1b1b1e"/>
+      <!-- Corbata roja -->
+      <path d="M56 87 L64 87 L60 94 Z" fill="#9e2817"/>
+      <path d="M60 92 L55 98 L59 120 L61 120 L65 98 Z" fill="#c53521"/>
+
+      <!-- Cuernos -->
+      <path d="M44 40 C 30 34 21 31 16 23 C 17 32 25 41 41 47 Z" fill="url(#${hn})" stroke="#b89a52" stroke-width="1"/>
+      <path d="M76 40 C 90 34 99 31 104 23 C 103 32 95 41 79 47 Z" fill="url(#${hn})" stroke="#b89a52" stroke-width="1"/>
+
+      <!-- Orejas -->
+      <path d="M37 52 C 27 48 22 51 24 60 C 30 58 34 57 41 56 Z" fill="#2b2b2f"/>
+      <path d="M83 52 C 93 48 98 51 96 60 C 90 58 86 57 79 56 Z" fill="#2b2b2f"/>
+
+      <!-- Cabeza -->
+      <path d="M60 30 C 43 30 34 43 34 57 C 34 74 46 88 60 88 C 74 88 86 74 86 57 C 86 43 77 30 60 30 Z" fill="#38383c"/>
+      <!-- Mechón -->
+      <path d="M52 33 C 54 27 58 25 60 25 C 62 25 66 27 68 33 Z" fill="#2b2b2f"/>
+
+      <!-- Hocico -->
+      <ellipse cx="60" cy="70" rx="16" ry="12" fill="#4c4c51"/>
+      <ellipse cx="54" cy="71" rx="2.4" ry="3.1" fill="#1c1c1f"/>
+      <ellipse cx="66" cy="71" rx="2.4" ry="3.1" fill="#1c1c1f"/>
+
+      <!-- Ojos serios -->
+      <path d="M45 55 Q51 51 57 55 Q51 59 45 55 Z" fill="#f4f4f6"/>
+      <path d="M63 55 Q69 51 75 55 Q69 59 63 55 Z" fill="#f4f4f6"/>
+      <circle cx="52" cy="55" r="2" fill="#1c1c1f"/>
+      <circle cx="68" cy="55" r="2" fill="#1c1c1f"/>
+      <path d="M44 49 L56 53" stroke="#1c1c1f" stroke-width="2.4" stroke-linecap="round"/>
+      <path d="M76 49 L64 53" stroke="#1c1c1f" stroke-width="2.4" stroke-linecap="round"/>
     </svg>
   `;
 }
