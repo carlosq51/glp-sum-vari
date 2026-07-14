@@ -6,7 +6,14 @@
 import { CORE, MODULES } from "./state.js";
 import { $, el_ } from "./dom.js";
 import { icon } from "./icons.js";
-import { openSettingsSheet } from "./settings-sheet.js";
+
+// ─── Avatares personalizados por técnico ─────────────────────────────
+// email (minúsculas) → URL de imagen (data URI o asset same-origin, por
+// CSP no se permiten hosts externos). Vacío por ahora: todos muestran el
+// avatar genérico. Para personalizar a alguien, añade su email aquí.
+const TECH_AVATARS = {
+  // "ley.m2692@hotmail.com": "/avatars/leysester.jpg",
+};
 
 // ─── Metadata de módulos ─────────────────────────────────────────────
 const MODULE_META = {
@@ -53,6 +60,9 @@ export function showHubUI(mods, onPick) {
   const greeting = $("hubGreeting");
   if (greeting) greeting.textContent = nombre ? `Hola, ${nombre} 👋` : "Bienvenido";
 
+  // Avatar del técnico (genérico o personalizado por email)
+  renderHubAvatar_();
+
   // Renderizar cartillas
   const box = $("hubButtons");
   if (!box) return;
@@ -75,17 +85,26 @@ export function showHubUI(mods, onPick) {
     box.appendChild(card);
   });
 
-  // Botón de ajustes del hub → abre el panel global (mismo que el topbar)
-  initHubSettings_();
 }
 
-// ─── Settings panel ──────────────────────────────────────────────────
-let hubSettingsInited_ = false;
+// ─── Avatar del hub ──────────────────────────────────────────────────
+// Muestra la foto del técnico si está registrada (TECH_AVATARS por email),
+// o un icono genérico de usuario. Preparado para personalizar por técnico.
+function renderHubAvatar_() {
+  const imgBox = $("hubAvatarImg");
+  const wrap = $("hubAvatar");
+  if (!imgBox) return;
 
-function initHubSettings_() {
-  if (hubSettingsInited_) return;
-  hubSettingsInited_ = true;
-  $("btnHubSettings")?.addEventListener("click", openSettingsSheet);
+  const email = String(CORE.state.currentProfile?.email || "").trim().toLowerCase();
+  const url = TECH_AVATARS[email];
+
+  if (url) {
+    imgBox.innerHTML = `<img class="hubAvatarPhoto" src="${url}" alt="Foto de perfil">`;
+    wrap?.classList.add("hubAvatar--photo");
+  } else {
+    imgBox.innerHTML = icon("user", 30);
+    wrap?.classList.remove("hubAvatar--photo");
+  }
 }
 
 /**

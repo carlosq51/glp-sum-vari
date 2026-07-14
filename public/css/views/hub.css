@@ -24,22 +24,39 @@
   margin-top: 2px;
 }
 
-.hubSettingsBtn {
-  background: var(--glass);
-  border: 1px solid var(--surfaceLine);
-  border-radius: var(--radiusSm);
-  padding: 0;
-  width: 40px;
-  height: 40px;
+/* ─── Avatar del técnico (esquina de la cabecera del hub) ─── */
+.hubAvatar {
+  flex-shrink: 0;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
   display: grid;
   place-items: center;
-  cursor: pointer;
-  color: var(--muted);
-  transition: background var(--dur-base), color var(--dur-base), transform var(--dur-fast);
-  line-height: 1;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--glass));
+  border: 2px solid color-mix(in srgb, var(--accent) 32%, var(--surfaceLine));
+  box-shadow: var(--elev-1);
+  overflow: hidden;
+  transition: transform var(--dur-base) var(--ease-spring), box-shadow var(--dur-base);
 }
-.hubSettingsBtn:hover  { background: var(--pillBg); color: var(--text); }
-.hubSettingsBtn:active { transform: scale(.93) rotate(30deg); }
+.hubAvatar:hover { transform: scale(1.05); box-shadow: var(--elev-2); }
+
+.hubAvatarImg {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+}
+.hubAvatarImg .icn { display: block; }
+
+/* Cuando hay foto real: ocupa todo el círculo */
+.hubAvatar--photo { color: transparent; }
+.hubAvatarPhoto {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
 
 /* ─── Grid de cartillas — 2 columnas ─── */
 .hubGrid {

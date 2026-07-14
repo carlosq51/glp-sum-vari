@@ -16,7 +16,9 @@ export function hubView() {
           <div class="hubGreeting" id="hubGreeting">Bienvenido</div>
           <div class="hubSubtitle">Selecciona tu módulo de trabajo</div>
         </div>
-        <button id="btnHubSettings" class="hubSettingsBtn" title="Ajustes de apariencia">${icon("settings", 19)}</button>
+        <div id="hubAvatar" class="hubAvatar" title="Foto de perfil">
+          <span class="hubAvatarImg" id="hubAvatarImg" aria-hidden="true">${icon("user", 30)}</span>
+        </div>
       </div>
 
       <!-- Cartillas de módulos (rellenas dinámicamente) -->
