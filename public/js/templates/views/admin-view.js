@@ -3,6 +3,8 @@
 // Template HTML: vista Admin – cartillas de sección + detalle
 // =========================
 
+import { icon } from "../../core/icons.js";
+
 export function adminView() {
   return `
     <!-- ADMIN -->
@@ -10,7 +12,13 @@ export function adminView() {
 
       <!-- ── Vista cartillas ── -->
       <div id="adminCards">
-        <h3 style="margin-bottom:16px;">Panel Admin</h3>
+        <div class="adminHero">
+          <span class="adminHeroIcon" aria-hidden="true">${icon("sliders", 22)}</span>
+          <div class="adminHeroText">
+            <h3 class="adminHeroTitle">Panel de administración</h3>
+            <div class="adminHeroSub">Gestiona usuarios, vehículos, órdenes y parámetros del sistema</div>
+          </div>
+        </div>
         <div class="hubGrid" id="adminCardGrid"></div>
       </div>
 
@@ -18,13 +26,20 @@ export function adminView() {
       <div id="adminDetail" style="display:none;">
 
         <div class="adminDetailHead">
-          <button id="btnAdminBack" class="adminBackBtn">← Volver</button>
-          <span id="adminDetailTitle" class="adminDetailTitle"></span>
+          <button id="btnAdminBack" class="adminBackBtn">${icon("chevronLeft", 16)} Volver</button>
+          <span id="adminDetailIcon" class="adminDetailIcon" aria-hidden="true"></span>
+          <div class="adminDetailText">
+            <span id="adminDetailTitle" class="adminDetailTitle"></span>
+            <span id="adminDetailSub" class="adminDetailSub"></span>
+          </div>
         </div>
 
         <div class="adminToolbar" id="adminToolbar">
-          <input id="adminSearch" type="text" placeholder="Buscar…" autocomplete="off">
-          <button id="btnAdminNuevo" type="button">+ Nuevo</button>
+          <div class="adminSearchWrap">
+            <span class="adminSearchIcon" aria-hidden="true">${icon("search", 16)}</span>
+            <input id="adminSearch" type="text" placeholder="Buscar…" autocomplete="off">
+          </div>
+          <button id="btnAdminNuevo" type="button">${icon("plus", 16)} Nuevo</button>
         </div>
 
         <div id="adminTableWrap">

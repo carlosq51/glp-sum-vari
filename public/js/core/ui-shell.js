@@ -7,15 +7,16 @@ import { CORE, MODULES } from "./state.js";
 import { $, el_ } from "./dom.js";
 import { applyTheme_, loadTheme_ } from "./theme.js";
 import { loadSettings, saveSettings, applySettings } from "./app-settings.js";
+import { icon } from "./icons.js";
 
 // ─── Metadata de módulos ─────────────────────────────────────────────
 const MODULE_META = {
-  TECNICO:     { emoji: "🔧", label: "Técnico",     desc: "Motor y tanque GLP" },
-  RAMALERO:    { emoji: "🪝", label: "Ramalero",    desc: "Suministro de ramales" },
-  CALIDAD:     { emoji: "✅", label: "Calidad",     desc: "Revisión y aprobación" },
-  MOVILIZADOR: { emoji: "🚗", label: "Movilizador", desc: "Traslados y listas" },
-  SUPERVISOR:  { emoji: "🎯", label: "Supervisor",  desc: "Supervisión del taller" },
-  ADMIN:       { emoji: "🛠️", label: "Admin",       desc: "Administración del sistema" },
+  TECNICO:     { icon: "wrench",      label: "Técnico",     desc: "Motor y tanque GLP" },
+  RAMALERO:    { icon: "branch",      label: "Ramalero",    desc: "Suministro de ramales" },
+  CALIDAD:     { icon: "shieldCheck", label: "Calidad",     desc: "Revisión y aprobación" },
+  MOVILIZADOR: { icon: "truck",       label: "Movilizador", desc: "Traslados y listas" },
+  SUPERVISOR:  { icon: "target",      label: "Supervisor",  desc: "Supervisión del taller" },
+  ADMIN:       { icon: "sliders",     label: "Admin",       desc: "Administración del sistema" },
 };
 
 export function showLoginUI(msg = "") {
@@ -63,16 +64,17 @@ export function showHubUI(mods, onPick) {
 
   box.innerHTML = "";
   mods.forEach((m) => {
-    const meta = MODULE_META[m] || { emoji: "📦", label: m, desc: "" };
+    const meta = MODULE_META[m] || { icon: "box", label: m, desc: "" };
     const card = document.createElement("button");
     card.className = "hubCard";
     card.dataset.mod = m;
     card.innerHTML = `
-      <div class="hubCardEmoji">${meta.emoji}</div>
+      <span class="hubCardIcon" aria-hidden="true">${icon(meta.icon, 22)}</span>
       <div class="hubCardText">
         <div class="hubCardName">${meta.label}</div>
         ${meta.desc ? `<div class="hubCardDesc">${meta.desc}</div>` : ""}
       </div>
+      <span class="hubCardArrow" aria-hidden="true">${icon("chevronRight", 18)}</span>
     `;
     card.addEventListener("click", () => onPick?.(m));
     box.appendChild(card);

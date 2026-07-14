@@ -10,6 +10,7 @@
 import { CORE, escapeHtml, fmtShort_, getJSON, getJSON_user, postJSON, createVinSuggest_ } from "../../core/core.js";
 import { updateHubModuleBadge } from "../../core/ui-shell.js";
 import { createScanner } from "../../core/qr-scanner.js";
+import { icon } from "../../core/icons.js";
 import { initZonasMapa, promptZonaForVin } from "../zonas/zonas-mapa.js";
 import { startPoll, stopPoll } from "../../core/poll.js";
 
@@ -673,33 +674,33 @@ function initMovCards_() {
 
   const cards = [
     {
-      key: "Lista", emoji: "📋", label: "Lista del día",
+      key: "Lista", icon: "clipboardList", label: "Lista del día",
       desc: "VINs pendientes y estado de la flota",
-      color: "#94a3b8",
+      tone: "var(--tone-slate)",
       badges: [{ id: "movBadgeLista", type: "Warn" }],
     },
     {
-      key: "Ingreso", emoji: "📥", label: "Ingreso",
+      key: "Ingreso", icon: "trayIn", label: "Ingreso",
       desc: "Registrar entrada de vehículos al taller",
-      color: "#fbbf24",
+      tone: "var(--tone-amber)",
       badges: [{ id: "movBadge0", type: "Warn" }, { id: "movBadge0conv", type: "Note" }],
     },
     {
-      key: "Espera", emoji: "🔧", label: "Zona de Espera",
+      key: "Espera", icon: "clock", label: "Zona de Espera",
       desc: "Conversión finalizada · en espera",
-      color: "#60a5fa",
+      tone: "var(--tone-blue)",
       badges: [{ id: "movBadge1", type: "Warn" }, { id: "movBadge2", type: "Note" }],
     },
     {
-      key: "Salida", emoji: "📤", label: "Salida",
+      key: "Salida", icon: "trayOut", label: "Salida",
       desc: "Confirmar salida y registrar en GPS",
-      color: "#4ade80",
+      tone: "var(--tone-lime)",
       badges: [{ id: "movBadge3", type: "Ok" }],
     },
     {
-      key: "Mapa", emoji: "🗺️", label: "Mapa de Zonas",
+      key: "Mapa", icon: "map", label: "Mapa de Zonas",
       desc: "Estado en tiempo real de las 15 zonas",
-      color: "#a78bfa",
+      tone: "var(--tone-violet)",
       badges: [],
     },
   ];
@@ -708,19 +709,20 @@ function initMovCards_() {
     const btn = document.createElement("button");
     btn.className = "hubCard";
     btn.dataset.movCard = c.key.toLowerCase();
-    btn.style.borderLeftColor = c.color;
+    btn.style.setProperty("--tone", c.tone);
 
     const badgesHTML = c.badges.map(b =>
       `<span id="${b.id}" class="movBadge movBadge${b.type}" style="display:none;"></span>`
     ).join("");
 
     btn.innerHTML = `
-      <div class="hubCardEmoji">${c.emoji}</div>
+      <span class="hubCardIcon" aria-hidden="true">${icon(c.icon, 22)}</span>
       <div class="hubCardText">
         <div class="hubCardName">${c.label}</div>
         <div class="hubCardDesc">${c.desc}</div>
       </div>
       ${badgesHTML}
+      <span class="hubCardArrow" aria-hidden="true">${icon("chevronRight", 18)}</span>
     `;
 
     btn.addEventListener("click", () => showMovPanel_(`movScreen${c.key}`));

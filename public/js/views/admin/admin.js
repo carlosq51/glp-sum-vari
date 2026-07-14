@@ -10,6 +10,7 @@ import {
   supabaseDelete,
 } from "../../core/supabase-client.js";
 import { createScanner } from "../../core/qr-scanner.js";
+import { icon } from "../../core/icons.js";
 
 // ─── Scanners para QR en Admin ────────────────────────────────────────
 const adminVinScanner_     = createScanner("adminVinQrReader");
@@ -29,12 +30,12 @@ const S = {
 
 // ─── Metadata de secciones ───────────────────────────────────────────
 const SECTION_META = {
-  usuarios:    { emoji: "👥", label: "Usuarios",       desc: "Cuentas y permisos" },
-  vins:        { emoji: "🚘", label: "VINs",           desc: "Vehículos registrados" },
-  ots:         { emoji: "📋", label: "OTs",            desc: "Órdenes de trabajo" },
-  incidencias: { emoji: "⚠️", label: "Incidencias",    desc: "Registro de fallas" },
-  reasignar:   { emoji: "🔄", label: "Reasignar",      desc: "Cambiar técnico asignado" },
-  config:      { emoji: "⚙️", label: "Configuración",  desc: "Parámetros del sistema" },
+  usuarios:    { icon: "users",         label: "Usuarios",       desc: "Cuentas y permisos" },
+  vins:        { icon: "car",           label: "VINs",           desc: "Vehículos registrados" },
+  ots:         { icon: "clipboardList", label: "OTs",            desc: "Órdenes de trabajo" },
+  incidencias: { icon: "alertTriangle", label: "Incidencias",    desc: "Registro de fallas" },
+  reasignar:   { icon: "refresh",       label: "Reasignar",      desc: "Cambiar técnico asignado" },
+  config:      { icon: "settings",      label: "Configuración",  desc: "Parámetros del sistema" },
 };
 
 // ─── Enums (mirror schema.sql) ───────────────────────────────────────
@@ -119,7 +120,11 @@ function renderTable(rows, query = "") {
     : rows;
 
   if (!filtered.length) {
-    return `<div class="adminEmpty small muted">Sin resultados.</div>`;
+    return `<div class="adminEmpty">
+      <span class="adminEmptyIcon" aria-hidden="true">${icon("inbox", 28)}</span>
+      <div class="adminEmptyTitle">Sin resultados</div>
+      <div class="small muted">${q ? "Prueba con otro término de búsqueda." : "Aún no hay registros en esta sección."}</div>
+    </div>`;
   }
 
   const head = def.cols.map(c => `<th>${c}</th>`).join("");
@@ -129,8 +134,8 @@ function renderTable(rows, query = "") {
     return `<tr data-id="${escHtml(String(rowId))}">
       ${cells}
       <td class="adminActionsCell">
-        <button class="adminBtnEdit adminRowBtn" data-id="${escHtml(String(rowId))}" title="Editar">✏️</button>
-        <button class="adminBtnDel adminRowBtn" data-id="${escHtml(String(rowId))}" title="Eliminar">🗑️</button>
+        <button class="adminBtnEdit adminRowBtn" data-id="${escHtml(String(rowId))}" title="Editar" aria-label="Editar">${icon("pencil", 15)}</button>
+        <button class="adminBtnDel adminRowBtn adminRowBtn--danger" data-id="${escHtml(String(rowId))}" title="Eliminar" aria-label="Eliminar">${icon("trash", 15)}</button>
       </td>
     </tr>`;
   }).join("");
@@ -187,7 +192,7 @@ async function loadReasignarPanel_() {
         <td><span class="adminBadge${a.estado_actual === "TRABAJANDO" ? " adminBadgeOk" : ""}">${escHtml(a.estado_actual)}</span></td>
         <td>
           <div id="reasigCtrl-${escHtml(a.id)}" class="reasigCtrl">
-            <button class="adminBtnEdit adminRowBtn btnReasignarTecnico" data-asgid="${escHtml(a.id)}" title="Cambiar técnico">✏️ Cambiar</button>
+            <button class="adminBtnEdit adminRowBtn adminRowBtn--wide btnReasignarTecnico" data-asgid="${escHtml(a.id)}" title="Cambiar técnico">${icon("refresh", 14)} Cambiar</button>
           </div>
         </td>
       </tr>
@@ -285,7 +290,7 @@ async function loadTab() {
                 placeholder="Ingresa VIN o escanea QR…"
                 autocomplete="off" autocapitalize="characters" spellcheck="false"
                 style="flex:1;min-width:160px;max-width:260px;" />
-              <button id="btnReasignarQr" type="button" class="adminBtnGhost" title="Escanear QR" style="padding:6px 12px;">📷</button>
+              <button id="btnReasignarQr" type="button" class="adminBtnGhost" title="Escanear QR" style="padding:6px 12px;">${icon("camera", 16)}</button>
               <button id="btnReasignarBuscar" type="button" class="adminBtnOk">Buscar</button>
             </div>
             <div id="reasignarVinSuggest" class="vinSuggest hidden" role="listbox"
@@ -389,7 +394,7 @@ async function loadTab() {
 
             <div class="adminHorarioGrid">
               <div class="adminHorarioGroup">
-                <span class="adminHorarioLabel">🍽 Hora de comida</span>
+                <span class="adminHorarioLabel">${icon("utensils", 14)} Hora de comida</span>
                 <div class="adminHorarioRow">
                   <label class="adminLabel adminLabelInline">
                     Inicio
@@ -403,7 +408,7 @@ async function loadTab() {
               </div>
 
               <div class="adminHorarioGroup">
-                <span class="adminHorarioLabel">🌙 Horario nocturno / descanso</span>
+                <span class="adminHorarioLabel">${icon("moon", 14)} Horario nocturno / descanso</span>
                 <p class="small muted" style="margin:2px 0 6px;">
                   Puede cruzar la medianoche (ej. 16:30 → 07:00).
                 </p>
@@ -435,11 +440,11 @@ async function loadTab() {
             </p>
             <div class="adminHorarioGrid">
               <label class="adminLabel adminLabelInline">
-                🔧 Conversi\u00f3n / d\u00eda
+                ${icon("wrench", 14)} Conversi\u00f3n / d\u00eda
                 <input id="cfgMetaDiaria" type="number" min="1" max="500" value="${escHtml(metaDiaria)}" style="width:100px;">
               </label>
               <label class="adminLabel adminLabelInline">
-                ✅ Calidad / d\u00eda
+                ${icon("shieldCheck", 14)} Calidad / d\u00eda
                 <input id="cfgMetaCal" type="number" min="1" max="200" value="${escHtml(metaCal)}" style="width:100px;">
               </label>
             </div>
@@ -449,7 +454,7 @@ async function loadTab() {
             </p>
             <div class="adminHorarioGrid">
               <label class="adminLabel adminLabelInline">
-                📊 Conversiones / mes por t\u00e9cnico
+                ${icon("chart", 14)} Conversiones / mes por t\u00e9cnico
                 <input id="cfgMetaMensual" type="number" min="1" max="500" value="${escHtml(metaMensual)}" style="width:100px;">
               </label>
             </div>
@@ -480,7 +485,7 @@ async function loadTab() {
           <!-- MODELO VIN (IA) -->
           <!-- NORMALIZACIÓN DE MODELOS -->
           <div class="adminConfigSection" style="border:1px solid rgba(251,191,36,.25);background:rgba(251,191,36,.04);border-radius:10px;padding:14px;">
-            <h4 class="adminConfigTitle" style="color:#fbbf24;">🏷 Normalización de modelos vehiculares</h4>
+            <h4 class="adminConfigTitle" style="color:var(--tone-amber);">${icon("tag", 15)} Normalización de modelos vehiculares</h4>
             <p class="small muted" style="margin-bottom:10px;">
               Convierte variantes de texto (<i>X70FL 1.5T 6DCT 4X2 LIMITED</i>, <i>X70 1,5T MEC...</i>) a nombres canónicos
               (<b>Jetour X70</b>, <b>KYC V3</b>, <b>KYC V5</b>, <b>KYC V7</b>, etc.) y los guarda en la columna <code>modelo_normalizado</code> de la tabla <code>vins</code>.
@@ -491,8 +496,8 @@ async function loadTab() {
               CREATE INDEX IF NOT EXISTS idx_vins_modelo_normalizado ON vins(modelo_normalizado);
             </div>
             <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
-              <button id="btnPreviewNorm" type="button" class="adminBtnOk" style="background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.4);">👁 Vista previa</button>
-              <button id="btnNormalizarVins" type="button" class="adminBtnOk" style="background:rgba(251,191,36,.2);border:1px solid rgba(251,191,36,.5);color:#fbbf24;font-weight:var(--fw-bold);">⚡ Normalizar todos los VINs</button>
+              <button id="btnPreviewNorm" type="button" class="adminBtnOk" style="background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.4);">${icon("eye", 14)} Vista previa</button>
+              <button id="btnNormalizarVins" type="button" class="adminBtnOk" style="background:rgba(251,191,36,.2);border:1px solid rgba(251,191,36,.5);color:var(--tone-amber);font-weight:var(--fw-bold);">${icon("zap", 14)} Normalizar todos los VINs</button>
               <span id="normMsg" class="small muted"></span>
             </div>
             <div id="normResult" style="margin-top:10px;"></div>
@@ -500,14 +505,14 @@ async function loadTab() {
 
           <!-- MODELO VIN (IA) -->
           <div class="adminConfigSection">
-            <h4 class="adminConfigTitle">🤖 Inferencia de modelo vehicular</h4>
+            <h4 class="adminConfigTitle">${icon("bot", 15)} Inferencia de modelo vehicular</h4>
             <p class="small muted">
               Entrena los modelos con datos históricos de la base de datos. El modelo de <b>emparejamiento</b> usa ~90 días de conversiones para calcular features por técnico (tasa diaria, hora pico, velocidad, consistencia) y recomienda el mejor compañero de especialidad opuesta.
             </p>
             <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-              <button id="btnTrainVinModel" type="button" class="adminBtnOk">🔡 Entrenar modelo VIN</button>
-              <button id="btnTrainPairing" type="button" class="adminBtnOk" style="background:rgba(167,139,250,.15);border:1px solid rgba(167,139,250,.4);">🤝 Entrenar emparejamiento</button>
-              <button id="btnViewPairing" type="button" class="adminBtnOk" style="background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.35);">📊 Ver pairings</button>
+              <button id="btnTrainVinModel" type="button" class="adminBtnOk">${icon("bot", 14)} Entrenar modelo VIN</button>
+              <button id="btnTrainPairing" type="button" class="adminBtnOk" style="background:rgba(167,139,250,.15);border:1px solid rgba(167,139,250,.4);">${icon("users", 14)} Entrenar emparejamiento</button>
+              <button id="btnViewPairing" type="button" class="adminBtnOk" style="background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.35);">${icon("chart", 14)} Ver pairings</button>
               <button id="btnInferVins" type="button" class="adminBtnOk" style="background:var(--glass);border:1px solid var(--surfaceLine);">Ver VINs sin modelo</button>
               <span id="mlMsg" class="small muted"></span>
             </div>
@@ -1192,11 +1197,12 @@ function showAdminCards_() {
     card.className = "hubCard";
     card.dataset.section = key;
     card.innerHTML = `
-      <div class="hubCardEmoji">${meta.emoji}</div>
+      <span class="hubCardIcon" aria-hidden="true">${icon(meta.icon, 22)}</span>
       <div class="hubCardText">
         <div class="hubCardName">${meta.label}</div>
         <div class="hubCardDesc">${meta.desc}</div>
       </div>
+      <span class="hubCardArrow" aria-hidden="true">${icon("chevronRight", 18)}</span>
     `;
     card.addEventListener("click", () => showAdminDetail_(key));
     grid.appendChild(card);
@@ -1208,8 +1214,15 @@ function showAdminDetail_(tab) {
   $id("adminCards").style.display  = "none";
   $id("adminDetail").style.display = "block";
   const meta = SECTION_META[tab] || {};
+  const iconEl = $id("adminDetailIcon");
+  if (iconEl) {
+    iconEl.innerHTML = icon(meta.icon || "box", 18);
+    iconEl.dataset.section = tab;
+  }
   const titleEl = $id("adminDetailTitle");
-  if (titleEl) titleEl.textContent = `${meta.emoji || ""} ${meta.label || tab}`;
+  if (titleEl) titleEl.textContent = meta.label || tab;
+  const subEl = $id("adminDetailSub");
+  if (subEl) subEl.textContent = meta.desc || "";
   const searchEl = $id("adminSearch");
   if (searchEl) searchEl.value = "";
   loadTab();

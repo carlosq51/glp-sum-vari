@@ -501,12 +501,12 @@
   font-size: 11px;
 }
 
-/* Colores de borde por sección */
-.hubCard[data-mov-card="lista"]   { border-left-color: #94a3b8; }
-.hubCard[data-mov-card="ingreso"] { border-left-color: #fbbf24; }
-.hubCard[data-mov-card="espera"]  { border-left-color: #60a5fa; }
-.hubCard[data-mov-card="salida"]  { border-left-color: #4ade80; }
-.hubCard[data-mov-card="mapa"]    { border-left-color: #a78bfa; }
+/* Tono por sección (fallback; el JS también fija --tone inline) */
+.hubCard[data-mov-card="lista"]   { --tone: var(--tone-slate); }
+.hubCard[data-mov-card="ingreso"] { --tone: var(--tone-amber); }
+.hubCard[data-mov-card="espera"]  { --tone: var(--tone-blue); }
+.hubCard[data-mov-card="salida"]  { --tone: var(--tone-lime); }
+.hubCard[data-mov-card="mapa"]    { --tone: var(--tone-violet); }
 
 /* ─── Secciones visuales ENTRADA / ZONA DE ESPERA / SALIDA ─── */
 .movSection {

@@ -2,13 +2,48 @@
    views/admin.css — Vista Admin CRUD
    ===================================================================== */
 
-/* ── Cartillas de sección (colores de borde izquierdo) ── */
-.hubCard[data-section="usuarios"]    { border-left-color: #60a5fa; }
-.hubCard[data-section="vins"]        { border-left-color: #34d399; }
-.hubCard[data-section="ots"]         { border-left-color: #a78bfa; }
-.hubCard[data-section="incidencias"] { border-left-color: #f87171; }
-.hubCard[data-section="reasignar"]   { border-left-color: #fbbf24; }
-.hubCard[data-section="config"]      { border-left-color: #67e8f9; }
+/* ── Cartillas de sección (tono por sección) ── */
+.hubCard[data-section="usuarios"],    .adminDetailIcon[data-section="usuarios"]    { --tone: var(--tone-blue); }
+.hubCard[data-section="vins"],        .adminDetailIcon[data-section="vins"]        { --tone: var(--tone-green); }
+.hubCard[data-section="ots"],         .adminDetailIcon[data-section="ots"]         { --tone: var(--tone-violet); }
+.hubCard[data-section="incidencias"], .adminDetailIcon[data-section="incidencias"] { --tone: var(--tone-red); }
+.hubCard[data-section="reasignar"],   .adminDetailIcon[data-section="reasignar"]   { --tone: var(--tone-amber); }
+.hubCard[data-section="config"],      .adminDetailIcon[data-section="config"]      { --tone: var(--tone-cyan); }
+
+/* ── Hero del panel ── */
+.adminHero {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--surfaceLine);
+}
+
+.adminHeroIcon {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.adminHeroTitle {
+  margin: 0;
+  font-size: var(--fs-xl);
+  font-weight: var(--fw-black);
+  letter-spacing: -.3px;
+}
+
+.adminHeroSub {
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  margin-top: 2px;
+}
 
 /* ── Grid de secciones: 3 columnas en desktop (solo Admin) ── */
 @media (min-width: 860px) {
@@ -17,31 +52,24 @@
   }
 }
 
-/* Cartillas de sección: elevación + hover-lift */
-#adminCardGrid .hubCard {
-  box-shadow: var(--elev-1);
-  transition: transform var(--dur-base), box-shadow var(--dur-base), border-color var(--dur-base);
-}
-#adminCardGrid .hubCard:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--elev-2);
-}
-
 /* ── Cabecera del detalle ── */
 .adminDetailHead {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   margin-bottom: 14px;
   padding-bottom: 12px;
   border-bottom: 1px solid var(--surfaceLine);
 }
 
 .adminBackBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   background: var(--glass);
   border: 1px solid var(--surfaceLine);
   border-radius: var(--radiusSm);
-  padding: 7px 12px;
+  padding: 7px 12px 7px 8px;
   color: var(--text);
   font-size: var(--fs-sm);
   font-weight: var(--fw-bold);
@@ -52,9 +80,36 @@
 }
 .adminBackBtn:hover { background: var(--pillBg); }
 
+/* Chip de icono de la sección activa (hereda --tone por data-section) */
+.adminDetailIcon {
+  --tone: var(--accent);
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  color: var(--tone);
+  background: color-mix(in srgb, var(--tone) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tone) 30%, transparent);
+}
+
+.adminDetailText {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
 .adminDetailTitle {
   font-size: var(--fs-lg);
   font-weight: var(--fw-extrabold);
+  line-height: 1.15;
+}
+
+.adminDetailSub {
+  font-size: var(--fs-xs);
+  color: var(--muted);
 }
 
 /* ── Header ── */
@@ -102,12 +157,30 @@
   display: flex;
   gap: var(--gap);
   align-items: center;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
-.adminToolbar input {
+.adminSearchWrap {
+  position: relative;
   flex: 1;
+  min-width: 0;
+}
+
+.adminSearchIcon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
+  display: grid;
+  place-items: center;
+}
+
+.adminSearchWrap input {
+  width: 100%;
   height: var(--h-input);
+  padding-left: 38px;
 }
 
 .adminToolbar button {
@@ -115,11 +188,22 @@
   flex-shrink: 0;
 }
 
-/* ── Table wrapper ── */
+#btnAdminNuevo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ── Table wrapper — tarjeta con borde redondeado ── */
 .adminTableScroll {
   width: 100%;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--surfaceLine);
+  border-radius: var(--radius);
+  background: var(--grad-surface-v, var(--surface));
+  box-shadow: var(--elev-1);
+  animation: viewEnter var(--dur-slow) var(--ease-out);
 }
 
 .adminTable {
@@ -130,21 +214,27 @@
 
 .adminTable th {
   text-align: left;
-  padding: 8px 10px;
+  padding: 10px 12px;
   font-weight: var(--fw-extrabold);
   font-size: var(--fs-xs, 11px);
   text-transform: uppercase;
   letter-spacing: .5px;
   color: var(--muted);
+  background: var(--glass);
   border-bottom: var(--border-w) solid var(--surfaceLine);
   white-space: nowrap;
 }
 
 .adminTable td {
-  padding: 8px 10px;
+  padding: 9px 12px;
   border-bottom: var(--border-w) solid rgba(255,255,255,.06);
   vertical-align: middle;
   line-height: 1.4;
+}
+
+/* Zebra sutil para seguir filas largas con la vista */
+.adminTable tbody tr:nth-child(even) td {
+  background: rgba(255,255,255,.02);
 }
 
 /* Desktop: hay ancho de sobra, las columnas respiran sin depender del scroll */
@@ -173,13 +263,34 @@
 }
 
 .adminRowBtn {
-  height: 28px;
-  width: 28px;
+  height: 30px;
+  width: 30px;
   padding: 0;
-  font-size: 14px;
+  display: inline-grid;
+  place-items: center;
+  vertical-align: middle;
   border-radius: var(--radiusSm);
   background: var(--pillBg);
   border-color: var(--pillLine);
+  color: var(--muted);
+}
+.adminRowBtn:hover { color: var(--text); }
+
+.adminRowBtn--danger:hover {
+  color: var(--danger);
+  background: var(--dangerBg);
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+}
+
+/* Variante ancha (con texto, ej. "Cambiar") */
+.adminRowBtn--wide {
+  width: auto;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-bold);
 }
 
 .adminRowBtn + .adminRowBtn {
@@ -231,8 +342,32 @@
 
 /* ── Empty / msg ── */
 .adminEmpty {
-  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 36px 24px;
   text-align: center;
+  border: 1px dashed var(--surfaceLine);
+  border-radius: var(--radius);
+  animation: fadeIn var(--dur-slow) ease;
+}
+
+.adminEmptyIcon {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  background: var(--glass);
+  border: 1px solid var(--surfaceLine);
+  margin-bottom: 4px;
+}
+
+.adminEmptyTitle {
+  font-size: var(--fs-base, 15px);
+  font-weight: var(--fw-extrabold);
 }
 
 .adminMsg {
@@ -367,6 +502,10 @@
   border-bottom-color: rgba(11,18,32,.07);
 }
 
+:root[data-theme="day"] .adminTable tbody tr:nth-child(even) td {
+  background: rgba(11,18,32,.025);
+}
+
 :root[data-theme="day"] .adminTable tr:hover td {
   background: rgba(11,18,32,.04);
 }
@@ -380,4 +519,11 @@
 .adminRowBtn:hover  { filter: brightness(1.1); }
 .adminRowBtn:active { transform: scale(.9); }
 .adminTable td  { transition: background-color var(--dur-fast); }
-#adminCardGrid .hubCard:active { transform: translateY(-1px) scale(.99); }
+
+/* Alineación de iconos SVG inline dentro de labels/botones de Admin */
+.adminConfigTitle .icn,
+.adminHorarioLabel .icn,
+.adminLabelInline .icn,
+.adminBtnOk .icn,
+.adminBtnGhost .icn,
+.adminBackBtn .icn { vertical-align: -2px; flex-shrink: 0; }

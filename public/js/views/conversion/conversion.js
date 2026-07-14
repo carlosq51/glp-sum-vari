@@ -35,6 +35,7 @@ import {
 } from "./data/conversion-estado.js";
 import { PAUSA_AUTO_RESUME_MS, autoResumingKeys_, enviarEvento, autoStartFromScan_, SCHEDULED_PAUSES, isInfinitePauseWindow_ } from "./data/conversion-eventos.js";
 import { initConversionDelegation_ } from "./ui/conversion-delegation.js";
+import { icon } from "../../core/icons.js";
 import { initVinAutocomplete_ } from "./ui/conversion-vin-autocomplete.js";
 import { checkPendingAlerts_, getMyNombre_ } from "./modals/incidencia-alert.js";
 import { requestNotifPermission } from "./modals/ramal-alert.js";
@@ -660,12 +661,12 @@ function initTecCards_() {
   if (!grid) return;
 
   const cards = [
-    { key: "miOT",        emoji: "🔧", label: "Mi OT",           desc: "Tu VIN activo y orden de trabajo"    },
-    { key: "cola",        emoji: "📋", label: "Cola pendiente",   desc: "VINs disponibles y compañeros libres" },
-    { key: "validar",     emoji: "🔍", label: "Buscar / Validar", desc: "Verificar un VIN por código o QR"    },
-    { key: "rendimiento", emoji: "📊", label: "Mi rendimiento",   desc: "Historial, estadísticas y meta"      },
-    { key: "incidencias", emoji: "⚠️", label: "Mis incidencias",  desc: "Registrar y ver fallas detectadas"   },
-    { key: "mapa",        emoji: "🗺",  label: "Mapa de zonas",   desc: "Ve a qué zona ir y con quién trabajar", onlyModule: "TECNICO" },
+    { key: "miOT",        icon: "wrench",        label: "Mi OT",           desc: "Tu VIN activo y orden de trabajo"    },
+    { key: "cola",        icon: "listChecks",    label: "Cola pendiente",   desc: "VINs disponibles y compañeros libres" },
+    { key: "validar",     icon: "scanSearch",    label: "Buscar / Validar", desc: "Verificar un VIN por código o QR"    },
+    { key: "rendimiento", icon: "chart",         label: "Mi rendimiento",   desc: "Historial, estadísticas y meta"      },
+    { key: "incidencias", icon: "alertTriangle", label: "Mis incidencias",  desc: "Registrar y ver fallas detectadas"   },
+    { key: "mapa",        icon: "map",           label: "Mapa de zonas",   desc: "Ve a qué zona ir y con quién trabajar", onlyModule: "TECNICO" },
   ];
 
   cards.forEach(c => {
@@ -673,11 +674,12 @@ function initTecCards_() {
     btn.className = "hubCard";
     btn.dataset.tecCard = c.key;
     btn.innerHTML = `
-      <div class="hubCardEmoji">${c.emoji}</div>
+      <span class="hubCardIcon" aria-hidden="true">${icon(c.icon, 22)}</span>
       <div class="hubCardText">
         <div class="hubCardName">${c.label}</div>
         <div class="hubCardDesc">${c.desc}</div>
       </div>
+      <span class="hubCardArrow" aria-hidden="true">${icon("chevronRight", 18)}</span>
     `;
     if (c.onlyModule) btn.dataset.tecCardModule = c.onlyModule;
     btn.addEventListener("click", () => {

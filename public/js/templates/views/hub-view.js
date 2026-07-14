@@ -3,6 +3,8 @@
 // Template HTML: selección de módulo (hub) — cartillas con ajustes de apariencia
 // =========================
 
+import { icon } from "../../core/icons.js";
+
 export function hubView() {
   return `
     <!-- HUB -->
@@ -14,7 +16,7 @@ export function hubView() {
           <div class="hubGreeting" id="hubGreeting">Bienvenido</div>
           <div class="hubSubtitle">Selecciona tu módulo de trabajo</div>
         </div>
-        <button id="btnHubSettings" class="hubSettingsBtn" title="Ajustes de apariencia">⚙️</button>
+        <button id="btnHubSettings" class="hubSettingsBtn" title="Ajustes de apariencia">${icon("settings", 19)}</button>
       </div>
 
       <!-- Cartillas de módulos (rellenas dinámicamente) -->
@@ -28,7 +30,7 @@ export function hubView() {
       <div id="hubSettingsPanel" class="hubSettingsPanel" style="display:none;">
 
         <div class="hubSettingsHead">
-          <span>⚙️ Ajustes de apariencia</span>
+          <span>Ajustes de apariencia</span>
           <button id="btnHubSettingsClose" class="hubSettingsClose" title="Cerrar">✕</button>
         </div>
 

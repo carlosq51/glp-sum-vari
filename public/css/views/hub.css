@@ -28,15 +28,18 @@
   background: var(--glass);
   border: 1px solid var(--surfaceLine);
   border-radius: var(--radiusSm);
-  padding: 9px 11px;
-  font-size: 18px;
+  padding: 0;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
   cursor: pointer;
-  color: var(--text);
-  transition: background var(--dur-base), transform var(--dur-fast);
+  color: var(--muted);
+  transition: background var(--dur-base), color var(--dur-base), transform var(--dur-fast);
   line-height: 1;
 }
-.hubSettingsBtn:hover  { background: var(--pillBg); }
-.hubSettingsBtn:active { transform: scale(.93); }
+.hubSettingsBtn:hover  { background: var(--pillBg); color: var(--text); }
+.hubSettingsBtn:active { transform: scale(.93) rotate(30deg); }
 
 /* ─── Grid de cartillas — 2 columnas ─── */
 .hubGrid {
@@ -46,21 +49,23 @@
   margin-bottom: 16px;
 }
 
-/* ─── Cartilla individual — layout horizontal (emoji izq, texto der) ─── */
+/* ─── Cartilla individual — chip de icono + texto + flecha ─── */
 .hubCard {
+  --tone: var(--accent);
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 16px;
-  padding: 20px 18px;
-  min-height: 100px;
+  gap: 14px;
+  padding: 18px 16px;
+  min-height: 96px;
   background: var(--grad-surface);
   border: 1px solid var(--surfaceLine);
-  border-left-width: 4px;
   border-radius: var(--radius);
-  box-shadow: var(--shadowSm);
+  box-shadow: var(--elev-1);
   cursor: pointer;
-  transition: transform .13s cubic-bezier(.34,1.4,.64,1), box-shadow .13s;
+  transition: transform var(--dur-base) var(--ease-spring),
+              box-shadow var(--dur-base),
+              border-color var(--dur-base);
   position: relative;
   overflow: hidden;
   text-align: left;
@@ -68,26 +73,70 @@
   color: var(--text);
 }
 
-/* Halo decorativo en esquina derecha */
-.hubCard::after {
+/* Lavado de tono en la esquina del icono (identidad de la sección) */
+.hubCard::before {
   content: "";
   position: absolute;
-  top: -20px; right: -20px;
-  width: 70px; height: 70px;
-  border-radius: 50%;
-  background: rgba(255,255,255,.05);
+  inset: 0;
+  background: radial-gradient(130px 130px at -8% -25%,
+              color-mix(in srgb, var(--tone) 16%, transparent), transparent 72%);
   pointer-events: none;
 }
 
-.hubCard:hover  { transform: translateX(4px); box-shadow: var(--shadow); }
-.hubCard:active { transform: scale(.98); box-shadow: var(--shadowSm); }
+/* Filete inferior de tono — reemplaza el borde izquierdo grueso */
+.hubCard::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--tone), transparent 75%);
+  opacity: .85;
+  pointer-events: none;
+}
 
-/* Colores de borde izquierdo — cartillas de técnico (secciones) */
-.hubCard[data-tec-card="miOT"]        { border-left-color: #60a5fa; }
-.hubCard[data-tec-card="cola"]        { border-left-color: #fbbf24; }
-.hubCard[data-tec-card="validar"]     { border-left-color: #a78bfa; }
-.hubCard[data-tec-card="rendimiento"] { border-left-color: #34d399; }
-.hubCard[data-tec-card="incidencias"] { border-left-color: #f87171; }
+.hubCard:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--elev-2);
+  border-color: color-mix(in srgb, var(--tone) 45%, var(--surfaceLine));
+}
+.hubCard:active { transform: scale(.97); box-shadow: var(--elev-1); }
+
+/* Chip de icono — tintado con el tono de la sección */
+.hubCardIcon {
+  width: 46px;
+  height: 46px;
+  flex-shrink: 0;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  color: var(--tone);
+  background: color-mix(in srgb, var(--tone) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tone) 30%, transparent);
+  transition: transform var(--dur-base) var(--ease-spring);
+}
+.hubCard:hover .hubCardIcon { transform: scale(1.08) rotate(-4deg); }
+.hubCardIcon .icn { display: block; }
+
+/* Flecha "entrar" — invita a tocar */
+.hubCardArrow {
+  margin-left: auto;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  opacity: .5;
+  transition: transform var(--dur-base) var(--ease-out),
+              opacity var(--dur-base), color var(--dur-base);
+}
+.hubCard:hover .hubCardArrow { transform: translateX(3px); opacity: 1; color: var(--tone); }
+
+/* Tonos — cartillas de técnico (secciones) */
+.hubCard[data-tec-card="miOT"]        { --tone: var(--tone-blue); }
+.hubCard[data-tec-card="cola"]        { --tone: var(--tone-amber); }
+.hubCard[data-tec-card="validar"]     { --tone: var(--tone-violet); }
+.hubCard[data-tec-card="rendimiento"] { --tone: var(--tone-green); }
+.hubCard[data-tec-card="incidencias"] { --tone: var(--tone-red); }
+.hubCard[data-tec-card="mapa"]        { --tone: var(--tone-cyan); }
 
 /* ─── Panel Cola pendiente ─── */
 .tecColaSection       { margin-bottom: 18px; }
@@ -270,22 +319,13 @@
   border-bottom: 1px solid var(--surfaceLine);
 }
 
-/* Colores de borde izquierdo por módulo */
-.hubCard[data-mod="TECNICO"]     { border-left-color: #60a5fa; }
-.hubCard[data-mod="RAMALERO"]    { border-left-color: #34d399; }
-.hubCard[data-mod="CALIDAD"]     { border-left-color: #4ade80; }
-.hubCard[data-mod="MOVILIZADOR"] { border-left-color: #fbbf24; }
-.hubCard[data-mod="SUPERVISOR"]  { border-left-color: #a78bfa; }
-.hubCard[data-mod="ADMIN"]       { border-left-color: #f87171; }
-
-.hubCardEmoji {
-  font-size: 2rem;
-  line-height: 1;
-  flex-shrink: 0;
-  width: 44px;
-  text-align: center;
-  filter: drop-shadow(0 2px 4px rgba(0,0,0,.25));
-}
+/* Tonos por módulo */
+.hubCard[data-mod="TECNICO"]     { --tone: var(--tone-blue); }
+.hubCard[data-mod="RAMALERO"]    { --tone: var(--tone-green); }
+.hubCard[data-mod="CALIDAD"]     { --tone: var(--tone-lime); }
+.hubCard[data-mod="MOVILIZADOR"] { --tone: var(--tone-amber); }
+.hubCard[data-mod="SUPERVISOR"]  { --tone: var(--tone-violet); }
+.hubCard[data-mod="ADMIN"]       { --tone: var(--tone-red); }
 
 .hubCardText {
   display: flex;
@@ -308,10 +348,13 @@
   line-height: 1.3;
 }
 
-/* Badge de pendientes */
+/* Badge de pendientes — flotante en la esquina superior derecha */
 .hubCard .hubBadge {
-  margin-left: auto;
+  position: absolute;
+  top: 10px;
+  right: 10px;
   flex-shrink: 0;
+  box-shadow: 0 2px 6px rgba(0,0,0,.3);
   background: #ef4444;
   color: #fff;
   font-size: var(--fs-2xs);
@@ -488,9 +531,26 @@ html[data-size="xl"] {
 /* Banner de sugerencia IA: aparece con pop */
 .tecPairBanner { animation: popIn var(--dur-slow) var(--ease-spring); }
 
+/* Entrada en cascada de las cartillas del hub */
+.hubGrid > .hubCard { animation: viewEnter var(--dur-slow) var(--ease-out) both; }
+.hubGrid > .hubCard:nth-child(1) { animation-delay: 0ms; }
+.hubGrid > .hubCard:nth-child(2) { animation-delay: 40ms; }
+.hubGrid > .hubCard:nth-child(3) { animation-delay: 80ms; }
+.hubGrid > .hubCard:nth-child(4) { animation-delay: 120ms; }
+.hubGrid > .hubCard:nth-child(5) { animation-delay: 160ms; }
+.hubGrid > .hubCard:nth-child(n+6) { animation-delay: 200ms; }
+
+/* Accesibilidad: foco visible por teclado */
+.hubCard:focus-visible {
+  outline: none;
+  border-color: var(--focusRing);
+  box-shadow: 0 0 0 3px var(--focusGlow), var(--elev-1);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .tecEst--trab::before,
   .tecEst--priority,
   .tecColaCompList > .tecColaCompRow,
+  .hubGrid > .hubCard,
   .tecPairBanner { animation: none; }
 }
