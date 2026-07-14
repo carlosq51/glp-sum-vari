@@ -1137,6 +1137,10 @@ async function syncModulos_(userId, modulos) {
 
 // ─── Delete ──────────────────────────────────────────────────────────
 async function deleteRow(id) {
+  // Las OTs tienen registros hijos (asignaciones, eventos, incidencias,
+  // solicitudes de ramal) que hay que borrar antes por las FKs.
+  if (S.tab === "ots") return deleteOtCascade_(id);
+
   if (!confirm("¿Eliminar este registro? Esta acción no se puede deshacer.")) return;
   msg("Eliminando…");
   try {
@@ -1144,6 +1148,42 @@ async function deleteRow(id) {
     const pkField = S.tab === "vins" ? "vin" : "id";
     await supabaseDelete(table, { [pkField]: id });
     msg("Eliminado.");
+    await loadTab();
+  } catch (e) {
+    msg(e.message, true);
+  }
+}
+
+// ─── Eliminar OT + todo lo relacionado (cascade manual) ──────────────
+// No hay ON DELETE CASCADE en el schema, así que borramos en orden:
+// primero los hijos que referencian work_order_id, luego la OT.
+async function deleteOtCascade_(workOrderId) {
+  const ok1 = confirm(
+    "¿ELIMINAR esta OT y TODO lo relacionado?\n\n" +
+    "Se borrarán de forma permanente:\n" +
+    "• La orden de trabajo\n" +
+    "• Sus asignaciones\n" +
+    "• Sus eventos (marcas de tiempo)\n" +
+    "• Sus incidencias\n" +
+    "• Sus solicitudes de ramal\n\n" +
+    "Esta acción NO se puede deshacer."
+  );
+  if (!ok1) return;
+
+  // Doble confirmación por ser una acción destructiva.
+  const ok2 = confirm("Confirma de nuevo: la eliminación es DEFINITIVA. ¿Continuar?");
+  if (!ok2) return;
+
+  msg("Eliminando OT y registros relacionados…");
+  try {
+    // Hijos primero (respetando las FKs hacia work_orders.id)
+    await supabaseDelete("eventos",          { work_order_id: workOrderId });
+    await supabaseDelete("asignaciones",      { work_order_id: workOrderId });
+    await supabaseDelete("incidencias",       { work_order_id: workOrderId });
+    await supabaseDelete("solicitudes_ramal", { work_order_id: workOrderId });
+    // Finalmente la OT
+    await supabaseDelete("work_orders",       { id: workOrderId });
+    msg("OT y registros relacionados eliminados.");
     await loadTab();
   } catch (e) {
     msg(e.message, true);

@@ -3,7 +3,7 @@
 import { initIncidenciasUI_ } from "./modals/incidencias.js";
 import { initRFModalUI_ } from "./modals/rf-modal.js";
 import { initRFTecModalUI_ } from "./modals/rf-tecnico-modal.js";
-import { initConfirmFinishUI_ } from "./modals/confirm-finish.js";
+import { initConfirmFinishUI_, askConfirmFinish_ } from "./modals/confirm-finish.js";
 import { initErrorModal } from "./modals/error-modal.js";
 import {
   initConformidadUI_,
@@ -187,6 +187,17 @@ async function loadPairingSuggestion_() {
 async function startWorkOnVin_(vin) {
   const v = String(vin || "").trim().toUpperCase();
   if (!v) { showTecPanel_("tecPanelMiOT", null); return; }
+
+  // Doble confirmación: evita crear OTs incidentales por un toque accidental
+  // en el mapa de zonas o en la sugerencia de compañero.
+  const ok = await askConfirmFinish_({
+    title: "Confirmar inicio de OT",
+    message: `¿Iniciar la orden de trabajo para el VIN <strong>${escapeHtml(v)}</strong>?<br><br>Se creará una OT y quedarás asignado a este vehículo.`,
+    acceptText: "Sí, iniciar OT",
+    cancelText: "Cancelar",
+  });
+  if (!ok) { showTecPanel_("tecPanelMiOT", null); return; }
+
   const rol = String(CORE.state.currentProfile?.especialidad || "").toUpperCase();
   showTecPanel_("tecPanelMiOT", null);
   await autoStartFromScan_(v, rol);
