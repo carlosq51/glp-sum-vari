@@ -5,15 +5,21 @@
 
 import { CORE, MODULES } from "./state.js";
 import { $, el_ } from "./dom.js";
-import { icon } from "./icons.js";
+import { icon, toroSvg } from "./icons.js";
 
 // ─── Avatares personalizados por técnico ─────────────────────────────
 // email (minúsculas) → URL de imagen (data URI o asset same-origin, por
-// CSP no se permiten hosts externos). Vacío por ahora: todos muestran el
-// avatar genérico. Para personalizar a alguien, añade su email aquí.
+// CSP no se permiten hosts externos). Para personalizar a alguien con foto,
+// añade su email aquí.
 const TECH_AVATARS = {
-  // "ley.m2692@hotmail.com": "/avatars/leysester.jpg",
+  // "correo@ejemplo.com": "/avatars/nombre.jpg",
 };
+
+// Emails que usan el toro (dibujo SVG con dos cuernos) como avatar.
+const TORO_AVATAR_EMAILS = [
+  "ley.m2692@hotmail.com",
+  "gianfrancofloresflores3@gmail.com",
+];
 
 // ─── Metadata de módulos ─────────────────────────────────────────────
 const MODULE_META = {
@@ -95,16 +101,25 @@ function renderHubAvatar_() {
   const wrap = $("hubAvatar");
   if (!imgBox) return;
 
-  const email = String(CORE.state.currentProfile?.email || "").trim().toLowerCase();
+  const email = String(CORE.state.currentProfile?.email || getEmail_() || "").trim().toLowerCase();
   const url = TECH_AVATARS[email];
 
-  if (url) {
+  wrap?.classList.remove("hubAvatar--photo", "hubAvatar--toro");
+
+  if (TORO_AVATAR_EMAILS.includes(email)) {
+    imgBox.innerHTML = toroSvg("Avatar");
+    wrap?.classList.add("hubAvatar--toro");
+  } else if (url) {
     imgBox.innerHTML = `<img class="hubAvatarPhoto" src="${url}" alt="Foto de perfil">`;
     wrap?.classList.add("hubAvatar--photo");
   } else {
     imgBox.innerHTML = icon("user", 30);
-    wrap?.classList.remove("hubAvatar--photo");
   }
+}
+
+// Email actual: del perfil o del input de login como respaldo.
+function getEmail_() {
+  return String($("email")?.value || "").trim();
 }
 
 /**

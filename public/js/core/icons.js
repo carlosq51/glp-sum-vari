@@ -105,3 +105,37 @@ export function icon(name, size = 20) {
   const body = ICONS[name] || ICONS.box;
   return `<svg class="icn" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${body}</svg>`;
 }
+
+/**
+ * Toro — imagen SVG autocontenida: cabeza con dos cuernos, ojos ámbar,
+ * hocico y argolla, sobre un disco ámbar de marca. Lleva su propio fondo
+ * para leer bien en cualquier superficie (avatar, overlay de carga).
+ * @param {string} idSuffix  sufijo único para el id del gradiente (evita
+ *   colisiones si hay varios toros en la misma página).
+ */
+export function toroSvg(idSuffix = "") {
+  const gid = `toroDisc${idSuffix}`;
+  return `
+    <svg class="toroSvg" viewBox="0 0 120 120" role="img" aria-label="Toro">
+      <defs>
+        <linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#f7b733"/>
+          <stop offset="1" stop-color="#ea7317"/>
+        </linearGradient>
+      </defs>
+      <circle cx="60" cy="60" r="58" fill="url(#${gid})"/>
+      <g fill="#241a08">
+        <path d="M40 46 C 26 40 17 41 12 28 C 23 30 33 35 44 41 Z"/>
+        <path d="M80 46 C 94 40 103 41 108 28 C 97 30 87 35 76 41 Z"/>
+        <path d="M60 40 C 44 40 36 50 36 64 C 36 82 47 96 60 96 C 73 96 84 82 84 64 C 84 50 76 40 60 40 Z"/>
+      </g>
+      <path d="M52 34 C 54 27 58 25 60 25 C 62 25 66 27 68 34 Z" fill="#241a08"/>
+      <ellipse cx="60" cy="78" rx="16" ry="12" fill="#3a2a12"/>
+      <circle cx="49" cy="60" r="3.6" fill="#f7b733"/>
+      <circle cx="71" cy="60" r="3.6" fill="#f7b733"/>
+      <path d="M53 75 q 3 6 6 1" fill="none" stroke="#f7b733" stroke-width="2.4" stroke-linecap="round"/>
+      <path d="M67 75 q -3 6 -6 1" fill="none" stroke="#f7b733" stroke-width="2.4" stroke-linecap="round"/>
+      <circle cx="60" cy="88" r="6" fill="none" stroke="#f7b733" stroke-width="2.4"/>
+    </svg>
+  `;
+}

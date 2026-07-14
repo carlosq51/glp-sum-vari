@@ -58,6 +58,17 @@
   display: block;
 }
 
+/* Toro como avatar: el disco ámbar del SVG ES el círculo, sin doble fondo */
+.hubAvatar--toro {
+  background: none;
+  border-color: color-mix(in srgb, #ea7317 55%, transparent);
+}
+.hubAvatarImg .toroSvg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
 /* ─── Grid de cartillas — 2 columnas ─── */
 .hubGrid {
   display: grid;
