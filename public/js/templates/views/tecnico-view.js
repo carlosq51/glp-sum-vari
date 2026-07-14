@@ -15,6 +15,7 @@ export function tecnicoView() {
             <div class="hubGreeting" id="tecGreeting">Bienvenido</div>
             <div class="hubSubtitle">Técnico — Conversión GLP</div>
           </div>
+          <div class="hubAvatar" id="tecAvatar" title="Foto de perfil"></div>
         </div>
         <div class="hubGrid" id="tecCardGrid"></div>
       </div>

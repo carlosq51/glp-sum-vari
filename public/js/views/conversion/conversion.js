@@ -23,6 +23,7 @@ import {
   msToHMS_,
   withLock,
   getJSON,
+  renderUserAvatar,
 } from "../../core/core.js";
 
 import { computeLiveMs_, renderFinalizados_, rebuildListsFromStore_ } from "../../work/index.js";
@@ -87,6 +88,8 @@ function showTecCards_() {
   const esp    = String(CORE.state.currentProfile?.especialidad || "").toUpperCase();
   const greet  = document.getElementById("tecGreeting");
   if (greet) greet.textContent = nombre ? `Hola, ${nombre} 👋` : "Bienvenido";
+  // Avatar del técnico (toro / foto / genérico)
+  renderUserAvatar(document.getElementById("tecAvatar"));
   // Badge on Mi OT if there's an active OT
   updateTecMiOTBadge_();
   // AI pairing suggestion banner

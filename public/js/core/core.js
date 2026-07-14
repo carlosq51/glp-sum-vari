@@ -22,6 +22,7 @@ export {
   applyDebugVisibilityUI,
   setOut,
   setEstadoText,
+  renderUserAvatar,
 } from "./ui-shell.js";
 
 // --- Auth / perfil ---

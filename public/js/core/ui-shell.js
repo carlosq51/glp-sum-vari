@@ -93,28 +93,39 @@ export function showHubUI(mods, onPick) {
 
 }
 
-// ─── Avatar del hub ──────────────────────────────────────────────────
-// Muestra la foto del técnico si está registrada (TECH_AVATARS por email),
-// o un icono genérico de usuario. Preparado para personalizar por técnico.
-function renderHubAvatar_() {
-  const imgBox = $("hubAvatarImg");
-  const wrap = $("hubAvatar");
-  if (!imgBox) return;
+// ─── Avatar de usuario ───────────────────────────────────────────────
+// Reutilizable en cualquier cabecera (hub, técnico, movilizador, …).
+// Muestra: toro (usuarios especiales), foto registrada (TECH_AVATARS por
+// email) o un icono genérico de usuario. Preparado para personalizar.
+export function renderUserAvatar(wrap) {
+  if (!wrap) return;
+
+  let imgBox = wrap.querySelector(".hubAvatarImg");
+  if (!imgBox) {
+    imgBox = document.createElement("span");
+    imgBox.className = "hubAvatarImg";
+    imgBox.setAttribute("aria-hidden", "true");
+    wrap.appendChild(imgBox);
+  }
 
   const email = String(CORE.state.currentProfile?.email || getEmail_() || "").trim().toLowerCase();
   const url = TECH_AVATARS[email];
 
-  wrap?.classList.remove("hubAvatar--photo", "hubAvatar--toro");
+  wrap.classList.remove("hubAvatar--photo", "hubAvatar--toro");
 
   if (TORO_AVATAR_EMAILS.includes(email)) {
     imgBox.innerHTML = toroSvg("Avatar");
-    wrap?.classList.add("hubAvatar--toro");
+    wrap.classList.add("hubAvatar--toro");
   } else if (url) {
     imgBox.innerHTML = `<img class="hubAvatarPhoto" src="${url}" alt="Foto de perfil">`;
-    wrap?.classList.add("hubAvatar--photo");
+    wrap.classList.add("hubAvatar--photo");
   } else {
     imgBox.innerHTML = icon("user", 30);
   }
+}
+
+function renderHubAvatar_() {
+  renderUserAvatar($("hubAvatar"));
 }
 
 // Email actual: del perfil o del input de login como respaldo.

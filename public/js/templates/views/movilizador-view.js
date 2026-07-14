@@ -31,6 +31,7 @@ export function movilizadorView() {
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
             <span id="movStatus" class="small muted"></span>
             <button id="btnMovRefresh" type="button" class="movRefreshBtn" title="Actualizar">↻ Actualizar</button>
+            <div class="hubAvatar" id="movAvatar" title="Foto de perfil"></div>
           </div>
         </div>
 

@@ -7,7 +7,7 @@
 // Lista 3: Listos para salir    → calidad finalizada
 // =========================
 
-import { CORE, escapeHtml, fmtShort_, getJSON, getJSON_user, postJSON, createVinSuggest_ } from "../../core/core.js";
+import { CORE, escapeHtml, fmtShort_, getJSON, getJSON_user, postJSON, createVinSuggest_, renderUserAvatar } from "../../core/core.js";
 import { updateHubModuleBadge } from "../../core/ui-shell.js";
 import { createScanner } from "../../core/qr-scanner.js";
 import { icon } from "../../core/icons.js";
@@ -671,6 +671,7 @@ function initMovCards_() {
     const nombre = getMovNombre_();
     greetEl.textContent = nombre && nombre !== "Movilizador" ? `Hola, ${nombre.split(" ")[0]}` : "Bienvenido";
   }
+  renderUserAvatar(document.getElementById("movAvatar"));
 
   const cards = [
     {
