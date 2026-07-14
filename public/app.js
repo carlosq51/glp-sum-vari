@@ -82,6 +82,7 @@ async function doLogin(email) {
     CORE.state.currentProfile = profile;
     saveEmail(email);
 
+    applyToroForUser_(profile);
     applyDebugVisibilityUI();
     setUserPillUI();
     syncTopbarHomeButtonUI();
@@ -110,6 +111,21 @@ async function doLogin(email) {
     console.error("Error en login:", err);
     showLoginUI(err?.message || "Error al iniciar sesión.");
   }
+}
+
+// Toro en la pantalla de carga — solo para usuarios especiales.
+// Marca body[data-toro="1"]; el CSS de loading.css hace el resto.
+const TORO_USERS_ = [
+  ["leysester", "rondoy"],
+  ["gianfranco", "flores"],
+];
+function applyToroForUser_(profile) {
+  const norm = String(profile?.nombre || "")
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")   // quita acentos
+    .toLowerCase();
+  const isToro = TORO_USERS_.some((tokens) => tokens.every((t) => norm.includes(t)));
+  if (isToro) document.body.dataset.toro = "1";
+  else delete document.body.dataset.toro;
 }
 
 // ---------- OPEN MODULE ----------
@@ -189,6 +205,7 @@ $("btnLogout")?.addEventListener("click", () => {
   $("email").value = "";
   CORE.state.currentProfile = null;
   CORE.state.currentModule = null;
+  delete document.body.dataset.toro;
 
   // exit all views safely
   VConversion.exit("TECNICO");

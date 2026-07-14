@@ -41,6 +41,24 @@
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ─── Toro (usuarios especiales) ─── */
+.toroWrap { display: none; }
+.toroSvg  { width: 88px; height: 88px; display: block; }
+
+/* Cuando el usuario es especial: mostrar el toro y ocultar el spinner genérico */
+body[data-toro="1"] #loadingOverlay .toroWrap { display: block; animation: toroBob 1.5s ease-in-out infinite; }
+body[data-toro="1"] #loadingOverlay .spinner  { display: none; }
+
+/* Balanceo suave del toro mientras carga */
+@keyframes toroBob {
+  0%, 100% { transform: translateY(0) rotate(-2deg); }
+  50%      { transform: translateY(-5px) rotate(2deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body[data-toro="1"] #loadingOverlay .toroWrap { animation: none; }
+}
+
 .overlay-text {
   font-weight: var(--fw-extrabold);
   font-size: var(--fs-body);
