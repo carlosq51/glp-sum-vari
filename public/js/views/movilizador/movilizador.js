@@ -11,11 +11,7 @@ import { CORE, escapeHtml, fmtShort_, getJSON, getJSON_user, postJSON, createVin
 import { updateHubModuleBadge } from "../../core/ui-shell.js";
 import { createScanner } from "../../core/qr-scanner.js";
 import { initZonasMapa, promptZonaForVin } from "../zonas/zonas-mapa.js";
-
-let pollTimer = null;
-let otRecheckTimer = null;
-const POLL_MS = 30_000;
-const OT_RECHECK_MS = 8 * 60 * 1000; // 8 min — re-valida VINs que siguen sin OT
+import { startPoll, stopPoll } from "../../core/poll.js";
 
 // VINs del panel salida que aún no tienen OT según el último render
 let _vinsSinOT_ = new Set();
@@ -1010,14 +1006,14 @@ async function revalidarOTFaltante_() {
 }
 
 function startPoll_() {
-  stopPoll_();
-  pollTimer      = setInterval(() => refreshAll_().catch(() => {}), POLL_MS);
-  otRecheckTimer = setInterval(() => revalidarOTFaltante_().catch(() => {}), OT_RECHECK_MS);
+  // Intervalos gobernados por /api/config; se pausan en background (core/poll.js)
+  startPoll("POLL_MOVILIZADOR_MS", () => refreshAll_().catch(() => {}), { immediate: false });
+  startPoll("POLL_OT_RECHECK_MS",  () => revalidarOTFaltante_().catch(() => {}), { immediate: false });
 }
 
 function stopPoll_() {
-  if (pollTimer)      { clearInterval(pollTimer);      pollTimer      = null; }
-  if (otRecheckTimer) { clearInterval(otRecheckTimer); otRecheckTimer = null; }
+  stopPoll("POLL_MOVILIZADOR_MS");
+  stopPoll("POLL_OT_RECHECK_MS");
 }
 
 // ─── Public API ───────────────────────────────────────────────────────

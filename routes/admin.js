@@ -1,8 +1,25 @@
 import { Router } from "express";
 import { supabaseHeaders_ } from "../lib/supabase.js";
 import { normalizeModelo_ } from "../lib/utils.js";
+import { getConfig_, invalidateConfigCache_ } from "../lib/config.js";
+import { emitEvent_ } from "../lib/events.js";
 
 const router = Router();
+
+// ─── CONFIG PÚBLICA ──────────────────────────────────────────────────────────
+// GET /api/config → defaults + overrides de app_config, ya tipados.
+// Es la ÚNICA fuente de intervalos/metas/límites para el frontend.
+router.get("/api/config", async (_req, res) => {
+  try {
+    const config = await getConfig_();
+    // Cachear 60s en el cliente/proxy: la config cambia poco y esto evita
+    // que cada vista dispare su propio fetch al arrancar.
+    res.setHeader("Cache-Control", "public, max-age=60");
+    return res.json({ ok: true, config });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
 
 // ─── CLASIFICADOR DE VINs POR MODELO ─────────────────────────────────────────
 // Tabla de prefijos (8 chars) → nombre canónico.
@@ -160,6 +177,8 @@ router.post("/api/admin/config", async (req, res) => {
         throw new Error(`Supabase: ${resp.status} ${text.slice(0, 200)}`);
       }
     }
+    invalidateConfigCache_(); // el cambio aplica de inmediato en /api/config
+    emitEvent_("config", {});
     return res.json({ ok: true });
   } catch (e) {
     return res.status(500).json({ ok: false, error: String(e.message || e) });
@@ -230,6 +249,8 @@ router.post("/api/admin/pausa-masiva", async (req, res) => {
       body: JSON.stringify({ key: "PAUSA_GLOBAL_ACTIVA", value: accion === "PAUSA" ? "1" : "0" }),
     }).catch(() => {});
 
+    invalidateConfigCache_(); // PAUSA_GLOBAL_ACTIVA cambió
+    emitEvent_("asignaciones", { accion: `PAUSA_MASIVA_${accion}`, afectadas });
     return res.json({ ok: true, afectadas, errors: errors.length ? errors : undefined });
   } catch (e) {
     console.error("[PAUSA_MASIVA]", e.message);
@@ -315,6 +336,7 @@ router.patch("/api/admin/asignaciones/:id", async (req, res) => {
       const txt = await resp.text().catch(() => "");
       throw new Error(`Supabase PATCH: ${resp.status} ${txt.slice(0, 200)}`);
     }
+    emitEvent_("asignaciones", { accion: "REASIGNADA", id });
     return res.json({ ok: true });
   } catch (e) {
     return res.status(500).json({ ok: false, error: String(e.message || e) });

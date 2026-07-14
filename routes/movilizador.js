@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { supabaseHeaders_ } from "../lib/supabase.js";
 import { isValidOT_ } from "../lib/utils.js";
+import { emitEvent_ } from "../lib/events.js";
 
 const router = Router();
 
@@ -383,6 +384,7 @@ router.post("/api/movilizador/traslado", async (req, res) => {
         detail: text.slice(0, 500),
       });
     }
+    emitEvent_("movilizador", { accion: "TRASLADO", vin: vinNorm });
     return res.json({ ok: true });
   } catch (e) {
     console.error("[MOVILIZADOR_TRASLADO]", e);

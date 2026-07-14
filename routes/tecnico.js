@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { supabaseHeaders_ } from "../lib/supabase.js";
+import { getConfig_ } from "../lib/config.js";
 
 const router = Router();
 
@@ -29,8 +30,9 @@ router.get("/api/tecnico/cola", async (req, res) => {
     // ── 2. VINs en proceso: par activo pero mi especialidad libre ──────
     let vins = [];
     if (pairEsp) {
+      const { LIM_ASG_RECIENTES } = await getConfig_();
       const rPairAct = await fetch(
-        `${SUPABASE_URL}/rest/v1/asignaciones?rol_trabajo=eq.${pairEsp}&activo=eq.true&estado_actual=neq.FINALIZADO&select=work_order_id,estado_actual,usuarios(nombre),work_orders(id,vin)&limit=2000`,
+        `${SUPABASE_URL}/rest/v1/asignaciones?rol_trabajo=eq.${pairEsp}&activo=eq.true&estado_actual=neq.FINALIZADO&select=work_order_id,estado_actual,usuarios(nombre),work_orders(id,vin)&limit=${LIM_ASG_RECIENTES}`,
         { method: "GET", headers }
       );
       const pairRows = rPairAct.ok ? await rPairAct.json() : [];
@@ -115,8 +117,9 @@ router.get("/api/tecnico/equipo-stats", async (req, res) => {
     if (!users.length) return res.json({ ok: true, avgDailyRate: 0, activeTechs: 0, totalTechs: 0 });
 
     // Fetch with updated_at so we can count distinct working days per tech
+    const { LIM_STATS_SEMANA } = await getConfig_();
     const rFin = await fetch(
-      `${SUPABASE_URL}/rest/v1/asignaciones?rol_trabajo=eq.${esp}&estado_actual=eq.FINALIZADO&updated_at=gte.${encodeURIComponent(mondaySince)}&select=user_id,updated_at&limit=5000`,
+      `${SUPABASE_URL}/rest/v1/asignaciones?rol_trabajo=eq.${esp}&estado_actual=eq.FINALIZADO&updated_at=gte.${encodeURIComponent(mondaySince)}&select=user_id,updated_at&limit=${LIM_STATS_SEMANA}`,
       { method: "GET", headers: supabaseHeaders_() }
     );
     const finRows = rFin.ok ? await rFin.json() : [];

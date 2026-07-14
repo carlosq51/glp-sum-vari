@@ -17,3 +17,21 @@
   background: var(--surfaceLine);
   margin: 12px 0;
 }
+
+/* ── Skeleton loader (shimmer) — estado de carga con estructura ──
+   Uso: skeletonHTML() de core/ui-dynamics.js. El shimmer usa tokens,
+   funciona en ambos temas y lo apaga prefers-reduced-motion (01-base). */
+.skel {
+  border-radius: var(--radiusSm);
+  background: linear-gradient(100deg,
+    var(--pillBg) 40%,
+    var(--surfaceLine) 50%,
+    var(--pillBg) 60%);
+  background-size: 200% 100%;
+  animation: skelShimmer 1.4s ease-in-out infinite;
+  margin: 8px 0;
+}
+@keyframes skelShimmer {
+  from { background-position: 120% 0; }
+  to   { background-position: -80% 0; }
+}

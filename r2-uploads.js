@@ -12,6 +12,7 @@
 // =========================
 
 import { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { normalizeImage } from "./lib/image-optimize.js";
 
 let _client = null;
 
@@ -81,15 +82,22 @@ function batchId() {
 
 async function put(key, b64OrBuffer, contentType = "image/jpeg") {
   const client = getClient();
-  const body = Buffer.isBuffer(b64OrBuffer)
+  const raw = Buffer.isBuffer(b64OrBuffer)
     ? b64OrBuffer
     : Buffer.from(b64OrBuffer, "base64");
+
+  // Red de seguridad: re-comprime TODO (atrapa HEIC de iPhone y originales sin
+  // comprimir cuando el canvas del cliente falló). Nunca lanza — fallback al original.
+  const { buffer: body, contentType: finalType, optimized } = await normalizeImage(raw, contentType);
+  if (optimized && raw.length > body.length * 1.5) {
+    console.log(`[R2] optimizada ${key}: ${(raw.length / 1024).toFixed(0)}KB → ${(body.length / 1024).toFixed(0)}KB`);
+  }
 
   await client.send(new PutObjectCommand({
     Bucket: R2_BUCKET(),
     Key: key,
     Body: body,
-    ContentType: contentType,
+    ContentType: finalType,
   }));
   return r2Url(key);
 }

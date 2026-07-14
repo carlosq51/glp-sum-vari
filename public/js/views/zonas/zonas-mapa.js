@@ -6,6 +6,7 @@
 
 import { escapeHtml, postJSON, createVinSuggest_ } from "../../core/core.js";
 import { createScanner } from "../../core/qr-scanner.js";
+import { startPoll, stopPoll } from "../../core/poll.js";
 
 // ── Layout físico del taller ─────────────────────────────────────────────────
 const COL_IZQUIERDA = [15, 14, 13, 12, 11, 10];   // 6 zonas, Z15 arriba → Z10 abajo
@@ -435,8 +436,6 @@ function closePicker_() { removeEl_(_pickerEl); _pickerEl = null; }
 
 // ── Inicialización del mapa ──────────────────────────────────────────────────
 
-const AUTO_REFRESH_MS = 60_000;
-
 let _zonaData = { zonas: [], sin_zona: [] };
 
 /**
@@ -450,7 +449,9 @@ export function initZonasMapa(containerId, opts = {}) {
   const container = document.getElementById(containerId);
   if (!container) return null;
 
-  let _timer = null;
+  // Clave única por instancia (el mapa vive en movilizador Y supervisor a la vez);
+  // el intervalo compartido viene de config (POLL_ZONAS_MAPA_MS).
+  const pollKey = `POLL_ZONAS_MAPA_MS:${containerId}`;
 
   function updateTs_() {
     const ts = document.getElementById(`${containerId}Ts`);
@@ -479,15 +480,14 @@ export function initZonasMapa(containerId, opts = {}) {
   }
 
   function destroy_() {
-    clearInterval(_timer);
-    _timer = null;
+    stopPoll(pollKey);
   }
 
   const refreshBtn = document.getElementById(`${containerId}RefreshBtn`);
   if (refreshBtn) refreshBtn.addEventListener("click", () => refresh_().catch(() => {}));
 
   refresh_().catch(() => {});
-  _timer = setInterval(autoRefresh_, AUTO_REFRESH_MS);
+  startPoll(pollKey, autoRefresh_, { immediate: false, cfgKey: "POLL_ZONAS_MAPA_MS" });
 
   return { refresh: refresh_, destroy: destroy_ };
 }

@@ -1,8 +1,52 @@
 import { Router } from "express";
 import { supabaseHeaders_, supabaseServiceHeaders_, supabaseGet_, supabasePost_, supabasePatch_ } from "../lib/supabase.js";
+import { getConfig_ } from "../lib/config.js";
+import { emitEvent_ } from "../lib/events.js";
 import webpush from "web-push";
 
 const router = Router();
+
+// ── Micro-cache (10s) para endpoints de polling ──────────────────────────────
+// /mi-ramal y /mi-posicion se consultan cada 15s POR CADA técnico conectado.
+// Sin cache, N técnicos = 2N queries idénticas a Supabase por ciclo.
+// Con cache compartido, todos se sirven de 2 queries cada 10s como máximo.
+const _pollCache = { cola: null, colaTs: 0, notif: null, notifTs: 0 };
+
+function invalidatePollCache_() {
+  _pollCache.cola = null;  _pollCache.colaTs = 0;
+  _pollCache.notif = null; _pollCache.notifTs = 0;
+}
+
+/** Cola PENDIENTE con OT activa (base de /cola y /mi-posicion) */
+async function getColaPendiente_() {
+  const now = Date.now();
+  const { SRV_POLL_CACHE_TTL_MS } = await getConfig_();
+  if (_pollCache.cola && (now - _pollCache.colaTs) < SRV_POLL_CACHE_TTL_MS) return _pollCache.cola;
+  const url = `${process.env.SUPABASE_URL}/rest/v1/solicitudes_ramal` +
+    `?estado=eq.PENDIENTE&select=id,vin,tecnico_nombre,tecnico_email,created_at,work_orders!inner(estado_general)` +
+    `&work_orders.estado_general=neq.FINALIZADO&order=created_at.asc`;
+  const r = await fetch(url, { method: "GET", headers: supabaseHeaders_() });
+  if (!r.ok) throw new Error(`Supabase ${r.status}`);
+  const items = (await r.json()).map(({ work_orders, ...rest }) => rest);
+  _pollCache.cola = items;
+  _pollCache.colaTs = now;
+  return items;
+}
+
+/** Solicitudes PENDIENTES ya notificadas (base de /mi-ramal) */
+async function getNotificadas_() {
+  const now = Date.now();
+  const { SRV_POLL_CACHE_TTL_MS, LIM_ENTREGADOS_RECIENTES } = await getConfig_();
+  if (_pollCache.notif && (now - _pollCache.notifTs) < SRV_POLL_CACHE_TTL_MS) return _pollCache.notif;
+  const url = `${process.env.SUPABASE_URL}/rest/v1/solicitudes_ramal` +
+    `?estado=eq.PENDIENTE&notificado_at=not.is.null&order=notificado_at.desc&limit=${LIM_ENTREGADOS_RECIENTES}`;
+  const r = await fetch(url, { method: "GET", headers: supabaseHeaders_() });
+  if (!r.ok) throw new Error(`Supabase ${r.status}`);
+  const items = await r.json();
+  _pollCache.notif = items;
+  _pollCache.notifTs = now;
+  return items;
+}
 
 // -----------------------------------------------------------------
 // SOLICITUDES RAMAL
@@ -47,6 +91,8 @@ router.post("/api/solicitud-ramal", async (req, res) => {
     };
 
     const result = await supabasePost_("solicitudes_ramal", data);
+    invalidatePollCache_();
+    emitEvent_("ramal", { accion: "SOLICITADA", vin });
     return res.json({ ok: true, item: Array.isArray(result) ? result[0] : result });
   } catch (e) {
     console.error("[POST /api/solicitud-ramal]", e.message);
@@ -70,8 +116,9 @@ router.get("/api/solicitud-ramal/pendientes", async (req, res) => {
     if (!pendRes.ok) throw new Error(`Supabase ${pendRes.status}`);
     const pendientes = (await pendRes.json()).map(({ work_orders, ...rest }) => rest);
 
-    // ENTREGADOS de hoy — últimos 200 por fecha de creación
-    const entrUrl = `${SUPABASE_URL}/rest/v1/solicitudes_ramal?estado=eq.ENTREGADO&order=created_at.desc&limit=200`;
+    // ENTREGADOS de hoy — últimos N por fecha de creación
+    const { LIM_ENTREGADOS_RECIENTES } = await getConfig_();
+    const entrUrl = `${SUPABASE_URL}/rest/v1/solicitudes_ramal?estado=eq.ENTREGADO&order=created_at.desc&limit=${LIM_ENTREGADOS_RECIENTES}`;
     const entrRes = await fetch(entrUrl, { method: "GET", headers });
     if (!entrRes.ok) throw new Error(`Supabase ${entrRes.status}`);
     const todayStr = new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD
@@ -114,6 +161,8 @@ router.post("/api/solicitud-ramal/:id/notificar", async (req, res) => {
 
     // 1. Marcar notificado_at en la solicitud
     const updated = await supabasePatch_("solicitudes_ramal", { id }, { notificado_at: new Date().toISOString() });
+    invalidatePollCache_();
+    emitEvent_("ramal", { accion: "NOTIFICADA", id });
     const sol = Array.isArray(updated) ? updated[0] : null;
     const techEmail = sol?.tecnico_email || "";
     const vin       = sol?.vin || "";
@@ -163,17 +212,9 @@ router.get("/api/solicitud-ramal/mi-ramal", async (req, res) => {
   try {
     const email = String(req.query.email || "").trim().toLowerCase();
     if (!email) return res.status(400).json({ ok: false, error: "Falta email" });
-    const SUPABASE_URL = process.env.SUPABASE_URL;
-    const headers = supabaseHeaders_();
-    const url = `${SUPABASE_URL}/rest/v1/solicitudes_ramal` +
-      `?tecnico_email=eq.${encodeURIComponent(email)}` +
-      `&estado=eq.PENDIENTE` +
-      `&notificado_at=not.is.null` +
-      `&order=notificado_at.desc&limit=1`;
-    const r = await fetch(url, { method: "GET", headers });
-    if (!r.ok) throw new Error(`Supabase ${r.status}`);
-    const items = await r.json();
-    return res.json({ ok: true, listo: items.length > 0, item: items[0] || null });
+    const notificadas = await getNotificadas_();
+    const item = notificadas.find(s => String(s.tecnico_email || "").toLowerCase() === email) || null;
+    return res.json({ ok: true, listo: !!item, item });
   } catch (e) {
     console.error("[GET /api/solicitud-ramal/mi-ramal]", e.message);
     return res.status(500).json({ ok: false, error: String(e.message) });
@@ -184,15 +225,8 @@ router.get("/api/solicitud-ramal/mi-ramal", async (req, res) => {
 // (transparencia: quién solicitó qué y a qué hora, visible para cualquier técnico)
 router.get("/api/solicitud-ramal/cola", async (req, res) => {
   try {
-    const SUPABASE_URL = process.env.SUPABASE_URL;
-    const headers = supabaseHeaders_();
     // Mismo filtro que /mi-posicion: solo solicitudes cuya OT vinculada sigue activa.
-    const url = `${SUPABASE_URL}/rest/v1/solicitudes_ramal` +
-      `?estado=eq.PENDIENTE&select=id,vin,tecnico_nombre,tecnico_email,created_at,work_orders!inner(estado_general)` +
-      `&work_orders.estado_general=neq.FINALIZADO&order=created_at.asc`;
-    const r = await fetch(url, { method: "GET", headers });
-    if (!r.ok) throw new Error(`Supabase ${r.status}`);
-    const items = (await r.json()).map(({ work_orders, ...rest }) => rest);
+    const items = await getColaPendiente_();
     return res.json({ ok: true, items });
   } catch (e) {
     console.error("[GET /api/solicitud-ramal/cola]", e.message);
@@ -205,16 +239,9 @@ router.get("/api/solicitud-ramal/mi-posicion", async (req, res) => {
   try {
     const email = String(req.query.email || "").trim().toLowerCase();
     if (!email) return res.status(400).json({ ok: false, error: "Falta email" });
-    const SUPABASE_URL = process.env.SUPABASE_URL;
-    const headers = supabaseHeaders_();
     // Solo cuenta solicitudes cuya OT vinculada sigue activa (no FINALIZADA) —
     // evita contar solicitudes huérfanas de trabajos ya terminados.
-    const url = `${SUPABASE_URL}/rest/v1/solicitudes_ramal` +
-      `?estado=eq.PENDIENTE&select=id,tecnico_email,work_orders!inner(estado_general)` +
-      `&work_orders.estado_general=neq.FINALIZADO&order=created_at.asc`;
-    const r = await fetch(url, { method: "GET", headers });
-    if (!r.ok) throw new Error(`Supabase ${r.status}`);
-    const items = await r.json();
+    const items = await getColaPendiente_();
     const idx = items.findIndex(it => String(it.tecnico_email || "").toLowerCase() === email);
     if (idx === -1) return res.json({ ok: true, enCola: false, posicion: null, total: items.length });
     return res.json({ ok: true, enCola: true, posicion: idx + 1, total: items.length });
@@ -239,6 +266,8 @@ router.post("/api/solicitud-ramal/:id/entregar", async (req, res) => {
       entregado_at:  new Date().toISOString(),
       entregado_por: nombre,
     });
+    invalidatePollCache_();
+    emitEvent_("ramal", { accion: "ENTREGADA", id });
     return res.json({ ok: true });
   } catch (e) {
     console.error("[PATCH /api/solicitud-ramal/:id/entregar]", e.message);

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { supabaseHeaders_, supabaseGet_, supabasePost_, supabasePatch_ } from "../lib/supabase.js";
 import { addServerTiming_ } from "../lib/timing.js";
 import { r2UploadIncidencia, photoUrls } from "../r2-uploads.js";
+import { emitEvent_ } from "../lib/events.js";
 
 const router = Router();
 
@@ -42,6 +43,7 @@ router.post("/api/incidencia", async (req, res) => {
     }
 
     // Responder al cliente INMEDIATAMENTE
+    emitEvent_("incidencias", { accion: "CREADA", vin: body.vin || "" });
     res.json({ ok: true, saved: true });
 
     // 2) Si hay foto, subir a R2 en BACKGROUND y actualizar Supabase
@@ -93,6 +95,7 @@ router.patch("/api/incidencia/:id/resolver", async (req, res) => {
       resuelta_por: email || null,
     });
 
+    emitEvent_("incidencias", { accion: "RESUELTA" });
     return res.json({ ok: true, tiempo_fin: ahora, updated });
   } catch (e) {
     console.error("[PATCH /api/incidencia/:id/resolver]", e.message);

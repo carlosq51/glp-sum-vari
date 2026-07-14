@@ -42,6 +42,8 @@ import { initConversionQR_ } from "./ui/conversion-qr.js";
 import { initTecValidar_, openTecBuscarModal_ } from "./ui/conversion-validar.js";
 import { escapeHtml, fmtShort_ } from "../../core/format.js";
 import { loadTecMapa_ } from "./tec-mapa.js";
+import { startPoll, stopPoll } from "../../core/poll.js";
+import { cfg } from "../../core/config.js";
 
 // --------------------------
 // TEC CARD NAVIGATION
@@ -49,11 +51,16 @@ import { loadTecMapa_ } from "./tec-mapa.js";
 
 const TEC_PANELS = ["tecPanelMiOT", "tecPanelCola", "tecPanelRendimiento", "tecPanelIncidencias", "tecPanelMapa"];
 let tecCardsInited_      = false;
-let colaBadgeInterval_    = null;
-let vinReadyNotifInterval_ = null;
 const notifiedVins_        = new Set();
-let ramalListoInterval_    = null;
-let colaRamalInterval_     = null;
+
+// Claves de los polls del módulo TECNICO (intervalos gobernados por /api/config)
+const TEC_POLL_KEYS = [
+  "POLL_COLA_BADGE_MS",
+  "POLL_VIN_READY_MS",
+  "POLL_RAMAL_LISTO_MS",
+  "POLL_COLA_POSICION_MS",
+  "POLL_PAIR_SUGGEST_MS",
+];
 
 // ── Pair suggest popup ─────────────────────────────────────────────
 let pairSuggestQueue_     = [];    // top-3 free suggestions
@@ -61,7 +68,6 @@ let pairSuggestIdx_       = 0;    // current card index
 let pairSuggestMode_      = "pair"; // "pair" | "new_car"
 let pairSuggestShowingSolo_ = false; // true cuando se muestra la pantalla "trabajar solo" (rechazó todos)
 let pairSuggestLastHadOT_ = null;  // tracks OT presence for transition detection
-let pairCheckInterval_    = null;
 
 function showTecCards_() {
   const hub = document.getElementById("tecCards");
@@ -831,15 +837,14 @@ async function loadTecRendimiento_() {
     if (!email) throw new Error("No hay sesión activa");
 
     const espR = String(CORE.state.currentProfile?.especialidad || "").toUpperCase();
-    const [jRend, jCfg, jEquipo, jOmis] = await Promise.all([
+    const [jRend, jEquipo, jOmis] = await Promise.all([
       getJSON(`/api/mis-finalizadas?email=${encodeURIComponent(email)}`),
-      getJSON("/api/admin/config"),
       espR ? getJSON(`/api/tecnico/equipo-stats?especialidad=${encodeURIComponent(espR)}`) : Promise.resolve(null),
       getJSON("/api/omisiones"),
     ]);
     if (!jRend?.ok) throw new Error(jRend?.error || "Error al cargar rendimiento");
 
-    const meta  = Number(jCfg?.config?.META_MENSUAL || 60);
+    const meta  = Number(cfg("META_MENSUAL"));
     const items = Array.isArray(jRend.items) ? jRend.items : [];
 
     const msDay        = 86400000;
@@ -1469,26 +1474,18 @@ export function enter(mod) {
 
     requestNotifPermission(email);
 
-    // Cola badge + VIN-ready notifications (poll every 3 / 2 min)
-    updateColaBadge_();
-    colaBadgeInterval_ = setInterval(updateColaBadge_, 3 * 60 * 1000);
-    checkVinReadyNotif_();
-    vinReadyNotifInterval_ = setInterval(checkVinReadyNotif_, 2 * 60 * 1000);
-
-    // Banner ramal listo: check on enter + poll every 15s
-    checkRamalListo_();
-    ramalListoInterval_ = setInterval(checkRamalListo_, 15 * 1000);
-
-    // Banner posición en cola: check on enter + poll every 15s + on solicitud created
-    checkColaPosicion_();
-    colaRamalInterval_ = setInterval(checkColaPosicion_, 15 * 1000);
+    // Polls gobernados por config (se pausan en background, intervalo editable
+    // desde Admin → app_config sin redeploy). Ver core/poll.js.
+    startPoll("POLL_COLA_BADGE_MS",    updateColaBadge_);
+    startPoll("POLL_VIN_READY_MS",     checkVinReadyNotif_);
+    startPoll("POLL_RAMAL_LISTO_MS",   checkRamalListo_);
+    startPoll("POLL_COLA_POSICION_MS", checkColaPosicion_);
     document.addEventListener("glp:ramal-solicitado", checkColaPosicion_);
 
-    // Pair suggest popup: check on enter + poll every 90s for OT-finish transition
+    // Pair suggest popup: check on enter + poll para transición fin-de-OT
     pairSuggestLastHadOT_ = null;
     buildPairSuggestModal_();
-    checkAndShowPairSuggest_();
-    pairCheckInterval_ = setInterval(checkAndShowPairSuggest_, 90 * 1000);
+    startPoll("POLL_PAIR_SUGGEST_MS", checkAndShowPairSuggest_);
   }
 
   startLoopsFor_(mod, {
@@ -1502,16 +1499,7 @@ export function exit(mod) {
   stopLoopsFor_(mod);
   clearModuleUI_(mod);
   if (mod === "TECNICO") {
-    clearInterval(colaBadgeInterval_);
-    clearInterval(vinReadyNotifInterval_);
-    clearInterval(pairCheckInterval_);
-    clearInterval(ramalListoInterval_);
-    clearInterval(colaRamalInterval_);
-    colaBadgeInterval_ = null;
-    vinReadyNotifInterval_ = null;
-    pairCheckInterval_ = null;
-    ramalListoInterval_ = null;
-    colaRamalInterval_ = null;
+    TEC_POLL_KEYS.forEach(stopPoll);
     document.removeEventListener("glp:ramal-solicitado", checkColaPosicion_);
     notifiedVins_.clear();
     pairSuggestLastHadOT_ = null;

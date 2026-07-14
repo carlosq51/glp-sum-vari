@@ -5,22 +5,20 @@
 
 import { fmtDur_ } from "../../core/format.js";
 import { durationMsFromItem_, isFinalizado_ } from "./sup-filters.js";
+import { cfg } from "../../core/config.js";
 
 function isFin_(estado) {
   return isFinalizado_(estado);
 }
 
-// Target times per role in milliseconds
-const TARGET_MS = {
-  MOTOR: 3 * 3_600_000,
-  TANQUE: 3 * 3_600_000,
-  TANQUERO: 3 * 3_600_000,
-  CONVERSION: 3 * 3_600_000,
-  TECNICO: 3 * 3_600_000,
-  CALIDAD: 50 * 60_000,
-  RAMAL: 40 * 60_000,
-  RAMALERO: 40 * 60_000,
-};
+// Tiempo objetivo por rol — minutos desde config central (editable en Admin)
+function targetMs_(rol) {
+  const r = String(rol || "").toUpperCase();
+  const min = (r === "CALIDAD")                   ? cfg("TARGET_CALIDAD_MIN")
+            : (r === "RAMAL" || r === "RAMALERO") ? cfg("TARGET_RAMAL_MIN")
+            : cfg("TARGET_CONVERSION_MIN"); // motor/tanque/conversión/técnico
+  return Number(min) * 60_000;
+}
 
 function realElapsedMs_(it) {
   let ms = Number(it?.tiempo_ms ?? 0);
@@ -34,17 +32,17 @@ function realElapsedMs_(it) {
 function renderProgressBar_(it) {
   const estado = String(it?.estado || "").toUpperCase();
   const rol = String(it?.rol || it?.rolTrabajo || "MOTOR").toUpperCase();
-  const targetMs = TARGET_MS[rol] || TARGET_MS.MOTOR;
+  const targetMs = targetMs_(rol);
   const ms = realElapsedMs_(it);
 
   if (isFin_(estado)) {
     const durMs = durationMsFromItem_(it) || ms;
     return `
       <div style="display:flex; align-items:center; gap:6px; margin-top:6px;">
-        <div style="flex:1; height:5px; background:rgba(255,255,255,.1); border-radius:3px; overflow:hidden;">
-          <div style="height:100%; width:100%; background:#4ade80; border-radius:3px;"></div>
+        <div style="flex:1; height:5px; background:var(--ring-track); border-radius:3px; overflow:hidden;">
+          <div style="height:100%; width:100%; background:var(--dv-good); border-radius:3px;"></div>
         </div>
-        <span style="font-size:.7em; color:#4ade80; font-weight:700; white-space:nowrap;">✓ ${durMs ? fmtDur_(durMs) : "—"}</span>
+        <span style="font-size:.7em; color:var(--dv-good); font-weight:700; white-space:nowrap;">✓ ${durMs ? fmtDur_(durMs) : "—"}</span>
       </div>`;
   }
 
@@ -52,12 +50,12 @@ function renderProgressBar_(it) {
 
   const pct = Math.min(Math.round(ms / targetMs * 100), 99);
   const isOver = ms > targetMs;
-  const barColor = isOver ? "#f87171" : pct >= 60 ? "#fbbf24" : "#38bdf8";
-  const statusDot = estado === "TRABAJANDO" ? `<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#4ade80;margin-right:3px;animation:livePulse 1.4s ease-in-out infinite;"></span>` : `<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#f59e0b;margin-right:3px;"></span>`;
+  const barColor = isOver ? "var(--dv-bad)" : pct >= 60 ? "var(--dv-warn)" : "var(--accent)";
+  const statusDot = estado === "TRABAJANDO" ? `<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--ok);margin-right:3px;animation:livePulse 1.4s ease-in-out infinite;"></span>` : `<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--warn);margin-right:3px;"></span>`;
 
   return `
     <div style="display:flex; align-items:center; gap:6px; margin-top:6px;">
-      <div style="flex:1; height:5px; background:rgba(255,255,255,.1); border-radius:3px; overflow:hidden;">
+      <div style="flex:1; height:5px; background:var(--ring-track); border-radius:3px; overflow:hidden;">
         <div style="height:100%; width:${pct}%; background:${barColor}; border-radius:3px; transition:width .4s;"></div>
       </div>
       <span style="font-size:.7em; color:${barColor}; font-weight:700; white-space:nowrap;">${statusDot}${pct}% · ${fmtDur_(ms)}</span>
@@ -79,8 +77,8 @@ export function renderAvgCard_(avgCardEl, {
 
   // Badge de modo de consulta
   const modeBadge = isHistorical
-    ? `<span style="font-size:.68em;font-weight:800;background:rgba(99,102,241,.22);border:1px solid rgba(99,102,241,.45);color:#a5b4fc;border-radius:5px;padding:2px 7px;letter-spacing:.4px;">📅 HISTÓRICO · por fecha de cierre</span>`
-    : `<span style="font-size:.68em;font-weight:800;background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.35);color:#86efac;border-radius:5px;padding:2px 7px;letter-spacing:.4px;">🔴 HOY · en tiempo real</span>`;
+    ? `<span style="font-size:.68em;font-weight:800;background:var(--noteBg);border:1px solid var(--note);color:var(--note);border-radius:5px;padding:2px 7px;letter-spacing:.4px;">📅 HISTÓRICO · por fecha de cierre</span>`
+    : `<span style="font-size:.68em;font-weight:800;background:var(--okBg);border:1px solid var(--ok);color:var(--ok);border-radius:5px;padding:2px 7px;letter-spacing:.4px;">🔴 HOY · en tiempo real</span>`;
 
   // Píldora extra solo en track CONVERSION: VINs con motor+tanque ambos finalizados
   const sinCalidadPill = (supTrack === "CONVERSION" && vinSinCalidad != null)
@@ -92,11 +90,11 @@ export function renderAvgCard_(avgCardEl, {
 
     avgCardEl.innerHTML = `
       <div class="card" style="
-        border:1px solid rgba(255,255,255,.18);
+        border:1px solid var(--surfaceLine);
         border-radius:22px;
         padding:18px 18px;
-        background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(0,0,0,.08));
-        box-shadow: 0 10px 24px rgba(0,0,0,.22);
+        background: var(--grad-surface-v);
+        box-shadow: var(--elev-2);
       ">
         <div class="row space-between" style="gap:12px; align-items:flex-start;">
           <div>
@@ -117,8 +115,8 @@ export function renderAvgCard_(avgCardEl, {
             width:44px; height:44px;
             display:flex; align-items:center; justify-content:center;
             border-radius:14px;
-            background: rgba(255,255,255,.08);
-            border:1px solid rgba(255,255,255,.14);
+            background: var(--pillBg);
+            border:1px solid var(--pillLine);
           ">⏱</div>
 
           <div>
@@ -150,7 +148,7 @@ export function renderAvgCard_(avgCardEl, {
     `;
   } else {
     avgCardEl.innerHTML = `
-      <div class="card" style="border:1px solid rgba(255,255,255,.14); border-radius:18px; padding:14px;">
+      <div class="card" style="border:1px solid var(--surfaceLine); border-radius:18px; padding:14px;">
         <div style="margin-bottom:8px;">${modeBadge}</div>
         <div class="small">Sin FINALIZADOS con tiempo válido.</div>
       </div>
@@ -199,20 +197,20 @@ export function renderRowGroup_(row, { escapeHtml, fmtShort_ }) {
   let estadoLabel, estadoColor;
   if (motorOk && tanqueOk) {
     estadoLabel = "✅ FINALIZADO";
-    estadoColor = "rgba(34,197,94,.25)";
+    estadoColor = "var(--okBg)";
   } else if (motorOk && !tanqueOk) {
     estadoLabel = "⚙️ EN PROCESO · falta TANQUE";
-    estadoColor = "rgba(251,191,36,.2)";
+    estadoColor = "var(--warnBg)";
   } else if (!motorOk && tanqueOk) {
     estadoLabel = "⚙️ EN PROCESO · falta MOTOR";
-    estadoColor = "rgba(251,191,36,.2)";
+    estadoColor = "var(--warnBg)";
   } else {
     estadoLabel = "⏳ " + (row.estado || "EN PROCESO");
-    estadoColor = "rgba(255,255,255,.07)";
+    estadoColor = "var(--pillBg)";
   }
 
   return `
-    <div class="card" style="margin-top:10px;${isCrossDay ? ' border-left: 3px solid rgba(251,191,36,.55);' : ''}">
+    <div class="card" style="margin-top:10px;${isCrossDay ? ' border-left: 3px solid var(--warn);' : ''}">
       <div style="font-weight:900;">
         VIN: ${escapeHtml(vin)} <span class="small">(MOTOR + TANQUE)</span>
         ${isCrossDay ? `<span class="live-half-badge" title="Iniciado el día anterior">½ día ant.</span>` : ""}
@@ -224,7 +222,7 @@ export function renderRowGroup_(row, { escapeHtml, fmtShort_ }) {
         </div>
       </div>
 
-      <div class="card" style="margin-top:10px; border:1px solid rgba(255,255,255,.14);">
+      <div class="card" style="margin-top:10px; border:1px solid var(--surfaceLine);">
         <div class="small" style="font-weight:900;">🔧 MOTOR: ${escapeHtml(motorWho)}</div>
         ${motor ? renderProgressBar_(motor) : ""}
         <div class="small" style="margin-top:6px;"><b>Duración:</b> ${escapeHtml(motorDur)}</div>
@@ -243,7 +241,7 @@ export function renderRowGroup_(row, { escapeHtml, fmtShort_ }) {
         >⏸ Pausar ${escapeHtml(motorWho)}</button>` : ''}
       </div>
 
-      <div class="card" style="margin-top:10px; border:1px solid rgba(255,255,255,.14);">
+      <div class="card" style="margin-top:10px; border:1px solid var(--surfaceLine);">
         <div class="small" style="font-weight:900;">⛽ TANQUE: ${escapeHtml(tanqueWho)}</div>
         ${tanque ? renderProgressBar_(tanque) : ""}
         <div class="small" style="margin-top:6px;"><b>Duración:</b> ${escapeHtml(tanqueDur)}</div>
@@ -299,7 +297,7 @@ export function renderRowNormal_(it, { escapeHtml, fmtShort_ }) {
   const durTxtItem = durMsItem ? fmtDur_(durMsItem) : "-";
 
   return `
-    <div class="card" style="margin-top:10px;${isCrossDay || isMedioCarro ? ' border-left: 3px solid rgba(251,191,36,.55);' : ''}">
+    <div class="card" style="margin-top:10px;${isCrossDay || isMedioCarro ? ' border-left: 3px solid var(--warn);' : ''}">
       <div style="font-weight:900;">
         ${escapeHtml(who)} <span class="small">(${escapeHtml(rol)})</span>
         ${isCrossDay   ? `<span class="live-half-badge" title="Iniciado el día anterior">½ día ant.</span>` : ""}

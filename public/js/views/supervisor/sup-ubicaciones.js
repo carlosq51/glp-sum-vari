@@ -6,11 +6,10 @@
 import { getJSON } from "../../core/api.js";
 import { escapeHtml } from "../../core/format.js";
 import { initZonasMapa } from "../zonas/zonas-mapa.js";
+import { startPoll, stopPoll } from "../../core/poll.js";
 
-let ubTimer_     = null;
 let ubActive_    = false;
 let _supZonasMapa = null;
-const REFRESH_MS = 300_000; // 5 min
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -180,8 +179,8 @@ export async function enterUbicaciones_() {
   ubActive_ = true;
   bindPanelToggles_();
   await refreshUb_();
-  clearInterval(ubTimer_);
-  ubTimer_ = setInterval(() => refreshUb_().catch(() => {}), REFRESH_MS);
+  // Polling gobernado por config; se pausa en background (core/poll.js)
+  startPoll("POLL_SUP_UBICACIONES_MS", () => refreshUb_().catch(() => {}), { immediate: false });
 
   // Inicializar mapa de zonas read-only (solo una vez)
   if (!_supZonasMapa) {
@@ -193,8 +192,7 @@ export async function enterUbicaciones_() {
 
 export function exitUbicaciones_() {
   ubActive_ = false;
-  clearInterval(ubTimer_);
-  ubTimer_ = null;
+  stopPoll("POLL_SUP_UBICACIONES_MS");
   _supZonasMapa?.destroy();
   _supZonasMapa = null;
 }

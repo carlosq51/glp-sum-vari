@@ -1,4 +1,5 @@
 import express from "express";
+import compression from "compression";
 import dotenv from "dotenv";
 import { existsSync } from "fs";
 import webpush from "web-push";
@@ -15,6 +16,7 @@ import tecnicoRouter from "./routes/tecnico.js";
 import mlRouter, { scheduleAutoRetrain_, loadPairingModelFromSupabase_ } from "./routes/ml.js";
 import vinsRouter from "./routes/vins.js";
 import zonasRouter from "./routes/zonas.js";
+import { sseHandler_ } from "./lib/events.js";
 
 dotenv.config();
 
@@ -31,6 +33,10 @@ if (process.env.VAPID_SUBJECT && process.env.VAPID_PUBLIC_KEY && process.env.VAP
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// gzip/brotli para respuestas JSON y estáticos — reduce ~70-85% el peso de
+// los reportes grandes (supervisor/live) en redes móviles
+app.use(compression());
 
 app.use(express.json({ limit: "30mb" }));
 app.use(express.urlencoded({ extended: true, limit: "30mb" }));
@@ -66,7 +72,19 @@ app.use((_req, res, next) => {
   next();
 });
 
-app.use(express.static(staticDir));
+app.use(express.static(staticDir, {
+  setHeaders(res, path) {
+    // Assets de Vite llevan hash en el nombre → cachear 1 año, inmutable.
+    // index.html y sw*.js quedan fuera (sus rutas ya fuerzan no-cache arriba).
+    if (/[\\/]assets[\\/]/.test(path)) {
+      res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    }
+  },
+}));
+
+// ── Eventos en vivo (SSE) ─────────────────────────────────────────────────────
+// Las vistas se suscriben aquí; cada mutación emite su topic (lib/events.js)
+app.get("/api/events", sseHandler_);
 
 // ── Route modules ─────────────────────────────────────────────────────────────
 app.use(uploaderRouter);

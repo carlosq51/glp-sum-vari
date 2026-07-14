@@ -336,18 +336,20 @@ async function loadTab() {
     $id("adminToolbar") && ($id("adminToolbar").style.display = "none");
     wrap.innerHTML = `<div class="small muted" style="padding:12px;">Cargando configuración…</div>`;
     try {
-      const resp = await fetch("/api/admin/config");
+      // /api/config = defaults + app_config ya mergeados (fuente única, lib/config.js).
+      // Aquí NO hay fallbacks mágicos: lo que se muestra es lo que rige.
+      const resp = await fetch("/api/config");
       const j = resp.ok ? await resp.json() : { ok: false };
       const cfg = j.config || {};
       const fechaCorte    = cfg.FECHA_CORTE_MOVILIZADOR || "";
       const pausaActiva   = cfg.PAUSA_GLOBAL_ACTIVA === "1";
-      const comidaInicio  = cfg.HORARIO_COMIDA_INICIO   || "13:00";
-      const comidaFin     = cfg.HORARIO_COMIDA_FIN       || "14:00";
-      const descInicio    = cfg.HORARIO_DESCANSO_INICIO  || "16:30";
-      const descFin       = cfg.HORARIO_DESCANSO_FIN     || "07:00";
-      const metaDiaria    = cfg.META_DIARIA               || "25";
-      const metaCal       = cfg.META_CALIDAD              || "22";
-      const metaMensual   = cfg.META_MENSUAL              || "60";
+      const comidaInicio  = cfg.HORARIO_COMIDA_INICIO;
+      const comidaFin     = cfg.HORARIO_COMIDA_FIN;
+      const descInicio    = cfg.HORARIO_DESCANSO_INICIO;
+      const descFin       = cfg.HORARIO_DESCANSO_FIN;
+      const metaDiaria    = String(cfg.META_DIARIA);
+      const metaCal       = String(cfg.META_CALIDAD);
+      const metaMensual   = String(cfg.META_MENSUAL);
 
       wrap.innerHTML = `
         <div class="adminConfigPanel">

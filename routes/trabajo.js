@@ -10,6 +10,7 @@ import {
 import { addServerTiming_ } from "../lib/timing.js";
 import { r2GetStatus } from "../r2-uploads.js";
 import { pendingSuggestions_ } from "../lib/ml-state.js";
+import { emitEvent_ } from "../lib/events.js";
 
 const router = Router();
 
@@ -612,6 +613,8 @@ router.post("/api/evento", async (req, res) => {
     };
 
     console.log(`[EVENTO] ? Exitoso: ${accion} para VIN=${vin}, ROL=${rolTrabajo}, ESTADO=${nuevoEstado}`);
+    // Aviso en vivo a todas las vistas conectadas (supervisor live, mapas, colas)
+    emitEvent_("asignaciones", { vin, rol: rolTrabajo, accion, estado: nuevoEstado });
     return res.json(respuesta);
   } catch (e) {
     console.error("[POST /api/evento]", e.message, e.stack);

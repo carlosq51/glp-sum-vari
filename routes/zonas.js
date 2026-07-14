@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { supabaseHeaders_ } from "../lib/supabase.js";
+import { emitEvent_ } from "../lib/events.js";
 
 const router = Router();
 
@@ -175,6 +176,7 @@ router.post("/api/zonas/asignar", async (req, res) => {
     }
     // zona_id=16 = sin ubicación → ya se limpió en paso 1, no hay más acción
 
+    emitEvent_("zonas", { accion: "ASIGNADA" });
     return res.json({ ok: true, zona_id: zonaNum >= 1 && zonaNum <= 15 ? zonaNum : 16 });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e.message) });
@@ -203,6 +205,7 @@ router.post("/api/zonas/liberar", async (req, res) => {
       }
     );
     if (!r.ok) throw new Error("Error al liberar zona");
+    emitEvent_("zonas", { accion: "LIBERADA", zona_id: zonaNum });
     return res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e.message) });

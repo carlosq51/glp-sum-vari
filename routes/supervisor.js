@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { supabaseHeaders_, supabaseGet_ } from "../lib/supabase.js";
 import { addServerTiming_ } from "../lib/timing.js";
+import { getConfig_, CONFIG_DEFAULTS } from "../lib/config.js";
 
 const router = Router();
 
@@ -305,40 +306,36 @@ router.get("/api/supervisor/live", async (req, res) => {
     // Q3: Todos los usuarios activos con rol técnico (para mostrar DESCONECTADO)
     const url3 = `${SUPABASE_URL}/rest/v1/usuarios?select=id,nombre,email,rol,especialidad&activo=eq.true&rol=in.(TECNICO,CALIDAD,RAMALERO)&order=nombre.asc`;
 
+    // Config central (defaults + app_config, cacheado 60s en lib/config)
+    const cfg = await getConfig_();
+
     // Q4: Última asignación reciente por usuario (para rol_trabajo de TECNICO AMBOS)
-    const url4 = `${SUPABASE_URL}/rest/v1/asignaciones?select=user_id,rol_trabajo,updated_at&fecha_asignacion=gte.${thirtyDaysAgo}T00:00:00&order=updated_at.desc&limit=2000`;
+    const url4 = `${SUPABASE_URL}/rest/v1/asignaciones?select=user_id,rol_trabajo,updated_at&fecha_asignacion=gte.${thirtyDaysAgo}T00:00:00&order=updated_at.desc&limit=${cfg.LIM_ASG_RECIENTES}`;
 
     // Q5: Trabajos de días anteriores que siguen ACTIVOS hoy ("virtual" — en progreso, no finalizados)
     const url5 = `${SUPABASE_URL}/rest/v1/asignaciones?select=${selectFields}&activo=eq.true&estado_actual=in.(TRABAJANDO,PAUSADO,SIN_INICIAR)&fecha_asignacion=lt.${todayStr}T00:00:00&order=updated_at.desc`;
 
-    // Q6: Metas diarias (META_DIARIA, META_CALIDAD) desde app_config
-    const url6 = `${SUPABASE_URL}/rest/v1/app_config?select=key,value&key=in.(META_DIARIA,META_CALIDAD,META_CONVERSION)`;
-
-    const [resp1, resp2, resp3, resp4, resp5, resp6] = await Promise.all([
+    const [resp1, resp2, resp3, resp4, resp5] = await Promise.all([
       fetch(url1, { method: "GET", headers }),
       fetch(url2, { method: "GET", headers }),
       fetch(url3, { method: "GET", headers }),
       fetch(url4, { method: "GET", headers }),
       fetch(url5, { method: "GET", headers }),
-      fetch(url6, { method: "GET", headers }).catch(() => null),
     ]);
     if (!resp1.ok) {
       const text = await resp1.text().catch(() => "");
       throw new Error(`Supabase Q1: ${resp1.status} ${text.slice(0, 200)}`);
     }
-    const [raw1, raw2, allUsers, recentAsg, raw5, cfgRows] = await Promise.all([
+    const [raw1, raw2, allUsers, recentAsg, raw5] = await Promise.all([
       resp1.json(),
       resp2.json().catch(() => []),
       resp3.json().catch(() => []),
       resp4.json().catch(() => []),
       resp5.json().catch(() => []),
-      resp6 && resp6.ok ? resp6.json().catch(() => []) : Promise.resolve([]),
     ]);
-    const _cfgMap = {};
-    (cfgRows || []).forEach(r => { _cfgMap[r.key] = r.value; });
     // META_DIARIA = objetivo grupal diario (Live). Fallback a META_CONVERSION por compatibilidad.
-    const metaConv = Number(_cfgMap.META_DIARIA || _cfgMap.META_CONVERSION) || 25;
-    const metaCal  = Number(_cfgMap.META_CALIDAD) || 22;
+    const metaConv = Number(cfg.META_DIARIA || cfg.META_CONVERSION) || CONFIG_DEFAULTS.META_DIARIA;
+    const metaCal  = Number(cfg.META_CALIDAD) || CONFIG_DEFAULTS.META_CALIDAD;
 
     // Mapa: user_id → último rol_trabajo conocido (para TECNICO AMBOS)
     const lastRolMap = new Map();

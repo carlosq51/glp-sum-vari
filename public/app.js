@@ -26,9 +26,19 @@ import * as VSupervisor from "./js/views/supervisor/supervisor.js";
 import * as VAdmin from "./js/views/admin/admin.js";
 import * as VMovilizador from "./js/views/movilizador/movilizador.js";
 import { initAppSettings } from "./js/core/app-settings.js";
+import { loadConfig } from "./js/core/config.js";
+import { initLive } from "./js/core/live.js";
 
 // Aplicar ajustes guardados (fuente, acento) antes de cualquier render
 initAppSettings();
+
+// Config operativa (intervalos, metas, límites) — no bloquea el boot:
+// arranca con localStorage/defaults y se refresca del servidor en background.
+loadConfig();
+// Al volver de background (app de técnico dormida horas) → re-sincronizar
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") loadConfig();
+});
 
 const root = document.getElementById("appRoot");
 if (root) root.innerHTML = appShell();
@@ -82,6 +92,10 @@ async function doLogin(email) {
     const mods = effectiveModulos(CORE.state.currentProfile);
 
     showAppUI();
+
+    // Eventos en vivo (SSE): las vistas se refrescan al instante cuando
+    // otra persona muta el estado (ver core/live.js)
+    initLive();
 
     if (mods.length > 1) {
       hideAllModulesUI();
