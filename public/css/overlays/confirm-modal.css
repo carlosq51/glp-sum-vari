@@ -5,9 +5,9 @@
 .modalConfirm .modalBox.modalConfirmBox {
   width: min(420px, calc(100vw - 32px));
   border-radius: 18px;
-  border: 1px solid rgba(255,255,255,.14);
-  background: linear-gradient(180deg, #102a7a 0%, #0a1d57 100%);
-  box-shadow: 0 22px 60px rgba(0,0,0,.42);
+  border: var(--border-w) solid var(--surfaceLine);
+  background: var(--grad-surface-v);
+  box-shadow: var(--elev-3);
 }
 
 .modalConfirm .modalTitle {
@@ -32,9 +32,9 @@
 }
 
 :root[data-theme="day"] .modalConfirm .modalBox.modalConfirmBox {
-  background: linear-gradient(180deg, #ffffff 0%, #f3f6ff 100%);
-  border: 1px solid rgba(11,18,32,.12);
-  box-shadow: 0 18px 40px rgba(11,18,32,.18);
+  background: var(--grad-surface-v);
+  border: var(--border-w) solid var(--surfaceLine);
+  box-shadow: var(--elev-3);
 }
 
 :root[data-theme="day"] .modalConfirm .modalHead {

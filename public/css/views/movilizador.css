@@ -297,8 +297,11 @@
   border-radius: var(--radiusSm);
   white-space: nowrap;
   cursor: pointer;
-  transition: opacity .15s;
+  transition: background var(--dur-base), border-color var(--dur-base),
+              opacity .15s, transform var(--dur-fast) var(--ease-out);
 }
+
+.movBtnAction:active:not(:disabled) { transform: scale(.95); }
 
 .movBtnAction:disabled {
   opacity: .5;
@@ -1368,4 +1371,70 @@
   border-color: var(--surfaceLine);
   background: var(--glass);
   color: var(--muted);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   DINAMISMO — feedback táctil, entradas y estados "vivos"
+   (hereda tokens de 00-token.css; respeta prefers-reduced-motion)
+   ══════════════════════════════════════════════════════════════ */
+
+/* Press feedback en todos los botones/links de acción de la vista */
+.movBtnEntrada, .movBtnSalida, .movBtnFull, .movQrBtn, .movDownloadBtn,
+.movGpsLink, .movSalidaQrBtnMain, .btnConfirmarSalida, .btnRegistrarDesde,
+.movBtnRegistrarPendiente, .movBtnCancelSm, .movRefreshBtn, .movQrResultClose {
+  transition: background var(--dur-base), border-color var(--dur-base),
+              color var(--dur-base), transform var(--dur-fast) var(--ease-out);
+}
+.movBtnEntrada:active:not(:disabled), .movBtnSalida:active:not(:disabled),
+.movBtnFull:active:not(:disabled), .movQrBtn:active, .movDownloadBtn:active,
+.movGpsLink:active, .movSalidaQrBtnMain:active,
+.btnConfirmarSalida:active:not(:disabled), .btnRegistrarDesde:active:not(:disabled),
+.movBtnRegistrarPendiente:active:not(:disabled), .movBtnCancelSm:active,
+.movRefreshBtn:active, .movQrResultClose:active {
+  transform: scale(.95);
+}
+
+/* Entrada escalonada de las cards de cada lista/panel */
+.movCardList > .movCard,
+.movListaDiariaBody > .movCardLista {
+  animation: viewEnter var(--dur-slow) var(--ease-out) both;
+}
+.movCardList > .movCard:nth-child(1),
+.movListaDiariaBody > .movCardLista:nth-child(1) { animation-delay: 0ms; }
+.movCardList > .movCard:nth-child(2),
+.movListaDiariaBody > .movCardLista:nth-child(2) { animation-delay: 35ms; }
+.movCardList > .movCard:nth-child(3),
+.movListaDiariaBody > .movCardLista:nth-child(3) { animation-delay: 70ms; }
+.movCardList > .movCard:nth-child(4),
+.movListaDiariaBody > .movCardLista:nth-child(4) { animation-delay: 105ms; }
+.movCardList > .movCard:nth-child(n+5),
+.movListaDiariaBody > .movCardLista:nth-child(n+5) { animation-delay: 140ms; }
+
+/* Cuerpo del acordeón: aparece con fade+slide al abrir el panel */
+.movPanel.open .movPanelBody {
+  animation: viewEnter var(--dur-base) var(--ease-out);
+}
+
+/* Estado "vivo": el chip En Conversión lleva un punto pulsante */
+.flowConversion::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 0 currentColor;
+  animation: movLiveDot 1.6s ease-out infinite;
+  flex-shrink: 0;
+}
+@keyframes movLiveDot {
+  0%   { box-shadow: 0 0 0 0 currentColor; opacity: 1; }
+  70%  { box-shadow: 0 0 0 5px transparent; opacity: .85; }
+  100% { box-shadow: 0 0 0 0 transparent; opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .movCardList > .movCard,
+  .movListaDiariaBody > .movCardLista,
+  .movPanel.open .movPanelBody { animation: none; }
+  .flowConversion::before { animation: none; }
 }

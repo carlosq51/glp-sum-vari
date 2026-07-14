@@ -370,3 +370,14 @@
 :root[data-theme="day"] .adminTable tr:hover td {
   background: rgba(11,18,32,.04);
 }
+
+/* ── Dinamismo: feedback táctil + transiciones ── */
+.adminTab       { transition: opacity var(--dur-base), background var(--dur-base), transform var(--dur-fast) var(--ease-out); }
+.adminTab:active { transform: scale(.96); }
+.adminBackBtn   { transition: background var(--dur-fast), transform var(--dur-fast) var(--ease-out); }
+.adminBackBtn:active { transform: scale(.95) translateX(-2px); }
+.adminRowBtn    { transition: filter var(--dur-base), transform var(--dur-fast) var(--ease-out); }
+.adminRowBtn:hover  { filter: brightness(1.1); }
+.adminRowBtn:active { transform: scale(.9); }
+.adminTable td  { transition: background-color var(--dur-fast); }
+#adminCardGrid .hubCard:active { transform: translateY(-1px) scale(.99); }

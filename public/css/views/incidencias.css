@@ -47,9 +47,12 @@
   cursor: pointer;
   font-size: var(--fs-sm, 13px);
   font-weight: var(--fw-bold, 700);
-  transition: background var(--dur-base), border-color var(--dur-base);
+  transition: background var(--dur-base), border-color var(--dur-base),
+              transform var(--dur-fast) var(--ease-out);
   user-select: none;
 }
+
+.incGravedadBtn:active { transform: scale(.96); }
 
 .incGravedadBtn input[type="radio"] {
   appearance: none;

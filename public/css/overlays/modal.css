@@ -18,6 +18,7 @@
 
 .modal.show {
   display: flex;
+  animation: fadeIn var(--dur-slow) var(--ease-out);
 }
 
 .modalBox {
@@ -31,6 +32,21 @@
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   overflow: hidden;
+}
+
+/* Entrada del cuadro: sube y hace pop con leve rebote (spring) */
+.modal.show .modalBox {
+  animation: modalBoxIn var(--dur-slow) var(--ease-spring);
+}
+
+@keyframes modalBoxIn {
+  from { opacity: 0; transform: translateY(16px) scale(.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal.show,
+  .modal.show .modalBox { animation: none; }
 }
 
 .modalBox::before {
@@ -76,7 +92,10 @@
   align-items: center;
   justify-content: center;
   box-shadow: var(--shadowSm);
+  transition: filter var(--dur-base), transform var(--dur-fast) var(--ease-out);
 }
+.modalHead button:hover  { filter: brightness(1.08); }
+.modalHead button:active { transform: scale(.9) rotate(90deg); }
 
 .modalBody {
   padding: 14px 16px 24px;

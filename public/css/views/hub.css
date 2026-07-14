@@ -438,3 +438,59 @@ html[data-size="xl"] {
   --fs-2xs:14px; --fs-xs:16px; --fs-sm:17px; --fs-md:18px;
   --fs-body:19px; --fs-lg:20px; --fs-xl:21px; --fs-2xl:22px; --fs-3xl:24px;
 }
+
+/* ══════════════════════════════════════════════════════════════
+   DINAMISMO — Técnico (cola, rendimiento, incidencias)
+   ══════════════════════════════════════════════════════════════ */
+
+/* Estado "vivo": técnico trabajando ahora → punto pulsante en el chip */
+.tecEst--trab::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: tecLiveDot 1.5s ease-out infinite;
+  vertical-align: middle;
+}
+@keyframes tecLiveDot {
+  0%   { box-shadow: 0 0 0 0 currentColor; opacity: 1; }
+  70%  { box-shadow: 0 0 0 5px transparent; opacity: .8; }
+  100% { box-shadow: 0 0 0 0 transparent; opacity: 1; }
+}
+
+/* Chip de prioridad: latido sutil para llamar la atención */
+.tecEst--priority { animation: softPulse 1.8s ease-in-out infinite; }
+
+/* Feedback táctil en filtros y filas tocables */
+.tecFilterPill  { transition: background var(--dur-fast), color var(--dur-fast), border-color var(--dur-fast), transform var(--dur-fast) var(--ease-out); }
+.tecFilterPill:active { transform: scale(.94); }
+.tecIncGroupHead { transition: background var(--dur-base); }
+.tecColaCompRow, .tecRendOmisRow, .tecRendComp {
+  transition: transform var(--dur-base) var(--ease-out), border-color var(--dur-base);
+}
+.tecColaCompRow:hover { transform: translateX(3px); border-color: var(--pillLine); }
+
+/* Entrada escalonada de la lista de compañeros sugeridos */
+.tecColaCompList > .tecColaCompRow {
+  animation: viewEnter var(--dur-slow) var(--ease-out) both;
+}
+.tecColaCompList > .tecColaCompRow:nth-child(1) { animation-delay: 0ms; }
+.tecColaCompList > .tecColaCompRow:nth-child(2) { animation-delay: 50ms; }
+.tecColaCompList > .tecColaCompRow:nth-child(3) { animation-delay: 100ms; }
+.tecColaCompList > .tecColaCompRow:nth-child(n+4) { animation-delay: 150ms; }
+
+/* Barras del histograma y rendimiento crecen con transición */
+.tecHistoFill { transition: height var(--dur-slower) var(--ease-out); }
+
+/* Banner de sugerencia IA: aparece con pop */
+.tecPairBanner { animation: popIn var(--dur-slow) var(--ease-spring); }
+
+@media (prefers-reduced-motion: reduce) {
+  .tecEst--trab::before,
+  .tecEst--priority,
+  .tecColaCompList > .tecColaCompRow,
+  .tecPairBanner { animation: none; }
+}
