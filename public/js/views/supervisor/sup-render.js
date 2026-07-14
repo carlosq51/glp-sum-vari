@@ -6,6 +6,7 @@
 import { fmtDur_ } from "../../core/format.js";
 import { durationMsFromItem_, isFinalizado_ } from "./sup-filters.js";
 import { cfg } from "../../core/config.js";
+import { icon } from "../../core/icons.js";
 
 function isFin_(estado) {
   return isFinalizado_(estado);
@@ -77,84 +78,60 @@ export function renderAvgCard_(avgCardEl, {
 
   // Badge de modo de consulta
   const modeBadge = isHistorical
-    ? `<span style="font-size:.68em;font-weight:800;background:var(--noteBg);border:1px solid var(--note);color:var(--note);border-radius:5px;padding:2px 7px;letter-spacing:.4px;">📅 HISTÓRICO · por fecha de cierre</span>`
-    : `<span style="font-size:.68em;font-weight:800;background:var(--okBg);border:1px solid var(--ok);color:var(--ok);border-radius:5px;padding:2px 7px;letter-spacing:.4px;">🔴 HOY · en tiempo real</span>`;
+    ? `<span class="supModeBadge supModeBadge--hist">${icon("calendar", 12)} HISTÓRICO · por fecha de cierre</span>`
+    : `<span class="supModeBadge supModeBadge--live"><span class="supLiveDot"></span> HOY · en tiempo real</span>`;
 
-  // Píldora extra solo en track CONVERSION: VINs con motor+tanque ambos finalizados
-  // (clickeable → drill-down con la lista de VINs; ver supervisor.js)
-  const sinCalidadPill = (supTrack === "CONVERSION" && vinSinCalidad != null)
-    ? `<div class="pill small" data-drill="sincal" title="Ver VINs" style="opacity:.9;">SIN CAL.: <b>${vinSinCalidad}</b> ›</div>`
-    : "";
-
-  if (stats?.used > 0) {
-    const nameUp = String(techName || "TÉCNICO").toUpperCase();
-
-    avgCardEl.innerHTML = `
-      <div class="card" style="
-        border:1px solid var(--surfaceLine);
-        border-radius:22px;
-        padding:18px 18px;
-        background: var(--grad-surface-v);
-        box-shadow: var(--elev-2);
-      ">
-        <div class="row space-between" style="gap:12px; align-items:flex-start;">
-          <div>
-            <div class="small" style="opacity:.8; letter-spacing:.5px;">TIEMPO PROMEDIO DE CONVERSIÓN</div>
-            <div style="font-weight:1000; font-size:20px; letter-spacing:1px; margin-top:4px;">
-              ${escapeHtml(nameUp)}
-            </div>
-            <div style="margin-top:6px;">${modeBadge}</div>
-          </div>
-
-          <div class="pill small" data-drill="fin" title="Ver finalizados" style="opacity:.95;">
-            FINALIZADOS: <b>${finalizedCount || 0}</b> ›
-          </div>
-        </div>
-
-        <div class="row" style="gap:12px; align-items:center; margin-top:14px;">
-          <div style="
-            width:44px; height:44px;
-            display:flex; align-items:center; justify-content:center;
-            border-radius:14px;
-            background: var(--pillBg);
-            border:1px solid var(--pillLine);
-          ">⏱</div>
-
-          <div>
-            <div style="font-weight:1000; font-size:40px; letter-spacing:.8px; line-height:1;">
-              ${escapeHtml(fmtDur_(stats.avgMs))}
-            </div>
-            <div class="small" style="opacity:.78; margin-top:6px;">
-              Promedio robusto (outliers pesan menos)
-            </div>
-          </div>
-        </div>
-
-        <div class="row" style="gap:10px; margin-top:14px; flex-wrap:wrap;">
-          <div class="pill small" data-drill="motor" title="Ver trabajos de motor" style="opacity:.9;">
-            MOTOR: <b>${motorCount}</b> ›
-          </div>
-          <div class="pill small" data-drill="tanque" title="Ver trabajos de tanque" style="opacity:.9;">
-            TANQUE: <b>${tanqueCount}</b> ›
-          </div>
-          ${sinCalidadPill}
-        </div>
-
-        <div class="small" style="margin-top:12px; opacity:.75;">
-          ${isHistorical
-            ? "Producción contada por <b>fecha de cierre</b> — el carro aparece en el día que se terminó."
-            : "Incluye trabajos activos del día. Cross-day (⬛½) empezaron ayer y cuentan 0.5."}
-        </div>
-      </div>
-    `;
-  } else {
+  if (!(stats?.used > 0)) {
     avgCardEl.innerHTML = `
       <div class="card" style="border:1px solid var(--surfaceLine); border-radius:18px; padding:14px;">
         <div style="margin-bottom:8px;">${modeBadge}</div>
         <div class="small">Sin FINALIZADOS con tiempo válido.</div>
       </div>
     `;
+    return;
   }
+
+  const nameUp = String(techName || "TÉCNICO").toUpperCase();
+
+  // Fila de KPI tiles estilo Power BI. Los tiles con data-drill abren
+  // el drill-down con la lista exacta detrás del número.
+  const drillTile = (drill, iconName, label, value, foot) => `
+    <button type="button" class="statTile statTile--tap" data-drill="${drill}" title="Ver detalle">
+      <div class="statTile__label">${icon(iconName, 13)} ${label}</div>
+      <div class="statTile__value sm">${value}</div>
+      <div class="statTile__foot">${foot} <span class="supTileGo">›</span></div>
+    </button>
+  `;
+
+  const tiles = [
+    `<div class="statTile statTile--accent">
+      <div class="statTile__label">${icon("timer", 13)} Tiempo promedio</div>
+      <div class="statTile__value" style="font-size:30px;">${escapeHtml(fmtDur_(stats.avgMs))}</div>
+      <div class="statTile__foot">Promedio robusto · ${stats.used} trabajos</div>
+    </div>`,
+    drillTile("fin", "shieldCheck", "Finalizados", finalizedCount || 0, "carros completos"),
+  ];
+
+  if (supTrack === "CONVERSION") {
+    tiles.push(drillTile("motor", "wrench", "Motor", motorCount, "trabajos"));
+    tiles.push(drillTile("tanque", "fuel", "Tanque", tanqueCount, "trabajos"));
+    if (vinSinCalidad != null) {
+      tiles.push(drillTile("sincal", "alertTriangle", "Sin calidad", vinSinCalidad, "convertidos s/ revisar"));
+    }
+  }
+
+  avgCardEl.innerHTML = `
+    <div class="supKpiHead">
+      <div class="supKpiName">${escapeHtml(nameUp)}</div>
+      ${modeBadge}
+    </div>
+    <div class="dashGrid dashGrid--gauges supKpiRow">${tiles.join("")}</div>
+    <div class="small" style="margin-top:8px; opacity:.7;">
+      ${isHistorical
+        ? "Producción contada por <b>fecha de cierre</b> — el carro aparece en el día que se terminó."
+        : "Incluye trabajos activos del día. Cross-day (½) empezaron ayer y cuentan 0.5."}
+    </div>
+  `;
 }
 
 export function renderTable_(boxEl, {

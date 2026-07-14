@@ -1,4 +1,6 @@
 // public/js/templates/views/supervisor-view.js
+import { icon } from "../../core/icons.js";
+
 export function supervisorView() {
   return `
     <div id="viewSUPERVISOR" class="card" style="display:none;">
@@ -6,11 +8,11 @@ export function supervisorView() {
 
       <!-- Pestañas principales: REPORTE / LIVE / UBICACIONES / INCIDENCIAS / LISTA -->
       <div class="sup-tab-row">
-        <button type="button" class="btn sup-tab" data-suptab="REPORTE">📊 REPORTE</button>
-        <button type="button" class="btn sup-tab active" data-suptab="LIVE">🔴 LIVE</button>
-        <button type="button" class="btn sup-tab" data-suptab="UBICACIONES">📍 UBIC.</button>
-        <button type="button" class="btn sup-tab" data-suptab="INCIDENCIAS">⚠️ INCID.</button>
-        <button type="button" class="btn sup-tab" data-suptab="VALIDAR">🔍 VALIDAR</button>
+        <button type="button" class="btn sup-tab" data-suptab="REPORTE">${icon("chart", 14)} REPORTE</button>
+        <button type="button" class="btn sup-tab active" data-suptab="LIVE">${icon("radio", 14)} LIVE</button>
+        <button type="button" class="btn sup-tab" data-suptab="UBICACIONES">${icon("mapPin", 14)} UBIC.</button>
+        <button type="button" class="btn sup-tab" data-suptab="INCIDENCIAS">${icon("alertTriangle", 14)} INCID.</button>
+        <button type="button" class="btn sup-tab" data-suptab="VALIDAR">${icon("scanSearch", 14)} VALIDAR</button>
       </div>
 
       <!-- ══════════════════════════════════════════════
@@ -45,7 +47,7 @@ export function supervisorView() {
               <input id="supVin" type="text" placeholder="Buscar por VIN..." autocomplete="off" />
               <div id="supVinSuggest" class="vinSuggest hidden" role="listbox"></div>
             </div>
-            <button id="btnSupQR" type="button" title="Escanear VIN con cámara">📷</button>
+            <button id="btnSupQR" type="button" title="Escanear VIN con cámara">${icon("camera", 16)}</button>
           </div>
 
           <div class="supDateRow">
@@ -65,15 +67,18 @@ export function supervisorView() {
             <button id="btnSupClear">Limpiar</button>
           </div>
           <div style="text-align:right;margin-top:4px;">
-            <button id="btnSupExportCsv" type="button" class="btn3" title="Exportar tabla actual como CSV">⬇️ Exportar CSV</button>
+            <button id="btnSupExportCsv" type="button" class="btn3" title="Exportar tabla actual como CSV">${icon("download", 14)} Exportar CSV</button>
           </div>
         </div>
 
         <div id="supAvgCard" style="margin-top:10px;"></div>
 
+        <!-- Panel visual: gráficos del reporte (estilo Power BI) -->
+        <div id="supDashboard" style="display:none;"></div>
+
         <!-- Panel de KPIs -->
         <div id="supKPIsWrap">
-          <button id="btnVerKPIs" type="button" class="btn-ver-kpis" style="display:none;">📊 VER KPIS</button>
+          <button id="btnVerKPIs" type="button" class="btn-ver-kpis" style="display:none;">${icon("chart", 14)} VER KPIS</button>
           <div id="supKPIsPanel" style="display:none;"></div>
         </div>
 
@@ -232,11 +237,11 @@ export function supervisorView() {
                 autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" />
               <div id="supValidarVinSuggest" class="vinSuggest hidden" role="listbox"></div>
             </div>
-            <button id="btnSupValidarQr" type="button" title="Escanear QR">📷</button>
+            <button id="btnSupValidarQr" type="button" title="Escanear QR">${icon("camera", 16)}</button>
           </div>
 
           <button id="btnSupValidarBuscar" type="button" class="btn" style="margin-top:10px; width:100%;">
-            🔍 Validar VIN
+            ${icon("scanSearch", 15)} Validar VIN
           </button>
 
           <div id="supValidarResult" style="margin-top:14px;"></div>

@@ -17,7 +17,7 @@ const OUTLIER_THRESHOLD_MIN_RAMAL = 0.5; // Outlier ramal: < 0.5 hora
 /**
  * Detecta el modelo basado en patrones en el string
  */
-function detectModel_(modeloStr, vin = "") {
+export function detectModel_(modeloStr, vin = "") {
   if (!modeloStr) {
     console.log("🔍 [DESCONOCIDO] VIN:", vin, "| Modelo:", modeloStr);
     return "DESCONOCIDO";

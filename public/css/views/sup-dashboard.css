@@ -1,0 +1,148 @@
+/* =====================================================================
+   views/sup-dashboard.css — Panel visual del REPORTE (estilo Power BI)
+   Tarjetas de gráfico + fila de KPI tiles + badges de modo.
+   ===================================================================== */
+
+/* ── Grid de tarjetas de gráfico ── */
+.supDashGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+/* Escritorio: 2 columnas (el supervisor usa layout ancho) */
+@media (min-width: 860px) {
+  body[data-app-module="SUPERVISOR"] .supDashGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* ── Tarjeta de gráfico ── */
+.chartCard {
+  background: var(--grad-surface-v, var(--surface));
+  border: 1px solid var(--surfaceLine);
+  border-radius: var(--radius);
+  padding: 14px 16px 12px;
+  box-shadow: var(--elev-1);
+  animation: viewEnter var(--dur-slow) var(--ease-out) both;
+  transition: box-shadow var(--dur-base), border-color var(--dur-base);
+}
+.chartCard:hover { box-shadow: var(--elev-2); }
+
+.supDashGrid > .chartCard:nth-child(1) { animation-delay: 0ms; }
+.supDashGrid > .chartCard:nth-child(2) { animation-delay: 50ms; }
+.supDashGrid > .chartCard:nth-child(3) { animation-delay: 100ms; }
+.supDashGrid > .chartCard:nth-child(n+4) { animation-delay: 150ms; }
+
+.chartCard__title {
+  font-weight: var(--fw-extrabold);
+  font-size: var(--fs-sm);
+  letter-spacing: .2px;
+}
+
+.chartCard__sub {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+/* Contenedor del canvas: altura fija para que Chart.js sea responsive */
+.chartCanvasWrap {
+  position: relative;
+  height: 250px;
+  margin-top: 10px;
+}
+.chartCanvasWrap--sm { height: 230px; }
+
+/* ── Cabecera de la fila de KPIs ── */
+.supKpiHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.supKpiName {
+  font-weight: var(--fw-black);
+  font-size: var(--fs-lg);
+  letter-spacing: .6px;
+}
+
+.supKpiRow { margin-top: 0; }
+
+/* Tile clickeable (drill-down) */
+.statTile--tap {
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  color: var(--text);
+  transition: transform var(--dur-base) var(--ease-out),
+              box-shadow var(--dur-base),
+              border-color var(--dur-base);
+}
+.statTile--tap:hover {
+  transform: translateY(-2px);
+  border-color: var(--pillLine);
+  box-shadow: var(--elev-2);
+}
+.statTile--tap:active { transform: scale(.97); }
+
+.supTileGo {
+  font-weight: var(--fw-black);
+  color: var(--muted);
+  transition: color var(--dur-fast);
+}
+.statTile--tap:hover .supTileGo { color: var(--accent); }
+
+/* ── Badges de modo (HOY live / HISTÓRICO) ── */
+.supModeBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: .68em;
+  font-weight: 800;
+  border-radius: 6px;
+  padding: 3px 8px;
+  letter-spacing: .4px;
+  white-space: nowrap;
+}
+.supModeBadge--hist {
+  background: var(--noteBg);
+  border: 1px solid var(--note);
+  color: var(--note);
+}
+.supModeBadge--live {
+  background: var(--okBg);
+  border: 1px solid var(--ok);
+  color: var(--ok);
+}
+
+.supLiveDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  position: relative;
+}
+.supLiveDot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: currentColor;
+  animation: liveDot 1.6s ease-out infinite;
+}
+
+/* ── Alineación de iconos SVG inline en tabs/botones del supervisor ── */
+.sup-tab .icn,
+.btn-ver-kpis .icn,
+.btn3 .icn,
+#btnSupValidarBuscar .icn,
+.supModeBadge .icn { vertical-align: -2px; flex-shrink: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .chartCard { animation: none; }
+  .supLiveDot::after { animation: none; }
+}

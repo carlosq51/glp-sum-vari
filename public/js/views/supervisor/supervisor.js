@@ -17,6 +17,8 @@ import { isFinalizado_, matchMarca_, durationMsFromItem_ } from "./sup-filters.j
 import { groupByVinForUI_ } from "./sup-grouping.js";
 import { renderAvgCard_, renderTable_ } from "./sup-render.js";
 import { renderTrendChart_, destroyTrendChart_ } from "./sup-trend-chart.js";
+import { renderSupDashboard_, destroySupDashboard_ } from "./sup-dashboard.js";
+import { icon } from "../../core/icons.js";
 import { calculateKPIs_ } from "./sup-kpis.js";
 import { renderKPIsPanel_ } from "./sup-kpis-render.js";
 
@@ -379,6 +381,13 @@ function renderSupervisor_(j) {
     escapeHtml,
   });
 
+  // Panel visual: gráficos del reporte (producción/día, estado, técnicos, modelos)
+  renderSupDashboard_(document.getElementById("supDashboard"), {
+    items: list,
+    track: supTrack,
+    techName: hasTechFilter ? techName : "",
+  });
+
   // Calcular y renderizar KPIs
   const kpisPanel = document.getElementById("supKPIsPanel");
   const btnVerKPIs = document.getElementById("btnVerKPIs");
@@ -392,7 +401,7 @@ function renderSupervisor_(j) {
       kpisPanel.style.display = "none"; // colapsado por defecto
       if (btnVerKPIs) {
         btnVerKPIs.style.display = "";
-        btnVerKPIs.textContent = "📊 VER KPIS";
+        btnVerKPIs.innerHTML = `${icon("chart", 14)} VER KPIS`;
       }
     } else {
       kpisPanel.className = "";
@@ -496,7 +505,7 @@ export function init() {
     if (!panel || !btn) return;
     const isHidden = panel.style.display === "none";
     panel.style.display = isHidden ? "block" : "none";
-    btn.textContent = isHidden ? "📉 OCULTAR KPIS" : "📊 VER KPIS";
+    btn.innerHTML = isHidden ? `${icon("chart", 14)} OCULTAR KPIS` : `${icon("chart", 14)} VER KPIS`;
   });
 
   document.getElementById("supMarca")?.addEventListener("change", () => {
@@ -663,6 +672,7 @@ export function enter() {
 export function exit() {
   clearTimeout(supTimer);
   destroyTrendChart_();
+  destroySupDashboard_();
   exitLive_();
   exitUbicaciones_();
   exitIncReport_();
