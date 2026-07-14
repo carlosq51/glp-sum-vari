@@ -81,8 +81,9 @@ export function renderAvgCard_(avgCardEl, {
     : `<span style="font-size:.68em;font-weight:800;background:var(--okBg);border:1px solid var(--ok);color:var(--ok);border-radius:5px;padding:2px 7px;letter-spacing:.4px;">🔴 HOY · en tiempo real</span>`;
 
   // Píldora extra solo en track CONVERSION: VINs con motor+tanque ambos finalizados
+  // (clickeable → drill-down con la lista de VINs; ver supervisor.js)
   const sinCalidadPill = (supTrack === "CONVERSION" && vinSinCalidad != null)
-    ? `<div class="pill small" style="opacity:.9;">SIN CAL.: <b>${vinSinCalidad}</b></div>`
+    ? `<div class="pill small" data-drill="sincal" title="Ver VINs" style="opacity:.9;">SIN CAL.: <b>${vinSinCalidad}</b> ›</div>`
     : "";
 
   if (stats?.used > 0) {
@@ -105,8 +106,8 @@ export function renderAvgCard_(avgCardEl, {
             <div style="margin-top:6px;">${modeBadge}</div>
           </div>
 
-          <div class="pill small" style="opacity:.95;">
-            FINALIZADOS: <b>${finalizedCount || 0}</b>
+          <div class="pill small" data-drill="fin" title="Ver finalizados" style="opacity:.95;">
+            FINALIZADOS: <b>${finalizedCount || 0}</b> ›
           </div>
         </div>
 
@@ -130,11 +131,11 @@ export function renderAvgCard_(avgCardEl, {
         </div>
 
         <div class="row" style="gap:10px; margin-top:14px; flex-wrap:wrap;">
-          <div class="pill small" style="opacity:.9;">
-            MOTOR: <b>${motorCount}</b>
+          <div class="pill small" data-drill="motor" title="Ver trabajos de motor" style="opacity:.9;">
+            MOTOR: <b>${motorCount}</b> ›
           </div>
-          <div class="pill small" style="opacity:.9;">
-            TANQUE: <b>${tanqueCount}</b>
+          <div class="pill small" data-drill="tanque" title="Ver trabajos de tanque" style="opacity:.9;">
+            TANQUE: <b>${tanqueCount}</b> ›
           </div>
           ${sinCalidadPill}
         </div>

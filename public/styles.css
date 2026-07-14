@@ -47,6 +47,7 @@
 @import url("./css/overlays/modal.css");
 @import url("./css/overlays/confirm-modal.css");
 @import url("./css/overlays/incidencia-alert.css");
+@import url("./css/overlays/drilldown.css");
 
 /* ── 6. Autocomplete ── */
 @import url("./css/05-autocomplete.css");

@@ -3,12 +3,14 @@
 // ===========================================================================
 
 import { INC_TITULOS } from "../../templates/modals/incidencias-modal.js";
+import { openDrilldown } from "../../core/drilldown.js";
 
 let _getJSON    = null;
 let _escape     = null;
 let _activeType = "ALL";
 let _loading    = false;
 let _lastItems  = [];
+let _drillBound = false;
 
 // ── Categorías conocidas (fuente única: incidencias-modal.js) ───────────────
 const INC_CATEGORIAS = new Set(INC_TITULOS);
@@ -52,6 +54,162 @@ function fmtMin_(min) {
   const m = Math.round(min);
   if (m < 60) return m + "m";
   return Math.floor(m / 60) + "h " + (m % 60) + "m";
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// DRILL-DOWN — todo número agregado del reporte se puede clickear para ver
+// exactamente qué incidencias hay detrás (core/drilldown.js).
+//
+// Cualquier elemento con data-drill="<tipo>|<arg>" abre el detalle.
+// El handler es delegado (un solo listener) y funciona también DENTRO del
+// panel de detalle → drill anidado (ej. lista de VINs → un VIN concreto).
+// ═════════════════════════════════════════════════════════════════════════════
+
+/** atributo data-drill seguro (arg puede tener espacios/acentos) */
+function drillAttr_(kind, arg = "") {
+  return ` data-drill="${kind}|${encodeURIComponent(String(arg))}" title="Ver detalle"`;
+}
+
+function drillSubtitle_() {
+  const from = String(document.getElementById("incRepFrom")?.value || "").trim();
+  const to   = String(document.getElementById("incRepTo")?.value   || "").trim();
+  if (from && to) return from === to ? from : `${from} → ${to}`;
+  return from || to || "";
+}
+
+const _byDurDesc = (a, b) => (b.duracion_min ?? -1) - (a.duracion_min ?? -1);
+const _byFechaDesc = (a, b) => String(b.fecha_hora || "").localeCompare(String(a.fecha_hora || ""));
+const _tecName = (it) => String(it.tecnico || "").trim() || "Sin técnico";
+const _resuelta = (it) => Number.isFinite(it.duracion_min) && it.duracion_min >= 0;
+
+/** Agrupa items por VIN → [{ vin, items, C, M, L }] ordenado por gravedad */
+function groupByVin_(items) {
+  const map = new Map();
+  for (const it of items) {
+    const vin = String(it.vin || "—");
+    if (!map.has(vin)) map.set(vin, []);
+    map.get(vin).push(it);
+  }
+  return [...map.entries()].map(([vin, list]) => ({
+    vin, items: list,
+    C: list.filter(i => i.tipo === "CRITICA").length,
+    M: list.filter(i => i.tipo === "MODERADA").length,
+    L: list.filter(i => i.tipo === "LEVE").length,
+  })).sort((a, b) => b.C - a.C || b.items.length - a.items.length);
+}
+
+/** HTML de grupos por VIN — cada cabecera es a su vez clickeable (drill anidado) */
+function vinGroupsHTML_(groups) {
+  return groups.map(g =>
+    "<div style=\"margin-bottom:12px;\">"
+    + "<div" + drillAttr_("vin", g.vin)
+    +   " style=\"display:flex;align-items:center;gap:8px;padding:7px 10px;margin-bottom:6px;"
+    +   "background:var(--pillBg);border:1px solid var(--pillLine);border-radius:9px;\">"
+    +   "<code style=\"font-size:.8em;font-weight:800;\">" + _escape(g.vin) + "</code>"
+    +   "<span style=\"display:flex;gap:4px;margin-left:auto;\">" + chips_(g.C, g.M, g.L) + "</span>"
+    +   "<span style=\"font-size:.72em;opacity:.5;\">" + g.items.length + " inc.</span>"
+    + "</div>"
+    + g.items.sort(_byFechaDesc).map(renderCard_).join("")
+    + "</div>"
+  ).join("");
+}
+
+/** Resuelve un data-drill → { title, badge, html } y lo abre */
+function openDrill_(kind, arg) {
+  const items = _lastItems;
+  if (!items.length) return;
+  let title = "", list = null, html = "";
+
+  switch (kind) {
+    case "all":
+      title = "Todas las incidencias";
+      list = [...items].sort(_byFechaDesc);
+      break;
+    case "tipo": {
+      const g = GRADE_MAP[arg];
+      title = "Incidencias " + (g ? g.label.toLowerCase() + "s" : arg);
+      list = items.filter(it => it.tipo === arg).sort(_byFechaDesc);
+      break;
+    }
+    case "cat":
+      title = arg;
+      list = items.filter(it => parseCategoria_(it.nota) === arg).sort(_byFechaDesc);
+      break;
+    case "tec":
+      title = "Incidencias de " + arg;
+      list = items.filter(it => _tecName(it) === arg).sort(_byFechaDesc);
+      break;
+    case "vin":
+      title = "VIN " + arg;
+      list = items.filter(it => String(it.vin || "—") === arg).sort(_byFechaDesc);
+      break;
+    case "dia":
+      title = "Incidencias del " + arg;
+      list = items.filter(it => String(it.fecha_hora || "").slice(0, 10) === arg).sort(_byFechaDesc);
+      break;
+    case "mes":
+      title = fmtMesLabel_(arg) + " — resueltas";
+      list = items.filter(it => _resuelta(it) && String(it.fecha_hora || "").slice(0, 7) === arg).sort(_byDurDesc);
+      break;
+    case "resueltas":
+      title = "Incidencias resueltas (más lentas primero)";
+      list = items.filter(_resuelta).sort(_byDurDesc);
+      break;
+    case "cattime":
+      title = arg + " — resueltas por tiempo";
+      list = items.filter(it => _resuelta(it) && parseCategoria_(it.nota) === arg).sort(_byDurDesc);
+      break;
+    case "tectime":
+      title = arg + " — resueltas por tiempo";
+      list = items.filter(it => _resuelta(it) && _tecName(it) === arg).sort(_byDurDesc);
+      break;
+    case "vins":
+      title = "VINs afectados";
+      html = vinGroupsHTML_(groupByVin_(items));
+      break;
+    case "vinscrit": {
+      title = "VINs con incidencia crítica";
+      const gs = groupByVin_(items).filter(g => g.C > 0);
+      html = vinGroupsHTML_(gs);
+      break;
+    }
+    case "reinc": {
+      title = "VINs reincidentes (más de 1 incidencia)";
+      const gs = groupByVin_(items).filter(g => g.items.length > 1);
+      html = vinGroupsHTML_(gs);
+      break;
+    }
+    default:
+      return;
+  }
+
+  let badge = "";
+  if (list) {
+    badge = list.length;
+    html = list.length
+      ? list.map(renderCard_).join("")
+      : "<div style=\"padding:16px;text-align:center;opacity:.5;\">Sin incidencias.</div>";
+  } else {
+    badge = (html.match(/data-drill="vin\|/g) || []).length; // nº de grupos VIN
+  }
+
+  openDrilldown({ title, subtitle: drillSubtitle_(), badge, html });
+}
+
+/** Listener delegado único: reporte + panel de detalle (drill anidado) */
+function bindDrillDelegation_() {
+  if (_drillBound) return;
+  _drillBound = true;
+  document.addEventListener("click", (e) => {
+    const t = e.target.closest("[data-drill]");
+    if (!t) return;
+    // Solo elementos de este reporte o del propio sheet (anidado)
+    if (!t.closest("#incRepKpis, #incRepRanking, #incRepList, #drillSheet")) return;
+    // No robar el click del lightbox de fotos
+    if (e.target.closest("img")) return;
+    const [kind, rawArg] = String(t.dataset.drill).split("|");
+    openDrill_(kind, decodeURIComponent(rawArg || ""));
+  });
 }
 
 // ── Tiempo promedio de resolución (por categoría y por técnico) ─────────────
@@ -204,24 +362,25 @@ function renderKpis_(s, timeStats) {
   const vinsReinc  = s.vinsConReinci  || 0;
   const pctVinCrit = totalVins ? Math.round(vinsCrit / totalVins * 100) : 0;
 
-  function tile(val, label, color) {
+  // Cada tile abre el detalle de lo que cuenta (drill-down)
+  function tile(val, label, color, drill) {
     const c = color ? ` style="color:${color}"` : "";
-    return `<div class="statTile"><div class="statTile__label">${label}</div>`
+    return `<div class="statTile"${drill || ""}><div class="statTile__label">${label}</div>`
       + `<div class="statTile__value"${c}>${val}</div></div>`;
   }
 
   const tiles = [
-    tile(total, "Total"),
-    tile(C, "🔴 Crítica",  gc.CRITICA.color),
-    tile(M, "🟠 Moderada", gc.MODERADA.color),
-    tile(L, "🟡 Leve",     gc.LEVE.color),
-    totalVins ? tile(totalVins, "🚗 VINs") : "",
-    (timeStats?.nResueltas ? tile(fmtMin_(timeStats.avgGlobal),   "⏱ T. resol.") : ""),
-    (timeStats?.nResueltas ? tile(fmtMin_(timeStats.totalGlobal), "⏱ T. total")  : ""),
+    tile(total, "Total", null, drillAttr_("all")),
+    tile(C, "🔴 Crítica",  gc.CRITICA.color,  drillAttr_("tipo", "CRITICA")),
+    tile(M, "🟠 Moderada", gc.MODERADA.color, drillAttr_("tipo", "MODERADA")),
+    tile(L, "🟡 Leve",     gc.LEVE.color,     drillAttr_("tipo", "LEVE")),
+    totalVins ? tile(totalVins, "🚗 VINs", null, drillAttr_("vins")) : "",
+    (timeStats?.nResueltas ? tile(fmtMin_(timeStats.avgGlobal),   "⏱ T. resol.", null, drillAttr_("resueltas")) : ""),
+    (timeStats?.nResueltas ? tile(fmtMin_(timeStats.totalGlobal), "⏱ T. total",  null, drillAttr_("resueltas")) : ""),
   ].join("");
 
   const riskBlock = total > 0 ? `
-    <div class="statTile" style="margin-top:12px;">
+    <div class="statTile" style="margin-top:12px;"${drillAttr_("all")}>
       <div class="statTile__label">⚠️ Índice de riesgo
         <span style="margin-left:auto;font-size:1.15em;font-weight:900;color:var(${riskTone});">${pctRisk}%</span>
       </div>
@@ -241,25 +400,26 @@ function renderKpis_(s, timeStats) {
 
   let vinBlock = "";
   if (totalVins > 0) {
-    const heroStat = (val, lbl, color) =>
-      `<div style="display:flex;flex-direction:column;gap:2px;">
+    // Cada hero stat abre su lista de VINs (drill-down)
+    const heroStat = (val, lbl, color, drill) =>
+      `<div${drill || ""} style="display:flex;flex-direction:column;gap:2px;">
         <span style="font-size:26px;font-weight:900;line-height:1;${color ? `color:${color};` : ""}">${val}</span>
-        <span class="statTile__foot">${lbl}</span>
+        <span class="statTile__foot">${lbl} ›</span>
       </div>`;
     vinBlock = `
       <div class="statTile" style="margin-top:12px;">
         <div class="statTile__label">🚗 Impacto por VIN</div>
         <div style="display:flex;gap:22px;flex-wrap:wrap;">
-          ${heroStat(totalVins, "afectados")}
-          ${heroStat(vinsCrit, "con crítica", gc.CRITICA.color)}
-          ${vinsReinc > 0 ? heroStat(vinsReinc, "reincidentes", gc.MODERADA.color) : ""}
+          ${heroStat(totalVins, "afectados", null, drillAttr_("vins"))}
+          ${heroStat(vinsCrit, "con crítica", gc.CRITICA.color, drillAttr_("vinscrit"))}
+          ${vinsReinc > 0 ? heroStat(vinsReinc, "reincidentes", gc.MODERADA.color, drillAttr_("reinc")) : ""}
         </div>
         ${pctVinCrit > 0 ? `
-          <div class="meter" style="margin-top:10px;">
+          <div class="meter" style="margin-top:10px;"${drillAttr_("vinscrit")}>
             <div class="meter__track"><div class="meter__seg" style="width:${pctVinCrit}%;background:${gc.CRITICA.barBg};"></div></div>
-            <div class="statTile__foot">1 de cada <b style="color:${gc.CRITICA.color};">${Math.round(100 / pctVinCrit)}</b> VINs tiene una incidencia crítica (${pctVinCrit}%)</div>
+            <div class="statTile__foot">1 de cada <b style="color:${gc.CRITICA.color};">${Math.round(100 / pctVinCrit)}</b> VINs tiene una incidencia crítica (${pctVinCrit}%) ›</div>
           </div>` : `<div class="statTile__foot" style="margin-top:8px;">Sin VINs con incidencia crítica 👍</div>`}
-        ${vinsReinc > 0 ? `<div class="statTile__foot" style="margin-top:10px;color:${gc.MODERADA.color};">⚠️ ${vinsReinc} vehículo${vinsReinc > 1 ? "s" : ""} con incidencias repetidas — revisar acciones correctivas</div>` : ""}
+        ${vinsReinc > 0 ? `<div class="statTile__foot"${drillAttr_("reinc")} style="margin-top:10px;color:${gc.MODERADA.color};">⚠️ ${vinsReinc} vehículo${vinsReinc > 1 ? "s" : ""} con incidencias repetidas — <b>ver cuáles ›</b></div>` : ""}
       </div>`;
   }
 
@@ -286,10 +446,10 @@ function timeCol_(val, color) {
 }
 
 // ── Fila de ranking de tiempo (categoría o técnico) — dos columnas: prom · total ─
-function timeRow(name, avgMin, sumMin, n, maxAvg, rank) {
+function timeRow(name, avgMin, sumMin, n, maxAvg, rank, drillKind) {
   const pct   = maxAvg > 0 ? Math.max(6, Math.round(avgMin / maxAvg * 100)) : 0;
   const color = avgMin <= 15 ? "#4ade80" : avgMin <= 45 ? "#f97316" : "#ef4444";
-  return "<div style=\"display:flex;align-items:center;gap:8px;padding:7px 0;"
+  return "<div" + (drillKind ? drillAttr_(drillKind, name) : "") + " style=\"display:flex;align-items:center;gap:8px;padding:7px 0;"
     + (rank > 0 ? "border-top:1px solid var(--surfaceLine);" : "") + "\">"
     + "<span style=\"font-size:.67em;font-weight:900;opacity:.3;min-width:16px;text-align:right;\">#" + (rank+1) + "</span>"
     + "<div style=\"flex:1;min-width:0;\">"
@@ -309,7 +469,7 @@ function timeRow(name, avgMin, sumMin, n, maxAvg, rank) {
 // ── Fila de tendencia mensual — mismas dos columnas: prom · total ───────────────
 function monthRow_(mes, avgMin, sumMin, n, maxSum, rank) {
   const pct = maxSum > 0 ? Math.max(6, Math.round(sumMin / maxSum * 100)) : 0;
-  return "<div style=\"display:flex;align-items:center;gap:8px;padding:7px 0;"
+  return "<div" + drillAttr_("mes", mes) + " style=\"display:flex;align-items:center;gap:8px;padding:7px 0;"
     + (rank > 0 ? "border-top:1px solid var(--surfaceLine);" : "") + "\">"
     + "<span style=\"font-size:.67em;font-weight:900;opacity:.3;min-width:16px;text-align:right;\">#" + (rank+1) + "</span>"
     + "<div style=\"flex:1;min-width:0;\">"
@@ -338,10 +498,10 @@ function renderRanking_(catGroups, summary, timeStats) {
     return { cat, C, M, L, total: C + M + L };
   }).sort((a, b) => b.C - a.C || b.total - a.total);
 
-  // Fila de categoría
+  // Fila de categoría — click → todas las incidencias de esa categoría
   function catRow(name, C, M, L, total, rank) {
     const accentColor = C ? "#ef4444" : M ? "#f97316" : "#eab308";
-    return "<div style=\"display:flex;align-items:center;gap:8px;padding:7px 0;"
+    return "<div" + drillAttr_("cat", name) + " style=\"display:flex;align-items:center;gap:8px;padding:7px 0;"
       + (rank > 0 ? "border-top:1px solid var(--surfaceLine);" : "") + "\">"
       + "<span style=\"font-size:.68em;font-weight:900;opacity:.35;min-width:16px;text-align:right;\">#" + (rank+1) + "</span>"
       + "<div style=\"flex:1;min-width:0;\">"
@@ -354,11 +514,11 @@ function renderRanking_(catGroups, summary, timeStats) {
       + "</div></div>";
   }
 
-  // Fila de técnico — avatar con iniciales
+  // Fila de técnico — click → sus incidencias
   function tecRow(name, C, M, L, total, rank) {
     const color = C ? "#ef4444" : M ? "#f97316" : "#eab308";
     const initials = name.trim().split(/\s+/).slice(0,2).map(w => w[0]||"").join("").toUpperCase();
-    return "<div style=\"display:flex;align-items:center;gap:8px;padding:7px 0;"
+    return "<div" + drillAttr_("tec", name) + " style=\"display:flex;align-items:center;gap:8px;padding:7px 0;"
       + (rank > 0 ? "border-top:1px solid var(--surfaceLine);" : "") + "\">"
       + "<span style=\"font-size:.67em;font-weight:900;opacity:.3;min-width:16px;text-align:right;\">#" + (rank+1) + "</span>"
       + "<div style=\"flex-shrink:0;width:26px;height:26px;border-radius:50%;background:" + color
@@ -374,13 +534,13 @@ function renderRanking_(catGroups, summary, timeStats) {
       + "</div></div>";
   }
 
-  // Fila de VIN
+  // Fila de VIN — click → historial completo de ese VIN
   function vinRow(vin, C, M, L, total, rank) {
     const color    = C ? "#ef4444" : M ? "#f97316" : "#eab308";
     const isReinc  = total > 1;
     // Mostrar solo últimos 8 chars del VIN para no ocupar espacio
     const shortVin = vin.length > 9 ? "…" + vin.slice(-9) : vin;
-    return "<div style=\"display:flex;align-items:center;gap:8px;padding:7px 0;"
+    return "<div" + drillAttr_("vin", vin) + " style=\"display:flex;align-items:center;gap:8px;padding:7px 0;"
       + (rank > 0 ? "border-top:1px solid var(--surfaceLine);" : "") + "\">"
       + "<span style=\"font-size:.67em;font-weight:900;opacity:.3;min-width:16px;text-align:right;\">#" + (rank+1) + "</span>"
       // indicador cuadrado con color
@@ -439,9 +599,9 @@ function renderRanking_(catGroups, summary, timeStats) {
     const maxCatAvg = Math.max(...timeStats.porCategoria.map(c => c.avg), 1);
     const maxTecAvg = Math.max(...timeStats.porTecnico.map(t => t.avg), 1);
     catTimeRows = timeColsHeader_() + timeStats.porCategoria.slice(0, 10)
-      .map((c, i) => timeRow(c.name, c.avg, c.sum, c.n, maxCatAvg, i)).join("");
+      .map((c, i) => timeRow(c.name, c.avg, c.sum, c.n, maxCatAvg, i, "cattime")).join("");
     tecTimeRows = timeColsHeader_() + timeStats.porTecnico.slice(0, 10)
-      .map((t, i) => timeRow(t.name, t.avg, t.sum, t.n, maxTecAvg, i)).join("");
+      .map((t, i) => timeRow(t.name, t.avg, t.sum, t.n, maxTecAvg, i, "tectime")).join("");
 
     // Tendencia mensual: agrupa según el intervalo de búsqueda (1 mes seleccionado
     // → 1 fila con el total del período; rango amplio → varias filas, una por mes).
@@ -493,6 +653,9 @@ function renderCard_(it) {
     +   "<div style=\"display:flex;gap:5px;align-items:center;flex-wrap:wrap;margin-bottom:3px;\">"
     +     "<code style=\"font-size:.75em;background:var(--ring-track);border-radius:4px;padding:1px 5px;\">" + _escape(it.vin || "—") + "</code>"
     +     chip_(g.abbr, g.label, g)
+    +     (Number.isFinite(it.duracion_min) && it.duracion_min >= 0
+          ? "<span style=\"font-size:.7em;font-weight:800;color:#22d3ee;background:rgba(34,211,238,.12);border:1px solid rgba(34,211,238,.3);border-radius:4px;padding:1px 5px;\">⏱ " + fmtMin_(it.duracion_min) + "</span>"
+          : "")
     +     "<span style=\"margin-left:auto;font-size:.73em;opacity:.45;flex-shrink:0;\">" + fmtDateTime_(it.fecha_hora) + "</span>"
     +   "</div>"
     +   "<div style=\"font-weight:800;font-size:.84em;color:" + g.color + ";opacity:.9;\">" + _escape(it.tecnico || "—") + "</div>"
@@ -626,7 +789,7 @@ function renderTrend_(items) {
     const hM = Math.round(v.M / maxDay * 60);
     const hL = Math.max(0, hTot - hC - hM);
     const dayLabel = d.slice(8); // DD
-    return "<div style=\"display:flex;flex-direction:column;align-items:center;gap:0;min-width:" + barW + "px;\">"
+    return "<div" + drillAttr_("dia", d) + " style=\"display:flex;flex-direction:column;align-items:center;gap:0;min-width:" + barW + "px;\">"
       + "<span style=\"font-size:.6em;opacity:.5;margin-bottom:2px;\">" + tot + "</span>"
       + "<div style=\"display:flex;flex-direction:column-reverse;width:" + (barW - 4) + "px;height:60px;justify-content:flex-start;\">"
       + (hC > 0 ? "<div style=\"height:" + hC + "px;background:#ef4444;border-radius:2px 2px 0 0;\"></div>" : "")
@@ -694,6 +857,8 @@ function renderIncReport_(j) {
 export function bindSupIncidenciasReport_({ getJSON_user, escapeHtml }) {
   _getJSON = getJSON_user;
   _escape  = escapeHtml;
+
+  bindDrillDelegation_(); // todo agregado del reporte es clickeable (drill-down)
 
   document.querySelectorAll(".inc-rep-tipo[data-tipo]").forEach(btn => {
     btn.addEventListener("click", () => {

@@ -1,0 +1,120 @@
+/* =====================================================================
+   overlays/drilldown.css — Bottom-sheet de drill-down universal
+   (core/drilldown.js). Cualquier número agregado se abre aquí para
+   mostrar el detalle. Solo tokens; funciona en ambos temas.
+   ===================================================================== */
+
+.drill {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-overlay);
+  display: none;
+}
+.drill.show { display: block; }
+
+.drill__backdrop {
+  position: absolute;
+  inset: 0;
+  background: var(--backdrop);
+  animation: fadeIn var(--dur-base) var(--ease-out);
+}
+
+.drill__panel {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  max-height: 82vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: var(--border-w) solid var(--surfaceLine);
+  border-bottom: none;
+  border-radius: var(--radius) var(--radius) 0 0;
+  box-shadow: var(--elev-3);
+  padding-bottom: var(--safeBottom);
+  animation: drillUp var(--dur-slow) var(--ease-out);
+}
+@keyframes drillUp {
+  from { transform: translateY(24px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+/* En pantallas anchas se centra como modal */
+@media (min-width: 720px) {
+  .drill__panel {
+    left: 50%; right: auto; bottom: 8vh;
+    transform: translateX(-50%);
+    width: min(680px, 92vw);
+    border-radius: var(--radius);
+    border-bottom: var(--border-w) solid var(--surfaceLine);
+  }
+  @keyframes drillUp {
+    from { transform: translate(-50%, 24px); opacity: 0; }
+    to   { transform: translate(-50%, 0);    opacity: 1; }
+  }
+}
+
+.drill__grip {
+  width: 40px; height: 4px;
+  border-radius: var(--radius-full);
+  background: var(--surfaceLine);
+  margin: 8px auto 2px;
+  flex-shrink: 0;
+}
+
+.drill__head {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  padding: 8px 14px 10px;
+  border-bottom: var(--border-w) solid var(--surfaceLine);
+  flex-shrink: 0;
+}
+.drill__titles { flex: 1; min-width: 0; }
+.drill__title {
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-black);
+  letter-spacing: .3px;
+}
+.drill__subtitle {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  margin-top: 1px;
+}
+.drill__badge {
+  background: var(--grad-accent);
+  color: var(--btnText);
+  font-weight: var(--fw-black);
+  font-size: var(--fs-sm);
+  border-radius: var(--radius-full);
+  padding: 2px 12px;
+  flex-shrink: 0;
+}
+.drill__close {
+  width: 32px; height: 32px;
+  border-radius: var(--radius-full);
+  border: var(--border-w) solid var(--surfaceLine);
+  background: var(--pillBg);
+  color: var(--text);
+  font-size: var(--fs-md);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background var(--dur-fast);
+}
+.drill__close:active { background: var(--surfaceLine); }
+
+.drill__body {
+  overflow-y: auto;
+  padding: 12px 14px 16px;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── Afford de interactividad: todo lo que abre drill-down ──
+   Se aplica con data-drill en cualquier tile/fila/barra. */
+[data-drill] {
+  cursor: pointer;
+  user-select: none;
+  transition: transform var(--dur-fast) var(--ease-out),
+              filter var(--dur-fast);
+}
+[data-drill]:hover  { filter: brightness(1.12); }
+[data-drill]:active { transform: scale(.985); }

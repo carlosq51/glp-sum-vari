@@ -31,11 +31,82 @@ import { bindSupUbicaciones_, enterUbicaciones_, exitUbicaciones_ } from "./sup-
 import { bindSupIncidenciasReport_, enterIncReport_, exitIncReport_ } from "./sup-incidencias-report.js";
 
 import { createScanner } from "../../core/qr-scanner.js";
+import { openDrilldown } from "../../core/drilldown.js";
+import { fmtDur_ } from "../../core/format.js";
 
 let supTrack = "CONVERSION";
 let supTimer = null;
 let supActiveTab_ = "LIVE"; // "REPORTE" | "LIVE"
 let _lastReportItems_ = [];
+let _supDrillBound_ = false;
+
+// ── Drill-down del avg-card: FINALIZADOS / MOTOR / TANQUE / SIN CAL. ─────────
+// Cada píldora abre la lista exacta de trabajos/VINs detrás del número.
+
+function drillRow_(it) {
+  const rol = String(it.rol || it.rolTrabajo || "").toUpperCase();
+  const est = String(it.estado || "").toUpperCase();
+  const dur = durationMsFromItem_(it);
+  return `<div style="display:flex;align-items:center;gap:8px;padding:8px 4px;border-bottom:1px solid var(--surfaceLine);">
+    <code style="font-size:.78em;font-weight:800;">${escapeHtml(it.vin || "—")}</code>
+    <span style="font-size:.74em;opacity:.6;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+      ${escapeHtml(it.userName || "—")}${it.modelo ? " · " + escapeHtml(it.modelo) : ""}
+    </span>
+    <span class="pill small">${escapeHtml(rol)}</span>
+    ${dur > 0 ? `<span style="font-size:.74em;font-weight:800;color:var(--note);">${escapeHtml(fmtDur_(dur))}</span>` : ""}
+    <span style="font-size:.7em;font-weight:800;color:${est === "FINALIZADO" ? "var(--ok)" : "var(--warn)"};">${escapeHtml(est)}</span>
+  </div>`;
+}
+
+function openSupDrill_(kind) {
+  const items = _lastReportItems_;
+  if (!items.length) return;
+  const isRolMotor  = (r) => ["MOTOR", "TECNICO", "CONVERSION"].includes(r);
+  const isRolTanque = (r) => ["TANQUE", "TANQUERO"].includes(r);
+  const rolOf = (it) => String(it.rol || it.rolTrabajo || "").toUpperCase();
+  let title = "", list = [];
+
+  if (kind === "fin") {
+    title = "Trabajos finalizados";
+    list = items.filter(it => isFinalizado_(it.estado));
+  } else if (kind === "motor") {
+    title = "Trabajos de MOTOR";
+    list = items.filter(it => isRolMotor(rolOf(it)));
+  } else if (kind === "tanque") {
+    title = "Trabajos de TANQUE";
+    list = items.filter(it => isRolTanque(rolOf(it)));
+  } else if (kind === "sincal") {
+    // VINs con motor+tanque finalizados (misma regla que el contador)
+    const vinStatus = new Map();
+    for (const it of items) {
+      const vin = String(it.vin || "").trim();
+      if (!vin) continue;
+      const s = vinStatus.get(vin) || { motorFin: false, tanqueFin: false };
+      if (isRolMotor(rolOf(it))  && isFinalizado_(it.estado)) s.motorFin  = true;
+      if (isRolTanque(rolOf(it)) && isFinalizado_(it.estado)) s.tanqueFin = true;
+      vinStatus.set(vin, s);
+    }
+    const vins = new Set([...vinStatus].filter(([, s]) => s.motorFin && s.tanqueFin).map(([v]) => v));
+    title = "VINs convertidos pendientes de calidad";
+    list = items.filter(it => vins.has(String(it.vin || "").trim()) && isFinalizado_(it.estado));
+  } else return;
+
+  list = [...list].sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")));
+  const html = list.length
+    ? list.map(drillRow_).join("")
+    : `<div style="padding:16px;text-align:center;opacity:.5;">Sin resultados.</div>`;
+  openDrilldown({ title, badge: list.length, html });
+}
+
+function bindSupDrill_() {
+  if (_supDrillBound_) return;
+  _supDrillBound_ = true;
+  document.addEventListener("click", (e) => {
+    const t = e.target.closest("[data-drill]");
+    if (!t || !t.closest("#supAvgCard")) return;
+    openSupDrill_(t.dataset.drill);
+  });
+}
 
 // ── Scanner exclusivo de VALIDAR (no comparte qrReader con sup/conv) ─────────
 const supValidarScanner_ = createScanner("supValidarQrReader");
@@ -454,6 +525,7 @@ export function init() {
   bindSupLive_();
   bindSupUbicaciones_();
   bindSupIncidenciasReport_({ getJSON_user, escapeHtml });
+  bindSupDrill_(); // píldoras del avg-card → drill-down
 
   // ── VALIDAR VIN ──────────────────────────────────────────────────────
   const supValidarInp = document.getElementById("supValidarVin");
