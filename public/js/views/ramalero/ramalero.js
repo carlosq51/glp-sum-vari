@@ -5,6 +5,8 @@ import { tickClocksUI_ } from "../conversion/conversion.js";
 import { initRamaleroActions_ } from "./ramalero-actions.js";
 import { initRamaleroDelegation_ } from "./ramalero-delegation.js";
 import { patchVisibleCards_ } from "../../work/index.js";
+import { enterSolicitudes_, exitSolicitudes_ } from "./ramalero-solicitudes.js";
+import { requestNotifPermission } from "../conversion/modals/ramal-alert.js";
 
 export function init() {
   initRamaleroActions_();
@@ -13,6 +15,15 @@ export function init() {
 
 export function enter() {
   CORE.state.currentModule = "RAMALERO";
+
+  // Cola de solicitudes en vivo (SSE + poll de respaldo)
+  enterSolicitudes_();
+
+  // Push nativo: el ramalero recibe notificación en el celular cuando
+  // un técnico crea una solicitud nueva (ver routes/ramal.js)
+  const email = String(document.getElementById("email")?.value || "").trim().toLowerCase();
+  if (email) requestNotifPermission(email);
+
   startLoopsFor_("RAMALERO", {
     syncNow,
     tickClocksUI: () => {
@@ -23,6 +34,7 @@ export function enter() {
 }
 
 export function exit() {
+  exitSolicitudes_();
   stopLoopsFor_("RAMALERO");
   clearModuleUI_("RAMALERO");
 }

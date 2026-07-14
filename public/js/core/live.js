@@ -20,7 +20,7 @@ import { loadConfig } from "./config.js";
 // (pollNowByCfg solo dispara los que estén ACTIVOS — vista abierta.)
 const TOPIC_TO_POLLS = {
   asignaciones: ["POLL_SUP_LIVE_MS", "POLL_ZONAS_MAPA_MS", "POLL_MOVILIZADOR_MS", "POLL_COLA_BADGE_MS", "POLL_VIN_READY_MS", "POLL_PAIR_SUGGEST_MS"],
-  ramal:        ["POLL_RAMAL_LISTO_MS", "POLL_COLA_POSICION_MS"],
+  ramal:        ["POLL_RAMAL_LISTO_MS", "POLL_COLA_POSICION_MS", "POLL_RAMALERO_SOL_MS"],
   zonas:        ["POLL_ZONAS_MAPA_MS", "POLL_SUP_UBICACIONES_MS"],
   movilizador:  ["POLL_MOVILIZADOR_MS", "POLL_SUP_UBICACIONES_MS", "POLL_ZONAS_MAPA_MS"],
   incidencias:  [],  // las vistas de incidencias escuchan "glp:live" directamente

@@ -3,6 +3,7 @@ import { supabaseHeaders_, supabaseGet_, supabasePost_, supabasePatch_ } from ".
 import { addServerTiming_ } from "../lib/timing.js";
 import { r2UploadIncidencia, photoUrls } from "../r2-uploads.js";
 import { emitEvent_ } from "../lib/events.js";
+import { sendPushToEmails_, getTecnicoEmailsByVin_ } from "../lib/push.js";
 
 const router = Router();
 
@@ -45,6 +46,29 @@ router.post("/api/incidencia", async (req, res) => {
     // Responder al cliente INMEDIATAMENTE
     emitEvent_("incidencias", { accion: "CREADA", vin: body.vin || "" });
     res.json({ ok: true, saved: true });
+
+    // Notificación push a los técnicos del VIN (en background, best-effort):
+    // cuando CALIDAD registra una incidencia, el técnico que trabajó ese
+    // carro se entera al instante en su celular.
+    (async () => {
+      try {
+        const emails = await getTecnicoEmailsByVin_(body.vin);
+        // No auto-notificarse: excluir a quien registró la incidencia
+        const registrador = String(body.email || body.registrado_por || "").trim().toLowerCase();
+        const targets = emails.filter(e => e.toLowerCase() !== registrador);
+        if (!targets.length) return;
+        const tipo = String(body.tipo || "LEVE").toUpperCase();
+        const icon = tipo === "CRITICA" ? "🔴" : tipo === "MODERADA" ? "🟠" : "🟡";
+        const r = await sendPushToEmails_(targets, {
+          title: `${icon} Incidencia ${tipo} en tu carro`,
+          body:  `VIN: ${body.vin || "—"}${body.nota ? `\n${String(body.nota).slice(0, 120)}` : ""}`,
+          tag:   `incidencia-${body.vin || ""}`,
+        });
+        if (r.sent) console.log(`[INCIDENCIA] Push a ${targets.length} técnico(s): ${r.sent} enviados`);
+      } catch (e) {
+        console.warn("[INCIDENCIA] push error:", e.message);
+      }
+    })();
 
     // 2) Si hay foto, subir a R2 en BACKGROUND y actualizar Supabase
     if (hasFoto && supabaseResult) {

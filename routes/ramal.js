@@ -1,8 +1,8 @@
 import { Router } from "express";
-import { supabaseHeaders_, supabaseServiceHeaders_, supabaseGet_, supabasePost_, supabasePatch_ } from "../lib/supabase.js";
+import { supabaseHeaders_, supabaseGet_, supabasePost_, supabasePatch_ } from "../lib/supabase.js";
 import { getConfig_ } from "../lib/config.js";
 import { emitEvent_ } from "../lib/events.js";
-import webpush from "web-push";
+import { sendPushToEmails_, getEmailsByRol_ } from "../lib/push.js";
 
 const router = Router();
 
@@ -93,6 +93,18 @@ router.post("/api/solicitud-ramal", async (req, res) => {
     const result = await supabasePost_("solicitudes_ramal", data);
     invalidatePollCache_();
     emitEvent_("ramal", { accion: "SOLICITADA", vin });
+
+    // Push a los ramaleros: solicitud nueva en su cola (background, best-effort)
+    (async () => {
+      const ramaleros = await getEmailsByRol_("RAMALERO");
+      if (!ramaleros.length) return;
+      await sendPushToEmails_(ramaleros, {
+        title: "🔩 Nueva solicitud de ramal",
+        body:  `${tecnicoNombre}${vin ? ` — VIN: ${vin}` : ""}${nota ? `\n${nota.slice(0, 100)}` : ""}`,
+        tag:   "ramal-solicitud",
+      });
+    })().catch(() => {});
+
     return res.json({ ok: true, item: Array.isArray(result) ? result[0] : result });
   } catch (e) {
     console.error("[POST /api/solicitud-ramal]", e.message);
@@ -167,37 +179,13 @@ router.post("/api/solicitud-ramal/:id/notificar", async (req, res) => {
     const techEmail = sol?.tecnico_email || "";
     const vin       = sol?.vin || "";
 
-    // 2. Enviar Web Push a todas las suscripciones del técnico
+    // 2. Web Push a todos los dispositivos del técnico (lib/push.js)
     if (techEmail) {
-      try {
-        // Usar service key para bypassear RLS en push_subscriptions
-        const _svcUrl = `${process.env.SUPABASE_URL}/rest/v1/push_subscriptions?email=eq.${encodeURIComponent(techEmail)}`;
-        const _svcR   = await fetch(_svcUrl, { headers: supabaseServiceHeaders_() });
-        const subs    = _svcR.ok ? await _svcR.json() : [];
-        const payload = JSON.stringify({
-          title: "🔩 ¡Tu ramal está listo!",
-          body:  vin ? `VIN: ${vin} — Acércate a recoger tu ramal.` : "Acércate a recoger tu ramal.",
-          tag:   "ramal-listo",
-        });
-        await Promise.allSettled(
-          (subs || []).map(s =>
-            webpush.sendNotification(
-              { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
-              payload,
-            ).catch(err => {
-              // 410 = suscripción caducada → limpiar
-              if (err.statusCode === 410) {
-                // Borrar suscripción caducada con service key
-                const _delUrl = `${process.env.SUPABASE_URL}/rest/v1/push_subscriptions?endpoint=eq.${encodeURIComponent(s.endpoint)}`;
-                fetch(_delUrl, { method: "DELETE", headers: supabaseServiceHeaders_() }).catch(() => {});
-              }
-              console.warn("[PUSH] send error:", err.statusCode, err.message);
-            })
-          )
-        );
-      } catch (pushErr) {
-        console.warn("[PUSH] fetch subs error:", pushErr.message);
-      }
+      await sendPushToEmails_([techEmail], {
+        title: "🔩 ¡Tu ramal está listo!",
+        body:  vin ? `VIN: ${vin} — Acércate a recoger tu ramal.` : "Acércate a recoger tu ramal.",
+        tag:   "ramal-listo",
+      });
     }
 
     return res.json({ ok: true });
