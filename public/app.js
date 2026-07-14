@@ -82,7 +82,7 @@ async function doLogin(email) {
     CORE.state.currentProfile = profile;
     saveEmail(email);
 
-    applyToroForUser_(profile);
+    applyToroForUser_(email, profile);
     applyDebugVisibilityUI();
     setUserPillUI();
     syncTopbarHomeButtonUI();
@@ -115,15 +115,13 @@ async function doLogin(email) {
 
 // Toro en la pantalla de carga — solo para usuarios especiales.
 // Marca body[data-toro="1"]; el CSS de loading.css hace el resto.
-const TORO_USERS_ = [
-  ["leysester", "rondoy"],
-  ["gianfranco", "flores"],
+const TORO_EMAILS_ = [
+  "ley.m2692@hotmail.com",
+  "gianfrancofloresflores3@gmail.com",
 ];
-function applyToroForUser_(profile) {
-  const norm = String(profile?.nombre || "")
-    .normalize("NFD").replace(/[̀-ͯ]/g, "")   // quita acentos
-    .toLowerCase();
-  const isToro = TORO_USERS_.some((tokens) => tokens.every((t) => norm.includes(t)));
+function applyToroForUser_(email, profile) {
+  const e = String(email || profile?.email || "").trim().toLowerCase();
+  const isToro = TORO_EMAILS_.includes(e);
   if (isToro) document.body.dataset.toro = "1";
   else delete document.body.dataset.toro;
 }
