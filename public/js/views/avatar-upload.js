@@ -103,6 +103,17 @@ function openModal() {
     console.log("[AVATAR_UPLOAD] Abriendo modal...");
     modal.classList.add("show");
     document.body.classList.add("modal-open");
+
+    // Debug: verificar estilos
+    setTimeout(() => {
+      const computed = window.getComputedStyle(modal);
+      console.log("[AVATAR_UPLOAD] Modal display:", computed.display);
+      console.log("[AVATAR_UPLOAD] Modal position:", computed.position);
+      console.log("[AVATAR_UPLOAD] Modal z-index:", computed.zIndex);
+      console.log("[AVATAR_UPLOAD] Modal clases:", modal.className);
+      console.log("[AVATAR_UPLOAD] Modal visible:", modal.offsetHeight > 0);
+    }, 100);
+
     resetModal();
   }
 }
