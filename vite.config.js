@@ -2,13 +2,13 @@ import { defineConfig } from 'vite'
 import autoprefixer from 'autoprefixer'
 import { VitePWA } from 'vite-plugin-pwa'
 import legacy from '@vitejs/plugin-legacy'
-import { copyFileSync, mkdirSync } from 'fs'
+import { copyFileSync, mkdirSync, readdirSync } from 'fs'
 import { resolve, dirname } from 'path'
 import { fileURLToPath } from 'url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
-// Plugin local: copia los iconos PWA al dist/
+// Plugin local: copia los iconos PWA y avatares al dist/
 function copyPwaIcons() {
   return {
     name: 'copy-pwa-icons',
@@ -16,9 +16,22 @@ function copyPwaIcons() {
       const src = resolve(__dirname, 'public')
       const dst = resolve(__dirname, 'dist')
       try { mkdirSync(dst, { recursive: true }) } catch {}
+
+      // Copiar archivos PWA
       for (const f of ['pwa-512.png', 'pwa-192.png', 'apple-touch-icon.png']) {
         try { copyFileSync(`${src}/${f}`, `${dst}/${f}`) } catch {}
       }
+
+      // Copiar carpeta de avatares
+      const avatarsSrc = resolve(src, 'avatars')
+      const avatarsDst = resolve(dst, 'avatars')
+      try {
+        mkdirSync(avatarsDst, { recursive: true })
+        const files = readdirSync(avatarsSrc)
+        files.forEach(f => {
+          try { copyFileSync(`${avatarsSrc}/${f}`, `${avatarsDst}/${f}`) } catch {}
+        })
+      } catch {}
     }
   }
 }
