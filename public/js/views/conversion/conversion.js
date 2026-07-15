@@ -38,6 +38,7 @@ import { PAUSA_AUTO_RESUME_MS, autoResumingKeys_, enviarEvento, autoStartFromSca
 import { initConversionDelegation_ } from "./ui/conversion-delegation.js";
 import { icon } from "../../core/icons.js";
 import { initVinAutocomplete_ } from "./ui/conversion-vin-autocomplete.js";
+import { initAvatarUpload } from "../avatar-upload.js";
 import { checkPendingAlerts_, getMyNombre_ } from "./modals/incidencia-alert.js";
 import { requestNotifPermission } from "./modals/ramal-alert.js";
 import { initConversionQR_ } from "./ui/conversion-qr.js";
@@ -1489,6 +1490,9 @@ export function enter(mod) {
     if (email) checkPendingAlerts_(email, 12).catch(() => {});
 
     requestNotifPermission(email);
+
+    // Inicializar upload de avatar
+    initAvatarUpload();
 
     // Polls gobernados por config (se pausan en background, intervalo editable
     // desde Admin → app_config sin redeploy). Ver core/poll.js.
