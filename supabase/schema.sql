@@ -362,3 +362,11 @@ CREATE TABLE IF NOT EXISTS ml_models (
 
 ALTER TABLE ml_models ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "service_full_access" ON ml_models FOR ALL USING (true) WITH CHECK (true);
+
+-- ────────────────────────────────────────────
+--  MIGRATION v7: avatar_url
+--  URL de la foto de perfil del usuario en R2
+--  Ejecutar en Supabase SQL Editor:
+-- ────────────────────────────────────────────
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS avatar_url TEXT DEFAULT '';
+CREATE INDEX IF NOT EXISTS idx_usuarios_avatar ON usuarios (avatar_url) WHERE avatar_url <> '';

@@ -407,3 +407,25 @@ export async function r2DeleteSlot({ vin, dateStr, slot }) {
 
   return { ok: true, vin, slot, deleted: key };
 }
+
+/**
+ * uploadAvatar — sube la foto de perfil de un usuario
+ * Ruta R2: avatares/{email_sanitizado}.jpg
+ * Devuelve la URL pública para guardar en usuario.avatar_url
+ */
+export async function r2UploadAvatar({ email, b64, mimeType = "image/jpeg" }) {
+  if (!email || !b64) throw new Error("Faltan parámetros: email, b64");
+
+  const emailSanitized = String(email || "").toLowerCase().replace(/[^a-z0-9.+_-]/g, "_");
+  const key = `avatares/${emailSanitized}.jpg`;
+
+  const url = await put(key, b64, mimeType);
+
+  return {
+    ok: true,
+    email,
+    key,
+    url,
+    avatarUrl: url,
+  };
+}

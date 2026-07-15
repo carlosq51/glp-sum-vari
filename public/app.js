@@ -29,6 +29,7 @@ import { initAppSettings } from "./js/core/app-settings.js";
 import { openSettingsSheet } from "./js/core/settings-sheet.js";
 import { loadConfig } from "./js/core/config.js";
 import { initLive } from "./js/core/live.js";
+import { initAvatarUpload } from "./js/views/avatar-upload.js";
 
 // Aplicar ajustes guardados (fuente, acento) antes de cualquier render
 initAppSettings();
@@ -103,6 +104,7 @@ async function doLogin(email) {
       hideAllModulesUI();
       showHubUI(mods, (m) => openModule(m));
       CORE.state.currentModule = null;
+      initAvatarUpload();
     } else {
       openModule(mods[0]);
     }
@@ -191,6 +193,7 @@ $("btnGoHome")?.addEventListener("click", () => {
 
   showHubUI(mods, (m) => openModule(m));
   CORE.state.currentModule = null;
+  initAvatarUpload();
 });
 
 $("btnMe")?.addEventListener("click", async () => {

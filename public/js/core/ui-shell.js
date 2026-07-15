@@ -109,7 +109,9 @@ export function renderUserAvatar(wrap) {
   }
 
   const email = String(CORE.state.currentProfile?.email || getEmail_() || "").trim().toLowerCase();
-  const url = TECH_AVATARS[email];
+  const avatarUrl = CORE.state.currentProfile?.avatar_url;
+  const legacyUrl = TECH_AVATARS[email];
+  const url = avatarUrl || legacyUrl;
 
   wrap.classList.remove("hubAvatar--photo", "hubAvatar--toro");
 
@@ -122,6 +124,9 @@ export function renderUserAvatar(wrap) {
   } else {
     imgBox.innerHTML = icon("user", 30);
   }
+
+  wrap.style.cursor = "pointer";
+  wrap.title = "Hacer clic para cambiar foto de perfil";
 }
 
 function renderHubAvatar_() {

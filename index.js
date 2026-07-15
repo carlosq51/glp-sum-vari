@@ -16,6 +16,7 @@ import tecnicoRouter from "./routes/tecnico.js";
 import mlRouter, { scheduleAutoRetrain_, loadPairingModelFromSupabase_ } from "./routes/ml.js";
 import vinsRouter from "./routes/vins.js";
 import zonasRouter from "./routes/zonas.js";
+import profileRouter from "./routes/profile.js";
 import { sseHandler_ } from "./lib/events.js";
 
 dotenv.config();
@@ -99,6 +100,7 @@ app.use(tecnicoRouter);
 app.use(mlRouter);
 app.use(vinsRouter);
 app.use(zonasRouter);
+app.use(profileRouter);
 
 // ── Start server ──────────────────────────────────────────────────────────────
 app.listen(PORT, "0.0.0.0", () => {

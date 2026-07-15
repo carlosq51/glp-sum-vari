@@ -6,6 +6,7 @@ import {
   r2UploadConformidad,
   r2GetStatus,
   r2DeleteSlot,
+  r2UploadAvatar,
 } from "../r2-uploads.js";
 
 const router = Router();
@@ -14,7 +15,7 @@ const router = Router();
 // =========================
 // UPLOADER → Cloudflare R2
 // =========================
-const R2_ACTIONS = new Set(["getStatus", "uploadOne", "uploadFalla", "uploadCalidad", "uploadConformidad", "deleteSlot"]);
+const R2_ACTIONS = new Set(["getStatus", "uploadOne", "uploadFalla", "uploadCalidad", "uploadConformidad", "deleteSlot", "uploadAvatar"]);
 
 router.post("/api/uploader/proxy", async (req, res) => {
   try {
@@ -47,6 +48,9 @@ router.post("/api/uploader/proxy", async (req, res) => {
         break;
       case "deleteSlot":
         result = await r2DeleteSlot(payload);
+        break;
+      case "uploadAvatar":
+        result = await r2UploadAvatar(payload);
         break;
       default:
         return res.status(400).json({ ok: false, error: "Acción desconocida" });
