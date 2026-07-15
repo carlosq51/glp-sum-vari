@@ -11,8 +11,14 @@ let selectedFile = null;
 let previewDataUrl = null;
 
 export function initAvatarUpload() {
+  console.log("[AVATAR_UPLOAD] Inicializando...");
+
   const modal = $("avatarUploadModal");
-  if (!modal) return;
+  console.log("[AVATAR_UPLOAD] Modal encontrado:", !!modal);
+  if (!modal) {
+    console.warn("[AVATAR_UPLOAD] Modal no encontrado!");
+    return;
+  }
 
   const btnCloseModal = $("btnCloseAvatarModal");
   const btnCancel = $("btnCancelAvatarUpload");
@@ -22,9 +28,11 @@ export function initAvatarUpload() {
 
   // Avatar puede estar en Hub (hubAvatar) o en TECNICO (tecAvatar)
   const avatar = $("hubAvatar") || $("tecAvatar");
+  console.log("[AVATAR_UPLOAD] Avatar encontrado:", !!avatar, "ID:", avatar?.id);
 
   // Abrir modal al hacer clic en el avatar
   if (avatar) {
+    console.log("[AVATAR_UPLOAD] Agregando listener de click al avatar");
     avatar.addEventListener("click", openModal);
   }
 
@@ -87,8 +95,11 @@ export function initAvatarUpload() {
 }
 
 function openModal() {
+  console.log("[AVATAR_UPLOAD] openModal() llamado");
   const modal = $("avatarUploadModal");
+  console.log("[AVATAR_UPLOAD] Modal en openModal:", !!modal);
   if (modal) {
+    console.log("[AVATAR_UPLOAD] Abriendo modal...");
     modal.classList.add("show");
     document.body.classList.add("modal-open");
     resetModal();
