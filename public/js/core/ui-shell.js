@@ -12,7 +12,7 @@ import { icon, toroSvg } from "./icons.js";
 // CSP no se permiten hosts externos). Para personalizar a alguien con foto,
 // añade su email aquí.
 const TECH_AVATARS = {
-  "do-ni2010@hotmail.com": "/avatars/bowser.svg",
+  "do-ni2010@hotmail.com": "/avatars/bowser.jpg",
 };
 
 // Emails que usan el toro (dibujo SVG con dos cuernos) como avatar.
