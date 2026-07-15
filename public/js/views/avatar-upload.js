@@ -107,11 +107,18 @@ function openModal() {
     // Debug: verificar estilos
     setTimeout(() => {
       const computed = window.getComputedStyle(modal);
+      const box = modal.querySelector(".modalBox");
+      const boxComputed = box ? window.getComputedStyle(box) : null;
       console.log("[AVATAR_UPLOAD] Modal display:", computed.display);
       console.log("[AVATAR_UPLOAD] Modal position:", computed.position);
       console.log("[AVATAR_UPLOAD] Modal z-index:", computed.zIndex);
       console.log("[AVATAR_UPLOAD] Modal clases:", modal.className);
-      console.log("[AVATAR_UPLOAD] Modal visible:", modal.offsetHeight > 0);
+      console.log("[AVATAR_UPLOAD] Modal offsetHeight:", modal.offsetHeight);
+      console.log("[AVATAR_UPLOAD] Modal clientHeight:", modal.clientHeight);
+      if (box) {
+        console.log("[AVATAR_UPLOAD] ModalBox offsetHeight:", box.offsetHeight);
+        console.log("[AVATAR_UPLOAD] ModalBox display:", boxComputed.display);
+      }
     }, 100);
 
     resetModal();
