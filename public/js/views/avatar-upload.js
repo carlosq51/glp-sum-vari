@@ -11,14 +11,8 @@ let selectedFile = null;
 let previewDataUrl = null;
 
 export function initAvatarUpload() {
-  console.log("[AVATAR_UPLOAD] Inicializando...");
-
   const modal = $("avatarUploadModal");
-  console.log("[AVATAR_UPLOAD] Modal encontrado:", !!modal);
-  if (!modal) {
-    console.warn("[AVATAR_UPLOAD] Modal no encontrado!");
-    return;
-  }
+  if (!modal) return;
 
   const btnCloseModal = $("btnCloseAvatarModal");
   const btnCancel = $("btnCancelAvatarUpload");
@@ -27,13 +21,10 @@ export function initAvatarUpload() {
   const uploadZone = $("avatarUploadZone");
 
   // Avatar puede estar en TECNICO (tecAvatar - visible) o en Hub (hubAvatar)
-  // Buscar PRIMERO tecAvatar (está visible en TECNICO)
   const avatar = $("tecAvatar") || $("hubAvatar");
-  console.log("[AVATAR_UPLOAD] Avatar encontrado:", !!avatar, "ID:", avatar?.id);
 
   // Abrir modal al hacer clic en el avatar
   if (avatar) {
-    console.log("[AVATAR_UPLOAD] Agregando listener de click al avatar");
     avatar.addEventListener("click", openModal);
   }
 
@@ -96,31 +87,10 @@ export function initAvatarUpload() {
 }
 
 function openModal() {
-  console.log("[AVATAR_UPLOAD] openModal() llamado");
   const modal = $("avatarUploadModal");
-  console.log("[AVATAR_UPLOAD] Modal en openModal:", !!modal);
   if (modal) {
-    console.log("[AVATAR_UPLOAD] Abriendo modal...");
     modal.classList.add("show");
     document.body.classList.add("modal-open");
-
-    // Debug: verificar estilos
-    setTimeout(() => {
-      const computed = window.getComputedStyle(modal);
-      const box = modal.querySelector(".modalBox");
-      const boxComputed = box ? window.getComputedStyle(box) : null;
-      console.log("[AVATAR_UPLOAD] Modal display:", computed.display);
-      console.log("[AVATAR_UPLOAD] Modal position:", computed.position);
-      console.log("[AVATAR_UPLOAD] Modal z-index:", computed.zIndex);
-      console.log("[AVATAR_UPLOAD] Modal clases:", modal.className);
-      console.log("[AVATAR_UPLOAD] Modal offsetHeight:", modal.offsetHeight);
-      console.log("[AVATAR_UPLOAD] Modal clientHeight:", modal.clientHeight);
-      if (box) {
-        console.log("[AVATAR_UPLOAD] ModalBox offsetHeight:", box.offsetHeight);
-        console.log("[AVATAR_UPLOAD] ModalBox display:", boxComputed.display);
-      }
-    }, 100);
-
     resetModal();
   }
 }
