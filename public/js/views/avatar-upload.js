@@ -26,8 +26,9 @@ export function initAvatarUpload() {
   const fileInput = $("avatarFileInput");
   const uploadZone = $("avatarUploadZone");
 
-  // Avatar puede estar en Hub (hubAvatar) o en TECNICO (tecAvatar)
-  const avatar = $("hubAvatar") || $("tecAvatar");
+  // Avatar puede estar en TECNICO (tecAvatar - visible) o en Hub (hubAvatar)
+  // Buscar PRIMERO tecAvatar (está visible en TECNICO)
+  const avatar = $("tecAvatar") || $("hubAvatar");
   console.log("[AVATAR_UPLOAD] Avatar encontrado:", !!avatar, "ID:", avatar?.id);
 
   // Abrir modal al hacer clic en el avatar
