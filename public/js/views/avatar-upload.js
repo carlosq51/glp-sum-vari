@@ -19,11 +19,13 @@ export function initAvatarUpload() {
   const btnConfirm = $("btnConfirmAvatarUpload");
   const fileInput = $("avatarFileInput");
   const uploadZone = $("avatarUploadZone");
-  const hubAvatar = $("hubAvatar");
+
+  // Avatar puede estar en Hub (hubAvatar) o en TECNICO (tecAvatar)
+  const avatar = $("hubAvatar") || $("tecAvatar");
 
   // Abrir modal al hacer clic en el avatar
-  if (hubAvatar) {
-    hubAvatar.addEventListener("click", openModal);
+  if (avatar) {
+    avatar.addEventListener("click", openModal);
   }
 
   // Cerrar modal
@@ -212,12 +214,12 @@ async function uploadAvatar() {
       CORE.state.currentProfile.avatar_url = result.url;
     }
 
-    // Renderizar el avatar actualizado
+    // Renderizar el avatar actualizado (puede estar en Hub o en TECNICO)
+    const { renderUserAvatar } = await import("../core/ui-shell.js");
     const hubAvatar = $("hubAvatar");
-    if (hubAvatar) {
-      const { renderUserAvatar } = await import("../core/ui-shell.js");
-      renderUserAvatar(hubAvatar);
-    }
+    const tecAvatar = $("tecAvatar");
+    if (hubAvatar) renderUserAvatar(hubAvatar);
+    if (tecAvatar) renderUserAvatar(tecAvatar);
 
     showStatus("success", "¡Foto actualizada!");
     setTimeout(() => closeModal(), 1500);
