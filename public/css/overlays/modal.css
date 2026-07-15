@@ -5,6 +5,8 @@
 .modal {
   position: fixed;
   inset: 0;
+  width: 100vw;
+  height: 100vh;
   background: var(--backdrop);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
