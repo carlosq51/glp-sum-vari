@@ -121,7 +121,7 @@ export function tecnicoView() {
 // Modal avatar (fuera de viewTECNICO para evitar bug WebKit position:fixed)
 export function avatarUploadModalTemplate() {
   return `
-    <div id="avatarUploadModal" class="modal" style="display:none;">
+    <div id="avatarUploadModal" class="modal">
       <div class="modalBox" style="width: min(100%, 480px);">
         <div class="modalHead">
           <h3 class="modalTitle">Cambiar foto de perfil</h3>
