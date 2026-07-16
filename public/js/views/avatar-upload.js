@@ -79,15 +79,17 @@ function showCropUI(file) {
       <div class="avatar-crop-overlay">
         <div class="avatar-crop-header">
           <h3>Encuadrar foto</h3>
-          <button id="btnCloseCrop" class="avatar-crop-close">×</button>
+          <button class="avatar-crop-close">×</button>
         </div>
         <div class="avatar-crop-content">
-          <img id="cropImage" src="${e.target.result}" alt="Crop preview">
-          <div id="cropBox" class="crop-box"></div>
+          <div class="avatar-crop-wrapper">
+            <img class="cropImage" src="${e.target.result}" alt="Crop preview">
+            <div class="crop-box"></div>
+          </div>
         </div>
         <div class="avatar-crop-actions">
-          <button id="btnCancelCrop" class="btn-secondary">Cancelar</button>
-          <button id="btnSaveCrop" class="btn-primary">Guardar foto</button>
+          <button class="btn-secondary btn-cancel">Cancelar</button>
+          <button class="btn-primary btn-save">Guardar foto</button>
         </div>
       </div>
     `;
@@ -95,8 +97,9 @@ function showCropUI(file) {
     document.body.appendChild(cropContainer);
 
     // Crop logic
-    const image = document.getElementById("cropImage");
-    const cropBox = document.getElementById("cropBox");
+    const image = cropContainer.querySelector(".cropImage");
+    const cropBox = cropContainer.querySelector(".crop-box");
+    const wrapper = cropContainer.querySelector(".avatar-crop-wrapper");
     let isDrawing = false;
     let startX, startY;
 
@@ -109,9 +112,10 @@ function showCropUI(file) {
       cropBox.style.top = startY + "px";
       cropBox.style.width = "0";
       cropBox.style.height = "0";
+      cropBox.style.display = "block";
     });
 
-    image.addEventListener("mousemove", (e) => {
+    document.addEventListener("mousemove", (e) => {
       if (!isDrawing) return;
       const rect = image.getBoundingClientRect();
       const currentX = e.clientX - rect.left;
@@ -122,24 +126,34 @@ function showCropUI(file) {
       if (currentY < startY) cropBox.style.top = currentY + "px";
     });
 
-    image.addEventListener("mouseup", () => {
+    document.addEventListener("mouseup", () => {
       isDrawing = false;
     });
 
-    document.getElementById("btnSaveCrop").addEventListener("click", () => {
+    cropContainer.querySelector(".btn-save").addEventListener("click", () => {
       saveCroppedAvatar(file);
       cropContainer.remove();
     });
 
-    document.getElementById("btnCancelCrop").addEventListener("click", () => {
+    cropContainer.querySelector(".btn-cancel").addEventListener("click", () => {
       cropContainer.remove();
       currentFile = null;
     });
 
-    document.getElementById("btnCloseCrop").addEventListener("click", () => {
+    cropContainer.querySelector(".avatar-crop-close").addEventListener("click", () => {
       cropContainer.remove();
       currentFile = null;
     });
+
+    // Cerrar al presionar ESC
+    const escHandler = (e) => {
+      if (e.key === "Escape") {
+        cropContainer.remove();
+        currentFile = null;
+        document.removeEventListener("keydown", escHandler);
+      }
+    };
+    document.addEventListener("keydown", escHandler);
   };
 
   reader.readAsDataURL(file);

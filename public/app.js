@@ -100,11 +100,13 @@ async function doLogin(email) {
     // otra persona muta el estado (ver core/live.js)
     initLive();
 
+    // Inicializar avatar upload (disponible en Hub y en módulos)
+    initAvatarUpload();
+
     if (mods.length > 1) {
       hideAllModulesUI();
       showHubUI(mods, (m) => openModule(m));
       CORE.state.currentModule = null;
-      initAvatarUpload();
     } else {
       openModule(mods[0]);
     }
