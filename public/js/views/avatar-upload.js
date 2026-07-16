@@ -1,245 +1,296 @@
 // =========================
 // public/js/views/avatar-upload.js
-// Popup simple para cambiar avatar
+// Cambiar avatar: popup (subir / eliminar) + recorte cuadrado real
 // =========================
 
 import { CORE } from "../core/state.js";
 import { $ } from "../core/dom.js";
-import { fileToB64Compressed } from "./uploader/uploader-api.js";
 
-let currentFile = null;
-let cropCanvas = null;
+// IDs de los avatares clickeables en las distintas vistas
+const AVATAR_IDS = ["hubAvatar", "tecAvatar", "movAvatar"];
 
 export function initAvatarUpload() {
-  // Avatar puede estar en TECNICO (tecAvatar) o Hub (hubAvatar)
-  const avatar = $("tecAvatar") || $("hubAvatar");
-  if (!avatar) return;
-
-  avatar.style.cursor = "pointer";
-  avatar.addEventListener("click", () => showAvatarPopup(avatar));
+  for (const id of AVATAR_IDS) {
+    const el = $(id);
+    if (!el || el.dataset.avatarBound === "1") continue;
+    el.dataset.avatarBound = "1";
+    el.style.cursor = "pointer";
+    el.addEventListener("click", () => showAvatarPopup(el));
+  }
 }
 
+// Re-renderiza el avatar en todas las vistas donde exista
+async function refreshAllAvatars() {
+  const { renderUserAvatar } = await import("../core/ui-shell.js");
+  for (const id of AVATAR_IDS) {
+    const el = $(id);
+    if (el) renderUserAvatar(el);
+  }
+}
+
+// ─── Popup (Subir / Eliminar) ─────────────────────────────────────────────
 function showAvatarPopup(avatarEl) {
-  // Remover popup anterior si existe
-  const existingPopup = document.querySelector(".avatar-popup");
-  if (existingPopup) existingPopup.remove();
+  closePopup();
 
   const popup = document.createElement("div");
   popup.className = "avatar-popup";
   popup.innerHTML = `
     <div class="avatar-popup-content">
-      <button class="avatar-popup-btn" id="btnUploadPhoto">📤 Subir foto</button>
-      <button class="avatar-popup-btn" id="btnDeletePhoto">🗑️ Eliminar</button>
-      <input type="file" id="avatarFileInput" accept="image/jpeg,image/png" style="display:none;">
+      <button class="avatar-popup-btn" data-act="upload">📤 Subir foto</button>
+      <button class="avatar-popup-btn" data-act="delete">🗑️ Eliminar</button>
     </div>
   `;
-
   document.body.appendChild(popup);
 
-  // Posicionar cerca del avatar
+  // Posicionar cerca del avatar, sin salirse de la pantalla
   const rect = avatarEl.getBoundingClientRect();
   popup.style.position = "fixed";
-  popup.style.top = (rect.bottom + 10) + "px";
-  popup.style.left = (rect.left - 50) + "px";
+  popup.style.top = rect.bottom + 8 + "px";
+  const left = Math.max(8, Math.min(rect.left - 40, window.innerWidth - popup.offsetWidth - 8));
+  popup.style.left = left + "px";
 
-  // Listeners
-  document.getElementById("btnUploadPhoto").addEventListener("click", () => {
-    document.getElementById("avatarFileInput").click();
+  // Input file dedicado (referencia local — sin IDs globales)
+  const fileInput = document.createElement("input");
+  fileInput.type = "file";
+  fileInput.accept = "image/jpeg,image/png";
+  fileInput.style.display = "none";
+  popup.appendChild(fileInput);
+
+  popup.querySelector('[data-act="upload"]').addEventListener("click", () => {
+    fileInput.click();
   });
 
-  document.getElementById("btnDeletePhoto").addEventListener("click", () => {
+  popup.querySelector('[data-act="delete"]').addEventListener("click", () => {
+    closePopup();
     deleteAvatar();
-    popup.remove();
   });
 
-  document.getElementById("avatarFileInput").addEventListener("change", (e) => {
-    if (e.target.files[0]) {
-      currentFile = e.target.files[0];
-      showCropUI(e.target.files[0]);
-      popup.remove();
-    }
+  fileInput.addEventListener("change", (e) => {
+    const file = e.target.files && e.target.files[0];
+    closePopup();
+    if (file) showCropUI(file);
   });
 
-  // Cerrar popup al hacer click fuera
-  setTimeout(() => {
-    document.addEventListener("click", (e) => {
-      if (!popup.contains(e.target) && !e.target.closest(".avatar-popup")) {
-        popup.remove();
-      }
-    }, { once: true });
-  });
+  // Cerrar al hacer click fuera (listener persistente, se limpia en closePopup)
+  const onDocClick = (e) => {
+    if (!popup.contains(e.target)) closePopup();
+  };
+  // Se registra en el próximo tick para no capturar el click que abrió el popup
+  setTimeout(() => document.addEventListener("mousedown", onDocClick), 0);
+  popup._cleanup = () => document.removeEventListener("mousedown", onDocClick);
 }
 
+function closePopup() {
+  const popup = document.querySelector(".avatar-popup");
+  if (!popup) return;
+  if (typeof popup._cleanup === "function") popup._cleanup();
+  popup.remove();
+}
+
+// ─── Recorte (crop cuadrado real) ─────────────────────────────────────────
 function showCropUI(file) {
   const reader = new FileReader();
   reader.onload = (e) => {
-    const cropContainer = document.createElement("div");
-    cropContainer.className = "avatar-crop-container";
-    cropContainer.innerHTML = `
+    const container = document.createElement("div");
+    container.className = "avatar-crop-container";
+    container.innerHTML = `
       <div class="avatar-crop-overlay">
         <div class="avatar-crop-header">
           <h3>Encuadrar foto</h3>
-          <button class="avatar-crop-close">×</button>
+          <button class="avatar-crop-close" type="button">×</button>
         </div>
         <div class="avatar-crop-content">
           <div class="avatar-crop-wrapper">
-            <img class="cropImage" src="${e.target.result}" alt="Crop preview">
+            <img class="cropImage" src="${e.target.result}" alt="Vista previa" draggable="false">
             <div class="crop-box"></div>
           </div>
         </div>
         <div class="avatar-crop-actions">
-          <button class="btn-secondary btn-cancel">Cancelar</button>
-          <button class="btn-primary btn-save">Guardar foto</button>
+          <button class="btn-secondary btn-cancel" type="button">Cancelar</button>
+          <button class="btn-primary btn-save" type="button">Guardar foto</button>
         </div>
       </div>
     `;
+    document.body.appendChild(container);
+    document.body.classList.add("modal-open");
 
-    document.body.appendChild(cropContainer);
+    const image = container.querySelector(".cropImage");
+    const cropBox = container.querySelector(".crop-box");
 
-    // Crop logic
-    const image = cropContainer.querySelector(".cropImage");
-    const cropBox = cropContainer.querySelector(".crop-box");
-    const wrapper = cropContainer.querySelector(".avatar-crop-wrapper");
-    let isDrawing = false;
-    let startX, startY;
+    // Estado del recorte, en píxeles de imagen mostrada
+    const crop = { x: 0, y: 0, size: 0 };
 
-    image.addEventListener("mousedown", (e) => {
-      isDrawing = true;
-      const rect = image.getBoundingClientRect();
-      startX = e.clientX - rect.left;
-      startY = e.clientY - rect.top;
-      cropBox.style.left = startX + "px";
-      cropBox.style.top = startY + "px";
-      cropBox.style.width = "0";
-      cropBox.style.height = "0";
+    function drawBox() {
       cropBox.style.display = "block";
+      cropBox.style.left = crop.x + "px";
+      cropBox.style.top = crop.y + "px";
+      cropBox.style.width = crop.size + "px";
+      cropBox.style.height = crop.size + "px";
+    }
+
+    function clamp() {
+      const w = image.clientWidth;
+      const h = image.clientHeight;
+      crop.size = Math.max(24, Math.min(crop.size, w, h));
+      crop.x = Math.max(0, Math.min(crop.x, w - crop.size));
+      crop.y = Math.max(0, Math.min(crop.y, h - crop.size));
+    }
+
+    function initDefaultBox() {
+      const w = image.clientWidth;
+      const h = image.clientHeight;
+      crop.size = Math.min(w, h) * 0.8;
+      crop.x = (w - crop.size) / 2;
+      crop.y = (h - crop.size) / 2;
+      clamp();
+      drawBox();
+    }
+
+    if (image.complete && image.naturalWidth) initDefaultBox();
+    else image.addEventListener("load", initDefaultBox, { once: true });
+
+    // Dibujar un nuevo recuadro cuadrado arrastrando sobre la imagen
+    let drawing = false;
+    let anchorX = 0;
+    let anchorY = 0;
+
+    function pointerPos(ev) {
+      const r = image.getBoundingClientRect();
+      return {
+        x: Math.max(0, Math.min(ev.clientX - r.left, image.clientWidth)),
+        y: Math.max(0, Math.min(ev.clientY - r.top, image.clientHeight)),
+      };
+    }
+
+    function onDown(ev) {
+      ev.preventDefault();
+      drawing = true;
+      const p = pointerPos(ev);
+      anchorX = p.x;
+      anchorY = p.y;
+      crop.size = 0;
+      crop.x = p.x;
+      crop.y = p.y;
+    }
+
+    function onMove(ev) {
+      if (!drawing) return;
+      const p = pointerPos(ev);
+      const side = Math.max(Math.abs(p.x - anchorX), Math.abs(p.y - anchorY));
+      crop.size = side;
+      crop.x = p.x < anchorX ? anchorX - side : anchorX;
+      crop.y = p.y < anchorY ? anchorY - side : anchorY;
+      clamp();
+      drawBox();
+    }
+
+    function onUp() {
+      if (!drawing) return;
+      drawing = false;
+      if (crop.size < 24) initDefaultBox(); // clic sin arrastre → recuadro por defecto
+    }
+
+    image.addEventListener("pointerdown", onDown);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+
+    function cleanup() {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      document.removeEventListener("keydown", onKey);
+      document.body.classList.remove("modal-open");
+      container.remove();
+    }
+
+    function onKey(ev) {
+      if (ev.key === "Escape") cleanup();
+    }
+    document.addEventListener("keydown", onKey);
+
+    container.querySelector(".btn-cancel").addEventListener("click", cleanup);
+    container.querySelector(".avatar-crop-close").addEventListener("click", cleanup);
+    container.addEventListener("mousedown", (ev) => {
+      if (ev.target === container) cleanup(); // click en el fondo oscuro
     });
 
-    document.addEventListener("mousemove", (e) => {
-      if (!isDrawing) return;
-      const rect = image.getBoundingClientRect();
-      const currentX = e.clientX - rect.left;
-      const currentY = e.clientY - rect.top;
-      cropBox.style.width = Math.abs(currentX - startX) + "px";
-      cropBox.style.height = Math.abs(currentY - startY) + "px";
-      if (currentX < startX) cropBox.style.left = currentX + "px";
-      if (currentY < startY) cropBox.style.top = currentY + "px";
+    container.querySelector(".btn-save").addEventListener("click", async () => {
+      const b64 = cropToB64(image, crop);
+      cleanup();
+      await saveAvatar(b64);
     });
-
-    document.addEventListener("mouseup", () => {
-      isDrawing = false;
-    });
-
-    cropContainer.querySelector(".btn-save").addEventListener("click", () => {
-      saveCroppedAvatar(file);
-      cropContainer.remove();
-    });
-
-    cropContainer.querySelector(".btn-cancel").addEventListener("click", () => {
-      cropContainer.remove();
-      currentFile = null;
-    });
-
-    cropContainer.querySelector(".avatar-crop-close").addEventListener("click", () => {
-      cropContainer.remove();
-      currentFile = null;
-    });
-
-    // Cerrar al presionar ESC
-    const escHandler = (e) => {
-      if (e.key === "Escape") {
-        cropContainer.remove();
-        currentFile = null;
-        document.removeEventListener("keydown", escHandler);
-      }
-    };
-    document.addEventListener("keydown", escHandler);
   };
-
   reader.readAsDataURL(file);
 }
 
-async function saveCroppedAvatar(file) {
-  try {
-    // Comprimir imagen
-    const b64 = await fileToB64Compressed(file);
-    const email = CORE.state.currentProfile?.email;
+// Recorta según el recuadro y devuelve base64 JPEG (sin prefijo data:)
+function cropToB64(image, crop) {
+  const scale = image.naturalWidth / image.clientWidth; // escala uniforme
+  const sx = crop.size ? crop.x * scale : 0;
+  const sy = crop.size ? crop.y * scale : 0;
+  const ss = crop.size ? crop.size * scale : Math.min(image.naturalWidth, image.naturalHeight);
+  const out = Math.min(512, Math.round(ss));
 
-    // Subir a R2
+  const canvas = document.createElement("canvas");
+  canvas.width = out;
+  canvas.height = out;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(image, sx, sy, ss, ss, 0, 0, out, out);
+
+  return canvas.toDataURL("image/jpeg", 0.85).split(",")[1] || "";
+}
+
+// ─── Guardar / Eliminar ───────────────────────────────────────────────────
+async function saveAvatar(b64) {
+  const email = CORE.state.currentProfile?.email;
+  if (!email) return alert("No hay sesión activa.");
+  if (!b64) return alert("No se pudo procesar la imagen.");
+
+  try {
     const uploadRes = await fetch("/api/uploader/proxy", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "uploadAvatar",
-        email,
-        b64,
-        mimeType: "image/jpeg",
-      }),
+      body: JSON.stringify({ action: "uploadAvatar", email, b64, mimeType: "image/jpeg" }),
     });
-
     const result = await uploadRes.json();
-    if (!result.ok) throw new Error(result.error);
+    if (!result.ok) throw new Error(result.error || "Error al subir la imagen");
 
-    // Actualizar perfil
-    await fetch("/api/perfil", {
+    // Cache-busting para que el navegador no muestre la foto anterior
+    const url = result.url + (result.url.includes("?") ? "&" : "?") + "v=" + Date.now();
+
+    const patchRes = await fetch("/api/perfil", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        avatar_url: result.url,
-        email,
-      }),
+      body: JSON.stringify({ avatar_url: url, email }),
     });
+    if (!patchRes.ok) throw new Error("No se pudo guardar el perfil");
 
-    // Actualizar estado local
-    if (CORE.state.currentProfile) {
-      CORE.state.currentProfile.avatar_url = result.url;
-    }
-
-    // Re-renderizar avatar
-    const { renderUserAvatar } = await import("../core/ui-shell.js");
-    const hubAvatar = $("hubAvatar");
-    const tecAvatar = $("tecAvatar");
-    if (hubAvatar) renderUserAvatar(hubAvatar);
-    if (tecAvatar) renderUserAvatar(tecAvatar);
-
+    if (CORE.state.currentProfile) CORE.state.currentProfile.avatar_url = url;
+    await refreshAllAvatars();
     alert("✅ Foto actualizada");
   } catch (e) {
-    console.error("[AVATAR]", e);
+    console.error("[AVATAR] save", e);
     alert("Error al guardar foto: " + e.message);
   }
 }
 
 async function deleteAvatar() {
   if (!confirm("¿Eliminar tu foto de perfil?")) return;
+  const email = CORE.state.currentProfile?.email;
+  if (!email) return;
 
   try {
-    const email = CORE.state.currentProfile?.email;
-
-    // Actualizar perfil (avatar_url = vacío)
-    await fetch("/api/perfil", {
+    const patchRes = await fetch("/api/perfil", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        avatar_url: "",
-        email,
-      }),
+      body: JSON.stringify({ avatar_url: "", email }),
     });
+    if (!patchRes.ok) throw new Error("No se pudo actualizar el perfil");
 
-    // Actualizar estado local
-    if (CORE.state.currentProfile) {
-      CORE.state.currentProfile.avatar_url = "";
-    }
-
-    // Re-renderizar
-    const { renderUserAvatar } = await import("../core/ui-shell.js");
-    const hubAvatar = $("hubAvatar");
-    const tecAvatar = $("tecAvatar");
-    if (hubAvatar) renderUserAvatar(hubAvatar);
-    if (tecAvatar) renderUserAvatar(tecAvatar);
-
+    if (CORE.state.currentProfile) CORE.state.currentProfile.avatar_url = "";
+    await refreshAllAvatars();
     alert("✅ Foto eliminada");
   } catch (e) {
-    console.error("[AVATAR]", e);
+    console.error("[AVATAR] delete", e);
     alert("Error: " + e.message);
   }
 }

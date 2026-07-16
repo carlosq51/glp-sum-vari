@@ -10,8 +10,8 @@ router.patch("/api/perfil", async (req, res) => {
   try {
     const { avatar_url, email } = req.body || {};
 
-    // Validar parámetros
-    if (!avatar_url) {
+    // Validar parámetros — avatar_url puede ser "" (eliminar foto), pero no undefined
+    if (avatar_url === undefined || avatar_url === null) {
       return res.status(400).json({ ok: false, error: "Falta avatar_url" });
     }
 

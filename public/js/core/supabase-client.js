@@ -289,6 +289,7 @@ export async function getUsuarioPerfil(email) {
     rol: usuario.rol,
     especialidad: usuario.especialidad,
     activo: usuario.activo,
+    avatar_url: usuario.avatar_url || "",
     modulos: Array.isArray(modulos) ? modulos.map(m => m.modulo) : [],
   };
 }
