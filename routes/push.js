@@ -1,6 +1,7 @@
 import { Router } from "express";
 import webpush from "web-push";
 import { supabaseServiceHeaders_ } from "../lib/supabase.js";
+import { sendPushToEmails_ } from "../lib/push.js";
 
 const router = Router();
 
@@ -40,6 +41,28 @@ router.post("/api/push/subscribe", async (req, res) => {
     return res.json({ ok: true });
   } catch (e) {
     console.error("[POST /api/push/subscribe]", e.message);
+    return res.status(500).json({ ok: false, error: String(e.message) });
+  }
+});
+
+// POST /api/push/test — notificación de prueba (panel Admin → Notificaciones).
+// Envía a TODOS los dispositivos suscritos del email dado; devuelve {sent, failed}
+// para que el panel muestre si realmente salió algo.
+router.post("/api/push/test", async (req, res) => {
+  try {
+    const { email, title, body, vibrate } = req.body || {};
+    if (!email) return res.status(400).json({ ok: false, error: "Falta email" });
+
+    const out = await sendPushToEmails_([email], {
+      title:   title || "🔔 Prueba GLP",
+      body:    body  || "Notificación de prueba desde el panel Admin.",
+      tag:     "glp-test",
+      vibrate: Array.isArray(vibrate) && vibrate.length ? vibrate.map(Number) : undefined,
+      data:    { url: "/" },
+    });
+    return res.json({ ok: true, ...out });
+  } catch (e) {
+    console.error("[POST /api/push/test]", e.message);
     return res.status(500).json({ ok: false, error: String(e.message) });
   }
 });

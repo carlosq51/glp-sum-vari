@@ -31,7 +31,7 @@ self.addEventListener('push', event => {
     badge:     '/pwa-192.png',
     tag:       payload.tag  || 'ramal-push',
     renotify:  true,
-    vibrate:   [200, 100, 200],
+    vibrate:   Array.isArray(payload.vibrate) && payload.vibrate.length ? payload.vibrate : [200, 100, 200],
     data:      { url: payload.url || '/' },
   };
 

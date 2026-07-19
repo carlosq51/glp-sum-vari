@@ -2,7 +2,8 @@
 // public/js/views/admin/admin.js
 // Vista ADMIN – CRUD completo: Usuarios, VINs, OTs, Incidencias
 // =========================
-import { CORE, MODULES, createVinSuggest_ } from "../../core/core.js";
+import { CORE, MODULES, createVinSuggest_, getEmail, postJSON } from "../../core/core.js";
+import { requestNotifPermission } from "../conversion/modals/ramal-alert.js";
 import {
   supabaseGet,
   supabasePost,
@@ -37,6 +38,7 @@ const SECTION_META = {
   incidencias: { icon: "alertTriangle", label: "Incidencias",    desc: "Registro de fallas" },
   reasignar:   { icon: "refresh",       label: "Reasignar",      desc: "Cambiar técnico asignado" },
   config:      { icon: "settings",      label: "Configuración",  desc: "Parámetros del sistema" },
+  notif:       { icon: "bell",          label: "Notificaciones", desc: "Prueba de push y vibración" },
 };
 
 // ─── Enums (mirror schema.sql) ───────────────────────────────────────
@@ -266,6 +268,146 @@ async function loadReasignarPanel_() {
   }
 }
 
+// ─── Panel de prueba de notificaciones ───────────────────────────────
+// Flujo completo: permiso → suscripción Web Push → POST /api/push/test →
+// lib/push.js → SW (sw-custom.js) → notificación nativa con vibración.
+
+const NOTIF_PATTERNS = {
+  doble:  { label: "Doble (estándar)",   pattern: [200, 100, 200] },
+  corto:  { label: "Corto",              pattern: [200] },
+  largo:  { label: "Largo",              pattern: [700] },
+  triple: { label: "Triple fuerte",      pattern: [400, 150, 400, 150, 400] },
+  sos:    { label: "SOS",                pattern: [100, 50, 100, 50, 100, 200, 300, 100, 300, 100, 300, 200, 100, 50, 100, 50, 100] },
+};
+
+async function refreshNotifEstado_() {
+  const el = $id("notifEstado");
+  if (!el) return;
+
+  const soporta = "Notification" in window && "serviceWorker" in navigator && "PushManager" in window;
+  const perm    = soporta ? Notification.permission : "no-soportado";
+
+  let suscrito = false;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    suscrito = !!(await reg.pushManager.getSubscription());
+  } catch { /* sin SW */ }
+
+  const badge = (ok, txtOk, txtBad) => ok
+    ? `<span class="adminBadgeOk">✔ ${txtOk}</span>`
+    : `<span class="adminBadgeDanger adminBadge">✖ ${txtBad}</span>`;
+
+  el.innerHTML = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+      ${badge(soporta, "Navegador compatible", "Navegador sin Web Push")}
+      ${badge(perm === "granted", "Permiso concedido", perm === "denied" ? "Permiso BLOQUEADO (ajustes del navegador)" : "Permiso sin pedir")}
+      ${badge(suscrito, "Dispositivo suscrito", "Sin suscripción en este dispositivo")}
+      ${badge(!!navigator.vibrate, "Vibración local disponible", "Sin API de vibración (iPhone: solo vibra la notificación)")}
+    </div>`;
+}
+
+function notifPatternSel_() {
+  const key = $id("notifPatron")?.value || "doble";
+  return NOTIF_PATTERNS[key]?.pattern || NOTIF_PATTERNS.doble.pattern;
+}
+
+function renderNotifPanel_(wrap) {
+  const email = String(getEmail?.() || "").trim().toLowerCase();
+  const opts = Object.entries(NOTIF_PATTERNS)
+    .map(([k, v]) => `<option value="${k}">${v.label}</option>`).join("");
+
+  wrap.innerHTML = `
+    <div class="adminConfigPanel">
+
+      <div class="adminConfigSection">
+        <h4 class="adminConfigTitle">1 · Este dispositivo</h4>
+        <p class="small muted">
+          Para recibir la notificación, este celular debe tener permiso y suscripción.
+          Sesión: <strong>${escHtml(email || "sin email")}</strong>
+        </p>
+        <div id="notifEstado" class="small muted" style="margin:8px 0;">Comprobando…</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+          <button id="btnNotifActivar" type="button" class="adminBtnOk">
+            ${icon("bell", 16)} Activar notificaciones aquí
+          </button>
+          <button id="btnNotifVibrar" type="button" class="adminBtnGhost">
+            📳 Probar vibración local
+          </button>
+        </div>
+      </div>
+
+      <div class="adminConfigSection">
+        <h4 class="adminConfigTitle">2 · Enviarme una notificación push</h4>
+        <p class="small muted">
+          Viaja por el servidor (Web Push) y llega como notificación nativa —
+          funciona incluso con la app cerrada. Se envía a <strong>todos tus
+          dispositivos suscritos</strong>.
+        </p>
+        <div style="display:flex;flex-direction:column;gap:10px;max-width:420px;">
+          <input id="notifTitulo" type="text" class="adminInput" value="🔔 Prueba GLP" placeholder="Título">
+          <input id="notifCuerpo" type="text" class="adminInput" value="¡Funciona! Notificación de prueba." placeholder="Mensaje">
+          <label class="small muted" style="display:flex;align-items:center;gap:8px;">
+            Vibración:
+            <select id="notifPatron" class="adminInput" style="flex:1;">${opts}</select>
+          </label>
+          <button id="btnNotifEnviar" type="button" class="adminBtnOk">
+            🚀 Enviar a mis dispositivos
+          </button>
+          <div id="notifResultado" class="small muted" style="min-height:18px;"></div>
+        </div>
+      </div>
+
+    </div>`;
+
+  refreshNotifEstado_();
+
+  $id("btnNotifActivar")?.addEventListener("click", async () => {
+    const st = $id("notifResultado");
+    if (st) st.textContent = "Pidiendo permiso y suscribiendo…";
+    await requestNotifPermission(email);
+    await refreshNotifEstado_();
+    if (st) st.textContent = window.Notification?.permission === "granted"
+      ? "✅ Listo — este dispositivo quedó suscrito."
+      : "⚠️ Permiso no concedido. Revisa los ajustes del navegador.";
+  });
+
+  $id("btnNotifVibrar")?.addEventListener("click", () => {
+    const st = $id("notifResultado");
+    if (!navigator.vibrate) {
+      if (st) st.textContent = "⚠️ Este navegador no expone la API de vibración (iPhone/Safari). La vibración sí funciona al llegar la notificación push en Android.";
+      return;
+    }
+    navigator.vibrate(notifPatternSel_());
+    if (st) st.textContent = "📳 Vibración local disparada.";
+  });
+
+  $id("btnNotifEnviar")?.addEventListener("click", async () => {
+    const st  = $id("notifResultado");
+    const btn = $id("btnNotifEnviar");
+    if (!email) { if (st) st.textContent = "❌ No hay email de sesión."; return; }
+    if (btn) { btn.disabled = true; btn.textContent = "Enviando…"; }
+    try {
+      const j = await postJSON("/api/push/test", {
+        email,
+        title:   String($id("notifTitulo")?.value || "").trim(),
+        body:    String($id("notifCuerpo")?.value || "").trim(),
+        vibrate: notifPatternSel_(),
+      });
+      if (!j?.ok) {
+        if (st) st.textContent = `❌ ${j?.error || "Error del servidor"}`;
+      } else if (j.sent > 0) {
+        if (st) st.textContent = `✅ Enviada a ${j.sent} dispositivo${j.sent !== 1 ? "s" : ""}${j.failed ? ` (${j.failed} fallaron)` : ""}. Mira la barra de notificaciones 📱`;
+      } else {
+        if (st) st.textContent = "⚠️ 0 dispositivos suscritos para tu email — usa primero «Activar notificaciones aquí».";
+      }
+    } catch (e) {
+      if (st) st.textContent = `❌ ${e?.message || e}`;
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = "🚀 Enviar a mis dispositivos"; }
+    }
+  });
+}
+
 async function loadTab() {
   const wrap = $id("adminTableContent");
   if (!wrap) return;
@@ -327,6 +469,13 @@ async function loadTab() {
         });
       } catch {}
     });
+    return;
+  }
+
+  // ─── Tab Notificaciones (prueba de push + vibración) ───────────────
+  if (S.tab === "notif") {
+    $id("adminToolbar") && ($id("adminToolbar").style.display = "none");
+    renderNotifPanel_(wrap);
     return;
   }
 
