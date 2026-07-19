@@ -1,6 +1,8 @@
 // =========================
 // public/js/templates/modals/error-modal.js
 // Template HTML: modal de error genérico
+// ⚠️ Homónimo intencional: el COMPORTAMIENTO (abrir/cerrar/promesa) vive en
+//    views/conversion/modals/error-modal.js — este archivo solo aporta el HTML.
 // =========================
 
 export function errorModal() {

@@ -1,4 +1,8 @@
+// =========================
 // public/js/views/conversion/modals/error-modal.js
+// Comportamiento del modal de error genérico (abrir/cerrar/promesa).
+// ⚠️ Homónimo intencional: el HTML vive en templates/modals/error-modal.js.
+// =========================
 import { $ } from "../../../core/core.js";
 
 const ERROR_MODAL = {

@@ -19,6 +19,7 @@ import { renderAvgCard_, renderTable_ } from "./sup-render.js";
 import { renderTrendChart_, destroyTrendChart_ } from "./sup-trend-chart.js";
 import { renderSupDashboard_, destroySupDashboard_ } from "./sup-dashboard.js";
 import { icon } from "../../core/icons.js";
+import { exportCsv_ } from "../../core/csv.js";
 import { calculateKPIs_ } from "./sup-kpis.js";
 import { renderKPIsPanel_ } from "./sup-kpis-render.js";
 
@@ -432,20 +433,22 @@ function renderSupervisor_(j) {
 
 function exportReportCsv_() {
   if (!_lastReportItems_.length) return;
-  const hdrs = ["Fecha Inicio","Fecha Fin","VIN","Modelo","Tecnico","Rol","Estado","Tiempo (h)","Cross-day"];
-  const esc  = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const rows = [hdrs.map(esc).join(",")];
-  for (const it of _lastReportItems_) {
-    const horas = it.tiempo_ms > 0 ? (it.tiempo_ms / 3600000).toFixed(2) : "";
-    const fIni  = it.fecha_asignacion ? new Date(it.fecha_asignacion).toLocaleDateString("es-PE") : "";
-    const fFin  = it.updated_at       ? new Date(it.updated_at).toLocaleDateString("es-PE")       : "";
-    rows.push([fIni, fFin, it.vin||"", it.modelo||"", it.userName||"", it.rolTrabajo||it.rol||"", it.estado||"", horas, it.crossDay?"SI":"NO"].map(esc).join(","));
-  }
-  const blob = new Blob(["\uFEFF" + rows.join("\n")], { type: "text/csv;charset=utf-8" });
-  const url  = URL.createObjectURL(blob);
-  const a    = Object.assign(document.createElement("a"), { href: url, download: "reporte_" + new Date().toISOString().slice(0,10) + ".csv" });
-  a.click();
-  URL.revokeObjectURL(url);
+  const rows = _lastReportItems_.map(it => [
+    it.fecha_asignacion ? new Date(it.fecha_asignacion).toLocaleDateString("es-PE") : "",
+    it.updated_at       ? new Date(it.updated_at).toLocaleDateString("es-PE")       : "",
+    it.vin || "",
+    it.modelo || "",
+    it.userName || "",
+    it.rolTrabajo || it.rol || "",
+    it.estado || "",
+    it.tiempo_ms > 0 ? (it.tiempo_ms / 3600000).toFixed(2) : "",
+    it.crossDay ? "SI" : "NO",
+  ]);
+  exportCsv_({
+    filename: "reporte_" + new Date().toISOString().slice(0, 10) + ".csv",
+    headers: ["Fecha Inicio","Fecha Fin","VIN","Modelo","Tecnico","Rol","Estado","Tiempo (h)","Cross-day"],
+    rows,
+  });
 }
 
 export function init() {

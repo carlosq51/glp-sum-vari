@@ -13,6 +13,7 @@ import { createScanner } from "../../core/qr-scanner.js";
 import { icon } from "../../core/icons.js";
 import { initZonasMapa, promptZonaForVin } from "../zonas/zonas-mapa.js";
 import { startPoll, stopPoll } from "../../core/poll.js";
+import { exportCsv_ } from "../../core/csv.js";
 
 // VINs del panel salida que aún no tienen OT según el último render
 let _vinsSinOT_ = new Set();
@@ -260,18 +261,11 @@ function downloadListaPendientes_() {
     if (s) s.textContent = "Sin datos para descargar.";
     return;
   }
-  const lines = ["VIN,FECHA,UBICACION"];
-  for (const r of _pendientesRows) {
-    lines.push(`${r.vin},${r.fecha || ""},"${(r.ubicacion || "").replace(/"/g, "'")}"`);
-  }
-  const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8" });
-  const url  = URL.createObjectURL(blob);
-  const a    = Object.assign(document.createElement("a"), {
-    href: url,
-    download: `pendientes_glp_${new Date().toISOString().slice(0, 10)}.csv`,
+  exportCsv_({
+    filename: `pendientes_glp_${new Date().toISOString().slice(0, 10)}.csv`,
+    headers: ["VIN", "FECHA", "UBICACION"],
+    rows: _pendientesRows.map(r => [r.vin, r.fecha || "", r.ubicacion || ""]),
   });
-  a.click();
-  URL.revokeObjectURL(url);
 }
 
 function showPendienteConfirmRow_(vin) {

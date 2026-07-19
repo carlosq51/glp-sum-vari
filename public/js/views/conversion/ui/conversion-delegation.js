@@ -13,6 +13,7 @@ import {
   fmtShort_,
 } from "../../../core/core.js";
 
+import { showBanner_ } from "../../../core/banner.js";
 import { enviarEvento } from "../data/conversion-eventos.js";
 import { openIncidenciaModalForKey_ } from "../modals/incidencias.js";
 import { openRFModalForVin_, openRFSoldaduraForVin_ } from "../modals/rf-modal.js";
@@ -256,36 +257,29 @@ function attachWorkDelegationOnce_(mod) {
 }
 
 function showSolRamalToast_(vin) {
-  const now = new Date();
-  const hhmm = now.toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" });
+  const hhmm = new Date().toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" });
 
-  const toast = document.createElement("div");
-  toast.style.cssText = [
-    "position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:9999;",
-    "background:var(--bg1);color:var(--text);border:1px solid var(--okBg);",
-    "border-radius:var(--radius);padding:16px 20px;max-width:340px;width:90%;display:flex;",
-    "flex-direction:column;gap:8px;box-shadow:var(--shadow);",
-  ].join("");
-
-  toast.innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
-      <strong style="color:var(--ok);font-size:1rem;">🔩 Solicitud creada con éxito</strong>
-      <button id="solRamalToastClose" style="
-        background:none;border:none;cursor:pointer;
-        font-size:1.3rem;color:var(--text);line-height:1;padding:0 4px;
-      ">×</button>
-    </div>
-    <div style="font-size:.85rem;color:var(--muted);">
-      ${vin ? `VIN: <code style="color:var(--note);">${vin}</code><br>` : ""}
-      Enviado a las <strong>${hhmm}</strong>
-    </div>
-  `;
-
-  document.body.appendChild(toast);
-
-  const close = () => toast.remove();
-  toast.querySelector("#solRamalToastClose")?.addEventListener("click", close);
-  setTimeout(close, 8000);
+  showBanner_({
+    id: "solRamalToast",
+    kind: "bottom-card",
+    zIndex: 9999,
+    autoCloseMs: 8000,
+    style:
+      "background:var(--bg1);color:var(--text);border:1px solid var(--okBg);" +
+      "border-radius:var(--radius);padding:16px 20px;display:flex;flex-direction:column;gap:8px;",
+    html: `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+        <strong style="color:var(--ok);font-size:1rem;">🔩 Solicitud creada con éxito</strong>
+        <button data-banner-close style="
+          background:none;border:none;cursor:pointer;
+          font-size:1.3rem;color:var(--text);line-height:1;padding:0 4px;
+        ">×</button>
+      </div>
+      <div style="font-size:.85rem;color:var(--muted);">
+        ${vin ? `VIN: <code style="color:var(--note);">${vin}</code><br>` : ""}
+        Enviado a las <strong>${hhmm}</strong>
+      </div>`,
+  });
 }
 
 function attachFinalizadosDelegationOnce_(mod) {

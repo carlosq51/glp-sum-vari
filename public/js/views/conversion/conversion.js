@@ -37,6 +37,7 @@ import {
 import { PAUSA_AUTO_RESUME_MS, autoResumingKeys_, enviarEvento, autoStartFromScan_, SCHEDULED_PAUSES, isInfinitePauseWindow_ } from "./data/conversion-eventos.js";
 import { initConversionDelegation_ } from "./ui/conversion-delegation.js";
 import { icon } from "../../core/icons.js";
+import { showBanner_, hideBanner_ } from "../../core/banner.js";
 import { initVinAutocomplete_ } from "./ui/conversion-vin-autocomplete.js";
 import { initAvatarUpload } from "../avatar-upload.js";
 import { checkPendingAlerts_, getMyNombre_ } from "./modals/incidencia-alert.js";
@@ -483,34 +484,23 @@ async function checkVinReadyNotif_() {
 // ── Banner "Tu ramal está listo" ──────────────────────────────────────────────
 
 function showRamalListoBanner_(item) {
-  let banner = document.getElementById("ramalListoBanner");
-  if (!banner) {
-    banner = document.createElement("div");
-    banner.id = "ramalListoBanner";
-    banner.style.cssText = [
-      "position:fixed;top:0;left:0;right:0;z-index:8500;",
-      "background:var(--danger);color:var(--bg0);",
-      "display:flex;align-items:center;justify-content:space-between;",
-      "padding:12px 16px;gap:10px;",
-      "font-weight:700;font-size:.95rem;",
-      "box-shadow:var(--shadowSm);",
-    ].join("");
-    document.body.appendChild(banner);
-  }
   const vin = item?.vin ? ` · VIN ${item.vin}` : "";
-  banner.innerHTML = `
-    <span>🔩 Tu ramal está listo${vin} — ¡acércate a recogerlo!</span>
-    <button onclick="this.parentElement.style.display='none'" style="
-      background:none;border:none;cursor:pointer;
-      font-size:1.3rem;color:var(--bg0);line-height:1;padding:2px 4px;opacity:.8;
-    ">×</button>
-  `;
-  banner.style.display = "flex";
+  showBanner_({
+    id: "ramalListoBanner",
+    kind: "top-bar",
+    zIndex: 8500,
+    style: "background:var(--danger);color:var(--bg0);",
+    html: `
+      <span>🔩 Tu ramal está listo${vin} — ¡acércate a recogerlo!</span>
+      <button data-banner-close style="
+        background:none;border:none;cursor:pointer;
+        font-size:1.3rem;color:var(--bg0);line-height:1;padding:2px 4px;opacity:.8;
+      ">×</button>`,
+  });
 }
 
 function hideRamalListoBanner_() {
-  const banner = document.getElementById("ramalListoBanner");
-  if (banner) banner.remove();
+  hideBanner_("ramalListoBanner");
 }
 
 async function checkRamalListo_() {
@@ -530,42 +520,23 @@ async function checkRamalListo_() {
 // ── Banner "Posición en cola de ramal" ────────────────────────────────────────
 
 function showColaBanner_(posicion, total) {
-  let banner = document.getElementById("colaRamalBanner");
-  if (!banner) {
-    banner = document.createElement("div");
-    banner.id = "colaRamalBanner";
-    banner.style.cssText = [
-      "position:fixed;top:0;left:0;right:0;z-index:8400;",
-      "background:var(--note);color:var(--bg0);",
-      "display:flex;align-items:center;justify-content:space-between;",
-      "padding:12px 16px;gap:10px;",
-      "font-weight:700;font-size:.95rem;",
-      "box-shadow:var(--shadowSm);",
-      "cursor:pointer;",
-    ].join("");
-    banner.addEventListener("click", (e) => {
-      if (e.target.closest("[data-cola-close]")) return;
-      openColaDetalleModal_();
-    });
-    document.body.appendChild(banner);
-  }
-  banner.innerHTML = `
-    <span>🔩 Eres #${posicion} de ${total} en la cola de ramales · <u>ver detalle</u></span>
-    <button data-cola-close style="
-      background:none;border:none;cursor:pointer;
-      font-size:1.3rem;color:var(--bg0);line-height:1;padding:2px 4px;opacity:.8;
-    ">×</button>
-  `;
-  banner.querySelector("[data-cola-close]")?.addEventListener("click", (e) => {
-    e.stopPropagation();
-    banner.style.display = "none";
+  showBanner_({
+    id: "colaRamalBanner",
+    kind: "top-bar",
+    zIndex: 8400,
+    style: "background:var(--note);color:var(--bg0);cursor:pointer;",
+    onClick: () => openColaDetalleModal_(),
+    html: `
+      <span>🔩 Eres #${posicion} de ${total} en la cola de ramales · <u>ver detalle</u></span>
+      <button data-banner-close style="
+        background:none;border:none;cursor:pointer;
+        font-size:1.3rem;color:var(--bg0);line-height:1;padding:2px 4px;opacity:.8;
+      ">×</button>`,
   });
-  banner.style.display = "flex";
 }
 
 function hideColaBanner_() {
-  const banner = document.getElementById("colaRamalBanner");
-  if (banner) banner.remove();
+  hideBanner_("colaRamalBanner");
   document.getElementById("colaDetalleModal")?.remove();
 }
 

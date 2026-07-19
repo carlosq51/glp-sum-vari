@@ -4,6 +4,7 @@
 
 import { INC_TITULOS } from "../../templates/modals/incidencias-modal.js";
 import { openDrilldown } from "../../core/drilldown.js";
+import { exportCsv_ as downloadCsv_ } from "../../core/csv.js";
 
 let _getJSON    = null;
 let _escape     = null;
@@ -829,19 +830,11 @@ function exportCsv_() {
     parseExtra_(it.nota),
     it.fotoUrl || it.fotoImgUrl || "",
   ]);
-  const csv = [headers, ...rows]
-    .map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(","))
-    .join("\r\n");
-  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
-  const url  = URL.createObjectURL(blob);
-  const a    = Object.assign(document.createElement("a"), {
-    href: url,
-    download: `incidencias_${new Date().toISOString().slice(0, 10)}.csv`,
+  downloadCsv_({
+    filename: `incidencias_${new Date().toISOString().slice(0, 10)}.csv`,
+    headers,
+    rows,
   });
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
 }
 
 function renderIncReport_(j) {

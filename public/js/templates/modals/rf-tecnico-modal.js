@@ -1,6 +1,8 @@
 // =========================
 // public/js/templates/modals/rf-tecnico-modal.js
 // Template HTML: modal de registro parámetros/fallas (técnico)
+// ⚠️ Homónimo intencional: el COMPORTAMIENTO (abrir/cerrar/guardar) vive en
+//    views/conversion/modals/rf-tecnico-modal.js — este archivo solo aporta el HTML.
 // =========================
 
 export function rfTecnicoModal() {

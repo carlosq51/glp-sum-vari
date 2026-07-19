@@ -3,6 +3,8 @@
 // API + helpers (APS / compresión / uploads)
 // =========================
 
+import { postJSON } from "../../core/api.js";
+
 export const APS_URL = "/api/uploader/proxy";
 
 export const CONTROL_URL = "https://glp-control.onrender.com/";
@@ -26,28 +28,16 @@ export function humanBytes(n) {
   return `${v.toFixed(i === 0 ? 0 : 1)} ${u[i]}`;
 }
 
-// views/uploader/uploader-api.js
-
+// Delegación en core/api.js:postJSON. A diferencia del resto de la app,
+// los callers del uploader esperan EXCEPCIÓN en error HTTP (no {ok:false}),
+// así que aquí el _statusCode se convierte en throw.
 export async function callAPS(payload, apsUrl = APS_URL) {
-  const url = apsUrl || APS_URL;   // ✅ FIX: si apsUrl es null => usa default
-
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-
-  const txt = await res.text().catch(() => "");
-
-  if (!res.ok) {
-    throw new Error(`HTTP ${res.status} ${res.statusText} ${txt || ""}`.trim());
+  const url = apsUrl || APS_URL;   // si apsUrl es null => usa default
+  const j = await postJSON(url, payload);
+  if (j?._statusCode) {
+    throw new Error(`HTTP ${j._statusCode} ${j.error || j.message || ""}`.trim());
   }
-
-  try {
-    return JSON.parse(txt);
-  } catch {
-    throw new Error(`Respuesta no-JSON desde backend: ${txt.slice(0, 300)}`);
-  }
+  return j;
 }
 
 export async function fileToB64Compressed(file) {

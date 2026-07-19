@@ -4,26 +4,23 @@
 // Muestra un banner llamativo + vibración 2 segundos (si el dispositivo lo soporta)
 // =========================
 
+import { showBanner_ } from "../../../core/banner.js";
+
 const ALERT_ID = "ramalAlertBanner";
 
 export function showRamalEntregadoAlert({ vin } = {}) {
   try { if (navigator.vibrate) navigator.vibrate(2000); } catch {}
 
-  document.getElementById(ALERT_ID)?.remove();
-
-  const banner = document.createElement("div");
-  banner.id = ALERT_ID;
-  banner.setAttribute("role", "alert");
-  banner.innerHTML = `
-    <div style="
-      position:fixed; top:16px; left:50%; transform:translateX(-50%);
-      z-index:99999; max-width:340px; width:calc(100% - 32px);
-      background:var(--ok); color:var(--bg0);
-      border-radius:16px; padding:16px 18px;
-      box-shadow:var(--shadow);
-      display:flex; align-items:center; gap:14px;
-      animation: ramalSlideIn .3s cubic-bezier(.22,1,.36,1);
-    ">
+  showBanner_({
+    id: ALERT_ID,
+    kind: "top-card",
+    zIndex: 99999,
+    autoCloseMs: 8000,
+    onClose: () => { try { navigator.vibrate(0); } catch {} },
+    style:
+      "background:var(--ok);color:var(--bg0);border-radius:16px;" +
+      "padding:16px 18px;display:flex;align-items:center;gap:14px;",
+    html: `
       <span style="font-size:2rem; line-height:1;">🔩</span>
       <div style="flex:1; min-width:0;">
         <div style="font-weight:900; font-size:1rem; line-height:1.2;">
@@ -33,29 +30,12 @@ export function showRamalEntregadoAlert({ vin } = {}) {
           ${vin ? `VIN: <b>${vin}</b><br>` : ""}Acércate a recoger tu ramal.
         </div>
       </div>
-      <button id="btnCloseRamalAlert"
+      <button data-banner-close
         style="background:none; border:none; color:var(--bg0); font-size:1.2rem;
                cursor:pointer; padding:4px; line-height:1; opacity:.8;">
         ✕
-      </button>
-    </div>
-    <style>
-      @keyframes ramalSlideIn {
-        from { opacity:0; transform:translateX(-50%) translateY(-20px); }
-        to   { opacity:1; transform:translateX(-50%) translateY(0); }
-      }
-    </style>
-  `;
-
-  document.body.appendChild(banner);
-
-  const close = () => {
-    try { navigator.vibrate(0); } catch {}
-    banner.remove();
-  };
-
-  banner.querySelector("#btnCloseRamalAlert")?.addEventListener("click", close);
-  setTimeout(close, 8000);
+      </button>`,
+  });
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

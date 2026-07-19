@@ -1,4 +1,8 @@
+// =========================
 // public/js/views/conversion/modals/rf-tecnico-modal.js
+// Comportamiento del modal de registro parámetros/fallas del técnico.
+// ⚠️ Homónimo intencional: el HTML vive en templates/modals/rf-tecnico-modal.js.
+// =========================
 import { CORE, setOut } from "../../../core/core.js";
 import { showUploaderView, hideUploaderView } from "../../uploader/uploader.js";
 
