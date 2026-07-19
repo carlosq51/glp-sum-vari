@@ -2,6 +2,7 @@ import { Router } from "express";
 import webpush from "web-push";
 import { supabaseServiceHeaders_ } from "../lib/supabase.js";
 import { sendPushToEmails_ } from "../lib/push.js";
+import { requireRol_ } from "../lib/authz.js";
 
 const router = Router();
 
@@ -65,7 +66,7 @@ router.post("/api/push/unsubscribe", async (req, res) => {
 // POST /api/push/test — notificación de prueba (panel Admin → Notificaciones).
 // Envía a TODOS los dispositivos suscritos del email dado; devuelve {sent, failed}
 // para que el panel muestre si realmente salió algo.
-router.post("/api/push/test", async (req, res) => {
+router.post("/api/push/test", requireRol_("ADMIN"), async (req, res) => {
   try {
     const { email, title, body, vibrate, delayMs } = req.body || {};
     if (!email) return res.status(400).json({ ok: false, error: "Falta email" });

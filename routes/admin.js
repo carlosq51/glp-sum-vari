@@ -3,6 +3,7 @@ import { supabaseHeaders_ } from "../lib/supabase.js";
 import { normalizeModelo_ } from "../lib/utils.js";
 import { getConfig_, invalidateConfigCache_ } from "../lib/config.js";
 import { emitEvent_ } from "../lib/events.js";
+import { requireRol_ } from "../lib/authz.js";
 
 const router = Router();
 
@@ -154,7 +155,7 @@ router.get("/api/admin/config", async (req, res) => {
 });
 
 // POST /api/admin/config  body: { key, value } OR { configs: [{key,value},...] }
-router.post("/api/admin/config", async (req, res) => {
+router.post("/api/admin/config", requireRol_("ADMIN"), async (req, res) => {
   try {
     const body = req.body || {};
     const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -188,7 +189,7 @@ router.post("/api/admin/config", async (req, res) => {
 // POST /api/admin/pausa-masiva
 // body: { accion: "PAUSA" | "REANUDAR", nota?: string }
 // Pausa o reanuda TODAS las asignaciones activas en estado TRABAJANDO (o PAUSADO para reanudar)
-router.post("/api/admin/pausa-masiva", async (req, res) => {
+router.post("/api/admin/pausa-masiva", requireRol_("ADMIN"), async (req, res) => {
   try {
     const { accion, nota } = req.body || {};
     if (!["PAUSA", "REANUDAR"].includes(accion)) {
@@ -315,7 +316,7 @@ router.get("/api/admin/asignaciones", async (req, res) => {
 });
 
 // PATCH /api/admin/asignaciones/:id  body: { user_id }
-router.patch("/api/admin/asignaciones/:id", async (req, res) => {
+router.patch("/api/admin/asignaciones/:id", requireRol_("ADMIN"), async (req, res) => {
   try {
     const { id } = req.params;
     const { user_id } = req.body || {};
@@ -364,7 +365,7 @@ router.get("/api/admin/usuarios-activos", async (req, res) => {
 // POST /api/admin/normalize-modelos
 // Migración batch: reclasifica todos los VINs con nombre canónico.
 // Devuelve reporte de cuántos cambiaron por modelo.
-router.post("/api/admin/normalize-modelos", async (req, res) => {
+router.post("/api/admin/normalize-modelos", requireRol_("ADMIN"), async (req, res) => {
   try {
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const hdrs = supabaseHeaders_();
@@ -422,7 +423,7 @@ router.post("/api/admin/normalize-modelos", async (req, res) => {
 
 // ── POST /api/admin/normalizar-vins ──────────────────────────────────────────
 // ?solo_nuevos=1 → solo normaliza VINs donde modelo_normalizado IS NULL (incremental)
-router.post("/api/admin/normalizar-vins", async (req, res) => {
+router.post("/api/admin/normalizar-vins", requireRol_("ADMIN"), async (req, res) => {
   try {
     const soloNuevos = req.query.solo_nuevos === "1";
     const result = await runNormalizarVins_(soloNuevos);

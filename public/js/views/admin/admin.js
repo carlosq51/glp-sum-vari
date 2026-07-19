@@ -51,6 +51,15 @@ const SEVERIDADES  = ["LEVE","MODERADA","CRITICA"];
 // ─── Helpers ─────────────────────────────────────────────────────────
 function $id(id) { return document.getElementById(id); }
 
+// fetch con la identidad del admin (x-user-email): los endpoints mutadores
+// de /api/admin/* exigen rol ADMIN server-side (lib/authz.js).
+function adminFetch_(url, opts = {}) {
+  return fetch(url, {
+    ...opts,
+    headers: { ...(opts.headers || {}), "x-user-email": getEmail() || "" },
+  });
+}
+
 function msg(text, isErr = false) {
   const el = $id("adminMsg");
   if (!el) return;
@@ -241,7 +250,7 @@ async function loadReasignarPanel_() {
         btn.disabled = true;
         if (msgEl) msgEl.textContent = "Guardando…";
         try {
-          const resp = await fetch(`/api/admin/asignaciones/${encodeURIComponent(id)}`, {
+          const resp = await adminFetch_(`/api/admin/asignaciones/${encodeURIComponent(id)}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ user_id: userId }),
@@ -722,7 +731,7 @@ async function loadTab() {
         msg.textContent = "Normalizando…";
         res.innerHTML = "";
         try {
-          const r = await fetch("/api/admin/normalizar-vins", { method: "POST" });
+          const r = await adminFetch_("/api/admin/normalizar-vins", { method: "POST" });
           const j = await r.json();
           if (j.need_migration) {
             msg.textContent = "⚠️ Primero ejecuta el SQL de migración arriba en Supabase Dashboard.";
@@ -971,7 +980,7 @@ async function saveConfig_() {
   if (btn) btn.disabled = true;
   if (msgEl) msgEl.textContent = "Guardando…";
   try {
-    const resp = await fetch("/api/admin/config", {
+    const resp = await adminFetch_("/api/admin/config", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ key: "FECHA_CORTE_MOVILIZADOR", value }),
@@ -995,7 +1004,7 @@ async function saveMetas_() {
   if (btn) btn.disabled = true;
   if (msgEl) msgEl.textContent = "Guardando\u2026";
   try {
-    const resp = await fetch("/api/admin/config", {
+    const resp = await adminFetch_("/api/admin/config", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ configs: [
@@ -1024,7 +1033,7 @@ async function saveHorarios_() {
   if (btn) btn.disabled = true;
   if (msgEl) msgEl.textContent = "Guardando…";
   try {
-    const resp = await fetch("/api/admin/config", {
+    const resp = await adminFetch_("/api/admin/config", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1054,7 +1063,7 @@ async function pausaMasiva_(accion) {
   if (btn) btn.disabled = true;
   if (msgEl) { msgEl.textContent = accion === "PAUSA" ? "Pausando…" : "Reanudando…"; msgEl.style.color = ""; }
   try {
-    const resp = await fetch("/api/admin/pausa-masiva", {
+    const resp = await adminFetch_("/api/admin/pausa-masiva", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ accion }),
