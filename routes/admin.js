@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { supabaseHeaders_ } from "../lib/supabase.js";
+import { supabaseHeaders_, supabaseServiceHeaders_ } from "../lib/supabase.js";
 import { normalizeModelo_ } from "../lib/utils.js";
 import { getConfig_, invalidateConfigCache_ } from "../lib/config.js";
 import { emitEvent_ } from "../lib/events.js";
@@ -462,6 +462,150 @@ router.get("/api/admin/preview-normalizacion", async (req, res) => {
     return res.json({ ok: true, total: rows.length, byNorm: counts });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e.message) });
+  }
+});
+
+// ─── CRUD GENÉRICO DEL PANEL ADMIN ───────────────────────────────────────────
+// Reemplaza el acceso directo del navegador a Supabase (anon key) que permitía
+// escribir la BD desde cualquier cliente. Todo pasa por aquí con service key
+// y rol ADMIN verificado. Tablas y filtros en whitelist estricta.
+
+const CRUD_TABLES_ = {
+  usuarios:        { pk: "id",  filtros: [] },
+  vins:            { pk: "vin", filtros: [] },
+  work_orders:     { pk: "id",  filtros: [] },
+  incidencias:     { pk: "id",  filtros: [] },
+  usuario_modulos: { pk: "id",  filtros: ["user_id"] },
+};
+
+function crudTable_(req, res) {
+  const t = CRUD_TABLES_[req.params.tabla];
+  if (!t) { res.status(400).json({ ok: false, error: "Tabla no permitida" }); return null; }
+  return { name: req.params.tabla, ...t };
+}
+
+// GET /api/admin/rows/:tabla[?user_id=…]  → { ok, rows }
+router.get("/api/admin/rows/:tabla", requireRol_("ADMIN"), async (req, res) => {
+  const t = crudTable_(req, res);
+  if (!t) return;
+  try {
+    const filtros = t.filtros
+      .filter(k => req.query[k])
+      .map(k => `${k}=eq.${encodeURIComponent(String(req.query[k]))}`);
+    const qs = filtros.length ? `&${filtros.join("&")}` : "";
+    const r = await fetch(
+      `${process.env.SUPABASE_URL}/rest/v1/${t.name}?select=*&limit=2000${qs}`,
+      { headers: supabaseServiceHeaders_() },
+    );
+    if (!r.ok) throw new Error(`Supabase: ${r.status}`);
+    return res.json({ ok: true, rows: await r.json() });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
+// POST /api/admin/rows/:tabla  body: { data } (objeto o array) → { ok, rows }
+router.post("/api/admin/rows/:tabla", requireRol_("ADMIN"), async (req, res) => {
+  const t = crudTable_(req, res);
+  if (!t) return;
+  try {
+    const r = await fetch(`${process.env.SUPABASE_URL}/rest/v1/${t.name}`, {
+      method: "POST",
+      headers: { ...supabaseServiceHeaders_(), "Prefer": "return=representation" },
+      body: JSON.stringify(req.body?.data ?? {}),
+    });
+    if (!r.ok) throw new Error(`Supabase: ${r.status} ${(await r.text().catch(() => "")).slice(0, 200)}`);
+    return res.json({ ok: true, rows: await r.json() });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
+// PATCH /api/admin/rows/:tabla/:id  body: { data } → { ok, rows }
+router.patch("/api/admin/rows/:tabla/:id", requireRol_("ADMIN"), async (req, res) => {
+  const t = crudTable_(req, res);
+  if (!t) return;
+  try {
+    const r = await fetch(
+      `${process.env.SUPABASE_URL}/rest/v1/${t.name}?${t.pk}=eq.${encodeURIComponent(req.params.id)}`,
+      {
+        method: "PATCH",
+        headers: { ...supabaseServiceHeaders_(), "Prefer": "return=representation" },
+        body: JSON.stringify(req.body?.data ?? {}),
+      },
+    );
+    if (!r.ok) throw new Error(`Supabase: ${r.status} ${(await r.text().catch(() => "")).slice(0, 200)}`);
+    return res.json({ ok: true, rows: await r.json() });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
+// DELETE /api/admin/rows/:tabla/:id → { ok }
+router.delete("/api/admin/rows/:tabla/:id", requireRol_("ADMIN"), async (req, res) => {
+  const t = crudTable_(req, res);
+  if (!t) return;
+  try {
+    const r = await fetch(
+      `${process.env.SUPABASE_URL}/rest/v1/${t.name}?${t.pk}=eq.${encodeURIComponent(req.params.id)}`,
+      { method: "DELETE", headers: supabaseServiceHeaders_() },
+    );
+    if (!r.ok) throw new Error(`Supabase: ${r.status}`);
+    return res.json({ ok: true });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
+// POST /api/admin/usuario-modulos  body: { userId, modulos: [] }
+// Reemplaza todos los módulos del usuario (delete + insert).
+router.post("/api/admin/usuario-modulos", requireRol_("ADMIN"), async (req, res) => {
+  try {
+    const { userId, modulos } = req.body || {};
+    if (!userId) return res.status(400).json({ ok: false, error: "Falta userId" });
+    const hdrs = supabaseServiceHeaders_();
+    const base = `${process.env.SUPABASE_URL}/rest/v1/usuario_modulos`;
+
+    const del = await fetch(`${base}?user_id=eq.${encodeURIComponent(userId)}`, { method: "DELETE", headers: hdrs });
+    if (!del.ok) throw new Error(`Supabase DELETE: ${del.status}`);
+
+    const list = Array.isArray(modulos) ? modulos.filter(Boolean) : [];
+    if (list.length) {
+      const ins = await fetch(base, {
+        method: "POST",
+        headers: hdrs,
+        body: JSON.stringify(list.map(m => ({ user_id: userId, modulo: m }))),
+      });
+      if (!ins.ok) throw new Error(`Supabase INSERT: ${ins.status}`);
+    }
+    return res.json({ ok: true });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
+// POST /api/admin/ot-cascade-delete  body: { workOrderId }
+// Borra la OT y sus hijos (no hay ON DELETE CASCADE en el schema).
+router.post("/api/admin/ot-cascade-delete", requireRol_("ADMIN"), async (req, res) => {
+  try {
+    const { workOrderId } = req.body || {};
+    if (!workOrderId) return res.status(400).json({ ok: false, error: "Falta workOrderId" });
+    const hdrs = supabaseServiceHeaders_();
+    const id = encodeURIComponent(workOrderId);
+    const base = `${process.env.SUPABASE_URL}/rest/v1`;
+
+    // Hijos primero (FKs hacia work_orders.id), luego la OT
+    for (const tabla of ["eventos", "asignaciones", "incidencias", "solicitudes_ramal"]) {
+      const r = await fetch(`${base}/${tabla}?work_order_id=eq.${id}`, { method: "DELETE", headers: hdrs });
+      if (!r.ok) throw new Error(`Supabase DELETE ${tabla}: ${r.status}`);
+    }
+    const r = await fetch(`${base}/work_orders?id=eq.${id}`, { method: "DELETE", headers: hdrs });
+    if (!r.ok) throw new Error(`Supabase DELETE work_orders: ${r.status}`);
+
+    emitEvent_("asignaciones", {});
+    return res.json({ ok: true });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: String(e.message || e) });
   }
 });
 

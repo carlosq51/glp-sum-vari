@@ -4,12 +4,6 @@
 // =========================
 import { CORE, MODULES, createVinSuggest_, getEmail, postJSON } from "../../core/core.js";
 import { requestNotifPermission, getNotifStatus } from "../../core/push-client.js";
-import {
-  supabaseGet,
-  supabasePost,
-  supabasePatch,
-  supabaseDelete,
-} from "../../core/supabase-client.js";
 import { createScanner } from "../../core/qr-scanner.js";
 import { icon } from "../../core/icons.js";
 import { escapeHtml as escHtml } from "../../core/format.js";
@@ -58,6 +52,45 @@ function adminFetch_(url, opts = {}) {
     ...opts,
     headers: { ...(opts.headers || {}), "x-user-email": getEmail() || "" },
   });
+}
+
+// ─── CRUD vía backend (/api/admin/rows) ──────────────────────────────
+// El navegador ya NO escribe directo a Supabase: todo pasa por el backend
+// con service key + rol ADMIN verificado (paso 2 del plan de seguridad).
+async function crudJson_(resp) {
+  const j = await resp.json().catch(() => ({}));
+  if (!resp.ok || !j.ok) throw new Error(j.error || `HTTP ${resp.status}`);
+  return j;
+}
+
+async function crudGet_(tabla, filtro = {}) {
+  const qs = Object.entries(filtro).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&");
+  const j = await crudJson_(await adminFetch_(`/api/admin/rows/${tabla}${qs ? "?" + qs : ""}`));
+  return j.rows;
+}
+
+async function crudPost_(tabla, data) {
+  const j = await crudJson_(await adminFetch_(`/api/admin/rows/${tabla}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ data }),
+  }));
+  return j.rows;
+}
+
+async function crudPatch_(tabla, id, data) {
+  const j = await crudJson_(await adminFetch_(`/api/admin/rows/${tabla}/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ data }),
+  }));
+  return j.rows;
+}
+
+async function crudDelete_(tabla, id) {
+  await crudJson_(await adminFetch_(`/api/admin/rows/${tabla}/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  }));
 }
 
 function msg(text, isErr = false) {
@@ -964,7 +997,7 @@ async function loadTab() {
 
   try {
     const table = TABLE_MAP[S.tab];
-    S.rows = await supabaseGet(table);
+    S.rows = await crudGet_(table);
     wrap.innerHTML = renderTable(S.rows, $id("adminSearch")?.value || "");
     bindTableActions();
   } catch (e) {
@@ -1279,13 +1312,12 @@ async function save() {
     const { _modulos, ...rowData } = (S.tab === "usuarios") ? data : { ...data, _modulos: undefined };
     if (S.editId) {
       // UPDATE
-      const pkField = S.tab === "vins" ? "vin" : "id";
-      await supabasePatch(table, { [pkField]: S.editId }, rowData);
+      await crudPatch_(table, S.editId, rowData);
       if (S.tab === "usuarios") await syncModulos_(S.editId, _modulos || []);
       msg("Actualizado correctamente.");
     } else {
       // CREATE
-      const result = await supabasePost(table, rowData);
+      const result = await crudPost_(table, rowData);
       if (S.tab === "usuarios" && Array.isArray(result) && result[0]?.id) {
         await syncModulos_(result[0].id, _modulos || []);
       }
@@ -1302,10 +1334,11 @@ async function save() {
 
 // ─── Sync usuario_modulos ────────────────────────────────────────────
 async function syncModulos_(userId, modulos) {
-  await supabaseDelete("usuario_modulos", { user_id: userId });
-  if (modulos.length) {
-    await supabasePost("usuario_modulos", modulos.map(m => ({ user_id: userId, modulo: m })));
-  }
+  await crudJson_(await adminFetch_("/api/admin/usuario-modulos", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userId, modulos }),
+  }));
 }
 
 // ─── Delete ──────────────────────────────────────────────────────────
@@ -1318,8 +1351,7 @@ async function deleteRow(id) {
   msg("Eliminando…");
   try {
     const table = TABLE_MAP[S.tab];
-    const pkField = S.tab === "vins" ? "vin" : "id";
-    await supabaseDelete(table, { [pkField]: id });
+    await crudDelete_(table, id);
     msg("Eliminado.");
     await loadTab();
   } catch (e) {
@@ -1349,13 +1381,12 @@ async function deleteOtCascade_(workOrderId) {
 
   msg("Eliminando OT y registros relacionados…");
   try {
-    // Hijos primero (respetando las FKs hacia work_orders.id)
-    await supabaseDelete("eventos",          { work_order_id: workOrderId });
-    await supabaseDelete("asignaciones",      { work_order_id: workOrderId });
-    await supabaseDelete("incidencias",       { work_order_id: workOrderId });
-    await supabaseDelete("solicitudes_ramal", { work_order_id: workOrderId });
-    // Finalmente la OT
-    await supabaseDelete("work_orders",       { id: workOrderId });
+    // El backend borra hijos + OT en orden (FKs hacia work_orders.id)
+    await crudJson_(await adminFetch_("/api/admin/ot-cascade-delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ workOrderId }),
+    }));
     msg("OT y registros relacionados eliminados.");
     await loadTab();
   } catch (e) {
@@ -1377,7 +1408,7 @@ function bindTableActions() {
       openModal(`Editar ${TITLE_MAP[S.tab]}`, FORM_MAP[S.tab](row));
       if (S.tab === "usuarios") {
         try {
-          const mods = await supabaseGet("usuario_modulos", { user_id: id });
+          const mods = await crudGet_("usuario_modulos", { user_id: id });
           const modNames = Array.isArray(mods) ? mods.map(m => m.modulo) : [];
           document.querySelectorAll(".fModulo").forEach(cb => {
             cb.checked = modNames.includes(cb.value);

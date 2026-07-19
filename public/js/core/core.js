@@ -46,22 +46,9 @@ export { applyTheme_, loadTheme_, initTheme_, toggleTheme_ } from "./theme.js";
 // --- API + lock ---
 export { setLocked, withLock, getJSON, postJSON, getJSON_user, postJSON_user } from "./api.js";
 
-// --- Supabase client ---
-export { 
-  supabaseEnabled, 
-  supabaseGet, 
-  supabasePost, 
-  supabasePatch, 
-  supabaseDelete 
-} from "./supabase-client.js";
-
-// --- Dual API (migración paralela) ---
-export { 
-  setMigrationConfig, 
-  dualWrite, 
-  dualRead, 
-  syncFromAppScript 
-} from "./dual-api.js";
+// --- Supabase client (solo lectura desde el navegador; las escrituras
+// van por el backend — paso 2 del plan de seguridad) ---
+export { supabaseEnabled, supabaseGet } from "./supabase-client.js";
 
 // --- Caches localStorage ---
 export { vinCacheSet_, vinCacheGet_, ramalCacheSet_, ramalCacheGet_ } from "./cache-local.js";
