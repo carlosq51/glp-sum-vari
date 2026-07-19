@@ -41,7 +41,7 @@ import { showBanner_, hideBanner_ } from "../../core/banner.js";
 import { initVinAutocomplete_ } from "./ui/conversion-vin-autocomplete.js";
 import { initAvatarUpload } from "../avatar-upload.js";
 import { checkPendingAlerts_, getMyNombre_ } from "./modals/incidencia-alert.js";
-import { requestNotifPermission } from "./modals/ramal-alert.js";
+import { requestNotifPermission } from "../../core/push-client.js";
 import { initConversionQR_ } from "./ui/conversion-qr.js";
 import { initTecValidar_, openTecBuscarModal_ } from "./ui/conversion-validar.js";
 import { escapeHtml, fmtShort_ } from "../../core/format.js";

@@ -9,6 +9,8 @@
 import { applyTheme_ } from "./theme.js";
 import { loadSettings, saveSettings, applySettings } from "./app-settings.js";
 import { icon } from "./icons.js";
+import { getNotifStatus, requestNotifPermission, disableNotifs } from "./push-client.js";
+import { getEmail } from "./auth.js";
 
 let built_ = false;
 
@@ -55,6 +57,15 @@ function buildSheet_() {
             <button class="hubColorBtn" data-val="teal"     style="background:#0d9488;" title="Verde"></button>
           </div>
         </div>
+
+        <div class="hubSettingRow">
+          <div class="hubSettingLabel">${icon("bell", 14)} Notificaciones en este dispositivo</div>
+          <div class="hubSettingOpts" id="appOptNotif">
+            <button class="hubOptBtn" data-val="on">🔔 Activadas</button>
+            <button class="hubOptBtn" data-val="off">🔕 Desactivadas</button>
+          </div>
+          <div id="appNotifHint" class="small muted" style="margin-top:6px;min-height:16px;"></div>
+        </div>
       </div>
     </div>
   `;
@@ -88,10 +99,41 @@ function buildSheet_() {
     refreshSheetUI_();
   });
 
+  // Notificaciones (alta/baja de ESTE dispositivo)
+  document.getElementById("appOptNotif")?.addEventListener("click", async (e) => {
+    const btn = e.target.closest(".hubOptBtn");
+    if (!btn) return;
+    const hint = document.getElementById("appNotifHint");
+    if (btn.dataset.val === "on") {
+      if (hint) hint.textContent = "Activando…";
+      await requestNotifPermission(getEmail() || "", { force: true });
+    } else {
+      if (hint) hint.textContent = "Desactivando…";
+      await disableNotifs();
+    }
+    refreshNotifRow_();
+  });
+
   // ESC para cerrar
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && wrap.classList.contains("show")) closeSettingsSheet();
   });
+}
+
+async function refreshNotifRow_() {
+  const st = await getNotifStatus();
+  const on = st.suscrito && st.permiso === "granted";
+
+  document.getElementById("appOptNotif")?.querySelectorAll(".hubOptBtn").forEach((b) =>
+    b.classList.toggle("active", (b.dataset.val === "on") === on)
+  );
+
+  const hint = document.getElementById("appNotifHint");
+  if (!hint) return;
+  if (!st.soporta)                 hint.textContent = "Este navegador no soporta notificaciones push.";
+  else if (st.permiso === "denied") hint.textContent = "Permiso bloqueado — tócalo en el candado 🔒 junto a la dirección y permite Notificaciones.";
+  else if (on)                      hint.textContent = "Este celular recibirá los avisos del taller (ramal listo, incidencias…).";
+  else                              hint.textContent = "Sin avisos en este celular. Actívalas cuando estés en el taller.";
 }
 
 function refreshSheetUI_() {
@@ -114,6 +156,7 @@ export function openSettingsSheet() {
   const modal = document.getElementById("appSettingsModal");
   if (!modal) return;
   refreshSheetUI_();
+  refreshNotifRow_();
   modal.style.display = "flex";
   modal.classList.add("show");
   modal.setAttribute("aria-hidden", "false");

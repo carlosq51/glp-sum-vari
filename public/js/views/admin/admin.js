@@ -3,7 +3,7 @@
 // Vista ADMIN – CRUD completo: Usuarios, VINs, OTs, Incidencias
 // =========================
 import { CORE, MODULES, createVinSuggest_, getEmail, postJSON } from "../../core/core.js";
-import { requestNotifPermission } from "../conversion/modals/ramal-alert.js";
+import { requestNotifPermission, getNotifStatus } from "../../core/push-client.js";
 import {
   supabaseGet,
   supabasePost,
@@ -284,14 +284,7 @@ async function refreshNotifEstado_() {
   const el = $id("notifEstado");
   if (!el) return;
 
-  const soporta = "Notification" in window && "serviceWorker" in navigator && "PushManager" in window;
-  const perm    = soporta ? Notification.permission : "no-soportado";
-
-  let suscrito = false;
-  try {
-    const reg = await navigator.serviceWorker.ready;
-    suscrito = !!(await reg.pushManager.getSubscription());
-  } catch { /* sin SW */ }
+  const st = await getNotifStatus();
 
   const badge = (ok, txtOk, txtBad) => ok
     ? `<span class="adminBadgeOk">✔ ${txtOk}</span>`
@@ -299,10 +292,10 @@ async function refreshNotifEstado_() {
 
   el.innerHTML = `
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-      ${badge(soporta, "Navegador compatible", "Navegador sin Web Push")}
-      ${badge(perm === "granted", "Permiso concedido", perm === "denied" ? "Permiso BLOQUEADO (ajustes del navegador)" : "Permiso sin pedir")}
-      ${badge(suscrito, "Dispositivo suscrito", "Sin suscripción en este dispositivo")}
-      ${badge(!!navigator.vibrate, "Vibración local disponible", "Sin API de vibración (iPhone: solo vibra la notificación)")}
+      ${badge(st.soporta, "Navegador compatible", "Navegador sin Web Push")}
+      ${badge(st.permiso === "granted", "Permiso concedido", st.permiso === "denied" ? "Permiso BLOQUEADO (ajustes del navegador)" : "Permiso sin pedir")}
+      ${badge(st.suscrito, "Dispositivo suscrito", "Sin suscripción en este dispositivo")}
+      ${badge(st.vibra, "Vibración local disponible", "Sin API de vibración (iPhone: solo vibra la notificación)")}
     </div>`;
 }
 
@@ -377,7 +370,7 @@ function renderNotifPanel_(wrap) {
   $id("btnNotifActivar")?.addEventListener("click", async () => {
     const st = $id("notifResultado");
     if (st) st.textContent = "Pidiendo permiso y suscribiendo…";
-    await requestNotifPermission(email);
+    await requestNotifPermission(email, { force: true });
     await refreshNotifEstado_();
     if (st) st.textContent = window.Notification?.permission === "granted"
       ? "✅ Listo — este dispositivo quedó suscrito."

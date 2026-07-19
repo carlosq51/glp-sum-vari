@@ -6,7 +6,7 @@ import { initRamaleroActions_ } from "./ramalero-actions.js";
 import { initRamaleroDelegation_ } from "./ramalero-delegation.js";
 import { patchVisibleCards_ } from "../../work/index.js";
 import { enterSolicitudes_, exitSolicitudes_ } from "./ramalero-solicitudes.js";
-import { requestNotifPermission } from "../conversion/modals/ramal-alert.js";
+import { requestNotifPermission } from "../../core/push-client.js";
 
 export function init() {
   initRamaleroActions_();

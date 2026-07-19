@@ -45,6 +45,23 @@ router.post("/api/push/subscribe", async (req, res) => {
   }
 });
 
+// POST /api/push/unsubscribe — baja de UN dispositivo (toggle de ajustes).
+// Borra solo ese endpoint; otras suscripciones del mismo usuario siguen vivas.
+router.post("/api/push/unsubscribe", async (req, res) => {
+  try {
+    const { endpoint } = req.body || {};
+    if (!endpoint) return res.status(400).json({ ok: false, error: "Falta endpoint" });
+    await fetch(
+      `${process.env.SUPABASE_URL}/rest/v1/push_subscriptions?endpoint=eq.${encodeURIComponent(endpoint)}`,
+      { method: "DELETE", headers: supabaseServiceHeaders_() }
+    );
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error("[POST /api/push/unsubscribe]", e.message);
+    return res.status(500).json({ ok: false, error: String(e.message) });
+  }
+});
+
 // POST /api/push/test — notificación de prueba (panel Admin → Notificaciones).
 // Envía a TODOS los dispositivos suscritos del email dado; devuelve {sent, failed}
 // para que el panel muestre si realmente salió algo.
