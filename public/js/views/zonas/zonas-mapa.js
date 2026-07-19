@@ -7,6 +7,7 @@
 import { escapeHtml, postJSON, createVinSuggest_ } from "../../core/core.js";
 import { createScanner } from "../../core/qr-scanner.js";
 import { startPoll, stopPoll } from "../../core/poll.js";
+import { fmtElapsedMin_ as fmtElapsed_ } from "../../core/format.js";
 
 // ── Layout físico del taller ─────────────────────────────────────────────────
 const COL_IZQUIERDA = [15, 14, 13, 12, 11, 10];   // 6 zonas, Z15 arriba → Z10 abajo
@@ -25,18 +26,6 @@ const ESTADO_CSS = {
   EN_CONVERSION:  "en_conversion",
   FINALIZADO:     "finalizado",
 };
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function fmtElapsed_(isoStr) {
-  if (!isoStr) return "";
-  const mins = Math.floor((Date.now() - new Date(isoStr).getTime()) / 60000);
-  if (mins < 0) return "";
-  if (mins < 60) return `${mins}m`;
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  return m > 0 ? `${h}h ${m}m` : `${h}h`;
-}
 
 // ── Render de cada spot ──────────────────────────────────────────────────────
 

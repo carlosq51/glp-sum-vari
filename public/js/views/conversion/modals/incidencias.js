@@ -10,6 +10,8 @@ import {
   CORE, $, el_, ctx_, setOut, withLock, getJSON, postJSON, escapeHtml, getEmail
 } from "../../../core/core.js";
 
+import { createSuggest_ } from "../../../core/suggest.js";
+
 import {
   renderActivas_, renderFinalizados_, patchVisibleCards_,
   rebuildListsFromStore_, snapshotNotasActivas_, restoreNotasActivas_,
@@ -27,13 +29,7 @@ const INC = {
   // técnico seleccionado real
   techSelected: null, // { userId, name, email, label }
 
-  // suggest
-  sugItems: [],
-  sugOpen: false,
-  sugIdx: -1,
-  sugTimer: null,
-  lastQ: "",
-  cache: { ts: 0, items: [] }, // cache local opcional
+  cache: { ts: 0, items: [] }, // cache local para fallback del autocomplete
 };
 
 const INC_TECH_CACHE_TTL = 10 * 60 * 1000; // 10 min
@@ -278,10 +274,6 @@ function incInputTech() {
   return incEl("incTechInput");
 }
 
-function incSuggestBox() {
-  return incEl("incTechSuggest");
-}
-
 function incSelectHidden() {
   return incEl("incTech");
 }
@@ -325,7 +317,7 @@ function resetIncForm_() {
   incSetMsg("");
   incSetInfo("");
 
-  incSuggestHide_();
+  techSug_?.hide();
   incRefreshSaveBtn_();
 }
 
@@ -341,58 +333,18 @@ function incRefreshSaveBtn_() {
 }
 
 // -----------------------------------------
-// Suggest técnicos (autocomplete)
+// Suggest técnicos — widget compartido (core/suggest.js)
+// Particularidades de este modal: fallback al cache local pre-cargado
+// y filas .nsItem (estilo propio del modal de incidencias).
 // -----------------------------------------
+let techSug_ = null;
+
 function norm_(s) {
   return String(s || "").trim().toLowerCase();
 }
 
 function hay_(u) {
   return norm_([u.name, u.email, u.label].filter(Boolean).join(" "));
-}
-
-function incSuggestHide_() {
-  const box = incSuggestBox();
-  if (!box) return;
-  INC.sugOpen = false;
-  INC.sugIdx = -1;
-  INC.sugItems = [];
-  box.classList.add("hidden");
-  box.innerHTML = "";
-}
-
-function incSuggestRender_() {
-  const box = incSuggestBox();
-  if (!box) return;
-
-  if (!INC.sugItems.length) {
-    incSuggestHide_();
-    return;
-  }
-
-  box.innerHTML = INC.sugItems.map((u, i) => {
-    const active = i === INC.sugIdx ? "active" : "";
-    const nameOnly = String(u.name || "").trim();
-
-    return `
-      <div class="nsItem ${active}" data-idx="${i}" role="option" aria-selected="${i === INC.sugIdx}">
-        <div class="nsTitle">${escapeHtml(nameOnly)}</div>
-      </div>
-    `;
-  }).join("");
-
-  box.classList.remove("hidden");
-  INC.sugOpen = true;
-}
-
-function incSuggestSetIdx_(i) {
-  if (!INC.sugItems.length) return;
-  INC.sugIdx = Math.max(0, Math.min(i, INC.sugItems.length - 1));
-  incSuggestRender_();
-
-  const box = incSuggestBox();
-  const el = box?.querySelector(`.nsItem[data-idx="${INC.sugIdx}"]`);
-  if (el) el.scrollIntoView({ block: "nearest" });
 }
 
 function setSelectedTech_(u) {
@@ -416,9 +368,10 @@ function setSelectedTech_(u) {
     }
   }
 
-  incSuggestHide_();
+  techSug_?.hide();
   incRefreshSaveBtn_();
 }
+
 async function fetchTechSuggest_(q) {
   const qq = String(q || "").trim();
   if (!qq) return [];
@@ -435,68 +388,29 @@ async function fetchTechSuggest_(q) {
   }));
 }
 
-function onIncTechInput_() {
-  const input = incInputTech();
-  if (!input) return;
-
-  const q = String(input.value || "").trim();
-  INC.lastQ = q;
-
-  // si escribió algo después de elegir => limpia selección real
-  INC.techSelected = null;
-  incRefreshSaveBtn_();
-
-  if (!q) {
-    incSuggestHide_();
-    return;
-  }
-
-  clearTimeout(INC.sugTimer);
-  INC.sugTimer = setTimeout(async () => {
-    try {
+function createTechSuggest_() {
+  return createSuggest_({
+    input: "incTechInput",
+    box: "incTechSuggest",
+    guard: () => INC.open,
+    min: 1,
+    debounce: 180,
+    limit: 12,
+    async fetchFn(q) {
       const items = await fetchTechSuggest_(q);
-      if (INC.lastQ !== q) return;
-
-      // si no hay match remoto, intenta cache local (opcional)
-      let out = items;
-      if (!out.length && INC.cache.items.length) {
-        const qn = norm_(q);
-        out = INC.cache.items.filter((u) => hay_(u).includes(qn)).slice(0, 12);
-      }
-
-      INC.sugItems = out;
-      INC.sugIdx = out.length ? 0 : -1;
-      incSuggestRender_();
-    } catch {
-      incSuggestHide_();
-    }
-  }, 180);
-}
-
-function onIncTechKeyDown_(e) {
-  if (!INC.sugOpen) return;
-
-  if (e.key === "ArrowDown") {
-    e.preventDefault();
-    incSuggestSetIdx_(INC.sugIdx + 1);
-    return;
-  }
-  if (e.key === "ArrowUp") {
-    e.preventDefault();
-    incSuggestSetIdx_(INC.sugIdx - 1);
-    return;
-  }
-  if (e.key === "Enter") {
-    if (INC.sugIdx >= 0 && INC.sugItems[INC.sugIdx]) {
-      e.preventDefault();
-      setSelectedTech_(INC.sugItems[INC.sugIdx]);
-    }
-    return;
-  }
-  if (e.key === "Escape") {
-    e.preventDefault();
-    incSuggestHide_();
-  }
+      if (items.length || !INC.cache.items.length) return items;
+      const qn = norm_(q);
+      return INC.cache.items.filter((u) => hay_(u).includes(qn)).slice(0, 12);
+    },
+    renderItem(u, i, active) {
+      return `
+        <div class="nsItem${active ? " active" : ""}" data-sug-idx="${i}" role="option" aria-selected="${active}">
+          <div class="nsTitle">${escapeHtml(String(u.name || "").trim())}</div>
+        </div>
+      `;
+    },
+    onPick: setSelectedTech_,
+  });
 }
 
 // -----------------------------------------
@@ -720,9 +634,14 @@ export function initIncidenciasUI_() {
     }
   });
 
-  // técnico autocomplete
-  incInputTech()?.addEventListener("input", onIncTechInput_);
-  incInputTech()?.addEventListener("keydown", onIncTechKeyDown_);
+  // técnico autocomplete (widget compartido de core/suggest.js)
+  techSug_ = createTechSuggest_();
+  techSug_.bind();
+  // escribir después de elegir invalida la selección real
+  incInputTech()?.addEventListener("input", () => {
+    INC.techSelected = null;
+    incRefreshSaveBtn_();
+  });
 
     // foto
   // --------------------------
@@ -746,22 +665,6 @@ export function initIncidenciasUI_() {
   incEl("btnIncFotoClear")?.addEventListener("click", () => {
     clearIncFoto_();
     incSetMsg("");
-  });
-
-  incSuggestBox()?.addEventListener("mousedown", (e) => {
-    const row = e.target.closest(".nsItem[data-idx]");
-    if (!row) return;
-    e.preventDefault();
-    const idx = Number(row.dataset.idx);
-    const u = INC.sugItems[idx];
-    if (u) setSelectedTech_(u);
-  });
-
-  document.addEventListener("click", (e) => {
-    if (!INC.open || !INC.sugOpen) return;
-    const wrap = incInputTech()?.closest(".supNameWrap");
-    if (wrap && wrap.contains(e.target)) return;
-    incSuggestHide_();
   });
 
   // titulo / gravedad / nota

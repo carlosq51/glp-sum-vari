@@ -67,6 +67,19 @@ export function formatElapsed_(tiempoInicio) {
   return h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
 }
 
+// Elapsed con granularidad de minutos desde un ISO: "45m" / "3h 5m" / "3h".
+// Para tarjetas de zona en los mapas (ex-duplicado en tec-mapa.js y zonas-mapa.js).
+// No confundir con formatElapsed_ (cronómetro con segundos, "h:mm:ss").
+export function fmtElapsedMin_(isoStr) {
+  if (!isoStr) return "";
+  const mins = Math.floor((Date.now() - new Date(isoStr).getTime()) / 60000);
+  if (mins < 0) return "";
+  if (mins < 60) return `${mins}m`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
 // Duración en ms -> "Xh YYm ZZs". Usado en tablas/promedios del supervisor (ex sup-stats.js).
 export function fmtDur_(ms) {
   const s = Math.max(0, Math.floor(ms / 1000));

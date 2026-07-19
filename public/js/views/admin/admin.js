@@ -11,6 +11,7 @@ import {
 } from "../../core/supabase-client.js";
 import { createScanner } from "../../core/qr-scanner.js";
 import { icon } from "../../core/icons.js";
+import { escapeHtml as escHtml } from "../../core/format.js";
 
 // ─── Scanners para QR en Admin ────────────────────────────────────────
 const adminVinScanner_     = createScanner("adminVinQrReader");
@@ -57,13 +58,6 @@ function msg(text, isErr = false) {
 
 function opts(arr, selected = "") {
   return arr.map(v => `<option value="${v}"${v === selected ? " selected" : ""}>${v}</option>`).join("");
-}
-
-function escHtml(s) {
-  if (s == null) return "";
-  return String(s)
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 // ─── Table renderers ─────────────────────────────────────────────────

@@ -4,6 +4,7 @@
 // =========================
 
 import { ctx_ } from "../core/state.js";
+import { keyOfItem_ } from "../core/format.js";
 import { isFinalizado_, shouldShowItemInCurrentModule_ } from "./work-status.js";
 
 export function rebuildListsFromStore_() {
@@ -20,7 +21,7 @@ export function rebuildListsFromStore_() {
   });
 
   for (const it of all) {
-    const k = `${String(it.conversionId || "").trim()}|${String(it.rolTrabajo || "").toUpperCase()}`;
+    const k = keyOfItem_(it);
     if (isFinalizado_(it)) fins.push(k);
     else activos.push(k);
   }

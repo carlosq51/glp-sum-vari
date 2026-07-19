@@ -1,5 +1,10 @@
 # Resumen ejecutivo — Duplicados y solapamientos entre carpetas de `public/js/`
 
+> ⚠️ **Actualización 18/07/2026**: ver [01-delta-2026-07.md](01-delta-2026-07.md) —
+> cataloga los 17 módulos nuevos (core/poll, core/live, core/config, lib/events…)
+> y marca el estado real de cada recomendación de este documento
+> (2 resueltas, 1 parcial, 8 pendientes).
+
 > Generado leyendo los 8 catálogos de `docs/analisis-funciones/` (core, templates, views-supervisor, views-conversion, views-ramalero, views-uploader, views-misc, work) para detectar solapamientos **entre carpetas** que cada análisis individual no pudo ver por estar acotado a su propia carpeta. Cada punto cita el archivo:línea reportado en el catálogo fuente correspondiente.
 
 ## Resumen ejecutivo

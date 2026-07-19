@@ -4,19 +4,10 @@
 // =========================
 
 import { escapeHtml, getJSON } from "../../core/core.js";
+import { fmtElapsedMin_ as fmtElapsed_ } from "../../core/format.js";
 
 const COL_IZQUIERDA = [15, 14, 13, 12, 11, 10];
 const COL_DERECHA   = [9, 8, 7, 6, 5, 4, 3, 2, 1];
-
-function fmtElapsed_(isoStr) {
-  if (!isoStr) return "";
-  const mins = Math.floor((Date.now() - new Date(isoStr).getTime()) / 60000);
-  if (mins < 0) return "";
-  if (mins < 60) return `${mins}m`;
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  return m > 0 ? `${h}h ${m}m` : `${h}h`;
-}
 
 // Devuelve el color ML para una zona
 function classifyZona_(z, mySlot, partnerSlot, suggestedNames, hasSuggestedAnywhere) {
