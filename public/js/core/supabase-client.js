@@ -93,10 +93,70 @@ export async function supabaseGet(table, filter = {}) {
   return await res.json();
 }
 
-// NOTA: aquí ya no hay supabasePost/Patch/Delete. El navegador solo LEE;
-// toda escritura pasa por el backend (service key + verificación de rol).
-// Con el RLS cerrado (supabase/rls-lockdown.sql) la anon key no puede
-// escribir aunque alguien reimplemente estas funciones.
+/**
+ * POST a Supabase (insertar)
+ */
+export async function supabasePost(table, data) {
+  if (!supabaseEnabled()) throw new Error("Supabase no configurado");
+
+  const url = `${SUPABASE_CONFIG.URL}/rest/v1/${table}`;
+  
+  const res = await fetch(url, {
+    method: "POST",
+    headers: supabaseHeaders(),
+    body: JSON.stringify(data),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Supabase POST ${table}: ${res.status} ${text}`);
+  }
+
+  return await res.json();
+}
+
+/**
+ * PATCH a Supabase (actualizar)
+ */
+export async function supabasePatch(table, filter = {}, data) {
+  if (!supabaseEnabled()) throw new Error("Supabase no configurado");
+
+  const url = `${SUPABASE_CONFIG.URL}/rest/v1/${table}${buildQuery(filter)}`;
+  
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: supabaseHeaders(),
+    body: JSON.stringify(data),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Supabase PATCH ${table}: ${res.status} ${text}`);
+  }
+
+  return await res.json();
+}
+
+/**
+ * DELETE a Supabase
+ */
+export async function supabaseDelete(table, filter = {}) {
+  if (!supabaseEnabled()) throw new Error("Supabase no configurado");
+
+  const url = `${SUPABASE_CONFIG.URL}/rest/v1/${table}${buildQuery(filter)}`;
+  
+  const res = await fetch(url, {
+    method: "DELETE",
+    headers: supabaseHeaders(),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Supabase DELETE ${table}: ${res.status} ${text}`);
+  }
+
+  return { ok: true };
+}
 
 /**
  * REALTIME SUBSCRIPTIONS (WebSockets)
