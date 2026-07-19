@@ -50,16 +50,26 @@ router.post("/api/push/subscribe", async (req, res) => {
 // para que el panel muestre si realmente salió algo.
 router.post("/api/push/test", async (req, res) => {
   try {
-    const { email, title, body, vibrate } = req.body || {};
+    const { email, title, body, vibrate, delayMs } = req.body || {};
     if (!email) return res.status(400).json({ ok: false, error: "Falta email" });
 
-    const out = await sendPushToEmails_([email], {
+    const doSend = () => sendPushToEmails_([email], {
       title:   title || "🔔 Prueba GLP",
       body:    body  || "Notificación de prueba desde el panel Admin.",
       tag:     "glp-test",
       vibrate: Array.isArray(vibrate) && vibrate.length ? vibrate.map(Number) : undefined,
       data:    { url: "/" },
     });
+
+    // Retardo opcional (máx 30s): da tiempo a bloquear pantalla / cerrar la app
+    // para probar que el push llega igual. Responde YA; el envío queda programado.
+    const wait = Math.min(30_000, Math.max(0, Number(delayMs) || 0));
+    if (wait > 0) {
+      setTimeout(() => { doSend().catch(() => {}); }, wait);
+      return res.json({ ok: true, scheduled: true, delayMs: wait });
+    }
+
+    const out = await doSend();
     return res.json({ ok: true, ...out });
   } catch (e) {
     console.error("[POST /api/push/test]", e.message);

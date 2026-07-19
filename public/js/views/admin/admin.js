@@ -343,12 +343,25 @@ function renderNotifPanel_(wrap) {
           funciona incluso con la app cerrada. Se envía a <strong>todos tus
           dispositivos suscritos</strong>.
         </p>
+        <p class="small muted">
+          💡 ¿Llega pero no suena/vibra? Quita el modo silencio y mantén
+          presionada la notificación → ⚙ para subir la importancia del canal
+          (en Android el canal manda sobre el patrón enviado).
+        </p>
         <div style="display:flex;flex-direction:column;gap:10px;max-width:420px;">
           <input id="notifTitulo" type="text" class="adminInput" value="🔔 Prueba GLP" placeholder="Título">
           <input id="notifCuerpo" type="text" class="adminInput" value="¡Funciona! Notificación de prueba." placeholder="Mensaje">
           <label class="small muted" style="display:flex;align-items:center;gap:8px;">
             Vibración:
             <select id="notifPatron" class="adminInput" style="flex:1;">${opts}</select>
+          </label>
+          <label class="small muted" style="display:flex;align-items:center;gap:8px;">
+            Retardo:
+            <select id="notifRetardo" class="adminInput" style="flex:1;">
+              <option value="0">Enviar ya</option>
+              <option value="5000" selected>5 s — da tiempo a bloquear pantalla</option>
+              <option value="10000">10 s — da tiempo a cerrar la app</option>
+            </select>
           </label>
           <button id="btnNotifEnviar" type="button" class="adminBtnOk">
             🚀 Enviar a mis dispositivos
@@ -392,9 +405,24 @@ function renderNotifPanel_(wrap) {
         title:   String($id("notifTitulo")?.value || "").trim(),
         body:    String($id("notifCuerpo")?.value || "").trim(),
         vibrate: notifPatternSel_(),
+        delayMs: Number($id("notifRetardo")?.value) || 0,
       });
       if (!j?.ok) {
         if (st) st.textContent = `❌ ${j?.error || "Error del servidor"}`;
+      } else if (j.scheduled) {
+        // Cuenta regresiva para que el usuario bloquee la pantalla a tiempo
+        let secs = Math.round(j.delayMs / 1000);
+        const tick = () => {
+          if (!$id("notifResultado")) return; // salió del panel
+          if (secs > 0) {
+            $id("notifResultado").textContent = `⏳ Llega en ${secs} s — ¡bloquea la pantalla o cierra la app!`;
+            secs--;
+            setTimeout(tick, 1000);
+          } else {
+            $id("notifResultado").textContent = "📱 Enviada — revisa la barra de notificaciones.";
+          }
+        };
+        tick();
       } else if (j.sent > 0) {
         if (st) st.textContent = `✅ Enviada a ${j.sent} dispositivo${j.sent !== 1 ? "s" : ""}${j.failed ? ` (${j.failed} fallaron)` : ""}. Mira la barra de notificaciones 📱`;
       } else {
