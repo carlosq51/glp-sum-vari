@@ -7,11 +7,7 @@
 import { escapeHtml, postJSON, createVinSuggest_ } from "../../core/core.js";
 import { createScanner } from "../../core/qr-scanner.js";
 import { startPoll, stopPoll } from "../../core/poll.js";
-import { fmtElapsedMin_ as fmtElapsed_ } from "../../core/format.js";
-
-// ── Layout físico del taller ─────────────────────────────────────────────────
-const COL_IZQUIERDA = [15, 14, 13, 12, 11, 10];   // 6 zonas, Z15 arriba → Z10 abajo
-const COL_DERECHA   = [9, 8, 7, 6, 5, 4, 3, 2, 1]; // 9 zonas, Z9 arriba  → Z1 abajo
+import { zonaCardHTML_, zonasGridHTML_ } from "./zonas-layout.js";
 
 const ESTADO_LABEL = {
   LIBRE:          "Libre",
@@ -28,55 +24,19 @@ const ESTADO_CSS = {
 };
 
 // ── Render de cada spot ──────────────────────────────────────────────────────
+// El esqueleto de tarjeta/grid vive en zonas-layout.js; aquí solo se decide
+// la variante de color (por ESTADO) y los atributos de interacción.
 
 function renderZonaCard_(z, readOnly) {
-  const css     = ESTADO_CSS[z.estado] || "libre";
-  const roClass = readOnly ? " readOnly" : "";
-  const isOcupada = !!z.vin;
-
-  const vinShort  = z.vin ? (z.vin.length > 8 ? z.vin.slice(-8) : z.vin) : "";
-  const delantero = z.tecnicos?.delantero || "";
-  const tanquero  = z.tecnicos?.tanquero  || "";
-  const modelo    = z.modelo || "";
-  const tiempo    = isOcupada ? fmtElapsed_(z.registrado_at) : "";
-
-  return `
-    <div class="zonaCard zonaCard--${css}${roClass}"
-         data-zona="${z.zona_id}"
-         data-vin="${escapeHtml(z.vin || "")}"
-         data-estado="${z.estado}"
-         role="${readOnly ? "presentation" : "button"}"
-         tabindex="${readOnly ? "-1" : "0"}">
-      <span class="zonaNum">Z${z.zona_id}</span>
-      ${isOcupada
-        ? `<div class="zonaCarOuter">
-             <div class="zonaCarShape">
-               <span class="zonaCarLabel">${escapeHtml(delantero)}</span>
-               ${modelo ? `<span class="zonaCarModelo">${escapeHtml(modelo)}</span>` : ""}
-               <span class="zonaCarLabel">${escapeHtml(tanquero)}</span>
-             </div>
-             <span class="zonaCarWheel zonaCarWheelFL"></span>
-             <span class="zonaCarWheel zonaCarWheelFR"></span>
-             <span class="zonaCarWheel zonaCarWheelBL"></span>
-             <span class="zonaCarWheel zonaCarWheelBR"></span>
-           </div>
-           <span class="zonaVin">${escapeHtml(vinShort)}</span>
-           ${tiempo ? `<span class="zonaTime">${tiempo}</span>` : ""}`
-        : `<span class="zonaEmptyP">P</span>`
-      }
-    </div>`;
+  return zonaCardHTML_(z, {
+    variant: ESTADO_CSS[z.estado] || "libre",
+    clickable: !readOnly,
+    attrs: `data-estado="${z.estado}"`,
+  });
 }
 
 function renderMapa_(container, zonas, sinZona, readOnly) {
-  const byId = new Map(zonas.map(z => [z.zona_id, z]));
-
-  const colIzqHTML = COL_IZQUIERDA.map(n =>
-    renderZonaCard_(byId.get(n) || { zona_id: n, vin: null, estado: "LIBRE" }, readOnly)
-  ).join("");
-
-  const colDerHTML = COL_DERECHA.map(n =>
-    renderZonaCard_(byId.get(n) || { zona_id: n, vin: null, estado: "LIBRE" }, readOnly)
-  ).join("");
+  const gridHTML = zonasGridHTML_(zonas, z => renderZonaCard_(z, readOnly));
 
   // Contador solo zonas numeradas 1-15 con estado FINALIZADO
   const finalizados = zonas.filter(z => z.estado === "FINALIZADO").length;
@@ -109,22 +69,7 @@ function renderMapa_(container, zonas, sinZona, readOnly) {
   container.innerHTML = `
     <div class="zonasMapaWrap">
       ${finChip}
-      <div class="zonasGrid">
-
-        <!-- Izquierda: zonas 1-9 -->
-        <div class="zonasCol" id="zonasColIzq">${colIzqHTML}</div>
-
-        <!-- Carretera / Pasillo -->
-        <div class="zonasPasillo">
-          <span class="zonasPasilloArrowDown">▼</span>
-          <div class="zonasPasilloLine"></div>
-          <span class="zonasPasilloArrowUp">▲</span>
-        </div>
-
-        <!-- Derecha: zonas 10-15 -->
-        <div class="zonasCol" id="zonasColDer">${colDerHTML}</div>
-
-      </div>
+      ${gridHTML}
 
       <!-- Zona Libre (zona 16) -->
       <div class="zonaLibreSection">

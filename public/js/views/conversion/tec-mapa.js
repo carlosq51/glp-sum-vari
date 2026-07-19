@@ -4,10 +4,7 @@
 // =========================
 
 import { escapeHtml, getJSON } from "../../core/core.js";
-import { fmtElapsedMin_ as fmtElapsed_ } from "../../core/format.js";
-
-const COL_IZQUIERDA = [15, 14, 13, 12, 11, 10];
-const COL_DERECHA   = [9, 8, 7, 6, 5, 4, 3, 2, 1];
+import { zonaCardHTML_, zonasGridHTML_ } from "../zonas/zonas-layout.js";
 
 // Devuelve el color ML para una zona
 function classifyZona_(z, mySlot, partnerSlot, suggestedNames, hasSuggestedAnywhere) {
@@ -28,13 +25,10 @@ function classifyZona_(z, mySlot, partnerSlot, suggestedNames, hasSuggestedAnywh
 // "rojo" (mi rol ya ocupado) y "azul" (ya finalizado) quedan bloqueados.
 const CLICKABLE_COLORS = new Set(["verde", "verde-soft", "gris", "neutral"]);
 
+// El esqueleto de tarjeta/grid vive en zonas-layout.js; aquí solo se decide
+// la variante de color (por clasificación ML) y los atributos de interacción.
 function renderCard_(z, color) {
-  const isOcupada  = !!z.vin;
-  const vinShort   = z.vin ? z.vin.slice(-8) : "";
-  const delantero  = z.tecnicos?.delantero || "";
-  const tanquero   = z.tecnicos?.tanquero  || "";
-  const modelo     = z.modelo || "";
-  const tiempo     = isOcupada ? fmtElapsed_(z.registrado_at) : "";
+  const isOcupada = !!z.vin;
 
   // Una sola clase maestra: el color ML controla TODO (carro + borde + fondo).
   // No mezclamos con estado para evitar conflictos de color.
@@ -46,56 +40,19 @@ function renderCard_(z, color) {
   // Interactivo: cualquier spot vacío (para escanear/empezar) o carro con mi
   // rol libre y estado ≠ finalizado (verde/verde-soft/gris/neutral).
   const clickable = !isOcupada || CLICKABLE_COLORS.has(color);
-  const roClass   = clickable ? "" : " readOnly";
 
-  return `
-    <div class="zonaCard zonaCard--${primaryCss}${roClass}"
-         data-zona="${z.zona_id}"
-         data-vin="${escapeHtml(z.vin || "")}"
-         data-clickable="${clickable ? "1" : "0"}"
-         role="${clickable ? "button" : "presentation"}" tabindex="${clickable ? "0" : "-1"}">
-      <span class="zonaNum">Z${z.zona_id}</span>
-      ${isOcupada ? `
-        <div class="zonaCarOuter">
-          <div class="zonaCarShape">
-            <span class="zonaCarLabel">${escapeHtml(delantero)}</span>
-            ${modelo ? `<span class="zonaCarModelo">${escapeHtml(modelo)}</span>` : ""}
-            <span class="zonaCarLabel">${escapeHtml(tanquero)}</span>
-          </div>
-          <span class="zonaCarWheel zonaCarWheelFL"></span>
-          <span class="zonaCarWheel zonaCarWheelFR"></span>
-          <span class="zonaCarWheel zonaCarWheelBL"></span>
-          <span class="zonaCarWheel zonaCarWheelBR"></span>
-        </div>
-        <span class="zonaVin">${escapeHtml(vinShort)}</span>
-        ${tiempo ? `<span class="zonaTime">${tiempo}</span>` : ""}
-      ` : `<span class="zonaEmptyP">P</span>`}
-    </div>`;
+  return zonaCardHTML_(z, {
+    variant: primaryCss,
+    clickable,
+    attrs: `data-clickable="${clickable ? "1" : "0"}"`,
+  });
 }
 
 function renderMapa_(container, zonas, colorMap) {
-  const byId = new Map(zonas.map(z => [z.zona_id, z]));
-
-  const colIzqHTML = COL_IZQUIERDA.map(n =>
-    renderCard_(byId.get(n) || { zona_id: n, vin: null, estado: "LIBRE" }, colorMap.get(n) || "neutral")
-  ).join("");
-
-  const colDerHTML = COL_DERECHA.map(n =>
-    renderCard_(byId.get(n) || { zona_id: n, vin: null, estado: "LIBRE" }, colorMap.get(n) || "neutral")
-  ).join("");
-
-  container.innerHTML = `
-    <div class="zonasMapaWrap">
-      <div class="zonasGrid">
-        <div class="zonasCol">${colIzqHTML}</div>
-        <div class="zonasPasillo">
-          <span class="zonasPasilloArrowDown">▼</span>
-          <div class="zonasPasilloLine"></div>
-          <span class="zonasPasilloArrowUp">▲</span>
-        </div>
-        <div class="zonasCol">${colDerHTML}</div>
-      </div>
-    </div>`;
+  const gridHTML = zonasGridHTML_(zonas, z =>
+    renderCard_(z, colorMap.get(z.zona_id) || "neutral")
+  );
+  container.innerHTML = `<div class="zonasMapaWrap">${gridHTML}</div>`;
 }
 
 function renderLeyenda_(leyendaEl, colorMap, myRole, suggestions) {
