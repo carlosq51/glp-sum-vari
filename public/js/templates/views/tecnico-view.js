@@ -81,6 +81,15 @@ export function tecnicoView() {
         <div id="tecIncContent"><div class="small muted">Cargando…</div></div>
       </div>
 
+      <!-- ── Panel: Mi inventario ── -->
+      <div id="tecPanelInventario" class="card" style="display:none;">
+        <div class="adminDetailHead">
+          <button class="adminBackBtn tecBackBtn">← Volver</button>
+          <span class="adminDetailTitle">🧰 Mi inventario</span>
+        </div>
+        <div id="tecInventarioContent"><div class="small muted">Cargando…</div></div>
+      </div>
+
       <!-- ── Panel: Mapa de zonas ── -->
       <div id="tecPanelMapa" class="card" style="display:none;">
         <div class="adminDetailHead">

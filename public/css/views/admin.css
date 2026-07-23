@@ -527,3 +527,139 @@
 .adminBtnOk .icn,
 .adminBtnGhost .icn,
 .adminBackBtn .icn { vertical-align: -2px; flex-shrink: 0; }
+
+/* ════════════════════════════════════════════════════════════
+   INVENTARIO DE HERRAMIENTAS (sub-módulo admin)
+   ════════════════════════════════════════════════════════════ */
+
+/* Sub-pestañas (Inventario por técnico / Kits / Catálogo) */
+.invSubtabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  border-bottom: var(--border-w) solid var(--surfaceLine);
+  padding-bottom: 8px;
+}
+.invSubtab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border: var(--border-w) solid var(--surfaceLine);
+  border-radius: var(--radiusSm);
+  background: var(--glass);
+  color: var(--muted);
+  font-size: var(--fs-sm, 13px);
+  font-weight: var(--fw-bold, 600);
+  cursor: pointer;
+  transition: background var(--dur-fast), color var(--dur-fast), transform var(--dur-fast) var(--ease-out);
+}
+.invSubtab:active { transform: scale(.96); }
+.invSubtabActive {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--surface);
+}
+.invSubtab .icn { vertical-align: -2px; flex-shrink: 0; }
+
+/* Cabecera de detalle (nombre técnico / kit + acción a la derecha) */
+.invDetHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* Tarjetas "cómo crear la hoja" */
+.invCrearGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
+.invCrearCard {
+  border: var(--border-w) solid var(--surfaceLine);
+  border-radius: var(--radiusSm);
+  padding: 12px;
+  background: var(--glass);
+}
+.invCrearTitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: var(--fw-bold, 600);
+  margin-bottom: 4px;
+}
+.invCrearCard select { width: 100%; }
+
+/* Resumen de estados */
+.invResumen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.invResumenChip {
+  padding: 4px 12px;
+  border-radius: 20px;
+  background: var(--pillBg);
+  border: var(--border-w) solid var(--surfaceLine);
+  font-size: var(--fs-xs, 12px);
+  color: var(--muted);
+}
+.invResumenChip strong { color: var(--text); }
+
+/* Chips de herramientas dentro de un kit */
+.invKitChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.invKitChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 12px;
+  border-radius: 16px;
+  background: var(--pillBg);
+  border: var(--border-w) solid var(--surfaceLine);
+  font-size: var(--fs-xs, 12px);
+}
+.invKitChipDel {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 2px;
+  border-radius: 50%;
+  transition: color var(--dur-fast), background var(--dur-fast);
+}
+.invKitChipDel:hover { color: var(--danger); background: var(--dangerBg); }
+
+.invBtnDanger { color: var(--danger); }
+
+/* ── Vista del técnico: Mi inventario (solo lectura) ── */
+.invVacio {
+  text-align: center;
+  padding: 32px 16px;
+  color: var(--muted);
+}
+.invVacioIcon { font-size: 40px; margin-bottom: 8px; }
+.invVacioTitle {
+  font-weight: var(--fw-bold, 600);
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.invAvisoFalta {
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-radius: var(--radiusSm);
+  background: var(--warnBg);
+  border: var(--border-w) solid var(--warn);
+  color: var(--text);
+  font-size: var(--fs-sm, 13px);
+}

@@ -13,6 +13,7 @@ import {
 import { createScanner } from "../../core/qr-scanner.js";
 import { icon } from "../../core/icons.js";
 import { escapeHtml as escHtml } from "../../core/format.js";
+import { renderInventarioTab } from "./inventario.js";
 
 // ─── Scanners para QR en Admin ────────────────────────────────────────
 const adminVinScanner_     = createScanner("adminVinQrReader");
@@ -36,6 +37,7 @@ const SECTION_META = {
   vins:        { icon: "car",           label: "VINs",           desc: "Vehículos registrados" },
   ots:         { icon: "clipboardList", label: "OTs",            desc: "Órdenes de trabajo" },
   incidencias: { icon: "alertTriangle", label: "Incidencias",    desc: "Registro de fallas" },
+  inventario:  { icon: "box",           label: "Inventario",     desc: "Herramientas por técnico" },
   reasignar:   { icon: "refresh",       label: "Reasignar",      desc: "Cambiar técnico asignado" },
   config:      { icon: "settings",      label: "Configuración",  desc: "Parámetros del sistema" },
   notif:       { icon: "bell",          label: "Notificaciones", desc: "Prueba de push y vibración" },
@@ -441,6 +443,13 @@ function renderNotifPanel_(wrap) {
 async function loadTab() {
   const wrap = $id("adminTableContent");
   if (!wrap) return;
+
+  // ─── Tab Inventario ───────────────────────────────────────────────
+  if (S.tab === "inventario") {
+    $id("adminToolbar") && ($id("adminToolbar").style.display = "none");
+    await renderInventarioTab(wrap);
+    return;
+  }
 
   // ─── Tab Reasignar ────────────────────────────────────────────────
   if (S.tab === "reasignar") {

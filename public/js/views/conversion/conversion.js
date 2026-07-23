@@ -46,6 +46,7 @@ import { initConversionQR_ } from "./ui/conversion-qr.js";
 import { initTecValidar_, openTecBuscarModal_ } from "./ui/conversion-validar.js";
 import { escapeHtml, fmtShort_ } from "../../core/format.js";
 import { loadTecMapa_ } from "./tec-mapa.js";
+import { loadMiInventario_ } from "./mi-inventario.js";
 import { startPoll, stopPoll } from "../../core/poll.js";
 import { cfg } from "../../core/config.js";
 
@@ -53,7 +54,7 @@ import { cfg } from "../../core/config.js";
 // TEC CARD NAVIGATION
 // --------------------------
 
-const TEC_PANELS = ["tecPanelMiOT", "tecPanelCola", "tecPanelRendimiento", "tecPanelIncidencias", "tecPanelMapa"];
+const TEC_PANELS = ["tecPanelMiOT", "tecPanelCola", "tecPanelRendimiento", "tecPanelIncidencias", "tecPanelMapa", "tecPanelInventario"];
 let tecCardsInited_      = false;
 const notifiedVins_        = new Set();
 
@@ -653,6 +654,7 @@ function initTecCards_() {
     { key: "rendimiento", icon: "chart",         label: "Mi rendimiento",   desc: "Historial, estadísticas y meta"      },
     { key: "incidencias", icon: "alertTriangle", label: "Mis incidencias",  desc: "Registrar y ver fallas detectadas"   },
     { key: "mapa",        icon: "map",           label: "Mapa de zonas",   desc: "Ve a qué zona ir y con quién trabajar", onlyModule: "TECNICO" },
+    { key: "inventario",  icon: "box",           label: "Mi inventario",   desc: "Herramientas que se te entregaron",     onlyModule: "TECNICO" },
   ];
 
   cards.forEach(c => {
@@ -674,6 +676,7 @@ function initTecCards_() {
       if (c.key === "cola")         showTecPanel_("tecPanelCola", loadTecCola_);
       if (c.key === "rendimiento")  showTecPanel_("tecPanelRendimiento", loadTecRendimiento_);
       if (c.key === "incidencias")  showTecPanel_("tecPanelIncidencias", loadTecIncidencias_);
+      if (c.key === "inventario")   showTecPanel_("tecPanelInventario", () => loadMiInventario_("tecInventarioContent"));
       if (c.key === "mapa") {
         const email = String(document.getElementById("email")?.value || "").trim().toLowerCase();
         const esp   = String(CORE.state.currentProfile?.especialidad || "").toUpperCase();
