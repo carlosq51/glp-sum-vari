@@ -329,25 +329,56 @@ async function eliminarInventario_(inv, user) {
   } catch (e) { invMsg(e.message, true); }
 }
 
+// Buscador "contiene" sobre el catálogo. Recibe elementos ya en el DOM.
+// Al elegir un ítem fija el hidden con su id y muestra el nombre completo.
+function wireBuscador_(searchEl, listEl, hiddenEl, onPick) {
+  if (!searchEl || !listEl) return;
+  const render = (q) => {
+    const query = q.trim().toLowerCase();
+    if (!query) { listEl.style.display = "none"; listEl.innerHTML = ""; return; }
+    const matches = INV.catalogo
+      .filter(h => h.activo !== false && `${h.categoria || ""} ${h.nombre}`.toLowerCase().includes(query))
+      .slice(0, 25);
+    listEl.innerHTML = matches.length
+      ? matches.map(h => `<div class="invSearchItem" data-hid="${esc(h.id)}">
+          <span class="invSearchCat">${esc(h.categoria || "")}</span>${esc(detalleDe_(h))}</div>`).join("")
+      : `<div class="invSearchEmpty">Sin coincidencias.</div>`;
+    listEl.style.display = "block";
+    listEl.querySelectorAll(".invSearchItem").forEach(row => {
+      row.addEventListener("mousedown", (e) => {
+        e.preventDefault(); // evita blur antes del click
+        const h = INV.catMap.get(row.dataset.hid);
+        if (!h) return;
+        if (hiddenEl) hiddenEl.value = h.id;
+        searchEl.value = h.nombre;
+        listEl.style.display = "none";
+        onPick?.(h);
+      });
+    });
+  };
+  searchEl.addEventListener("input", () => { if (hiddenEl) hiddenEl.value = ""; render(searchEl.value); });
+  searchEl.addEventListener("focus", () => { if (searchEl.value.trim()) render(searchEl.value); });
+  searchEl.addEventListener("blur", () => setTimeout(() => { listEl.style.display = "none"; }, 150));
+}
+
 // ── Modal de ítem (agregar/editar) ──
 function editarItem_(itemId) {
   const it = itemId ? INV.invItems.find(x => x.id === itemId) : null;
-  const esLibre = INV.invActual?.formato === "ANTIGUO" || (it && !it.herramienta_id);
-
-  // Selector de herramienta del catálogo (o texto libre para formato antiguo).
-  const catOpts = INV.catalogo
-    .map(h => `<option value="${esc(h.id)}"${it?.herramienta_id === h.id ? " selected" : ""}>${esc(h.nombre)}</option>`)
-    .join("");
+  const herrActual = it?.herramienta_id ? INV.catMap.get(it.herramienta_id) : null;
 
   const body = `
     <div class="adminForm">
-      <label class="adminLabel">Herramienta
-        <select id="invItHerr" class="adminInput">
-          <option value="">— Texto libre —</option>
-          ${catOpts}
-        </select>
+      <label class="adminLabel">Herramienta (del catálogo)
+        <div class="invBuscador">
+          <input id="invItHerrSearch" type="text" autocomplete="off"
+            placeholder="Escribe para buscar… (ej: cate → alicate)"
+            value="${esc(herrActual?.nombre || "")}">
+          <input type="hidden" id="invItHerr" value="${esc(it?.herramienta_id || "")}">
+          <div id="invItHerrList" class="invSearchList" style="display:none;"></div>
+        </div>
+        <span class="adminLabelHint">Deja vacío y usa "Descripción libre" si no está en el catálogo.</span>
       </label>
-      <label class="adminLabel">Descripción libre <span class="adminLabelHint">(si no está en el catálogo)</span>
+      <label class="adminLabel">Descripción libre <span class="adminLabelHint">(fuera del catálogo)</span>
         <input id="invItLibre" type="text" value="${esc(it?.descripcion_libre || "")}" placeholder="Nombre de la herramienta">
       </label>
       <label class="adminLabel">Marca<input id="invItMarca" type="text" value="${esc(it?.marca || "")}"></label>
@@ -357,9 +388,15 @@ function editarItem_(itemId) {
     </div>
   `;
   abrirModal_(itemId ? "Editar herramienta" : "Agregar herramienta", body, async () => {
-    const herr = $id("invItHerr")?.value || "";
+    let herr = $id("invItHerr")?.value || "";
+    const buscado = $id("invItHerrSearch")?.value?.trim() || "";
+    // Si escribió el nombre exacto pero no clickeó, resolverlo igual.
+    if (!herr && buscado) {
+      const exacto = INV.catalogo.find(h => h.nombre.toLowerCase() === buscado.toLowerCase());
+      if (exacto) herr = exacto.id;
+    }
     const libre = $id("invItLibre")?.value?.trim() || "";
-    if (!herr && !libre) { invMsg("Elige una herramienta del catálogo o escribe una descripción libre.", true); return false; }
+    if (!herr && !libre) { invMsg("Busca una herramienta del catálogo o escribe una descripción libre.", true); return false; }
     const data = {
       inventario_id: INV.invActual.id,
       herramienta_id: herr || null,
@@ -376,6 +413,8 @@ function editarItem_(itemId) {
       return true;
     } catch (e) { invMsg(e.message, true); return false; }
   });
+  wireBuscador_($id("invItHerrSearch"), $id("invItHerrList"), $id("invItHerr"),
+    () => { const l = $id("invItLibre"); if (l) l.value = ""; });
 }
 
 async function quitarItem_(itemId) {
@@ -448,11 +487,13 @@ async function renderKitsSub_() {
           <button class="adminBtnGhost invKitDel" data-kid="${esc(k.id)}">${icon("trash", 14)} Eliminar kit</button>
         </div>
         <div class="invKitChips">${chips || `<span class="small muted">Kit vacío.</span>`}</div>
-        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-          <select class="adminInput invKitAddSel" data-kid="${esc(k.id)}" style="max-width:280px;">
-            <option value="">+ Agregar herramienta del catálogo…</option>
-            ${INV.catalogo.map(h => `<option value="${esc(h.id)}">${esc(h.nombre)}</option>`).join("")}
-          </select>
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;">
+          <div class="invBuscador" style="flex:1;min-width:200px;max-width:320px;">
+            <input class="invKitAddSearch" data-kid="${esc(k.id)}" type="text" autocomplete="off"
+              placeholder="Buscar herramienta del catálogo…">
+            <input type="hidden" class="invKitAddHidden" data-kid="${esc(k.id)}">
+            <div class="invSearchList invKitAddList" data-kid="${esc(k.id)}" style="display:none;"></div>
+          </div>
           <button class="adminBtnOk invKitAddBtn" data-kid="${esc(k.id)}">Agregar</button>
         </div>
       </div>`;
@@ -468,10 +509,24 @@ async function renderKitsSub_() {
 
   box.querySelectorAll(".invKitChipDel").forEach(b =>
     b.addEventListener("click", () => quitarDeKit_(b.dataset.kiid)));
+  // Buscador por kit
+  box.querySelectorAll(".invKitAddSearch").forEach(search => {
+    const kid = search.dataset.kid;
+    const list   = box.querySelector(`.invKitAddList[data-kid="${kid}"]`);
+    const hidden = box.querySelector(`.invKitAddHidden[data-kid="${kid}"]`);
+    wireBuscador_(search, list, hidden);
+  });
   box.querySelectorAll(".invKitAddBtn").forEach(b =>
     b.addEventListener("click", () => {
-      const sel = box.querySelector(`.invKitAddSel[data-kid="${b.dataset.kid}"]`);
-      agregarAKit_(b.dataset.kid, sel?.value);
+      const hidden = box.querySelector(`.invKitAddHidden[data-kid="${b.dataset.kid}"]`);
+      const search = box.querySelector(`.invKitAddSearch[data-kid="${b.dataset.kid}"]`);
+      let herrId = hidden?.value || "";
+      if (!herrId && search?.value?.trim()) {
+        const exacto = INV.catalogo.find(h => h.nombre.toLowerCase() === search.value.trim().toLowerCase());
+        if (exacto) herrId = exacto.id;
+      }
+      if (!herrId) { invMsg("Busca y selecciona una herramienta del catálogo.", true); return; }
+      agregarAKit_(b.dataset.kid, herrId);
     }));
   box.querySelectorAll(".invKitDel").forEach(b =>
     b.addEventListener("click", () => eliminarKit_(b.dataset.kid)));
@@ -529,33 +584,81 @@ async function eliminarKit_(kitId) {
 // =====================================================================
 //  SUB-VISTA 3 · CATÁLOGO
 // =====================================================================
-function renderCatalogoSub_() {
+// Devuelve las categorías distintas del catálogo (para datalist / agrupar).
+function categoriasDistintas_() {
+  return [...new Set(INV.catalogo.map(h => (h.categoria || "").trim()).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b));
+}
+// Detalle = nombre sin el prefijo de la categoría (solo para mostrar más limpio).
+function detalleDe_(h) {
+  const cat = (h.categoria || "").trim();
+  const nom = h.nombre || "";
+  if (cat && nom.toLowerCase().startsWith(cat.toLowerCase() + " ")) return nom.slice(cat.length + 1);
+  return nom;
+}
+
+function renderCatalogoSub_(filtro = "") {
   const box = $id("invSubContent");
   if (!box) return;
 
-  const filas = INV.catalogo.map(h => `
-    <tr>
-      <td>${esc(h.nombre)}</td>
-      <td><span class="adminBadge">${esc(h.especialidad)}</span></td>
-      <td>${esc(h.categoria || "—")}</td>
-      <td>${h.activo ? `<span class="adminBadgeOk">Activo</span>` : `<span class="adminBadgeMuted">Inactivo</span>`}</td>
-      <td class="adminActionsCell">
-        <button class="adminBtnEdit adminRowBtn invCatEdit" data-hid="${esc(h.id)}" title="Editar">${icon("pencil", 14)}</button>
-        <button class="adminBtnDel adminRowBtn adminRowBtn--danger invCatDel" data-hid="${esc(h.id)}" title="Eliminar">${icon("trash", 14)}</button>
-      </td>
-    </tr>`).join("");
+  const q = filtro.trim().toLowerCase();
+  const items = q
+    ? INV.catalogo.filter(h => `${h.categoria || ""} ${h.nombre}`.toLowerCase().includes(q))
+    : INV.catalogo;
+
+  // Agrupar por categoría.
+  const grupos = new Map();
+  items.forEach(h => {
+    const cat = (h.categoria || "SIN CATEGORÍA").trim() || "SIN CATEGORÍA";
+    if (!grupos.has(cat)) grupos.set(cat, []);
+    grupos.get(cat).push(h);
+  });
+  const catsOrden = [...grupos.keys()].sort((a, b) => a.localeCompare(b));
+
+  const gruposHtml = catsOrden.map(cat => {
+    const filas = grupos.get(cat)
+      .sort((a, b) => (a.nombre || "").localeCompare(b.nombre || ""))
+      .map(h => `
+        <tr>
+          <td>${esc(detalleDe_(h))}</td>
+          <td><span class="adminBadge">${esc(h.especialidad)}</span></td>
+          <td>${h.activo ? `<span class="adminBadgeOk">Activo</span>` : `<span class="adminBadgeMuted">Inactivo</span>`}</td>
+          <td class="adminActionsCell">
+            <button class="adminBtnEdit adminRowBtn invCatEdit" data-hid="${esc(h.id)}" title="Editar">${icon("pencil", 14)}</button>
+            <button class="adminBtnDel adminRowBtn adminRowBtn--danger invCatDel" data-hid="${esc(h.id)}" title="Eliminar">${icon("trash", 14)}</button>
+          </td>
+        </tr>`).join("");
+    return `
+      <div class="invCatGroup">
+        <div class="invCatGroupTitle">${esc(cat)} <span class="invCatCount">${grupos.get(cat).length}</span></div>
+        <div class="adminTableScroll">
+          <table class="adminTable">
+            <thead><tr><th>Detalle</th><th>Especialidad</th><th>Estado</th><th></th></tr></thead>
+            <tbody>${filas}</tbody>
+          </table>
+        </div>
+      </div>`;
+  }).join("");
 
   box.innerHTML = `
-    <p class="small muted">Nombres oficiales de las herramientas. Se comparten entre kits y hojas de técnicos.</p>
-    <div style="margin-bottom:10px;"><button id="invBtnNuevaHerr" class="adminBtnOk">${icon("plus", 14)} Nueva herramienta</button></div>
-    <div class="adminTableScroll">
-      <table class="adminTable">
-        <thead><tr><th>Nombre</th><th>Especialidad</th><th>Categoría</th><th>Estado</th><th></th></tr></thead>
-        <tbody>${filas || `<tr><td colspan="5" class="small muted" style="padding:12px;">Catálogo vacío.</td></tr>`}</tbody>
-      </table>
+    <p class="small muted">Herramientas agrupadas por categoría. Se comparten entre kits y hojas de técnicos.</p>
+    <div class="invCatToolbar">
+      <div class="adminSearchWrap" style="flex:1;min-width:180px;">
+        <span class="adminSearchIcon" aria-hidden="true">${icon("search", 16)}</span>
+        <input id="invCatFilter" type="text" placeholder="Buscar (ej: cate → alicate)…" autocomplete="off" value="${esc(filtro)}">
+      </div>
+      <button id="invBtnNuevaHerr" class="adminBtnOk">${icon("plus", 14)} Nueva herramienta</button>
     </div>
+    <div id="invCatGroups">${gruposHtml || `<div class="small muted" style="padding:12px;">Sin resultados.</div>`}</div>
   `;
 
+  const filterEl = $id("invCatFilter");
+  filterEl?.addEventListener("input", e => {
+    renderCatalogoSub_(e.target.value);
+    // Restaurar foco/cursor tras el re-render.
+    const nuevo = $id("invCatFilter");
+    if (nuevo) { nuevo.focus(); nuevo.setSelectionRange(nuevo.value.length, nuevo.value.length); }
+  });
   box.querySelectorAll(".invCatEdit").forEach(b => b.addEventListener("click", () => editarHerramienta_(b.dataset.hid)));
   box.querySelectorAll(".invCatDel").forEach(b => b.addEventListener("click", () => eliminarHerramienta_(b.dataset.hid)));
   $id("invBtnNuevaHerr")?.addEventListener("click", () => editarHerramienta_(null));
@@ -563,11 +666,18 @@ function renderCatalogoSub_() {
 
 function editarHerramienta_(hid) {
   const h = hid ? INV.catMap.get(hid) : null;
+  const cats = categoriasDistintas_();
   const body = `
     <div class="adminForm">
-      <label class="adminLabel">Nombre<input id="invHNombre" type="text" value="${esc(h?.nombre || "")}"></label>
+      <label class="adminLabel">Categoría <span class="adminLabelHint">(elige una o escribe una nueva)</span>
+        <input id="invHCat" type="text" list="invHCatList" value="${esc(h?.categoria || "")}"
+          placeholder="Ej: ALICATE, DADO, LLAVE MIXTA…" autocomplete="off">
+        <datalist id="invHCatList">${cats.map(c => `<option value="${esc(c)}">`).join("")}</datalist>
+      </label>
+      <label class="adminLabel">Nombre completo <span class="adminLabelHint">(al elegir categoría se autocompleta el prefijo)</span>
+        <input id="invHNombre" type="text" value="${esc(h?.nombre || "")}" placeholder="Ej: alicate de presión" autocomplete="off">
+      </label>
       <label class="adminLabel">Especialidad<select id="invHEsp" class="adminInput">${opts(ESPECIALIDADES, h?.especialidad || "AMBOS")}</select></label>
-      <label class="adminLabel">Categoría<input id="invHCat" type="text" value="${esc(h?.categoria || "")}" placeholder="Ej: dados, alicates…"></label>
       <label class="adminLabel adminLabelRow"><input id="invHActivo" type="checkbox"${h?.activo !== false ? " checked" : ""}> Activo</label>
     </div>`;
   abrirModal_(hid ? "Editar herramienta" : "Nueva herramienta", body, async () => {
@@ -576,7 +686,7 @@ function editarHerramienta_(hid) {
     const data = {
       nombre,
       especialidad: $id("invHEsp")?.value || "AMBOS",
-      categoria: $id("invHCat")?.value?.trim() || "",
+      categoria: ($id("invHCat")?.value?.trim() || "").toUpperCase(),
       activo: !!$id("invHActivo")?.checked,
     };
     try {
@@ -590,6 +700,17 @@ function editarHerramienta_(hid) {
       return false;
     }
   });
+  // Al elegir/escribir categoría, si el nombre está vacío, prefijar para no reescribirla.
+  const catEl = $id("invHCat"), nomEl = $id("invHNombre");
+  const prefijar = () => {
+    const c = (catEl?.value || "").trim();
+    if (c && nomEl && !nomEl.value.trim()) {
+      nomEl.value = c.toLowerCase() + " ";
+      nomEl.focus();
+      nomEl.setSelectionRange(nomEl.value.length, nomEl.value.length);
+    }
+  };
+  catEl?.addEventListener("change", prefijar);
 }
 
 async function eliminarHerramienta_(hid) {

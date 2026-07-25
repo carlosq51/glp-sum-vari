@@ -248,3 +248,55 @@ ON CONFLICT (kit_id, herramienta_id) DO NOTHING;
 --    SELECT k.nombre, count(*) FROM inventario_kit_items i
 --    JOIN inventario_kits k ON k.id = i.kit_id GROUP BY k.nombre;
 -- ============================================================
+
+-- ============================================================
+--  CATEGORÍAS (2026-07) · agrupa el catálogo por tipo de herramienta.
+--  Idempotente: re-ejecutable. Backfilea la columna `categoria` por
+--  nombre. No cambia `nombre` (sigue siendo el nombre completo único),
+--  solo etiqueta cada herramienta con su grupo para poder agruparlas
+--  en la UI y no reescribir "alicate" cada vez.
+-- ============================================================
+UPDATE herramientas_catalogo SET categoria='ALICATE' WHERE lower(nombre) IN (
+  'alicate tipo pinzas para obstruir mangueras de agua','alicate de corte','alicate de presion',
+  'alicate de punta','alicate universal','alicate mecanico stanley','alicate mecanico','alicate para cortar manguera');
+
+UPDATE herramientas_catalogo SET categoria='DESARMADOR' WHERE lower(nombre) IN (
+  'desarmador tipo thorx #20','desarmador tipo torx 30','desarmador torx 30',
+  'desarmador corto estrella de 6 x 38mm','desarmador corto plano de 6 x 38mm',
+  'juego de desarmadores (3 planos - 03 estrellas)','juego de desarmadores (incluido perilleros y conguitos)');
+
+UPDATE herramientas_catalogo SET categoria='LLAVE MIXTA' WHERE lower(nombre) IN (
+  'llave mixta 07','llave mixta 08','llave mixta 13-14mm largos');
+
+UPDATE herramientas_catalogo SET categoria='LLAVE' WHERE lower(nombre) IN (
+  'llave 10 y 13 tipo ratche','llave de ruedas');
+
+UPDATE herramientas_catalogo SET categoria='MARTILLO' WHERE lower(nombre) IN (
+  'martillo de carpintero o tipo bola','martillo tipo bola');
+
+UPDATE herramientas_catalogo SET categoria='FLEXOMETRO' WHERE lower(nombre) IN (
+  'flexometro (wincha 5m)','flexometro (wincha)');
+
+UPDATE herramientas_catalogo SET categoria='IMAN' WHERE lower(nombre) IN (
+  'iman tipo antena','iman tipo flexible');
+
+UPDATE herramientas_catalogo SET categoria='DADO' WHERE lower(nombre) IN (
+  'dado punta allen #4 de 3/8"');
+
+UPDATE herramientas_catalogo SET categoria='TALADRO' WHERE lower(nombre) IN (
+  'kit taladro bosch 12v (cargador, 01 baterias)','kit taladro makita 18 v (cargador, 02 baterias)');
+
+UPDATE herramientas_catalogo SET categoria='LIMA' WHERE lower(nombre) IN (
+  'lima media luna','lima redonda','lima plana');
+
+UPDATE herramientas_catalogo SET categoria='CORTATUBO'   WHERE lower(nombre)='cortador de tubo 3-32 mm';
+UPDATE herramientas_catalogo SET categoria='PALANCA'     WHERE lower(nombre)='palanca de 1/2 x 10"';
+UPDATE herramientas_catalogo SET categoria='BROCHA'      WHERE lower(nombre)='brocha fina';
+UPDATE herramientas_catalogo SET categoria='NIVEL'       WHERE lower(nombre)='nivel de mano';
+UPDATE herramientas_catalogo SET categoria='CAUTIN'      WHERE lower(nombre)='cautil';
+UPDATE herramientas_catalogo SET categoria='CUTER'       WHERE lower(nombre)='cuter';
+UPDATE herramientas_catalogo SET categoria='MALETIN'     WHERE lower(nombre)='01 maletin completo tooltech';
+UPDATE herramientas_catalogo SET categoria='REMACHADORA' WHERE lower(nombre)='remachadora';
+UPDATE herramientas_catalogo SET categoria='CAMILLA'     WHERE lower(nombre)='camilla';
+
+-- Verificación: SELECT categoria, count(*) FROM herramientas_catalogo GROUP BY categoria ORDER BY categoria;
