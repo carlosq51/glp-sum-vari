@@ -5,7 +5,7 @@
 
 import { CORE, MODULES } from "./state.js";
 import { $, el_ } from "./dom.js";
-import { icon, toroSvg } from "./icons.js";
+import { icon, toroSvg, venadoSvg } from "./icons.js";
 
 // ─── Avatares personalizados por técnico ─────────────────────────────
 // email (minúsculas) → URL de imagen (data URI o asset same-origin, por
@@ -19,6 +19,11 @@ const TECH_AVATARS = {
 const TORO_AVATAR_EMAILS = [
   "ley.m2692@hotmail.com",
   "gianfrancofloresflores3@gmail.com",
+];
+
+// Emails que usan el venado (dibujo SVG con astas) como avatar.
+const VENADO_AVATAR_EMAILS = [
+  // "correo@ejemplo.com",
 ];
 
 // ─── Metadata de módulos ─────────────────────────────────────────────
@@ -117,6 +122,9 @@ export function renderUserAvatar(wrap) {
 
   if (TORO_AVATAR_EMAILS.includes(email)) {
     imgBox.innerHTML = toroSvg("Avatar");
+    wrap.classList.add("hubAvatar--toro");
+  } else if (VENADO_AVATAR_EMAILS.includes(email)) {
+    imgBox.innerHTML = venadoSvg("Avatar");
     wrap.classList.add("hubAvatar--toro");
   } else if (url) {
     imgBox.innerHTML = `<img class="hubAvatarPhoto" src="${url}" alt="Foto de perfil">`;

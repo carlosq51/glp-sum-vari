@@ -734,3 +734,60 @@
   font-size: var(--fs-xs, 12px);
   color: var(--muted);
 }
+/* Fila "Crear …" cuando no hay coincidencias en el buscador */
+.invSearchCreate {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  cursor: pointer;
+  font-size: var(--fs-sm, 13px);
+  color: var(--accent, var(--text));
+  font-weight: var(--fw-semibold, 600);
+}
+.invSearchCreate:hover { background: var(--glass); }
+.invSearchCreate .icn { flex-shrink: 0; }
+.invSearchCreate strong { font-weight: var(--fw-bold, 700); }
+
+/* Modal grande de la hoja del técnico */
+.invTecModalBox {
+  width: min(100%, 760px);
+}
+@media (min-width: 860px) {
+  body[data-app-module="ADMIN"] .invTecModalBox {
+    width: min(100%, 860px);
+  }
+}
+
+/* Bloque plegable "Crear nueva herramienta" dentro del modal de ítem */
+.invNuevaHerr {
+  border: var(--border-w) solid var(--surfaceLine);
+  border-radius: var(--radiusSm);
+  background: var(--glass);
+  padding: 4px 10px;
+}
+.invNuevaHerr > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  padding: 6px 0;
+  font-size: var(--fs-sm, 13px);
+  font-weight: var(--fw-semibold, 600);
+  color: var(--text);
+  list-style: none;
+}
+.invNuevaHerr > summary::-webkit-details-marker { display: none; }
+.invNuevaHerr > summary .icn { flex-shrink: 0; }
+.invNuevaHerrForm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 0 10px;
+}
+.invNuevaHerrFoot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}

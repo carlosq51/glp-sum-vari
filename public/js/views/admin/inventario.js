@@ -157,7 +157,6 @@ async function renderTecnicoSub_() {
         <tbody>${filasTec || `<tr><td colspan="4" class="small muted" style="padding:12px;">Sin técnicos activos.</td></tr>`}</tbody>
       </table>
     </div>
-    <div id="invTecDetalle" style="margin-top:18px;"></div>
   `;
 
   box.querySelectorAll(".invVerTec").forEach(btn => {
@@ -165,11 +164,47 @@ async function renderTecnicoSub_() {
   });
 }
 
+// Modal grande que aloja la hoja del técnico (antes era un div al pie).
+function abrirTecModal_(titulo = "Inventario") {
+  let modal = document.getElementById("invTecModal");
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.id = "invTecModal";
+    modal.className = "modal show";
+    modal.innerHTML = `
+      <div class="modalBox adminModalBox invTecModalBox">
+        <div class="modalHead">
+          <span class="modalTitle" id="invTecModalTitle">${esc(titulo)}</span>
+          <button type="button" class="invTecModalClose" title="Cerrar">✕</button>
+        </div>
+        <div class="modalBody" id="invTecModalBody"></div>
+      </div>`;
+    document.body.appendChild(modal);
+    document.body.classList.add("modal-open");
+    modal.querySelector(".invTecModalClose")?.addEventListener("click", cerrarTecModal_);
+    modal.addEventListener("click", e => { if (e.target === modal) cerrarTecModal_(); });
+  } else {
+    const t = $id("invTecModalTitle");
+    if (t) t.textContent = titulo;
+  }
+  return $id("invTecModalBody");
+}
+
+function cerrarTecModal_() {
+  document.getElementById("invTecModal")?.remove();
+  if (!document.querySelector(".modal.show")) document.body.classList.remove("modal-open");
+  INV.invActual = null;
+  INV.invItems = [];
+  INV.selTecId = null;
+  renderTecnicoSub_();
+}
+
 async function abrirInventarioTec_(userId, inv) {
   INV.selTecId = userId;
-  const det = $id("invTecDetalle");
   const user = INV.usuarios.find(u => u.id === userId);
-  if (!det || !user) return;
+  if (!user) return;
+  const det = abrirTecModal_(user.nombre);
+  if (!det) return;
 
   // Sin inventario aún → ofrecer generar desde kit o lista libre.
   if (!inv) {
@@ -216,7 +251,7 @@ async function abrirInventarioTec_(userId, inv) {
 }
 
 function pintarInventarioTec_(user, inv) {
-  const det = $id("invTecDetalle");
+  const det = $id("invTecModalBody");
   if (!det) return;
 
   const conteo = ESTADOS.reduce((acc, e) => {
@@ -322,19 +357,18 @@ async function eliminarInventario_(inv, user) {
   try {
     await supabaseDelete("inventario_tecnico_items", { inventario_id: inv.id });
     await supabaseDelete("inventario_tecnico", { id: inv.id });
-    INV.invActual = null; INV.invItems = [];
-    $id("invTecDetalle").innerHTML = "";
+    cerrarTecModal_();
     invMsg("Hoja eliminada.");
-    await renderTecnicoSub_();
   } catch (e) { invMsg(e.message, true); }
 }
 
 // Buscador "contiene" sobre el catálogo. Recibe elementos ya en el DOM.
 // Al elegir un ítem fija el hidden con su id y muestra el nombre completo.
-function wireBuscador_(searchEl, listEl, hiddenEl, onPick) {
+function wireBuscador_(searchEl, listEl, hiddenEl, onPick, onCreate) {
   if (!searchEl || !listEl) return;
   const render = (q) => {
-    const query = q.trim().toLowerCase();
+    const raw = q.trim();
+    const query = raw.toLowerCase();
     if (!query) { listEl.style.display = "none"; listEl.innerHTML = ""; return; }
     const matches = INV.catalogo
       .filter(h => h.activo !== false && `${h.categoria || ""} ${h.nombre}`.toLowerCase().includes(query))
@@ -342,7 +376,9 @@ function wireBuscador_(searchEl, listEl, hiddenEl, onPick) {
     listEl.innerHTML = matches.length
       ? matches.map(h => `<div class="invSearchItem" data-hid="${esc(h.id)}">
           <span class="invSearchCat">${esc(h.categoria || "")}</span>${esc(detalleDe_(h))}</div>`).join("")
-      : `<div class="invSearchEmpty">Sin coincidencias.</div>`;
+      : (onCreate
+          ? `<div class="invSearchCreate" data-q="${esc(raw)}">${icon("plus", 13)} Crear <strong>“${esc(raw)}”</strong> en el catálogo</div>`
+          : `<div class="invSearchEmpty">Sin coincidencias.</div>`);
     listEl.style.display = "block";
     listEl.querySelectorAll(".invSearchItem").forEach(row => {
       row.addEventListener("mousedown", (e) => {
@@ -355,6 +391,11 @@ function wireBuscador_(searchEl, listEl, hiddenEl, onPick) {
         onPick?.(h);
       });
     });
+    listEl.querySelector(".invSearchCreate")?.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      listEl.style.display = "none";
+      onCreate?.(raw);
+    });
   };
   searchEl.addEventListener("input", () => { if (hiddenEl) hiddenEl.value = ""; render(searchEl.value); });
   searchEl.addEventListener("focus", () => { if (searchEl.value.trim()) render(searchEl.value); });
@@ -365,6 +406,7 @@ function wireBuscador_(searchEl, listEl, hiddenEl, onPick) {
 function editarItem_(itemId) {
   const it = itemId ? INV.invItems.find(x => x.id === itemId) : null;
   const herrActual = it?.herramienta_id ? INV.catMap.get(it.herramienta_id) : null;
+  const cats = categoriasDistintas_();
 
   const body = `
     <div class="adminForm">
@@ -376,8 +418,29 @@ function editarItem_(itemId) {
           <input type="hidden" id="invItHerr" value="${esc(it?.herramienta_id || "")}">
           <div id="invItHerrList" class="invSearchList" style="display:none;"></div>
         </div>
-        <span class="adminLabelHint">Deja vacío y usa "Descripción libre" si no está en el catálogo.</span>
+        <span class="adminLabelHint">Si no existe, búscala y usa “Crear … en el catálogo”.</span>
       </label>
+
+      <details class="invNuevaHerr" id="invNuevaHerrWrap">
+        <summary>${icon("plus", 13)} Crear nueva herramienta en el catálogo</summary>
+        <div class="invNuevaHerrForm">
+          <label class="adminLabel">Categoría <span class="adminLabelHint">(elige o escribe una nueva)</span>
+            <input id="invNHCat" type="text" list="invNHCatList" placeholder="Ej: ALICATE, LLAVE…" autocomplete="off">
+            <datalist id="invNHCatList">${cats.map(c => `<option value="${esc(c)}">`).join("")}</datalist>
+          </label>
+          <label class="adminLabel">Nombre
+            <input id="invNHNombre" type="text" placeholder="Ej: alicate de presión" autocomplete="off">
+          </label>
+          <label class="adminLabel">Especialidad
+            <select id="invNHEsp" class="adminInput">${opts(ESPECIALIDADES, "AMBOS")}</select>
+          </label>
+          <div class="invNuevaHerrFoot">
+            <button type="button" id="invNHCrear" class="adminBtnOk">${icon("plus", 13)} Crear y usar</button>
+            <span id="invNHMsg" class="small muted"></span>
+          </div>
+        </div>
+      </details>
+
       <label class="adminLabel">Descripción libre <span class="adminLabelHint">(fuera del catálogo)</span>
         <input id="invItLibre" type="text" value="${esc(it?.descripcion_libre || "")}" placeholder="Nombre de la herramienta">
       </label>
@@ -414,7 +477,55 @@ function editarItem_(itemId) {
     } catch (e) { invMsg(e.message, true); return false; }
   });
   wireBuscador_($id("invItHerrSearch"), $id("invItHerrList"), $id("invItHerr"),
-    () => { const l = $id("invItLibre"); if (l) l.value = ""; });
+    () => { const l = $id("invItLibre"); if (l) l.value = ""; },
+    (q) => { // no encontrada → abrir el bloque de creación con el nombre prellenado
+      const wrap = $id("invNuevaHerrWrap"); if (wrap) wrap.open = true;
+      const cat = adivinarCategoria_(q);
+      const catEl = $id("invNHCat"); if (catEl && cat && !catEl.value) catEl.value = cat;
+      const nom = $id("invNHNombre");
+      if (nom) { nom.value = q; nom.focus(); nom.setSelectionRange(nom.value.length, nom.value.length); }
+    });
+
+  // Crear herramienta en el catálogo sin salir de la hoja del técnico.
+  const nhMsg = (t, err = false) => {
+    const el = $id("invNHMsg"); if (!el) return;
+    el.textContent = t || ""; el.style.color = err ? "var(--danger)" : "var(--muted)";
+  };
+  $id("invNHCrear")?.addEventListener("click", async () => {
+    const nombre = $id("invNHNombre")?.value?.trim();
+    if (!nombre) { nhMsg("Escribe un nombre.", true); return; }
+    const btn = $id("invNHCrear"); if (btn) btn.disabled = true;
+    try {
+      const [nueva] = await supabasePost("herramientas_catalogo", {
+        nombre,
+        categoria: ($id("invNHCat")?.value?.trim() || "").toUpperCase(),
+        especialidad: $id("invNHEsp")?.value || "AMBOS",
+        activo: true,
+      });
+      await cargarBase_(); // refresca catálogo + catMap (ya buscable)
+      const h = nueva || INV.catalogo.find(x => x.nombre.toLowerCase() === nombre.toLowerCase());
+      if (h) {
+        const hidden = $id("invItHerr"); if (hidden) hidden.value = h.id;
+        const search = $id("invItHerrSearch"); if (search) search.value = h.nombre;
+        const libre = $id("invItLibre"); if (libre) libre.value = "";
+      }
+      $id("invNuevaHerrWrap")?.removeAttribute("open");
+      nhMsg("Creada y seleccionada ✓");
+    } catch (e) {
+      nhMsg(/duplicate|unique/i.test(e.message) ? "Ya existe una herramienta con ese nombre." : e.message, true);
+    } finally {
+      const b = $id("invNHCrear"); if (b) b.disabled = false;
+    }
+  });
+}
+
+// Adivina la categoría a partir del primer token del nombre (ej "alicate de..." → ALICATE)
+// buscando entre las categorías existentes. Solo una ayuda; el usuario puede cambiarla.
+function adivinarCategoria_(nombre) {
+  const n = (nombre || "").trim().toLowerCase();
+  if (!n) return "";
+  const cats = categoriasDistintas_();
+  return cats.find(c => n.startsWith(c.toLowerCase())) || "";
 }
 
 async function quitarItem_(itemId) {
@@ -746,7 +857,11 @@ function abrirModal_(titulo, bodyHtml, onSave) {
   document.body.appendChild(modal);
   document.body.classList.add("modal-open");
 
-  const close = () => { modal.remove(); document.body.classList.remove("modal-open"); };
+  const close = () => {
+    modal.remove();
+    // Puede haber otro modal debajo (la hoja del técnico) → no quitar modal-open aún.
+    if (!document.querySelector(".modal.show")) document.body.classList.remove("modal-open");
+  };
   modal.querySelector(".invModalClose")?.addEventListener("click", close);
   modal.querySelector(".invModalCancel")?.addEventListener("click", close);
   modal.addEventListener("click", e => { if (e.target === modal) close(); });

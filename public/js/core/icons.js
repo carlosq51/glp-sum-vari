@@ -171,3 +171,71 @@ export function toroSvg(idSuffix = "") {
     </svg>
   `;
 }
+
+/**
+ * Venado — imagen SVG autocontenida: cabeza de venado con astas ramificadas,
+ * orejas, hocico y ojos, sobre un disco ámbar de marca. Mismo estilo y viewBox
+ * que toroSvg para usarse indistintamente como avatar u overlay.
+ * @param {string} idSuffix  sufijo único para los ids de gradiente.
+ */
+export function venadoSvg(idSuffix = "") {
+  const bg = `venBg${idSuffix}`;
+  const an = `venAnt${idSuffix}`;
+  const fc = `venFur${idSuffix}`;
+  return `
+    <svg class="venadoSvg" viewBox="0 0 120 120" role="img" aria-label="Venado">
+      <defs>
+        <linearGradient id="${bg}" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#fcfcfd"/>
+          <stop offset="1" stop-color="#e6e8ee"/>
+        </linearGradient>
+        <linearGradient id="${an}" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#efe1b6"/>
+          <stop offset="1" stop-color="#cdb572"/>
+        </linearGradient>
+        <linearGradient id="${fc}" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#a4703f"/>
+          <stop offset="1" stop-color="#7c4f28"/>
+        </linearGradient>
+      </defs>
+      <rect width="120" height="120" fill="url(#${bg})"/>
+
+      <!-- Astas (lado izquierdo) -->
+      <g fill="none" stroke="url(#${an})" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M48 42 C 42 30 40 22 41 12"/>
+        <path d="M44 30 C 38 26 33 25 28 27"/>
+        <path d="M43 22 C 37 19 32 19 27 21"/>
+        <path d="M41 15 C 37 12 33 12 30 13"/>
+        <!-- Astas (lado derecho) -->
+        <path d="M72 42 C 78 30 80 22 79 12"/>
+        <path d="M76 30 C 82 26 87 25 92 27"/>
+        <path d="M77 22 C 83 19 88 19 93 21"/>
+        <path d="M79 15 C 83 12 87 12 90 13"/>
+      </g>
+
+      <!-- Orejas -->
+      <path d="M40 50 C 28 44 22 47 24 57 C 32 55 37 54 44 54 Z" fill="url(#${fc})"/>
+      <path d="M80 50 C 92 44 98 47 96 57 C 88 55 83 54 76 54 Z" fill="url(#${fc})"/>
+      <path d="M38 51 C 31 48 28 50 29 55 C 33 54 36 53 41 53 Z" fill="#e9d3bd"/>
+      <path d="M82 51 C 89 48 92 50 91 55 C 87 54 84 53 79 53 Z" fill="#e9d3bd"/>
+
+      <!-- Cara: frente ancha que se afina hacia el hocico -->
+      <path d="M60 40
+               C 74 40 82 50 82 60
+               C 82 72 74 84 60 92
+               C 46 84 38 72 38 60
+               C 38 50 46 40 60 40 Z" fill="url(#${fc})"/>
+      <!-- Mancha clara del hocico -->
+      <path d="M60 74 C 68 74 72 80 72 85 C 72 90 66 94 60 94 C 54 94 48 90 48 85 C 48 80 52 74 60 74 Z" fill="#e9d3bd"/>
+
+      <!-- Nariz -->
+      <ellipse cx="60" cy="84" rx="6" ry="4.6" fill="#1c1c1f"/>
+
+      <!-- Ojos -->
+      <ellipse cx="50" cy="60" rx="4" ry="4.6" fill="#1c1c1f"/>
+      <ellipse cx="70" cy="60" rx="4" ry="4.6" fill="#1c1c1f"/>
+      <circle cx="51.4" cy="58.4" r="1.2" fill="#f4f4f6"/>
+      <circle cx="71.4" cy="58.4" r="1.2" fill="#f4f4f6"/>
+    </svg>
+  `;
+}
