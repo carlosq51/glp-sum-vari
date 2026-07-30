@@ -610,6 +610,59 @@
 }
 .invResumenChip strong { color: var(--text); }
 
+/* Acciones de la cabecera de la hoja (agregar herramienta arriba) */
+.invDetActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* Contador de herramientas por técnico */
+.invContador {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  font-size: var(--fs-sm, 13px);
+  color: var(--muted);
+}
+.invContador strong {
+  color: var(--text);
+  font-size: var(--fs-md, 15px);
+}
+.invContadorSub { font-size: var(--fs-xs, 12px); }
+
+/* Filas agrupadas (mismo ítem repetido = una sola fila totalizada) */
+.invGrupoN {
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 10px;
+  background: var(--pillBg);
+  border: var(--border-w) solid var(--surfaceLine);
+  font-size: var(--fs-xs, 12px);
+  color: var(--muted);
+}
+.invGrupoToggle {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 2px;
+  margin-right: 2px;
+  line-height: 0;
+  border-radius: var(--radiusSm);
+  transition: transform var(--dur-fast), color var(--dur-fast);
+}
+.invGrupoToggle:hover { color: var(--text); }
+.invGrupoToggleOpen { transform: rotate(90deg); color: var(--text); }
+.invSubRow > td { background: var(--glass); }
+.invSubCell { padding-left: 22px; color: var(--muted); }
+.invEstadoN {
+  margin-left: 3px;
+  font-size: var(--fs-xs, 12px);
+  color: var(--muted);
+}
+
 /* Chips de herramientas dentro de un kit */
 .invKitChips {
   display: flex;

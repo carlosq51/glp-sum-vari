@@ -60,6 +60,41 @@ function nombreItem(it) {
   }
   return it.descripcion_libre || "—";
 }
+// Clave de agrupación: misma herramienta del catálogo o misma descripción libre.
+function claveItem_(it) {
+  return it.herramienta_id || `libre:${(it.descripcion_libre || "").trim().toLowerCase()}`;
+}
+function cantidadDe_(it) { return Number(it.cantidad) || 0; }
+// Suma las unidades de una lista de ítems (el "contador" de herramientas).
+function totalUnidades_(items) {
+  return (items || []).reduce((s, it) => s + cantidadDe_(it), 0);
+}
+// Agrupa ítems repetidos (2 martillos = 1 fila con cantidad 2).
+// Conserva el orden de aparición (que ya viene ordenado por `orden`).
+function agruparItems_(items) {
+  const grupos = new Map();
+  items.forEach(it => {
+    const key = claveItem_(it);
+    if (!grupos.has(key)) grupos.set(key, { key, nombre: nombreItem(it), items: [] });
+    grupos.get(key).items.push(it);
+  });
+  return [...grupos.values()].map(g => {
+    g.cantidad = totalUnidades_(g.items);
+    g.marcas = [...new Set(g.items.map(it => (it.marca || "").trim()).filter(Boolean))];
+    g.notas  = [...new Set(g.items.map(it => (it.nota || "").trim()).filter(Boolean))];
+    g.porEstado = g.items.reduce((acc, it) => {
+      acc[it.estado] = (acc[it.estado] || 0) + cantidadDe_(it);
+      return acc;
+    }, {});
+    return g;
+  });
+}
+// Badges de estado de un grupo (con ×n cuando hay estados mezclados).
+function estadosGrupo_(g) {
+  const usados = ESTADOS.filter(e => g.porEstado[e]);
+  if (usados.length <= 1) return estadoBadge(usados[0] || g.items[0]?.estado);
+  return usados.map(e => `${estadoBadge(e)}<span class="invEstadoN">×${g.porEstado[e]}</span>`).join(" ");
+}
 
 // ─── Carga base (catálogo + kits + usuarios) ─────────────────────────
 async function cargarBase_() {
@@ -123,21 +158,42 @@ async function renderTecnicoSub_() {
   const box = $id("invSubContent");
   if (!box) return;
 
-  // Traer qué técnicos ya tienen inventario para pintar un chip de estado.
-  let inventarios = [];
+  // Traer qué técnicos ya tienen inventario (+ sus ítems) para el contador.
+  let inventarios = [], todosItems = [];
   try { inventarios = await supabaseGet("inventario_tecnico"); } catch { inventarios = []; }
+  try { todosItems = await supabaseGet("inventario_tecnico_items"); } catch { todosItems = []; }
   const invByUser = new Map(inventarios.map(iv => [iv.user_id, iv]));
+
+  // inventario_id → { unidades, tipos }
+  const statsByInv = new Map();
+  todosItems.forEach(it => {
+    let s = statsByInv.get(it.inventario_id);
+    if (!s) { s = { unidades: 0, claves: new Set() }; statsByInv.set(it.inventario_id, s); }
+    s.unidades += cantidadDe_(it);
+    s.claves.add(claveItem_(it));
+  });
+
+  let totalUnidades = 0, tecnicosConHoja = 0;
 
   const filasTec = INV.usuarios.map(u => {
     const iv = invByUser.get(u.id);
     const chip = iv
       ? `<span class="adminBadge ${iv.formato === "ANTIGUO" ? "adminBadgeWarn" : "adminBadgeOk"}">${iv.formato === "ANTIGUO" ? "Antiguo" : "Nuevo"}</span>`
       : `<span class="adminBadgeMuted">Sin inventario</span>`;
+    const st = iv ? statsByInv.get(iv.id) : null;
+    if (iv) { tecnicosConHoja++; totalUnidades += st?.unidades || 0; }
+    const contador = iv
+      ? `<span class="invContador" title="${st?.claves.size || 0} herramientas distintas">
+           <strong>${st?.unidades || 0}</strong> uds
+           <span class="invContadorSub">· ${st?.claves.size || 0} tipos</span>
+         </span>`
+      : `<span class="small muted">—</span>`;
     return `
       <tr>
         <td>${esc(u.nombre)}</td>
         <td><span class="adminBadge">${esc(u.especialidad)}</span></td>
         <td>${chip}</td>
+        <td style="text-align:center;">${contador}</td>
         <td class="adminActionsCell">
           <button class="adminBtnEdit adminRowBtn adminRowBtn--wide invVerTec" data-uid="${esc(u.id)}">
             ${icon("chevronRight", 14)} ${iv ? "Ver / editar" : "Crear"}
@@ -146,15 +202,22 @@ async function renderTecnicoSub_() {
       </tr>`;
   }).join("");
 
+  const promedio = tecnicosConHoja ? Math.round(totalUnidades / tecnicosConHoja) : 0;
+
   box.innerHTML = `
     <p class="small muted">
       Cada técnico tiene su hoja. Los <strong>nuevos</strong> se generan desde un kit estándar (MOTOR/TANQUE);
       los <strong>antiguos</strong> conservan su lista libre importada del Excel.
     </p>
-    <div class="adminTableScroll">
+    <div class="invResumen">
+      <span class="invResumenChip">Técnicos con hoja <strong>${tecnicosConHoja}</strong></span>
+      <span class="invResumenChip">Herramientas entregadas <strong>${totalUnidades}</strong></span>
+      <span class="invResumenChip">Promedio por técnico <strong>${promedio}</strong></span>
+    </div>
+    <div class="adminTableScroll" style="margin-top:10px;">
       <table class="adminTable">
-        <thead><tr><th>Técnico</th><th>Especialidad</th><th>Inventario</th><th></th></tr></thead>
-        <tbody>${filasTec || `<tr><td colspan="4" class="small muted" style="padding:12px;">Sin técnicos activos.</td></tr>`}</tbody>
+        <thead><tr><th>Técnico</th><th>Especialidad</th><th>Inventario</th><th style="text-align:center;">Herramientas</th><th></th></tr></thead>
+        <tbody>${filasTec || `<tr><td colspan="5" class="small muted" style="padding:12px;">Sin técnicos activos.</td></tr>`}</tbody>
       </table>
     </div>
   `;
@@ -254,24 +317,48 @@ function pintarInventarioTec_(user, inv) {
   const det = $id("invTecModalBody");
   if (!det) return;
 
+  // Conteos por unidades (no por fila), para que cuadren con las cantidades.
   const conteo = ESTADOS.reduce((acc, e) => {
-    acc[e] = INV.invItems.filter(it => it.estado === e).length;
+    acc[e] = totalUnidades_(INV.invItems.filter(it => it.estado === e));
     return acc;
   }, {});
-  const total = INV.invItems.length;
+  const total = totalUnidades_(INV.invItems);
+  const grupos = agruparItems_(INV.invItems);
 
-  const filas = INV.invItems.map(it => `
-    <tr data-itid="${esc(it.id)}">
-      <td>${esc(nombreItem(it))}</td>
-      <td>${esc(it.marca || "—")}</td>
-      <td style="text-align:center;">${it.cantidad ?? 1}</td>
-      <td>${estadoBadge(it.estado)}</td>
-      <td class="small muted">${esc(it.nota || "")}</td>
-      <td class="adminActionsCell">
-        <button class="adminBtnEdit adminRowBtn invItemEdit" data-itid="${esc(it.id)}" title="Editar">${icon("pencil", 14)}</button>
-        <button class="adminBtnDel adminRowBtn adminRowBtn--danger invItemDel" data-itid="${esc(it.id)}" title="Quitar">${icon("trash", 14)}</button>
-      </td>
-    </tr>`).join("");
+  const filas = grupos.map(g => {
+    const multi = g.items.length > 1;
+    const fila = `
+      <tr class="invGrupoRow${multi ? " invGrupoRowMulti" : ""}" data-key="${esc(g.key)}">
+        <td>
+          ${multi ? `<button class="invGrupoToggle" data-key="${esc(g.key)}" title="Ver los ${g.items.length} registros">${icon("chevronRight", 13)}</button>` : ""}
+          ${esc(g.nombre)}
+          ${multi ? `<span class="invGrupoN">${g.items.length} registros</span>` : ""}
+        </td>
+        <td>${esc(g.marcas.join(", ") || "—")}</td>
+        <td style="text-align:center;"><strong>${g.cantidad}</strong></td>
+        <td>${estadosGrupo_(g)}</td>
+        <td class="small muted">${esc(g.notas.join(" · "))}</td>
+        <td class="adminActionsCell">
+          ${multi ? "" : `
+            <button class="adminBtnEdit adminRowBtn invItemEdit" data-itid="${esc(g.items[0].id)}" title="Editar">${icon("pencil", 14)}</button>
+            <button class="adminBtnDel adminRowBtn adminRowBtn--danger invItemDel" data-itid="${esc(g.items[0].id)}" title="Quitar">${icon("trash", 14)}</button>`}
+        </td>
+      </tr>`;
+    if (!multi) return fila;
+    const subs = g.items.map(it => `
+      <tr class="invSubRow" data-key="${esc(g.key)}" hidden>
+        <td class="invSubCell">↳ ${esc(nombreItem(it))}</td>
+        <td>${esc(it.marca || "—")}</td>
+        <td style="text-align:center;">${cantidadDe_(it)}</td>
+        <td>${estadoBadge(it.estado)}</td>
+        <td class="small muted">${esc(it.nota || "")}</td>
+        <td class="adminActionsCell">
+          <button class="adminBtnEdit adminRowBtn invItemEdit" data-itid="${esc(it.id)}" title="Editar">${icon("pencil", 14)}</button>
+          <button class="adminBtnDel adminRowBtn adminRowBtn--danger invItemDel" data-itid="${esc(it.id)}" title="Quitar">${icon("trash", 14)}</button>
+        </td>
+      </tr>`).join("");
+    return fila + subs;
+  }).join("");
 
   det.innerHTML = `
     <div class="adminConfigSection">
@@ -284,11 +371,15 @@ function pintarInventarioTec_(user, inv) {
             ${inv.tomado_por ? ` · tomado por ${esc(inv.tomado_por)}` : ""}
           </div>
         </div>
-        <button class="adminBtnGhost invEditCab" title="Editar datos de la hoja">${icon("settings", 14)} Datos</button>
+        <div class="invDetActions">
+          <button id="invBtnAddItem" class="adminBtnOk">${icon("plus", 14)} Agregar herramienta</button>
+          <button class="adminBtnGhost invEditCab" title="Editar datos de la hoja">${icon("settings", 14)} Datos</button>
+        </div>
       </div>
 
       <div class="invResumen">
-        <span class="invResumenChip">Total <strong>${total}</strong></span>
+        <span class="invResumenChip">Total <strong>${total}</strong> uds</span>
+        <span class="invResumenChip">Distintas <strong>${grupos.length}</strong></span>
         ${ESTADOS.map(e => `<span class="invResumenChip">${ESTADO_LABEL[e]} <strong>${conteo[e]}</strong></span>`).join("")}
       </div>
 
@@ -300,7 +391,6 @@ function pintarInventarioTec_(user, inv) {
       </div>
 
       <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;">
-        <button id="invBtnAddItem" class="adminBtnOk">${icon("plus", 14)} Agregar herramienta</button>
         <button id="invBtnDelInv" class="adminBtnGhost invBtnDanger">${icon("trash", 14)} Eliminar hoja completa</button>
       </div>
     </div>
@@ -308,6 +398,12 @@ function pintarInventarioTec_(user, inv) {
 
   det.querySelectorAll(".invItemEdit").forEach(b => b.addEventListener("click", () => editarItem_(b.dataset.itid)));
   det.querySelectorAll(".invItemDel").forEach(b => b.addEventListener("click", () => quitarItem_(b.dataset.itid)));
+  // Desplegar/plegar los registros individuales de un grupo repetido.
+  det.querySelectorAll(".invGrupoToggle").forEach(b => b.addEventListener("click", () => {
+    const abierto = b.classList.toggle("invGrupoToggleOpen");
+    det.querySelectorAll(`.invSubRow[data-key="${CSS.escape(b.dataset.key)}"]`)
+      .forEach(tr => { tr.hidden = !abierto; });
+  }));
   $id("invBtnAddItem")?.addEventListener("click", () => editarItem_(null));
   $id("invBtnDelInv")?.addEventListener("click", () => eliminarInventario_(inv, user));
   det.querySelector(".invEditCab")?.addEventListener("click", () => editarCabecera_(inv, user));
@@ -470,8 +566,26 @@ function editarItem_(itemId) {
       nota: $id("invItNota")?.value?.trim() || "",
     };
     try {
-      if (itemId) await supabasePatch("inventario_tecnico_items", { id: itemId }, data);
-      else { data.orden = INV.invItems.length + 1; await supabasePost("inventario_tecnico_items", data); }
+      if (itemId) {
+        await supabasePatch("inventario_tecnico_items", { id: itemId }, data);
+      } else {
+        // Si ya existe la misma herramienta con igual marca y estado, sumamos
+        // la cantidad en vez de crear una fila repetida.
+        const clave = claveItem_(data);
+        const dup = INV.invItems.find(x =>
+          claveItem_(x) === clave &&
+          (x.marca || "").trim().toLowerCase() === data.marca.toLowerCase() &&
+          x.estado === data.estado);
+        if (dup) {
+          const nueva = cantidadDe_(dup) + data.cantidad;
+          await supabasePatch("inventario_tecnico_items", { id: dup.id },
+            { cantidad: nueva, nota: data.nota || dup.nota || "" });
+          invMsg(`Ya existía: se sumó a la cantidad (ahora ${nueva}).`);
+        } else {
+          data.orden = INV.invItems.length + 1;
+          await supabasePost("inventario_tecnico_items", data);
+        }
+      }
       await abrirInventarioTec_(INV.selTecId, INV.invActual);
       return true;
     } catch (e) { invMsg(e.message, true); return false; }
@@ -611,11 +725,13 @@ async function renderKitsSub_() {
   }).join("");
 
   box.innerHTML = `
-    <p class="small muted">Kits estándar por especialidad. Edítalos cuando cambien las herramientas que se entregan.</p>
-    ${kitsHtml || `<div class="small muted" style="padding:12px;">No hay kits. Crea uno.</div>`}
-    <div style="margin-top:8px;">
+    <div class="invCatToolbar">
+      <p class="small muted" style="flex:1;min-width:180px;margin:0;">
+        Kits estándar por especialidad. Edítalos cuando cambien las herramientas que se entregan.
+      </p>
       <button id="invBtnNuevoKit" class="adminBtnOk">${icon("plus", 14)} Nuevo kit</button>
     </div>
+    ${kitsHtml || `<div class="small muted" style="padding:12px;">No hay kits. Crea uno.</div>`}
   `;
 
   box.querySelectorAll(".invKitChipDel").forEach(b =>

@@ -70,18 +70,37 @@ export async function loadMiInventario_(containerId = "tecInventarioContent") {
 
   const nombreItem = it =>
     (it.herramienta_id && catMap.get(it.herramienta_id)) || it.descripcion_libre || "—";
+  const cant = it => Number(it.cantidad) || 0;
 
   const conteo = ESTADOS.reduce((acc, e) => {
-    acc[e] = items.filter(it => it.estado === e).length; return acc;
+    acc[e] = items.filter(it => it.estado === e).reduce((s, it) => s + cant(it), 0); return acc;
   }, {});
+  const totalUnidades = items.reduce((s, it) => s + cant(it), 0);
 
-  const filas = items.map(it => `
-    <tr>
-      <td>${esc(nombreItem(it))}</td>
-      <td>${esc(it.marca || "—")}</td>
-      <td style="text-align:center;">${it.cantidad ?? 1}</td>
-      <td><span class="adminBadge ${ESTADO_CLASS[it.estado] || ""}">${esc(ESTADO_LABEL[it.estado] || it.estado)}</span></td>
-    </tr>`).join("");
+  // Agrupar repetidos: 2 martillos = 1 fila con cantidad 2.
+  const grupos = new Map();
+  items.forEach(it => {
+    const key = it.herramienta_id || `libre:${(it.descripcion_libre || "").trim().toLowerCase()}`;
+    if (!grupos.has(key)) grupos.set(key, { nombre: nombreItem(it), cantidad: 0, marcas: new Set(), porEstado: {} });
+    const g = grupos.get(key);
+    g.cantidad += cant(it);
+    if ((it.marca || "").trim()) g.marcas.add(it.marca.trim());
+    g.porEstado[it.estado] = (g.porEstado[it.estado] || 0) + cant(it);
+  });
+
+  const filas = [...grupos.values()].map(g => {
+    const usados = ESTADOS.filter(e => g.porEstado[e]);
+    const badges = usados.map(e =>
+      `<span class="adminBadge ${ESTADO_CLASS[e] || ""}">${esc(ESTADO_LABEL[e] || e)}</span>${
+        usados.length > 1 ? `<span class="invEstadoN">×${g.porEstado[e]}</span>` : ""}`).join(" ");
+    return `
+      <tr>
+        <td>${esc(g.nombre)}</td>
+        <td>${esc([...g.marcas].join(", ") || "—")}</td>
+        <td style="text-align:center;"><strong>${g.cantidad}</strong></td>
+        <td>${badges}</td>
+      </tr>`;
+  }).join("");
 
   box.innerHTML = `
     <div class="small muted" style="margin-bottom:8px;">
@@ -91,7 +110,8 @@ export async function loadMiInventario_(containerId = "tecInventarioContent") {
     </div>
 
     <div class="invResumen">
-      <span class="invResumenChip">Total <strong>${items.length}</strong></span>
+      <span class="invResumenChip">Total <strong>${totalUnidades}</strong> uds</span>
+      <span class="invResumenChip">Distintas <strong>${grupos.size}</strong></span>
       ${ESTADOS.map(e => `<span class="invResumenChip">${ESTADO_LABEL[e]} <strong>${conteo[e]}</strong></span>`).join("")}
     </div>
 
