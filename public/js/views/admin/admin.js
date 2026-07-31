@@ -537,6 +537,7 @@ async function loadTab() {
       const metaDiaria    = String(cfg.META_DIARIA);
       const metaCal       = String(cfg.META_CALIDAD);
       const metaMensual   = String(cfg.META_MENSUAL);
+      const metaCarrosTec = String(cfg.META_CARROS_TEC);
 
       wrap.innerHTML = `
         <div class="adminConfigPanel">
@@ -638,6 +639,18 @@ async function loadTab() {
               <label class="adminLabel adminLabelInline">
                 ${icon("chart", 14)} Conversiones / mes por t\u00e9cnico
                 <input id="cfgMetaMensual" type="number" min="1" max="500" value="${escHtml(metaMensual)}" style="width:100px;">
+              </label>
+            </div>
+
+            <p class="small muted" style="margin:14px 0 8px;">
+              <strong>Carros completos por técnico / día</strong> — al llegar a esta meta el técnico
+              queda <em>libre</em> en el panel LIVE y se sugiere emparejarlo con otro del mismo rol
+              para sacar un carro entero más (½ para cada uno).
+            </p>
+            <div class="adminHorarioGrid">
+              <label class="adminLabel adminLabelInline">
+                ${icon("wrench", 14)} Carros / día por técnico
+                <input id="cfgMetaCarrosTec" type="number" min="1" max="20" value="${escHtml(metaCarrosTec)}" style="width:100px;">
               </label>
             </div>
 
@@ -1010,6 +1023,7 @@ async function saveMetas_() {
   const diaria  = String(Number($id("cfgMetaDiaria")?.value) || 25);
   const mensual = String(Number($id("cfgMetaMensual")?.value) || 60);
   const cal   = String(Number($id("cfgMetaCal")?.value)  || 22);
+  const carrosTec = String(Number($id("cfgMetaCarrosTec")?.value) || 2);
   if (btn) btn.disabled = true;
   if (msgEl) msgEl.textContent = "Guardando\u2026";
   try {
@@ -1020,6 +1034,7 @@ async function saveMetas_() {
         { key: "META_DIARIA",  value: diaria },
         { key: "META_MENSUAL", value: mensual },
         { key: "META_CALIDAD",    value: cal  },
+        { key: "META_CARROS_TEC", value: carrosTec },
       ]}),
     });
     const j = await resp.json();

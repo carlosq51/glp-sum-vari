@@ -15,6 +15,7 @@ let _liveFilter_  = null;   // "TRABAJANDO"|"PAUSADO"|"SIN_INICIAR"|"STALLED"|"C
 import { rolMeta, estadoMeta } from "../../core/domain-meta.js";
 import { cfg } from "../../core/config.js";
 import { relTimeText, startRelTimeTicker, countUp, skeletonHTML } from "../../core/ui-dynamics.js";
+import { clasificarDuplas_, renderDuplasPanel_, cumplioMeta_, ROLES_DUPLA } from "./sup-duplas.js";
 
 let _prevKpi = { conv: null, cal: null }; // para animar los números al cambiar
 
@@ -62,6 +63,10 @@ function renderLive_(container, data) {
     const ms = r?.updated_at ? Date.now()-new Date(r.updated_at).getTime() : 0;
     return (t.estadoActivo==="PAUSADO" && ms>40*60_000)||(t.estadoActivo==="SIN_INICIAR" && ms>60*60_000);
   }).length;
+
+  // Cierre por duplas: quién ya cerró su meta de carros completos
+  const metaTec  = Number(cfg("META_CARROS_TEC")) || 2;
+  const duplas   = clasificarDuplas_(techs, metaTec);
 
   // VIN-level goals from server
   const vsum     = data.vinsSummary || {};
@@ -121,10 +126,12 @@ function renderLive_(container, data) {
       ${countPaused > 0 ? `<span style="display:inline-flex;align-items:center;gap:4px;background:var(--warnBg);border:1px solid var(--warn);color:var(--warn);border-radius:6px;padding:2px 8px;font-size:.72em;font-weight:900;cursor:pointer;user-select:none;" data-live-filter="PAUSADO" title="Click para filtrar pausados">&#x23F8; ${countPaused} pausado${countPaused!==1?"s":""}</span>` : ""}
       ${countSinIni > 0 ? `<span style="display:inline-flex;align-items:center;gap:4px;background:var(--pillBg);border:1px solid var(--pillLine);color:var(--muted);border-radius:6px;padding:2px 8px;font-size:.72em;font-weight:900;cursor:pointer;user-select:none;" data-live-filter="SIN_INICIAR" title="Click para filtrar sin iniciar">&#x25CB; ${countSinIni} sin ini.</span>` : ""}
       ${countStalled > 0 ? `<span style="background:var(--dangerBg);border:1px solid var(--dv-serious);color:var(--dv-serious);border-radius:6px;padding:2px 8px;font-size:.72em;font-weight:900;cursor:pointer;user-select:none;" data-live-filter="STALLED" title="Click para filtrar sin movimiento">&#x26A0;&#xFE0F; ${countStalled} sin mov.</span>` : ""}
+      ${duplas.totalMeta > 0 ? `<span style="display:inline-flex;align-items:center;gap:4px;background:var(--noteBg);border:1px solid var(--note);color:var(--note);border-radius:6px;padding:2px 8px;font-size:.72em;font-weight:900;cursor:pointer;user-select:none;" data-live-filter="META_OK" title="Click para filtrar quienes ya cerraron sus ${metaTec} carros">&#x1F91D; ${duplas.totalMeta} en meta</span>` : ""}
       <span style="margin-left:auto;font-size:.62em;opacity:.3;">${countTotal} t\u00e9cnico${countTotal!==1?"s":""} hoy</span>
     </div>
 
-  </div>`;
+  </div>
+  ${renderDuplasPanel_(duplas)}`;
 
   for (const rol of allRoles) {
     const meta  = rolMeta(rol);
@@ -137,6 +144,7 @@ function renderLive_(container, data) {
     const _totAssG = totalCars + totalVirtual;
     const pctCumplGroup = _totAssG > 0 ? Math.round(totalCars / _totAssG * 100) : null;
     const _cumplColorG = pctCumplGroup >= 80 ? "var(--dv-good)" : pctCumplGroup >= 50 ? "var(--dv-warn)" : "var(--dv-bad)";
+    const enMetaGroup = group.filter(t => cumplioMeta_(t, metaTec)).length;
 
     html += `
     <div class="live-group" data-rol="${escapeHtml(rol)}">
@@ -146,12 +154,13 @@ function renderLive_(container, data) {
         <span class="live-cars-pill${hasHalfGroup ? " half" : ""}" title="Carros finalizados ${escapeHtml(meta.label)}">🚗 ${totalCarsStr}</span>
         ${totalVirtual > 0 ? `<span class="live-virtual-pill" title="${totalVirtual} trabajo${totalVirtual !== 1 ? "s" : ""} en progreso sin finalizar">⚙️ ${totalVirtual} virt.</span>` : ""}
         ${pctCumplGroup !== null && _totAssG > 0 ? `<span style="font-size:.7em;font-weight:900;color:${_cumplColorG};background:var(--pillBg);border:1px solid var(--pillLine);border-radius:5px;padding:1px 7px;">${pctCumplGroup}% cumpl.</span>` : ""}
+        ${enMetaGroup > 0 ? `<span class="live-meta-pill" title="${enMetaGroup} ya cerraron sus ${metaTec} carros completos">🤝 ${enMetaGroup} en meta</span>` : ""}
         <span class="live-group-count pill small">${group.length} téc.</span>
         ${countTrabajando > 0 ? `<span class="live-dot-working"></span><span class="small">${countTrabajando} activo${countTrabajando !== 1 ? "s" : ""}</span>` : ""}
         <span class="live-group-chevron">▶</span>
       </div>
       <div class="live-cards live-group-body" style="display:none;">
-        ${group.map(t => renderTechCard_(t)).join("")}
+        ${group.map(t => renderTechCard_(t, metaTec)).join("")}
       </div>
     </div>`;
   }
@@ -229,6 +238,37 @@ function renderLive_(container, data) {
   });
 }
 
+// Aplica el filtro activo del header sobre las cards ya renderizadas.
+// Oculta las que no matchean y colapsa los grupos que quedan vacíos.
+function applyLiveFilter_(container) {
+  if (!container) return;
+  const f = _liveFilter_;
+
+  container.querySelectorAll(".live-group").forEach(g => {
+    const body  = g.querySelector(".live-group-body");
+    const chev  = g.querySelector(".live-group-chevron");
+    const cards = [...g.querySelectorAll(".live-tech-card")];
+    let visibles = 0;
+
+    for (const card of cards) {
+      const match = !f
+        || (f === "STALLED"  && card.dataset.stalled === "1")
+        || (f === "META_OK"  && card.dataset.meta === "1")
+        || (f === "CUMPL_LOW" && card.dataset.pct !== "" && Number(card.dataset.pct) < 50)
+        || card.dataset.estado === f;
+      card.style.display = match ? "" : "none";
+      if (match) visibles++;
+    }
+
+    g.style.display = (f && visibles === 0) ? "none" : "";
+    // Con filtro activo abrimos los grupos con resultados; sin filtro, no tocamos
+    if (f && visibles > 0 && body) {
+      body.style.display = "";
+      if (chev) chev.textContent = "▼";
+    }
+  });
+}
+
 function fmtCars_(n) {
   const v = Number(n) || 0;
   return v === Math.floor(v) ? String(v) : v.toFixed(1);
@@ -246,7 +286,7 @@ function shortEstado_(label, maxLen = 4) {
   return word.length > maxLen ? word.slice(0, maxLen) : word;
 }
 
-function renderTechCard_(t) {
+function renderTechCard_(t, metaTec = 2) {
   const em = estadoMeta(t.estadoActivo);
   const nombre = t.nombre || t.email || "Técnico";
   const vinActivo = t.vinActivo || "";
@@ -266,12 +306,17 @@ function renderTechCard_(t) {
   const displayName = firstName_(nombre);
   const displayEstado = shortEstado_(em.label);
   const isDisconnected = t.estadoActivo === "DESCONECTADO";
+  // Meta de carros completos (solo conversión): cerrada → libre para dupla
+  const esConversion = ROLES_DUPLA.includes(String(t.rol || "").toUpperCase());
+  const enMeta = cumplioMeta_(t, metaTec);
+  const libreDupla = enMeta && virtual === 0;
 
   return `
-  <div class="live-tech-card${isDisconnected ? " disconnected" : ""}${isStalled ? " stalled" : ""}"
+  <div class="live-tech-card${isDisconnected ? " disconnected" : ""}${isStalled ? " stalled" : ""}${enMeta ? " meta-ok" : ""}${libreDupla ? " libre-dupla" : ""}"
     data-techkey="${escapeHtml(t.userId + "__" + t.rol)}"
     data-estado="${escapeHtml(t.estadoActivo)}"
     data-stalled="${isStalled ? "1" : "0"}"
+    data-meta="${enMeta ? "1" : "0"}"
     data-pct="${pctTech !== null ? pctTech : ""}"
     title="${escapeHtml(nombre)} \u2014 ${isDisconnected ? "Sin actividad hoy" : "Click: ver detalle"}"${isStalled ? ` style="border-color:var(--dv-serious);background:var(--dangerBgFade);"` : ""}>
     <div class="live-tech-main">
@@ -280,6 +325,8 @@ function renderTechCard_(t) {
         <span class="live-tech-name">${escapeHtml(displayName)}</span>
         <span class="live-badge ${escapeHtml(em.badge)}">${escapeHtml(displayEstado)}</span>
         ${isStalled ? `<span style="font-size:.66em;background:var(--dangerBg);border:1px solid var(--dv-serious);color:var(--dv-serious);border-radius:4px;padding:1px 5px;white-space:nowrap;font-weight:900;">&#x26A0;&#xFE0F; ${stallMins}m</span>` : ""}
+        ${libreDupla ? `<span class="live-meta-badge" title="Cerró sus ${metaTec} carros y está libre — juntarlo con otro ${escapeHtml(String(t.rol||"").toLowerCase())} para un carro entero">🤝 LIBRE</span>`
+          : enMeta ? `<span class="live-meta-badge meta-extra" title="Cerró sus ${metaTec} carros y sigue en un carro extra">🏁 META</span>` : ""}
       </div>
       <div class="live-vin-section">
         ${vinActivo && !isDisconnected
@@ -287,7 +334,7 @@ function renderTechCard_(t) {
           : `<span style="opacity:.25;font-size:.75em;">\u2014</span>`}
       </div>
       <div class="live-tech-stats">
-        ${!isDisconnected ? `<span class="live-cars-pill${hasHalf ? " half" : ""}" title="${hasHalf ? "Incluye trabajos del d\u00EDa anterior (\u00BD)" : "Carros finalizados hoy"}">\uD83D\uDE97 ${carsStr}</span>` : ""}
+        ${!isDisconnected ? `<span class="live-cars-pill${hasHalf ? " half" : ""}${enMeta ? " meta" : ""}" title="${hasHalf ? "Incluye trabajos del d\u00EDa anterior (\u00BD)" : "Carros finalizados hoy"}${esConversion ? ` \u2014 meta ${metaTec}` : ""}">\uD83D\uDE97 ${carsStr}${esConversion ? `<span class="live-cars-meta">/${metaTec}</span>` : ""}</span>` : ""}
         ${!isDisconnected && virtual > 0 ? `<span class="live-virtual-pill" title="${virtual} en progreso">\u2699\uFE0F ${virtual}</span>` : ""}
         ${!isDisconnected && pctTech !== null ? `<span style="font-size:.68em;font-weight:900;color:${_cumplColor};background:var(--pillBg);border:1px solid var(--pillLine);border-radius:4px;padding:1px 5px;white-space:nowrap;" title="Cumplimiento: ${cars} finalizado${cars!==1?"s":""} de ${_totAss} asignado${_totAss!==1?"s":""}">${pctTech}%</span>` : ""}
         ${!isDisconnected && currentAsg?.running_since ? `<span style="font-size:.68em;background:var(--okBg);border:1px solid var(--ok);color:var(--ok);border-radius:4px;padding:1px 5px;white-space:nowrap;">&#x23F1; ${fmtTiempo_(currentAsg.tiempo_ms, currentAsg.running_since)}</span>` : ""}

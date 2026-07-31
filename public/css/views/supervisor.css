@@ -621,3 +621,195 @@ button[data-suptrack].active {
   background: var(--glass);
   border-color: rgba(15,23,42,.12);
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   CIERRE POR DUPLAS — técnicos que ya cerraron sus carros completos
+   ═══════════════════════════════════════════════════════════════ */
+
+.live-duplas {
+  margin: 0 0 12px;
+  padding: 9px 11px;
+  background: var(--glass);
+  border: 1px solid var(--note);
+  border-radius: 12px;
+}
+
+.live-duplas-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.live-duplas-title {
+  font-size: .74em;
+  font-weight: 1000;
+  letter-spacing: .6px;
+  color: var(--note);
+}
+.live-duplas-sub {
+  font-size: .64em;
+  opacity: .45;
+}
+.live-duplas-count {
+  margin-left: auto;
+  font-size: .7em;
+  font-weight: 900;
+  color: var(--note);
+  background: var(--noteBg);
+  border: 1px solid var(--note);
+  border-radius: 6px;
+  padding: 1px 7px;
+  white-space: nowrap;
+}
+.live-duplas-empty { opacity: .45; padding: 2px 0; }
+
+.live-duplas-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+@media (min-width: 860px) {
+  body[data-app-module="SUPERVISOR"] .live-duplas-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+    gap: 6px;
+  }
+}
+
+.dupla-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 9px;
+  background: rgba(255,255,255,.05);
+  border: 1px solid var(--surfaceLine);
+  border-radius: 9px;
+  font-size: .84em;
+}
+.dupla-card--wait {
+  opacity: .72;
+  border-style: dashed;
+}
+.dupla-rol {
+  font-size: .72em;
+  font-weight: 900;
+  letter-spacing: .3px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.dupla-names {
+  flex: 1;
+  min-width: 0;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dupla-names b { font-weight: 1000; }
+.dupla-plus {
+  opacity: .4;
+  margin: 0 3px;
+  font-weight: 900;
+}
+.dupla-goal {
+  flex-shrink: 0;
+  font-weight: 900;
+  color: var(--ok);
+  white-space: nowrap;
+}
+.dupla-goal--wait {
+  color: var(--muted);
+  font-weight: 700;
+  font-size: .88em;
+}
+.dupla-split {
+  font-weight: 700;
+  font-size: .82em;
+  opacity: .55;
+  color: var(--text);
+}
+
+.live-duplas-foot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 7px;
+  padding-top: 6px;
+  border-top: 1px solid var(--surfaceLine);
+}
+.live-duplas-foot-label { opacity: .45; font-size: .92em; }
+.dupla-chip {
+  font-size: .92em;
+  font-weight: 800;
+  padding: 1px 7px;
+  border-radius: 20px;
+  background: var(--pillBg);
+  border: 1px solid var(--pillLine);
+  white-space: nowrap;
+}
+.dupla-chip--near {
+  background: var(--warnBg);
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+/* ── Marcas en la card del técnico ── */
+.live-meta-badge {
+  font-size: .64em;
+  font-weight: 1000;
+  letter-spacing: .3px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  white-space: nowrap;
+  background: var(--okBg);
+  border: 1px solid var(--ok);
+  color: var(--ok);
+}
+.live-meta-badge.meta-extra {
+  background: var(--noteBg);
+  border-color: var(--note);
+  color: var(--note);
+}
+
+.live-meta-pill {
+  font-size: .7em;
+  font-weight: 900;
+  padding: 1px 7px;
+  border-radius: 5px;
+  white-space: nowrap;
+  background: var(--noteBg);
+  border: 1px solid var(--note);
+  color: var(--note);
+}
+
+/* Contador de carros contra la meta: "🚗 2/2" */
+.live-cars-meta {
+  font-weight: 700;
+  opacity: .45;
+  font-size: .88em;
+}
+.live-cars-pill.meta {
+  background: var(--okBg);
+  border-color: var(--ok);
+  color: var(--ok);
+}
+.live-cars-pill.meta .live-cars-meta { opacity: .6; }
+
+/* Card del técnico que cerró su meta */
+.live-tech-card.meta-ok {
+  border-color: var(--note);
+}
+.live-tech-card.libre-dupla {
+  border-color: var(--ok);
+  background: linear-gradient(180deg, var(--okBg), rgba(0,0,0,.10));
+}
+
+:root[data-theme="day"] .dupla-card {
+  background: var(--glass);
+  border-color: rgba(15,23,42,.12);
+}
+:root[data-theme="day"] .live-tech-card.libre-dupla {
+  background: var(--okBg);
+}
