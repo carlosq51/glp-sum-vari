@@ -165,292 +165,448 @@ button[data-suptrack].active {
   transform: translateY(-1px);
 }
 
-/* Barra de última actualización */
-.live-refresh-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 2px;
-  margin-bottom: 12px;
-  border-bottom: 1px solid rgba(255,255,255,.1);
-}
-.live-last-update { opacity: .6; flex: 1; text-align: right; }
-.live-refresh-btn {
-  background: rgba(255,255,255,.08);
-  border: 1px solid rgba(255,255,255,.18);
-  border-radius: 8px;
-  color: #fff;
-  cursor: pointer;
-  font-size: 1em;
-  padding: 3px 10px;
-  line-height: 1.4;
-  transition: background .15s;
-  flex-shrink: 0;
-}
-.live-refresh-btn:hover { background: rgba(255,255,255,.16); }
+/* =====================================================================
+   LIVE — jerarquía: 1) meta del día  2) pulso  3) duplas  4) técnicos.
+   Todo token-driven; el detalle fino vive en el modal, no en la grilla.
+   ===================================================================== */
 
-/* Grupo por especialidad */
-.live-group {
-  margin-bottom: 10px;
-}
-.live-group-header {
+/* ── 0. Barra superior: fecha, latido, frescura ── */
+.lvBar {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 12px;
-  background: rgba(255,255,255,.05);
-  border-radius: 12px;
-  flex-wrap: wrap;
-  cursor: pointer;
-  user-select: none;
-  transition: background .15s;
+  padding-bottom: 8px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--surfaceLine);
+  font-size: var(--fs-2xs);
+  color: var(--muted);
 }
-.live-group-header:hover {
-  background: rgba(255,255,255,.09);
+.lvBar__date {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-black);
+  letter-spacing: .5px;
+  color: var(--text);
 }
-.live-group-icon  { font-size: 1.1em; }
-.live-group-label { font-weight: 800; letter-spacing: .5px; flex: 1; }
-.live-group-chevron {
-  font-size: .75em;
-  opacity: .55;
-  margin-left: auto;
-  transition: transform .2s;
+.lvBar__live {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: var(--fw-black);
+  letter-spacing: .9px;
+  color: var(--ok);
 }
-.live-group-body {
-  margin-top: 8px;
-  padding: 0 2px;
-}
-.live-dot-working {
-  display: inline-block;
-  width: 8px; height: 8px;
+.lvBar__beat {
+  width: 7px; height: 7px;
   border-radius: 50%;
-  background: #22c55e;
-  animation: livePulse 1.2s ease-in-out infinite;
+  background: var(--ok);
+  animation: livePulse 1.6s ease-in-out infinite;
 }
 @keyframes livePulse {
   0%, 100% { opacity: 1; transform: scale(1); }
-  50%       { opacity: .5; transform: scale(1.35); }
+  50%      { opacity: .45; transform: scale(1.4); }
 }
-
-/* Grid de cards de técnicos — 1 por fila (mobile) */
-.live-cards {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-/* Desktop (Supervisor): varias cards por fila */
-@media (min-width: 860px) {
-  body[data-app-module="SUPERVISOR"] .live-cards {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-    gap: 10px;
-  }
-}
-
-/* Card de técnico — fila horizontal */
-.live-tech-card {
-  background: linear-gradient(180deg, rgba(255,255,255,.07), rgba(0,0,0,.1));
-  border: 1px solid rgba(255,255,255,.13);
-  border-radius: 12px;
-  padding: 7px 12px 6px;
+.lvBar__ago { margin-left: auto; opacity: .7; }
+.lvBar__btn {
+  flex-shrink: 0;
+  background: var(--pillBg);
+  border: 1px solid var(--pillLine);
+  border-radius: 8px;
+  color: var(--text);
   cursor: pointer;
-  transition: transform .15s, box-shadow .15s, border-color .15s;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  font-size: var(--fs-md);
+  line-height: 1;
+  padding: 5px 9px;
+  transition: background .15s, transform .15s;
 }
-.live-tech-card:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 14px rgba(0,0,0,.3);
-  border-color: rgba(255,255,255,.28);
+.lvBar__btn:hover  { background: var(--glass); }
+.lvBar__btn:active { transform: rotate(90deg); }
+
+/* ── 1. Meta del día ── */
+.lvGoals {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.lvGoal {
+  padding: 10px 12px;
+  background: var(--glass);
+  border: 1px solid var(--surfaceLine);
+  border-radius: var(--radiusSm);
+  border-top: 3px solid var(--goalTone);
+}
+.lvGoal.is-done { border-color: var(--dv-good); border-top-color: var(--dv-good); }
+.lvGoal__head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+.lvGoal__label {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-black);
+  letter-spacing: .5px;
+  color: var(--goalTone);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lvGoal__pct  { font-size: var(--fs-2xs); font-weight: var(--fw-bold); opacity: .5; }
+.lvGoal__flag {
+  font-size: 10px;
+  font-weight: var(--fw-black);
+  letter-spacing: .6px;
+  color: var(--dv-good);
+  background: var(--okBg);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+.lvGoal__num {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  margin-bottom: 7px;
+}
+.lvGoal__num b {
+  font-size: 26px;
+  font-weight: var(--fw-black);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.lvGoal__of { font-size: var(--fs-xs); font-weight: var(--fw-bold); opacity: .4; }
+.lvGoal__track {
+  height: 6px;
+  background: var(--ring-track);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.lvGoal__track > i {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--goalTone);
+  transition: width .6s var(--ease-out, ease);
+}
+.lvGoal__foot {
+  margin-top: 4px;
+  font-size: 10px;
+  opacity: .5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* Fila principal horizontal dentro de la card */
-.live-tech-main {
+/* ── 2. Pulso del taller ── */
+.lvPulse {
+  margin-bottom: 10px;
+}
+.lvPulse__track {
   display: flex;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--ring-track);
+}
+.lvPulse__track > i {
+  height: 100%;
+  min-width: 3px;
+  transition: width .5s var(--ease-out, ease);
+}
+/* Separación entre segmentos sin depender del color de fondo de la página:
+   el borde transparente deja ver el track. */
+.lvPulse__track > i + i {
+  border-left: 2px solid transparent;
+  background-clip: padding-box;
+}
+.lvPulse__chips {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  gap: 5px;
+  margin-top: 7px;
+}
+.lvPulse__total {
+  margin-left: auto;
+  font-size: 10px;
+  opacity: .35;
+  white-space: nowrap;
+}
+.lvChip {
+  font: inherit;
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-black);
+  color: var(--chipTone);
+  background: transparent;
+  border: 1px solid var(--chipTone);
+  border-radius: 20px;
+  padding: 2px 9px;
+  cursor: pointer;
+  white-space: nowrap;
+  opacity: .8;
+  transition: opacity .15s, background .15s;
+}
+.lvChip:hover { opacity: 1; }
+.lvChip.is-on {
+  opacity: 1;
+  background: color-mix(in srgb, var(--chipTone) 18%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--chipTone) 25%, transparent);
+}
+
+/* ── 3. Tabs por especialidad (filtran la grilla) ── */
+.lvTabs {
+  display: flex;
+  gap: 6px;
+  margin: 12px 0 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+.lvTabs::-webkit-scrollbar { display: none; }
+.lvTab {
+  font: inherit;
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-extrabold);
+  color: var(--muted);
+  background: var(--pillBg);
+  border: 1px solid var(--pillLine);
+  border-radius: 20px;
+  padding: 5px 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: color .15s, border-color .15s, background .15s;
+}
+.lvTab b { font-weight: var(--fw-black); opacity: .55; margin-left: 2px; }
+.lvTab:hover { color: var(--text); }
+.lvTab.is-on {
+  color: var(--tabTone);
+  border-color: var(--tabTone);
+  background: color-mix(in srgb, var(--tabTone) 14%, transparent);
+}
+.lvTab.is-on b { opacity: .8; }
+
+/* ── 4. Grilla de técnicos ── */
+.lvGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(158px, 1fr));
   gap: 8px;
 }
-/* Sección de identidad: dot + nombre + badge + stall */
-.live-tech-identity {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  flex: 0 0 auto;
-  min-width: 0;
-}
-/* Sección VIN (centro expandible) */
-.live-vin-section {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  min-width: 60px;
-  overflow: hidden;
-  background: rgba(255,255,255,.045);
-  border-radius: 6px;
-  padding: 3px 8px;
-}
-/* Sección stats: carros, pct, tiempo */
-.live-tech-stats {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-}
-.live-tech-dot {
-  width: 9px; height: 9px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-.live-tech-name {
-  font-weight: 700;
-  font-size: .93em;
-  max-width: 88px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  flex-shrink: 1;
-}
-
 @media (min-width: 860px) {
-  body[data-app-module="SUPERVISOR"] .live-tech-name {
-    max-width: 160px;
+  body[data-app-module="SUPERVISOR"] .lvGrid {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   }
 }
-/* Indicador numérico de carros (ej: 🚗 2.5) */
-.live-cars-pill {
-  font-size: .78em;
-  font-weight: 800;
-  padding: 1px 6px;
-  border-radius: 20px;
-  white-space: nowrap;
-  background: rgba(255,255,255,.1);
-  border: 1px solid rgba(255,255,255,.18);
-  flex-shrink: 0;
-}
-.live-cars-pill.half {
-  background: rgba(251,191,36,.15);
-  border-color: rgba(251,191,36,.4);
-  color: #fde68a;
-}
 
-/* Pill de trabajos en progreso (virtual — aún no finalizados) */
-.live-virtual-pill {
-  font-size: .78em;
-  font-weight: 800;
-  padding: 1px 7px;
-  border-radius: 20px;
-  white-space: nowrap;
-  background: rgba(251,146,60,.15);
-  border: 1px solid rgba(251,146,60,.40);
-  color: #fdba74;
-  flex-shrink: 0;
+.lvCard {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px 10px;
+  background: var(--glass);
+  border: 1px solid var(--surfaceLine);
+  border-left: 3px solid var(--rolTone);
+  border-radius: var(--radiusSm);
+  cursor: pointer;
+  transition: transform .15s, box-shadow .15s, border-color .15s;
 }
-
-:root[data-theme="day"] .live-virtual-pill {
-  background: rgba(194,65,12,.12);
-  border-color: rgba(194,65,12,.30);
-  color: #9a3412;
+.lvCard:hover,
+.lvCard:focus-visible {
+  transform: translateY(-1px);
+  box-shadow: var(--shadowSm);
+  outline: none;
+  border-color: var(--rolTone);
 }
-
-/* VIN compacto (siempre visible) */
-.live-vin-compact {
+.lvCard__row {
   display: flex;
   align-items: center;
   gap: 6px;
-  background: rgba(255,255,255,.05);
-  border-radius: 7px;
-  padding: 4px 8px;
+  min-width: 0;
 }
-.live-vin-abbr {
-  font-size: .68em;
-  font-weight: 800;
-  opacity: .5;
-  letter-spacing: .5px;
+.lvCard__dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--estadoTone);
+  flex-shrink: 0;
 }
-.live-vin-value {
-  font-weight: 800;
-  font-size: .82em;
-  letter-spacing: .7px;
+.lvCard__name {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-extrabold);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.lvCard__rol { font-size: var(--fs-xs); opacity: .55; flex-shrink: 0; }
+.lvCard__state {
+  font-size: 9px;
+  font-weight: var(--fw-black);
+  letter-spacing: .5px;
+  color: var(--estadoTone);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.lvCard__alert {
+  font-size: 10px;
+  font-weight: var(--fw-black);
+  color: var(--dv-serious, var(--danger));
+  background: var(--dangerBg);
+  border-radius: 4px;
+  padding: 1px 5px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.lvCard__row--vin  { gap: 5px; }
+.lvCard__row--prod { gap: 6px; }
 
-/* Sección expandible (oculta por defecto) */
-.live-extra {
-  display: none;
-  padding: 6px 0 2px;
-  border-top: 1px solid rgba(255,255,255,.09);
-  margin-top: 2px;
+.lvVin {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: var(--fw-bold);
+  letter-spacing: .4px;
+  opacity: .75;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl;              /* si no cabe, se recorta por delante: importa el final del VIN */
+  text-align: left;
 }
-.live-tech-card.expanded .live-extra {
-  display: block;
+.lvVin--none { font-family: inherit; font-style: italic; opacity: .28; direction: ltr; }
+.lvVin__old {
+  font-size: 9px;
+  font-weight: var(--fw-black);
+  color: var(--warn);
+  background: var(--warnBg);
+  border-radius: 3px;
+  padding: 0 4px;
+  flex-shrink: 0;
 }
-.live-extra-row {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  font-size: .8em;
-  opacity: .9;
+.lvCard__time {
+  font-size: 10px;
+  font-weight: var(--fw-extrabold);
+  color: var(--ok);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Marcador de carros contra la meta: ●●○ */
+.lvDots {
+  display: inline-flex;
   align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
 }
+.lvDots > i {
+  width: 8px; height: 8px;
+  border-radius: 3px;
+  background: var(--ring-track);
+  border: 1px solid var(--surfaceLine);
+}
+.lvDots > i.is-full { background: var(--rolTone); border-color: var(--rolTone); }
+.lvDots > em {
+  font-style: normal;
+  font-size: 9px;
+  font-weight: var(--fw-black);
+  color: var(--note);
+}
+.lvCard__cars {
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-black);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.lvCard__cars em { font-style: normal; font-weight: var(--fw-bold); opacity: .4; }
+.lvCard__curso {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: var(--fw-extrabold);
+  color: var(--warn);
+  white-space: nowrap;
+}
+.lvCard__free {
+  font-size: 9px;
+  font-weight: var(--fw-black);
+  letter-spacing: .5px;
+  color: var(--ok);
+  background: var(--okBg);
+  border-radius: 3px;
+  padding: 1px 5px;
+  white-space: nowrap;
+}
+.lvCard__free.is-extra { color: var(--note); background: var(--noteBg); }
 
-/* Botón expandir */
-.live-expand-btn {
-  all: unset;
+.lvCard.is-stalled { border-color: var(--dv-serious, var(--danger)); background: var(--dangerBgFade); }
+.lvCard.is-libre   { border-color: var(--ok); }
+.lvCard.is-off {
+  opacity: .38;
+  filter: grayscale(.7);
+  cursor: default;
+  border-left-color: var(--surfaceLine);
+}
+.lvCard.is-off:hover { transform: none; box-shadow: none; }
+
+/* Bloque plegable de "sin actividad hoy" */
+.lvOff { margin-top: 10px; }
+.lvOff > summary {
   cursor: pointer;
-  font-size: .7em;
-  font-weight: 700;
-  opacity: .5;
-  letter-spacing: .3px;
-  text-align: right;
-  padding: 2px 0;
-  transition: opacity .15s;
-  align-self: flex-end;
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-extrabold);
+  letter-spacing: .4px;
+  color: var(--muted);
+  padding: 6px 2px;
+  list-style: none;
 }
-.live-expand-btn:hover { opacity: 1; }
+.lvOff > summary::-webkit-details-marker { display: none; }
+.lvOff > summary::before { content: "▸ "; opacity: .6; }
+.lvOff[open] > summary::before { content: "▾ "; }
+.lvOff[open] > summary { margin-bottom: 6px; }
 
-/* Badges de estado */
+.lvEmpty {
+  padding: 22px 0;
+  text-align: center;
+  font-size: var(--fs-sm);
+  opacity: .5;
+}
+
+/* ── Badges de estado (vocabulario compartido con el modal) ── */
 .live-badge {
-  font-size: .7em;
-  font-weight: 800;
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-extrabold);
   padding: 2px 7px;
   border-radius: 20px;
   letter-spacing: .4px;
   white-space: nowrap;
 }
-.badge-trabajando    { background: rgba(34,197,94,.22);  color: #86efac; border: 1px solid rgba(34,197,94,.4); }
-.badge-pausado       { background: rgba(245,158,11,.22); color: #fcd34d; border: 1px solid rgba(245,158,11,.4); }
-.badge-sin-iniciar   { background: rgba(148,163,184,.15);color: #cbd5e1; border: 1px solid rgba(148,163,184,.3); }
-.badge-finalizado    { background: rgba(96,165,250,.18); color: #93c5fd; border: 1px solid rgba(96,165,250,.35); }
-.badge-sin-actividad { background: rgba(71,85,105,.25);  color: #94a3b8; border: 1px solid rgba(71,85,105,.4); }
-.badge-desconectado  { background: rgba(51,65,85,.3);    color: #64748b; border: 1px solid rgba(51,65,85,.5); }
+.badge-trabajando    { background: var(--okBg);     color: var(--ok);     border: 1px solid var(--ok); }
+.badge-pausado       { background: var(--warnBg);   color: var(--warn);   border: 1px solid var(--warn); }
+.badge-sin-iniciar   { background: var(--pillBg);   color: var(--muted);  border: 1px solid var(--pillLine); }
+.badge-finalizado    { background: var(--noteBg);   color: var(--note);   border: 1px solid var(--note); }
+.badge-sin-actividad { background: var(--pillBg);   color: var(--muted);  border: 1px solid var(--pillLine); }
+.badge-desconectado  { background: var(--pillBg);   color: var(--muted);  border: 1px solid var(--pillLine); }
 
-/* Cards desconectados: apagadas */
-.live-tech-card.disconnected {
-  opacity: .45;
-  filter: grayscale(.6);
-}
-
-/* Pie de card */
-.live-more-vins { opacity: .55; font-style: italic; }
-
-/* Mensajes */
-.live-error, .live-empty {
-  opacity: .7;
-  padding: 16px 0;
-  text-align: center;
+/* Marca "½ día ant." del tab REPORTE (histórico con corte de jornada) */
+.live-half-badge {
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-black);
+  color: var(--warn);
+  background: var(--warnBg);
+  border: 1px solid var(--warn);
+  border-radius: 4px;
+  padding: 1px 5px;
+  line-height: 1.4;
+  flex-shrink: 0;
 }
 
 /* Tarjetas de solo lectura en UBICACIONES */
 .ub-card-readonly { pointer-events: none; opacity: .95; }
 .ub-card-readonly .ub-card-status { margin-top: 4px; }
 
-/* Modal detalle del día */
+/* ── Modal detalle del día ── */
 .live-detail-body {
   display: flex;
   flex-direction: column;
@@ -458,75 +614,54 @@ button[data-suptrack].active {
   max-height: 70vh;
   overflow-y: auto;
 }
-.live-detail-summary {
-  padding: 8px 12px;
-  background: rgba(255,255,255,.06);
-  border-radius: 8px;
-  margin-bottom: 2px;
+.lvDetail__sum {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 12px;
   align-items: center;
+  padding: 9px 12px;
+  background: var(--pillBg);
+  border-radius: var(--radiusSm);
+  font-size: var(--fs-sm);
 }
-.live-half-legend {
-  opacity: .6;
-  font-style: italic;
-}
-.live-detail-row {
+.lvDetail__sum b { font-weight: var(--fw-black); font-size: var(--fs-lg); }
+.lvDetail__row {
   padding: 8px 12px;
-  background: rgba(255,255,255,.05);
+  background: var(--glass);
+  border: 1px solid var(--surfaceLine);
   border-radius: 10px;
-  border: 1px solid rgba(255,255,255,.1);
 }
-.live-detail-row--half {
-  border-left: 3px solid rgba(251,191,36,.5);
-}
-/* Fila principal del detalle: VIN + tiempo */
-.live-detail-top {
+.lvDetail__row.is-old { opacity: .62; border-left: 3px solid var(--warn); }
+.lvDetail__top {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-bottom: 4px;
   flex-wrap: wrap;
 }
-.live-detail-vin-text {
-  font-weight: 800;
-  font-size: .9em;
-  letter-spacing: .6px;
+.lvDetail__vin {
   flex: 1;
   min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-extrabold);
+  letter-spacing: .5px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.live-detail-conv {
-  font-weight: 700;
-  font-size: .88em;
+.lvDetail__time {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-extrabold);
   white-space: nowrap;
-  opacity: .9;
+  opacity: .85;
 }
-.live-half-badge {
-  font-size: .7em;
-  font-weight: 900;
-  color: #fbbf24;
-  background: rgba(251,191,36,.18);
-  border: 1px solid rgba(251,191,36,.35);
-  border-radius: 4px;
-  padding: 1px 5px;
-  line-height: 1.4;
-  flex-shrink: 0;
-}
-.live-detail-meta {
+.lvDetail__meta {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
-  opacity: .75;
+  opacity: .8;
   align-items: center;
-}
-
-/* Responsive */
-@media (max-width: 480px) {
-  .live-vin-section { display: none; }
 }
 
 /* =====================================================================
@@ -630,8 +765,9 @@ button[data-suptrack].active {
   margin: 0 0 12px;
   padding: 9px 11px;
   background: var(--glass);
-  border: 1px solid var(--note);
-  border-radius: 12px;
+  border: 1px solid var(--surfaceLine);
+  border-left: 3px solid var(--note);
+  border-radius: var(--radiusSm);
 }
 
 .live-duplas-head {
@@ -642,22 +778,21 @@ button[data-suptrack].active {
   margin-bottom: 8px;
 }
 .live-duplas-title {
-  font-size: .74em;
-  font-weight: 1000;
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-black);
   letter-spacing: .6px;
   color: var(--note);
 }
 .live-duplas-sub {
-  font-size: .64em;
+  font-size: 10px;
   opacity: .45;
 }
 .live-duplas-count {
   margin-left: auto;
-  font-size: .7em;
-  font-weight: 900;
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-black);
   color: var(--note);
   background: var(--noteBg);
-  border: 1px solid var(--note);
   border-radius: 6px;
   padding: 1px 7px;
   white-space: nowrap;
@@ -682,18 +817,18 @@ button[data-suptrack].active {
   align-items: center;
   gap: 8px;
   padding: 5px 9px;
-  background: rgba(255,255,255,.05);
+  background: var(--pillBg);
   border: 1px solid var(--surfaceLine);
   border-radius: 9px;
-  font-size: .84em;
+  font-size: var(--fs-xs);
 }
 .dupla-card--wait {
   opacity: .72;
   border-style: dashed;
 }
 .dupla-rol {
-  font-size: .72em;
-  font-weight: 900;
+  font-size: 10px;
+  font-weight: var(--fw-black);
   letter-spacing: .3px;
   white-space: nowrap;
   flex-shrink: 0;
@@ -701,30 +836,30 @@ button[data-suptrack].active {
 .dupla-names {
   flex: 1;
   min-width: 0;
-  font-weight: 700;
+  font-weight: var(--fw-bold);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.dupla-names b { font-weight: 1000; }
+.dupla-names b { font-weight: var(--fw-black); }
 .dupla-plus {
   opacity: .4;
   margin: 0 3px;
-  font-weight: 900;
+  font-weight: var(--fw-black);
 }
 .dupla-goal {
   flex-shrink: 0;
-  font-weight: 900;
+  font-weight: var(--fw-black);
   color: var(--ok);
   white-space: nowrap;
 }
 .dupla-goal--wait {
   color: var(--muted);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
   font-size: .88em;
 }
 .dupla-split {
-  font-weight: 700;
+  font-weight: var(--fw-bold);
   font-size: .82em;
   opacity: .55;
   color: var(--text);
@@ -742,7 +877,7 @@ button[data-suptrack].active {
 .live-duplas-foot-label { opacity: .45; font-size: .92em; }
 .dupla-chip {
   font-size: .92em;
-  font-weight: 800;
+  font-weight: var(--fw-extrabold);
   padding: 1px 7px;
   border-radius: 20px;
   background: var(--pillBg);
@@ -753,63 +888,4 @@ button[data-suptrack].active {
   background: var(--warnBg);
   border-color: var(--warn);
   color: var(--warn);
-}
-
-/* ── Marcas en la card del técnico ── */
-.live-meta-badge {
-  font-size: .64em;
-  font-weight: 1000;
-  letter-spacing: .3px;
-  padding: 1px 5px;
-  border-radius: 4px;
-  white-space: nowrap;
-  background: var(--okBg);
-  border: 1px solid var(--ok);
-  color: var(--ok);
-}
-.live-meta-badge.meta-extra {
-  background: var(--noteBg);
-  border-color: var(--note);
-  color: var(--note);
-}
-
-.live-meta-pill {
-  font-size: .7em;
-  font-weight: 900;
-  padding: 1px 7px;
-  border-radius: 5px;
-  white-space: nowrap;
-  background: var(--noteBg);
-  border: 1px solid var(--note);
-  color: var(--note);
-}
-
-/* Contador de carros contra la meta: "🚗 2/2" */
-.live-cars-meta {
-  font-weight: 700;
-  opacity: .45;
-  font-size: .88em;
-}
-.live-cars-pill.meta {
-  background: var(--okBg);
-  border-color: var(--ok);
-  color: var(--ok);
-}
-.live-cars-pill.meta .live-cars-meta { opacity: .6; }
-
-/* Card del técnico que cerró su meta */
-.live-tech-card.meta-ok {
-  border-color: var(--note);
-}
-.live-tech-card.libre-dupla {
-  border-color: var(--ok);
-  background: linear-gradient(180deg, var(--okBg), rgba(0,0,0,.10));
-}
-
-:root[data-theme="day"] .dupla-card {
-  background: var(--glass);
-  border-color: rgba(15,23,42,.12);
-}
-:root[data-theme="day"] .live-tech-card.libre-dupla {
-  background: var(--okBg);
 }

@@ -312,7 +312,9 @@ router.get("/api/supervisor/live", async (req, res) => {
     // Q4: Última asignación reciente por usuario (para rol_trabajo de TECNICO AMBOS)
     const url4 = `${SUPABASE_URL}/rest/v1/asignaciones?select=user_id,rol_trabajo,updated_at&fecha_asignacion=gte.${thirtyDaysAgo}T00:00:00&order=updated_at.desc&limit=${cfg.LIM_ASG_RECIENTES}`;
 
-    // Q5: Trabajos de días anteriores que siguen ACTIVOS hoy ("virtual" — en progreso, no finalizados)
+    // Q5: Trabajos de días anteriores que siguen abiertos ("arrastre").
+    // NO cuentan como producción de hoy (ni finalizados ni en proceso): solo sirven
+    // para saber en qué está parado ahora mismo un técnico que no abrió nada hoy.
     const url5 = `${SUPABASE_URL}/rest/v1/asignaciones?select=${selectFields}&activo=eq.true&estado_actual=in.(TRABAJANDO,PAUSADO,SIN_INICIAR)&fecha_asignacion=lt.${todayStr}T00:00:00&order=updated_at.desc`;
 
     const [resp1, resp2, resp3, resp4, resp5] = await Promise.all([
@@ -358,18 +360,24 @@ router.get("/api/supervisor/live", async (req, res) => {
       return null; // otros roles no se muestran
     }
 
-    // Merge deduplicando por id:
-    // raw1 = hoy activos, raw2 = cross-day FINALIZADO hoy, raw5 = cross-day aún ACTIVOS (virtual)
+    // Merge deduplicando por id. El LIVE solo mide la jornada de HOY:
+    //   raw1 = empezados hoy          → cuentan
+    //   raw2 = finalizados hoy        → cuentan (aunque hayan empezado antes)
+    //   raw5 = abiertos de días previos → NO cuentan, se marcan `arrastre`
     const seenIds = new Set();
     const raw = [];
-    for (const asg of [...(raw1 || []), ...(raw2 || []), ...(raw5 || [])]) {
+    for (const asg of [...(raw1 || []), ...(raw2 || [])]) {
       if (!seenIds.has(asg.id)) { seenIds.add(asg.id); raw.push(asg); }
+    }
+    for (const asg of (raw5 || [])) {
+      if (!seenIds.has(asg.id)) { seenIds.add(asg.id); raw.push({ ...asg, _arrastre: true }); }
     }
 
     // ── VIN-level summary: CONVERSION = MOTOR+TANQUE ambos FINALIZADO; CALIDAD = CALIDAD FINALIZADO ──
     const vinConv = {}; // vin → { motorFin, tanqueFin, hasActive }
     const vinCal  = {}; // vin → { done, active }
     for (const asg of raw) {
+      if (asg._arrastre) continue;               // trabajo de días previos: no es producción de hoy
       const wo     = Array.isArray(asg.work_orders) ? asg.work_orders[0] : (asg.work_orders || {});
       const vin    = wo.vin || "";
       if (!vin) continue;
@@ -419,6 +427,7 @@ router.get("/api/supervisor/live", async (req, res) => {
         updated_at: asg.updated_at,
         fecha_asignacion: asg.fecha_asignacion,
         work_order_id: asg.work_order_id,
+        arrastre: !!asg._arrastre,
       });
     }
 
@@ -431,19 +440,19 @@ router.get("/api/supervisor/live", async (req, res) => {
       const finalizados = asgList.filter(a => a.estado === "FINALIZADO");
       const activos     = asgList.filter(a => a.estado !== "FINALIZADO");
 
-      // El VIN/estado activo actual (el más reciente no finalizado)
-      const current = [...activos].sort((a, b) =>
-        new Date(b.updated_at) - new Date(a.updated_at)
-      )[0] || null;
+      // El VIN/estado activo actual (el más reciente no finalizado). Se prefiere
+      // lo de hoy; el arrastre solo entra si el técnico no abrió nada hoy.
+      const activosHoy_ = activos.filter(a => !a.arrastre);
+      const porFecha    = (a, b) => new Date(b.updated_at) - new Date(a.updated_at);
+      const current = [...activosHoy_].sort(porFecha)[0]
+        || [...activos].sort(porFecha)[0]
+        || null;
 
-      // carsHoy: trabajos finalizados contando 0.5 si empezaron un día anterior
-      const carsHoy = finalizados.reduce((sum, a) => {
-        const d = (a.fecha_asignacion || "").slice(0, 10);
-        return sum + (d < todayStr ? 0.5 : 1.0);
-      }, 0);
+      // carsHoy: carros COMPLETOS cerrados hoy (1 c/u — ya no se miden medios carros)
+      const carsHoy = finalizados.length;
 
-      // virtualHoy: trabajos aún en progreso (no finalizados) — incluye cross-day activos
-      const virtualHoy = activos.length;
+      // virtualHoy: trabajos abiertos HOY (el arrastre de días previos no cuenta)
+      const virtualHoy = activosHoy_.length;
 
       techs.push({
         userId: tech.userId,
@@ -451,10 +460,11 @@ router.get("/api/supervisor/live", async (req, res) => {
         email: tech.email,
         rol: tech.rol,
         vinActivo: current?.vin || "",
+        vinArrastre: !!current?.arrastre,   // lo que tiene abierto viene de días previos
         estadoActivo: current?.estado || (finalizados.length > 0 ? "FINALIZADO" : "SIN_ACTIVIDAD"),
         totalHoy: asgList.length,
         finalizadosHoy: finalizados.length,
-        activosHoy: activos.length,
+        activosHoy: virtualHoy,
         carsHoy,
         virtualHoy,
         vinsHoy: [...new Set(asgList.map(a => a.vin).filter(Boolean))],
@@ -475,11 +485,13 @@ router.get("/api/supervisor/live", async (req, res) => {
         email: u.email || "",
         rol,
         vinActivo: "",
+        vinArrastre: false,
         estadoActivo: "DESCONECTADO",
         totalHoy: 0,
         finalizadosHoy: 0,
         activosHoy: 0,
         carsHoy: 0,
+        virtualHoy: 0,
         vinsHoy: [],
         asignacionesHoy: [],
       });

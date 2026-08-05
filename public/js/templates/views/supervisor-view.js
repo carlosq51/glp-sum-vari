@@ -122,10 +122,10 @@ export function supervisorView() {
           </div>
         </div>
 
-        <div class="live-refresh-bar" style="margin-top:10px;">
-          <span class="live-fecha small">📅 Estado de traslados</span>
-          <span id="ubLastUpdate" class="live-last-update small"></span>
-          <button type="button" id="btnUbRefresh" class="live-refresh-btn" title="Actualizar ahora">↻</button>
+        <div class="lvBar" style="margin-top:10px;">
+          <span class="lvBar__date">Estado de traslados</span>
+          <span id="ubLastUpdate" class="lvBar__ago"></span>
+          <button type="button" id="btnUbRefresh" class="lvBar__btn" title="Actualizar ahora">↻</button>
         </div>
         <div id="ubError" class="small" style="color:#f87171;"></div>
 
