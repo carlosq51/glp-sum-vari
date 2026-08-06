@@ -396,17 +396,25 @@ function renderDetailRow_(a) {
   </div>`;
 }
 
-// Formatea ISO → "DD/MM HH:MM" (omite la fecha si es hoy)
+// La jornada del taller es en hora Perú, no la del navegador ni UTC. Comparar
+// contra `toISOString()` (UTC) hacía pasar por "hoy" todo lo ocurrido después de
+// las 19:00 del día anterior — el mismo desfase que rompía el filtro del backend.
+const TZ_PE = "America/Lima";
+const _fDiaPE  = new Intl.DateTimeFormat("sv-SE", { timeZone: TZ_PE });
+const _fHoraPE = new Intl.DateTimeFormat("es-PE", { timeZone: TZ_PE, hour: "2-digit", minute: "2-digit" });
+
+/** Fecha (YYYY-MM-DD) en hora Perú. */
+function diaPE_(d) { return _fDiaPE.format(d); }
+
+// Formatea ISO → "DD/MM HH:MM" en hora Perú (omite la fecha si es hoy)
 function fmtFechaHora_(iso) {
   if (!iso) return "";
   const d = new Date(iso);
   if (isNaN(d)) return "";
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const dayStr   = d.toISOString().slice(0, 10);
-  const hhmm     = new Intl.DateTimeFormat("es-PE", { hour: "2-digit", minute: "2-digit" }).format(d);
-  if (dayStr === todayStr) return hhmm;
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dia  = diaPE_(d);
+  const hhmm = _fHoraPE.format(d);
+  if (dia === diaPE_(new Date())) return hhmm;
+  const [, mm, dd] = dia.split("-");
   return `${dd}/${mm} ${hhmm}`;
 }
 

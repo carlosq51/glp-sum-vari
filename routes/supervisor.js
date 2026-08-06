@@ -292,16 +292,26 @@ router.get("/api/supervisor/live", async (req, res) => {
     const thirtyDaysAgo = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Lima" })
       .format(new Date(Date.now() - 30 * 24 * 3600 * 1000));
 
+    // IMPORTANTE: las columnas de fecha son timestamptz y el servidor Postgres corre
+    // en UTC. Un literal sin offset ("2026-08-06T00:00:00") se interpreta como UTC,
+    // o sea las 19:00 del día anterior en Perú, y se colaban los cierres de la noche
+    // previa. El corte de jornada SIEMPRE tiene que llevar el offset de Perú.
+    // Perú no aplica horario de verano, así que -05:00 es constante.
+    const PE_OFFSET  = "-05:00";
+    const inicioDia_ = (ymd) => encodeURIComponent(`${ymd}T00:00:00${PE_OFFSET}`);
+    const hoy00      = inicioDia_(todayStr);
+    const hace30d00  = inicioDia_(thirtyDaysAgo);
+
     const selectFields =
       `id,work_order_id,user_id,tipo_ot,rol_trabajo,estado_actual,running_since,tiempo_trab_ms,fecha_asignacion,updated_at,activo,` +
       `usuarios!inner(id,nombre,email),` +
       `work_orders(id,vin,tipo_ramal,tipo_ot,estado_general)`;
 
     // Q1: Asignaciones creadas hoy (activas o no)
-    let url1 = `${SUPABASE_URL}/rest/v1/asignaciones?select=${selectFields}&activo=eq.true&fecha_asignacion=gte.${todayStr}T00:00:00&order=updated_at.desc`;
+    let url1 = `${SUPABASE_URL}/rest/v1/asignaciones?select=${selectFields}&activo=eq.true&fecha_asignacion=gte.${hoy00}&order=updated_at.desc`;
 
-    // Q2: Trabajos de días anteriores finalizados HOY (cross-day: ½ carro)
-    let url2 = `${SUPABASE_URL}/rest/v1/asignaciones?select=${selectFields}&estado_actual=eq.FINALIZADO&updated_at=gte.${todayStr}T00:00:00&fecha_asignacion=lt.${todayStr}T00:00:00&order=updated_at.desc`;
+    // Q2: Trabajos empezados días anteriores pero finalizados HOY (cuentan como carro de hoy)
+    let url2 = `${SUPABASE_URL}/rest/v1/asignaciones?select=${selectFields}&estado_actual=eq.FINALIZADO&updated_at=gte.${hoy00}&fecha_asignacion=lt.${hoy00}&order=updated_at.desc`;
 
     // Q3: Todos los usuarios activos con rol técnico (para mostrar DESCONECTADO)
     const url3 = `${SUPABASE_URL}/rest/v1/usuarios?select=id,nombre,email,rol,especialidad&activo=eq.true&rol=in.(TECNICO,CALIDAD,RAMALERO)&order=nombre.asc`;
@@ -310,12 +320,12 @@ router.get("/api/supervisor/live", async (req, res) => {
     const cfg = await getConfig_();
 
     // Q4: Última asignación reciente por usuario (para rol_trabajo de TECNICO AMBOS)
-    const url4 = `${SUPABASE_URL}/rest/v1/asignaciones?select=user_id,rol_trabajo,updated_at&fecha_asignacion=gte.${thirtyDaysAgo}T00:00:00&order=updated_at.desc&limit=${cfg.LIM_ASG_RECIENTES}`;
+    const url4 = `${SUPABASE_URL}/rest/v1/asignaciones?select=user_id,rol_trabajo,updated_at&fecha_asignacion=gte.${hace30d00}&order=updated_at.desc&limit=${cfg.LIM_ASG_RECIENTES}`;
 
     // Q5: Trabajos de días anteriores que siguen abiertos ("arrastre").
     // NO cuentan como producción de hoy (ni finalizados ni en proceso): solo sirven
     // para saber en qué está parado ahora mismo un técnico que no abrió nada hoy.
-    const url5 = `${SUPABASE_URL}/rest/v1/asignaciones?select=${selectFields}&activo=eq.true&estado_actual=in.(TRABAJANDO,PAUSADO,SIN_INICIAR)&fecha_asignacion=lt.${todayStr}T00:00:00&order=updated_at.desc`;
+    const url5 = `${SUPABASE_URL}/rest/v1/asignaciones?select=${selectFields}&activo=eq.true&estado_actual=in.(TRABAJANDO,PAUSADO,SIN_INICIAR)&fecha_asignacion=lt.${hoy00}&order=updated_at.desc`;
 
     const [resp1, resp2, resp3, resp4, resp5] = await Promise.all([
       fetch(url1, { method: "GET", headers }),
