@@ -1,0 +1,1192 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Despacho · Taller</title>
+<!--
+  Pantalla de despacho del taller.
+
+  TEMA CLARO A PROPÓSITO. La TV está al aire libre: con luz ambiente alta,
+  una pantalla oscura se convierte en espejo y el texto desaparece. Fondo
+  luminoso + texto casi negro da la mayor diferencia de luminancia posible
+  (~17:1), que es lo que sostiene la lectura bajo sol. Por eso también:
+  bordes gruesos, pesos tipográficos altos y cero texto gris claro.
+
+  Modelo "tablero de aeropuerto": encabezado y pie fijos, cuerpo que ROTA
+  entre escenas. Nadie mira la pantalla en el momento exacto en que aparece
+  su dato, así que la información vuelve sola.
+
+    Escena 1 · DESPACHO  — quién trabaja con quién y en qué zona
+    Escena 2 · MAPA      — el taller completo, rotado a horizontal
+
+  El mapa se rota 90° respecto de la app: en el celular son dos columnas
+  verticales, aquí son dos filas (6 zonas arriba, 9 abajo) con el pasillo
+  horizontal en medio. Ambas filas usan la MISMA rejilla de 9 columnas, así
+  que las 6 de arriba miden igual que las de abajo y quedan alineadas a la
+  izquierda — que es como está el taller.
+
+  Otras restricciones que dictan el diseño:
+  · Se lee a 4 metros → tipografía enorme, cero texto fino.
+  · Nadie la toca → sin scroll, sin botones, sin estados que requieran acción.
+  · Prendida 12 h → sin animaciones en bucle, solo un destello al aparecer algo.
+  · Red del taller inestable → si falla el fetch mantiene el último estado
+    y avisa desde cuándo está desactualizada, en vez de quedarse en blanco.
+
+  Autónoma a propósito: no pasa por el build de Vite ni por el service worker
+  de la PWA (ver el denylist en public/sw-custom.js). Se sirve desde
+  routes/despacho.js → GET /tv.
+
+  Parámetros de URL:
+    ?demo=1          datos de demostración (funciona sin backend)
+    ?rot=20,15       segundos de cada escena (despacho, mapa)
+    ?escena=mapa     fija una sola escena, sin rotar (para revisar diseño)
+-->
+<style>
+  :root {
+    /* ── Superficies: luminosas, para exteriores ── */
+    --bg0: #e6e9ed;          /* página */
+    --bg1: #f1f3f5;          /* panel */
+    --surface: #ffffff;      /* tarjetas */
+    --surface2: #f8f9fa;
+
+    /* Bordes marcados: al sol, un borde tenue no existe. */
+    --line: rgba(11,15,20,.22);
+    --lineFuerte: rgba(11,15,20,.42);
+
+    /* ── Texto: casi negro sobre blanco ≈ 17:1 ── */
+    --text: #0b0f14;
+    --muted: #46505c;        /* ≈ 8:1 sobre blanco — sigue siendo legible al sol */
+
+    /* ── Color: tono OSCURO para texto, tono VIVO para rellenos ──
+       El ámbar de marca sobre blanco no alcanza contraste como texto, así
+       que se usa vivo solo en bloques grandes y oscuro cuando es tipografía. */
+    --amber: #a1560a;        --amberFill: #f59e0b;
+    --ok: #15803d;           --okFill: #22c55e;
+    --warn: #92620a;         --warnFill: #facc15;
+    --note: #0b5f92;         --noteFill: #38bdf8;
+    --danger: #b3261e;
+
+    --font: ui-rounded, Quicksand, Nunito, system-ui, -apple-system, sans-serif;
+    --sombra: 0 1px 3px rgba(11,15,20,.14);
+
+    /* Todo escala con el viewport: la misma página sirve en una TV 4K y en
+       un monitor de 24". Nada de tamaños en px fijos. */
+    --u: clamp(10px, 1.05vw, 22px);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    height: 100%;
+    overflow: hidden;               /* una TV no hace scroll */
+    background: var(--bg0);
+    color: var(--text);
+    font-family: var(--font);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    display: grid;
+    grid-template-rows: auto 1fr auto;   /* encabezado · escenas · pie */
+    gap: calc(var(--u) * .7);
+    padding: calc(var(--u) * .8);
+  }
+
+  /* ─── Encabezado (fijo en todas las escenas) ─── */
+  header {
+    display: grid;
+    grid-template-columns: auto auto 1fr auto auto auto;
+    align-items: center;
+    gap: calc(var(--u) * 1.1);
+    background: var(--surface);
+    border: 2px solid var(--lineFuerte);
+    border-radius: calc(var(--u) * .8);
+    padding: calc(var(--u) * .5) calc(var(--u) * 1.1);
+    box-shadow: var(--sombra);
+  }
+
+  .marca {
+    font-size: calc(var(--u) * 1.9);
+    font-weight: 800;
+    letter-spacing: .02em;
+  }
+  .marca span { color: var(--amber); }
+
+  /* Puntos que indican en qué escena va — orienta sin explicar. */
+  .puntos { display: flex; gap: calc(var(--u) * .3); }
+  .puntos i {
+    width: calc(var(--u) * .42);
+    height: calc(var(--u) * .42);
+    border-radius: 99px;
+    background: rgba(11,15,20,.22);
+    transition: background .4s, transform .4s;
+  }
+  .puntos i.on { background: var(--amberFill); transform: scale(1.3); }
+
+  .titEscena {
+    font-size: calc(var(--u) * 1.05);
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: .16em;
+    color: var(--muted);
+  }
+
+  /* Alerta de excepción. Parpadea lento y solo mientras exista el problema:
+     una alerta que está siempre encendida deja de significar algo. */
+  .alerta {
+    font-size: calc(var(--u) * 1.05);
+    font-weight: 800;
+    letter-spacing: .04em;
+    color: #fff;
+    background: var(--danger);
+    border-radius: 99px;
+    padding: calc(var(--u) * .25) calc(var(--u) * .8);
+    white-space: nowrap;
+    animation: latido 2.4s ease-in-out infinite;
+  }
+  .alerta[hidden] { display: none; }
+  @keyframes latido { 0%, 100% { opacity: 1; } 50% { opacity: .62; } }
+  @media (prefers-reduced-motion: reduce) { .alerta { animation: none; } }
+
+  .kpi { text-align: right; line-height: 1.02; }
+  .kpi b {
+    display: block;
+    font-size: calc(var(--u) * 2.3);
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+  }
+  .kpi small {
+    font-size: calc(var(--u) * .8);
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .09em;
+    font-weight: 800;
+  }
+  .kpi.meta b { color: var(--amber); }
+
+  .reloj {
+    font-size: calc(var(--u) * 2.6);
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ─── Escenas ─── */
+  .escenas { position: relative; min-height: 0; }
+  .escena {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(calc(var(--u) * .5));
+    transition: opacity .55s ease, transform .55s ease, visibility .55s;
+  }
+  .escena.on { opacity: 1; visibility: visible; transform: none; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .escena { transition: opacity .2s; transform: none; }
+  }
+
+  /* ─── ESCENA 1 · Despacho ─── */
+  .despacho {
+    display: grid;
+    grid-template-columns: 1fr minmax(0, 21vw);
+    gap: calc(var(--u) * .7);
+    height: 100%;
+  }
+
+  .panel {
+    background: var(--bg1);
+    border: 2px solid var(--line);
+    border-radius: calc(var(--u) * .8);
+    padding: calc(var(--u) * .7);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .panel > h2 {
+    font-size: calc(var(--u) * .95);
+    text-transform: uppercase;
+    letter-spacing: .14em;
+    color: var(--muted);
+    font-weight: 800;
+    margin-bottom: calc(var(--u) * .5);
+    flex: none;
+  }
+
+  .lado {
+    display: grid;
+    grid-template-rows: 1.4fr 1fr;
+    gap: calc(var(--u) * .7);
+    min-height: 0;
+  }
+
+  .asigs {
+    display: grid;
+    gap: calc(var(--u) * .5);
+    align-content: start;
+    min-height: 0;
+    overflow: hidden;               /* si no cabe, se corta: no hay scroll */
+  }
+
+  .asig {
+    display: grid;
+    grid-template-columns: calc(var(--u) * 4.6) 1fr auto;
+    align-items: center;
+    gap: calc(var(--u) * .9);
+    background: var(--surface);
+    border: 2px solid var(--line);
+    border-left: calc(var(--u) * .45) solid var(--amberFill);
+    border-radius: calc(var(--u) * .6);
+    padding: calc(var(--u) * .55) calc(var(--u) * .9);
+    box-shadow: var(--sombra);
+  }
+  .asig.nueva {
+    border-left-color: var(--okFill);
+    animation: destello 1.4s ease-out 3;   /* 3 veces, no en bucle */
+  }
+  @keyframes destello {
+    0%, 100% { background: var(--surface); }
+    50%      { background: #d9f7e3; }
+  }
+
+  .zona { text-align: center; line-height: 1; }
+  .zona b {
+    display: block;
+    font-size: calc(var(--u) * 2.8);
+    font-weight: 800;
+    color: var(--amber);
+    font-variant-numeric: tabular-nums;
+  }
+  .zona small {
+    font-size: calc(var(--u) * .72);
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    font-weight: 800;
+  }
+
+  .duo {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 0 calc(var(--u) * .7);
+    font-size: calc(var(--u) * 1.85);
+    font-weight: 800;
+    line-height: 1.15;
+  }
+  /* Distintivos M/T: relleno saturado + texto blanco. Se distinguen por
+     forma y posición además de color, para no depender solo del tono. */
+  .rol {
+    font-size: calc(var(--u) * .78);
+    font-weight: 800;
+    color: #fff;
+    background: var(--muted);
+    border-radius: calc(var(--u) * .25);
+    padding: 0 calc(var(--u) * .32);
+    text-transform: uppercase;
+    letter-spacing: .06em;
+  }
+  .rol.motor  { background: var(--note); }
+  .rol.tanque { background: var(--warn); }
+  .duo .mas { color: var(--muted); font-weight: 700; }
+
+  /* La razón no es decoración: un algoritmo que no explica su decisión no se
+     obedece. Es lo que separa "la máquina me mandó" de "tiene sentido". */
+  .razon {
+    font-size: calc(var(--u) * .92);
+    color: var(--muted);
+    margin-top: calc(var(--u) * .12);
+    font-weight: 700;
+  }
+  .modelo { color: var(--text); }
+
+  .estado { text-align: right; line-height: 1.1; }
+  .estado b {
+    display: block;
+    font-size: calc(var(--u) * 1.05);
+    font-weight: 800;
+    letter-spacing: .05em;
+  }
+  .estado.trabajando b { color: var(--ok); }
+  .estado.nueva b      { color: var(--warn); }
+  .estado small {
+    font-size: calc(var(--u) * .82);
+    color: var(--muted);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .cola { display: grid; gap: calc(var(--u) * .35); align-content: start; overflow: hidden; }
+  .colaItem {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: calc(var(--u) * .5);
+    background: var(--surface);
+    border: 2px solid var(--line);
+    border-radius: calc(var(--u) * .45);
+    padding: calc(var(--u) * .35) calc(var(--u) * .6);
+    font-size: calc(var(--u) * 1.05);
+    font-weight: 800;
+  }
+  .colaItem .z { color: var(--amber); font-variant-numeric: tabular-nums; }
+  .colaItem .m { color: var(--muted); font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .colaItem .e { color: var(--muted); font-variant-numeric: tabular-nums; font-size: calc(var(--u) * .85); }
+
+  .libres { display: flex; flex-wrap: wrap; gap: calc(var(--u) * .35); align-content: start; overflow: hidden; }
+  .chip {
+    background: #d9f7e3;
+    border: 2px solid var(--ok);
+    color: #0d5c2c;
+    border-radius: calc(var(--u) * .35);
+    padding: calc(var(--u) * .2) calc(var(--u) * .5);
+    font-size: calc(var(--u) * .95);
+    font-weight: 800;
+  }
+
+  /* ─── ESCENA 2 · Mapa horizontal del taller ───
+     Rotado 90° respecto de la app móvil: allá son dos columnas verticales
+     (Z15→Z10 y Z9→Z1), aquí son dos filas con el pasillo horizontal. */
+  .mapa {
+    height: 100%;
+    display: grid;
+    grid-template-rows: 1fr auto 1fr;
+    gap: calc(var(--u) * .45);
+    background: var(--bg1);
+    border: 2px solid var(--line);
+    border-radius: calc(var(--u) * .8);
+    padding: calc(var(--u) * .7);
+  }
+
+  /* LAS DOS FILAS COMPARTEN REJILLA DE 9 COLUMNAS: así las 6 de arriba miden
+     exactamente igual que las 9 de abajo, y quedan alineadas a la izquierda
+     sin necesidad de calcular anchos. */
+  .fila {
+    display: grid;
+    grid-template-columns: repeat(9, 1fr);
+    gap: calc(var(--u) * .45);
+    min-height: 0;
+  }
+
+  /* El pasillo: la franja por donde entran y salen los carros. Da sentido
+     espacial — sin él las dos filas parecen una lista partida al medio. */
+  .pasillo {
+    display: grid;
+    grid-template-columns: auto 1fr auto auto;
+    align-items: center;
+    gap: calc(var(--u) * .6);
+    padding: 0 calc(var(--u) * .3);
+  }
+  .pasillo .flecha { color: var(--muted); font-size: calc(var(--u) * 1.1); font-weight: 800; }
+  .pasillo .linea {
+    height: calc(var(--u) * .2);
+    border-radius: 99px;
+    background: repeating-linear-gradient(
+      90deg,
+      rgba(11,15,20,.30) 0 calc(var(--u) * 1.6),
+      transparent        calc(var(--u) * 1.6) calc(var(--u) * 3.2)
+    );
+  }
+
+  .spot {
+    background: var(--surface);
+    border: 2px solid var(--line);
+    border-top: calc(var(--u) * .38) solid var(--lineFuerte);
+    border-radius: calc(var(--u) * .5);
+    padding: calc(var(--u) * .4) calc(var(--u) * .38);
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    gap: calc(var(--u) * .18);
+    min-width: 0;
+    overflow: hidden;
+    box-shadow: var(--sombra);
+  }
+  /* Zona libre: se distingue por borde punteado y fondo hundido, NO por
+     opacidad — bajar opacidad al sol la volvería ilegible. */
+  .spot--libre {
+    background: var(--bg0);
+    border-style: dashed;
+    border-top-color: rgba(11,15,20,.25);
+    box-shadow: none;
+  }
+  .spot--esperando  { border-top-color: var(--warnFill); }
+  .spot--conversion { border-top-color: var(--okFill); }
+  .spot--finalizado { border-top-color: var(--noteFill); }
+
+  .spotTop {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: calc(var(--u) * .3);
+  }
+  .spotZona {
+    font-size: calc(var(--u) * 1.2);
+    font-weight: 800;
+    color: var(--amber);
+    font-variant-numeric: tabular-nums;
+  }
+  .spotTiempo {
+    font-size: calc(var(--u) * .8);
+    color: var(--muted);
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .spotTecs {
+    display: grid;
+    gap: calc(var(--u) * .14);
+    align-content: center;
+    min-width: 0;
+  }
+  .spotTec {
+    display: flex;
+    align-items: center;
+    gap: calc(var(--u) * .25);
+    font-size: calc(var(--u) * .95);
+    font-weight: 800;
+    line-height: 1.15;
+    min-width: 0;
+  }
+  .spotTec span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .spotTec .rol { font-size: calc(var(--u) * .62); flex: none; }
+
+  .spotPie {
+    display: flex;
+    justify-content: space-between;
+    gap: calc(var(--u) * .3);
+    font-size: calc(var(--u) * .74);
+    color: var(--muted);
+    font-weight: 800;
+    min-width: 0;
+  }
+  .spotPie span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .spotVacio {
+    display: grid;
+    place-content: center;
+    font-size: calc(var(--u) * 2);
+    font-weight: 800;
+    color: rgba(11,15,20,.30);
+  }
+
+  /* Zona 16 virtual: carros en proceso sin ubicación física asignada. */
+  .sinZona {
+    display: flex;
+    align-items: center;
+    gap: calc(var(--u) * .4);
+    font-size: calc(var(--u) * .85);
+    font-weight: 800;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .sinZona b { color: var(--warn); font-size: calc(var(--u) * 1.15); }
+
+  /* ─── ESCENA 3 · Incidencias ───
+     Pocas y grandes. Una incidencia en pantalla no es un registro: es una
+     petición de ayuda que alguien del taller puede atender al verla. */
+  .incs { display: grid; gap: calc(var(--u) * .5); align-content: start; overflow: hidden; }
+
+  .inc {
+    display: grid;
+    grid-template-columns: auto auto 1fr auto;
+    align-items: center;
+    gap: calc(var(--u) * .9);
+    background: var(--surface);
+    border: 2px solid var(--line);
+    border-left: calc(var(--u) * .45) solid var(--muted);
+    border-radius: calc(var(--u) * .6);
+    padding: calc(var(--u) * .55) calc(var(--u) * .9);
+    box-shadow: var(--sombra);
+  }
+  .inc--leve     { border-left-color: var(--noteFill); }
+  .inc--moderada { border-left-color: var(--warnFill); }
+  .inc--critica  { border-left-color: var(--danger); }
+
+  .incHora {
+    font-size: calc(var(--u) * 1.5);
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+  }
+  .incSev {
+    font-size: calc(var(--u) * .82);
+    font-weight: 800;
+    letter-spacing: .08em;
+    color: #fff;
+    background: var(--muted);
+    border-radius: calc(var(--u) * .3);
+    padding: calc(var(--u) * .15) calc(var(--u) * .5);
+  }
+  .incSev--leve     { background: var(--note); }
+  .incSev--moderada { background: var(--warn); }
+  .incSev--critica  { background: var(--danger); }
+
+  .incNota {
+    font-size: calc(var(--u) * 1.25);
+    font-weight: 800;
+    line-height: 1.25;
+    overflow: hidden;
+  }
+  .incMeta {
+    font-size: calc(var(--u) * .88);
+    color: var(--muted);
+    font-weight: 800;
+    margin-top: calc(var(--u) * .1);
+  }
+  .incVin {
+    font-size: calc(var(--u) * .95);
+    font-weight: 800;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+
+  /* ─── Pie: asistencia + producción + estado de conexión ───
+     El QR va abajo por dos razones: la TV se monta en alto, y un código en
+     la franja inferior queda más cerca del alcance del celular; y así se ve
+     en TODAS las escenas, sin esperar a que la pantalla rote. */
+  footer {
+    display: grid;
+    grid-template-columns: auto auto auto 1fr auto;
+    align-items: center;
+    gap: calc(var(--u) * .9);
+    background: var(--surface);
+    border: 2px solid var(--lineFuerte);
+    border-radius: calc(var(--u) * .8);
+    padding: calc(var(--u) * .4) calc(var(--u) * 1.1);
+    box-shadow: var(--sombra);
+  }
+
+  footer img {
+    width: calc(var(--u) * 5.4);
+    height: calc(var(--u) * 5.4);
+    background: #fff;
+    border-radius: calc(var(--u) * .25);
+    display: block;
+  }
+  .qrTxt b {
+    display: block;
+    font-size: calc(var(--u) * 1.35);
+    font-weight: 800;
+    line-height: 1.15;
+  }
+  .qrTxt small {
+    display: block;
+    font-size: calc(var(--u) * .88);
+    color: var(--muted);
+    font-weight: 800;
+  }
+  .cuenta {
+    margin-top: calc(var(--u) * .3);
+    height: calc(var(--u) * .26);
+    width: calc(var(--u) * 8);
+    background: rgba(11,15,20,.14);
+    border-radius: 99px;
+    overflow: hidden;
+  }
+  .cuenta i {
+    display: block;
+    height: 100%;
+    background: var(--amberFill);
+    transition: width .95s linear;
+  }
+
+  /* Producción del día, junto al QR. Se queda en el pie a propósito: es
+     contexto permanente, no una escena — debe estar visible siempre. */
+  .prod {
+    display: grid;
+    grid-template-columns: auto auto;
+    align-items: center;
+    gap: calc(var(--u) * .6);
+    padding-left: calc(var(--u) * .9);
+    border-left: 2px solid var(--line);
+  }
+  .prodNum { display: flex; align-items: baseline; }
+  .prodNum b {
+    font-size: calc(var(--u) * 3.1);
+    font-weight: 800;
+    color: var(--amber);
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+  .prodNum span {
+    font-size: calc(var(--u) * 1.4);
+    font-weight: 800;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .prodTxt small {
+    display: block;
+    font-size: calc(var(--u) * .78);
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .09em;
+    font-weight: 800;
+    margin-bottom: calc(var(--u) * .2);
+  }
+  .prodChips { display: flex; gap: calc(var(--u) * .35); align-items: center; }
+  .ritmo, .proy {
+    font-size: calc(var(--u) * .88);
+    font-weight: 800;
+    border-radius: 99px;
+    padding: calc(var(--u) * .15) calc(var(--u) * .55);
+    white-space: nowrap;
+    border: 2px solid transparent;
+  }
+  .ritmo.bien  { background: #d9f7e3; color: #0d5c2c; border-color: var(--ok); }
+  .ritmo.justo { background: #fdf3d3; color: #6b4708; border-color: var(--warn); }
+  .ritmo.mal   { background: #fde2e0; color: #8c1d18; border-color: var(--danger); }
+  .proy { background: var(--bg0); color: var(--muted); border-color: var(--line); }
+
+  .ausentes {
+    font-size: calc(var(--u) * .9);
+    font-weight: 800;
+    color: var(--muted);
+    text-align: right;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .conexion {
+    font-size: calc(var(--u) * .95);
+    font-weight: 800;
+    padding: calc(var(--u) * .25) calc(var(--u) * .7);
+    border-radius: 99px;
+    white-space: nowrap;
+  }
+  .conexion.ok   { background: #d9f7e3; color: #0d5c2c; border: 2px solid var(--ok); }
+  .conexion.mal  { background: #fde2e0; color: #8c1d18; border: 2px solid var(--danger); }
+  .conexion.demo { background: #d8eefb; color: #0b4a70; border: 2px solid var(--note); }
+
+  /* ─── Vacío ─── */
+  .vacio {
+    display: grid;
+    place-content: center;
+    text-align: center;
+    height: 100%;
+    color: var(--muted);
+    font-size: calc(var(--u) * 1.3);
+    font-weight: 800;
+    line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="marca">DESPACHO<span>.</span></div>
+  <div class="puntos" id="puntos"><i class="on"></i><i></i><i></i></div>
+  <div class="titEscena" id="titEscena">Asignaciones</div>
+  <!-- Excepciones: el equivalente al "DELAYED" del tablero. Solo aparece
+       cuando hay algo que atender; una alerta permanente deja de leerse. -->
+  <div class="alerta" id="alerta" hidden></div>
+  <div class="kpi"><b id="kAsis">–</b><small>Presentes</small></div>
+  <div class="reloj" id="reloj">--:--</div>
+</header>
+
+<div class="escenas">
+
+  <!-- ESCENA 1 · Despacho -->
+  <section class="escena on" id="escDespacho">
+    <div class="despacho">
+      <section class="panel">
+        <h2>Asignaciones en curso</h2>
+        <div class="asigs" id="asigs"></div>
+      </section>
+
+      <aside class="lado">
+        <section class="panel">
+          <h2>Siguientes vehículos</h2>
+          <div class="cola" id="cola"></div>
+        </section>
+        <section class="panel">
+          <h2>Técnicos libres</h2>
+          <div class="libres" id="libres"></div>
+        </section>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ESCENA 2 · Mapa horizontal -->
+  <section class="escena" id="escMapa">
+    <div class="mapa">
+      <div class="fila" id="filaArriba"></div>
+      <div class="pasillo">
+        <span class="flecha">◀</span>
+        <div class="linea"></div>
+        <span class="flecha">▶</span>
+        <div class="sinZona" id="sinZona"></div>
+      </div>
+      <div class="fila" id="filaAbajo"></div>
+    </div>
+  </section>
+
+  <!-- ESCENA 3 · Incidencias -->
+  <section class="escena" id="escIncidencias">
+    <div class="panel" style="height:100%">
+      <h2>Últimas incidencias de hoy</h2>
+      <div class="incs" id="incs"></div>
+    </div>
+  </section>
+
+</div>
+
+<footer>
+  <img id="qr" alt="Código QR de asistencia">
+  <div class="qrTxt">
+    <b>Marca tu asistencia</b>
+    <small>Escanea · ingreso y salida</small>
+    <div class="cuenta"><i id="cuenta" style="width:100%"></i></div>
+  </div>
+
+  <!-- Producción del día. El número grande dice dónde vamos; el chip de
+       ritmo dice si alcanza. Sin el segundo, el primero no acciona nada. -->
+  <div class="prod">
+    <div class="prodNum"><b id="pCompletos">–</b><span id="pObjetivo">/–</span></div>
+    <div class="prodTxt">
+      <small>Producción del día</small>
+      <div class="prodChips">
+        <span class="ritmo" id="pRitmo">–</span>
+        <span class="proy" id="pProy"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="ausentes" id="ausentes"></div>
+  <div class="conexion ok" id="conexion">EN VIVO</div>
+</footer>
+
+<script>
+(() => {
+  "use strict";
+
+  const params = new URLSearchParams(location.search);
+  const DEMO = params.get("demo") === "1";
+  const FIJA = params.get("escena") || "";       // "despacho" | "mapa" | ""
+  const REFRESCO_MS = 10_000;
+
+  // Duración de cada escena, en segundos. ?rot=10,10,5
+  const rot = (params.get("rot") || "10,10,5").split(",").map(n => Number(n) || 0);
+  const DUR = [ (rot[0] || 10) * 1000, (rot[1] || 10) * 1000, (rot[2] || 5) * 1000 ];
+
+  const ESCENAS = [
+    { id: "escDespacho",    titulo: "Asignaciones" },
+    { id: "escMapa",        titulo: "Mapa del taller" },
+    { id: "escIncidencias", titulo: "Incidencias de hoy" },
+  ];
+
+  // El despacho aparece DOS veces por vuelta. Cada escena que se agrega
+  // aumenta lo que un técnico espera para volver a ver su asignación; con
+  // esta secuencia el dato importante vuelve cada ~15 s en vez de cada 25.
+  const SECUENCIA = [0, 1, 0, 2];
+
+  // Layout físico del taller. En la app móvil las columnas van de mayor a
+  // menor (Z15 arriba, Z9 arriba); aquí van ASCENDENTES desde la izquierda,
+  // que es como se recorre el taller a pie: Z10 y Z1 son las de la entrada.
+  const FILA_ARRIBA = [10, 11, 12, 13, 14, 15];
+  const FILA_ABAJO  = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? "").replace(/[&<>"]/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  let ultimoOk = Date.now();
+  let vistas = new Set();
+  let primeraCarga = true;
+
+  function hace(min) { return new Date(Date.now() - min * 60000).toISOString(); }
+
+  // ─── Datos de demo (permiten abrir este archivo sin servidor) ───
+  const DEMO_FALLBACK = {
+    demo: true,
+    asistencia: { presentes: 10, esperados: 12, ausentes: ["JONATAN RAMOS", "FRANZ COSTILLA"] },
+    meta: { completos: 11, objetivo: 25, esperado: 13, diferencia: -2, proyeccion: 21 },
+    asignaciones: [
+      { zona: 2,  vin: "LVVDB21B8PD502944", modelo: "KYC V5",     motor: "LUIS URIBE",      tanque: "VICTOR BAILON",  estado: "NUEVA",      desde: "10:22", razon: "Ambos libres · zona más cercana" },
+      { zona: 7,  vin: "LSJA24U9XPZ043117", modelo: "Jetour X70", motor: "ANA LUCIA",       tanque: "HEINER TORRES",  estado: "TRABAJANDO", desde: "09:40", razon: "Dupla con mejor ritmo compartido" },
+      { zona: 4,  vin: "LSJA24U97PZ041882", modelo: "Jetour X70", motor: "MICHAEL CAHUANA", tanque: "IVAN ABAD",      estado: "TRABAJANDO", desde: "09:12", razon: "Zona 4 · X70 es su modelo más rápido" },
+      { zona: 6,  vin: "LSJA24U96PZ042910", modelo: "Jetour X70", motor: "FRANZ COSTILLA",  tanque: "GIANFRANCO F.",  estado: "TRABAJANDO", desde: "09:04", razon: "Zona contigua · sin cruzar el taller" },
+      { zona: 11, vin: "LSJA24U91PZ040055", modelo: "Jetour X70", motor: "MEJIA MIGUEL",    tanque: "ALFREDO AYARZA", estado: "TRABAJANDO", desde: "08:55", razon: "Van 1 de 2 carros · prioridad por meta" },
+    ],
+    incidencias: [
+      { hora: "10:14", vin: "LSJA24U97PZ041882", tecnico: "IVAN ABAD",      tipo: "MODERADA", nota: "Fuga en conexión de tanque, falta abrazadera" },
+      { hora: "09:38", vin: "LVVDB21B8PD502944", tecnico: "LUIS URIBE",     tipo: "LEVE",     nota: "Tornillo de soporte cruzado" },
+      { hora: "08:52", vin: "LSJA24U91PZ040055", tecnico: "ALFREDO AYARZA", tipo: "CRITICA",  nota: "Reductor con daño de fábrica, se pide cambio" },
+    ],
+    varados: [{ zona: 1, vin: "LSJA24U92PZ043558", minutos: 255 }],
+    cola: [
+      { zona: 9,  vin: "LSJA24U93PZ041290", modelo: "Jetour X70", espera: "18 min" },
+      { zona: 13, vin: "LVVDB21B4PD503801", modelo: "KYC V7",     espera: "6 min"  },
+      { zona: 5,  vin: "LSJA24U95PZ042044", modelo: "Jetour X70", espera: "2 min"  },
+    ],
+    libres: [
+      { nombre: "GROBERT JOEL",  especialidad: "MOTOR"  },
+      { nombre: "NOLASCO JORGE", especialidad: "TANQUE" },
+    ],
+  };
+
+  const DEMO_ZONAS = {
+    ok: true,
+    zonas: [
+      { zona_id: 15, vin: "LSJA24U90PZ044201", estado: "EN_CONVERSION", modelo: "Jetour X70", tecnicos: { delantero: "CARMEN SALVADOR", tanquero: "CONTRERAS B." }, registrado_at: hace(95) },
+      { zona_id: 14, vin: null, estado: "LIBRE" },
+      { zona_id: 13, vin: "LVVDB21B4PD503801", estado: "ESPERANDO",     modelo: "KYC V7",     tecnicos: null, registrado_at: hace(6) },
+      { zona_id: 12, vin: "LSJA24U98PZ041730", estado: "FINALIZADO",    modelo: "Jetour X70", tecnicos: { delantero: "GREYSSON A.", tanquero: "PEPE JEANS" }, registrado_at: hace(210) },
+      { zona_id: 11, vin: "LSJA24U91PZ040055", estado: "EN_CONVERSION", modelo: "Jetour X70", tecnicos: { delantero: "MEJIA MIGUEL", tanquero: "ALFREDO AYARZA" }, registrado_at: hace(145) },
+      { zona_id: 10, vin: null, estado: "LIBRE" },
+      { zona_id: 9,  vin: "LSJA24U93PZ041290", estado: "ESPERANDO",     modelo: "Jetour X70", tecnicos: null, registrado_at: hace(18) },
+      { zona_id: 8,  vin: null, estado: "LIBRE" },
+      { zona_id: 7,  vin: "LSJA24U9XPZ043117", estado: "EN_CONVERSION", modelo: "Jetour X70", tecnicos: { delantero: "ANA LUCIA", tanquero: "HEINER TORRES" }, registrado_at: hace(62) },
+      { zona_id: 6,  vin: "LSJA24U96PZ042910", estado: "EN_CONVERSION", modelo: "Jetour X70", tecnicos: { delantero: "FRANZ COSTILLA", tanquero: "GIANFRANCO F." }, registrado_at: hace(38) },
+      { zona_id: 5,  vin: "LSJA24U95PZ042044", estado: "ESPERANDO",     modelo: "Jetour X70", tecnicos: null, registrado_at: hace(2) },
+      { zona_id: 4,  vin: "LSJA24U97PZ041882", estado: "EN_CONVERSION", modelo: "Jetour X70", tecnicos: { delantero: "MICHAEL CAHUANA", tanquero: "IVAN ABAD" }, registrado_at: hace(88) },
+      { zona_id: 3,  vin: null, estado: "LIBRE" },
+      { zona_id: 2,  vin: "LVVDB21B8PD502944", estado: "EN_CONVERSION", modelo: "KYC V5",     tecnicos: { delantero: "LUIS URIBE", tanquero: "VICTOR BAILON" }, registrado_at: hace(9) },
+      { zona_id: 1,  vin: "LSJA24U92PZ043558", estado: "FINALIZADO",    modelo: "Jetour X70", tecnicos: { delantero: "JUNIOR ALVARADO", tanquero: "RONDOY L." }, registrado_at: hace(255) },
+    ],
+    sin_zona: [{ vin: "LSJA24U94PZ044880" }, { vin: "LVVDB21B2PD504112" }],
+  };
+
+  // ─── Reloj ─── independiente del backend: si la red se cae, la hora sigue.
+  function tick() {
+    $("reloj").textContent = new Date().toLocaleTimeString("es-PE", {
+      timeZone: "America/Lima", hour: "2-digit", minute: "2-digit", hour12: false,
+    });
+  }
+  tick(); setInterval(tick, 10_000);
+
+  // ─── QR rotativo ───
+  let ventanaSeg = 30, restan = 30;
+  async function refrescarQr() {
+    try {
+      const r = await fetch("/api/despacho/qr", { cache: "no-store" });
+      const d = await r.json();
+      ventanaSeg = d.ventanaSeg || 30;
+      restan = d.expiraEn || ventanaSeg;
+    } catch { restan = ventanaSeg; }
+    $("qr").src = "/api/despacho/qr.svg?ts=" + Date.now();
+  }
+  function tickQr() {
+    restan -= 1;
+    $("cuenta").style.width = Math.max(0, (restan / ventanaSeg) * 100) + "%";
+    if (restan <= 0) refrescarQr();
+  }
+  // Abierto como archivo suelto no hay backend que firme el QR: se avisa en
+  // vez de dejar el ícono roto de imagen.
+  $("qr").addEventListener("error", () => {
+    $("qr").style.display = "none";
+    document.querySelector(".qrTxt b").textContent = "QR en vivo (requiere servidor)";
+  });
+  refrescarQr();
+  setInterval(tickQr, 1000);
+
+  // ─── Rotación de escenas ───
+  let iEscena = 0, iPaso = 0, timerEscena = null;
+  let hayIncidencias = false;
+
+  /** Una escena sin nada que mostrar se salta: mejor menos vueltas que una
+   *  pantalla que dice "no hay incidencias" durante 5 s cada 30 s. */
+  function escenaVacia(i) {
+    return i === 2 && !hayIncidencias;
+  }
+
+  function pintarEscena(i) {
+    iEscena = i;
+    ESCENAS.forEach((e, k) => $(e.id).classList.toggle("on", k === i));
+    $("titEscena").textContent = ESCENAS[i].titulo;
+    [...$("puntos").children].forEach((p, k) => p.classList.toggle("on", k === i));
+  }
+
+  function avanzar() {
+    if (FIJA) return;
+    let intentos = 0;
+    do {
+      iPaso = (iPaso + 1) % SECUENCIA.length;
+      intentos++;
+    } while (escenaVacia(SECUENCIA[iPaso]) && intentos <= SECUENCIA.length);
+
+    const i = SECUENCIA[iPaso];
+    pintarEscena(i);
+    clearTimeout(timerEscena);
+    timerEscena = setTimeout(avanzar, DUR[i]);
+  }
+
+  if (FIJA) {
+    pintarEscena(FIJA === "mapa" ? 1 : FIJA === "incidencias" ? 2 : 0);
+  } else {
+    pintarEscena(0);
+    timerEscena = setTimeout(avanzar, DUR[0]);
+  }
+
+  /** Una asignación nueva interrumpe y vuelve a despacho — como un tablero
+   *  de aeropuerto cuando cambia una puerta. Es la información urgente. */
+  function interrumpirADespacho() {
+    if (FIJA) return;
+    iPaso = 0;
+    pintarEscena(0);
+    clearTimeout(timerEscena);
+    timerEscena = setTimeout(avanzar, DUR[0]);
+  }
+
+  // ─── Render · escena despacho ───
+  // Tope de 5: es lo que cabe legible a 4 metros. El motor entrega las más
+  // recientes primero, así que lo que se corta es lo más viejo — que además
+  // es lo que el técnico ya vio.
+  const MAX_ASIGS = 5;
+
+  function pintarAsignaciones(todas) {
+    const lista = todas.slice(0, MAX_ASIGS);
+    const cont = $("asigs");
+    if (!lista.length) {
+      cont.innerHTML = '<div class="vacio">Sin asignaciones activas<br>' +
+        '<span style="font-size:.75em">El motor de despacho aún no reparte trabajo</span></div>';
+      return;
+    }
+
+    let hayNueva = false;
+    cont.innerHTML = lista.map(a => {
+      const clave = `${a.vin}|${a.motor}|${a.tanque}`;
+      const nueva = !primeraCarga && !vistas.has(clave);
+      if (nueva) hayNueva = true;
+      const est = String(a.estado || "").toUpperCase();
+      return `
+        <article class="asig ${nueva ? "nueva" : ""}">
+          <div class="zona"><b>${esc(a.zona ?? "–")}</b><small>Zona</small></div>
+          <div>
+            <div class="duo">
+              <span><span class="rol motor">M</span> ${esc(a.motor || "—")}</span>
+              <span class="mas">+</span>
+              <span><span class="rol tanque">T</span> ${esc(a.tanque || "—")}</span>
+            </div>
+            <div class="razon"><span class="modelo">${esc(a.modelo || "")}</span>${
+              a.razon ? " · " + esc(a.razon) : ""}</div>
+          </div>
+          <div class="estado ${est === "NUEVA" ? "nueva" : "trabajando"}">
+            <b>${est === "NUEVA" ? "NUEVO" : "EN CURSO"}</b>
+            <small>desde ${esc(a.desde || "--:--")}</small>
+          </div>
+        </article>`;
+    }).join("");
+
+    vistas = new Set(lista.map(a => `${a.vin}|${a.motor}|${a.tanque}`));
+    primeraCarga = false;
+    if (hayNueva) interrumpirADespacho();
+  }
+
+  function pintarCola(lista) {
+    $("cola").innerHTML = lista.length
+      ? lista.map(c => `
+          <div class="colaItem">
+            <span class="z">Z${esc(c.zona)}</span>
+            <span class="m">${esc(c.modelo || "")}</span>
+            <span class="e">${esc(c.espera || "")}</span>
+          </div>`).join("")
+      : '<div class="vacio" style="font-size:.8em">Sin vehículos en espera</div>';
+  }
+
+  function pintarLibres(lista) {
+    $("libres").innerHTML = lista.length
+      ? lista.map(l => `<span class="chip">${esc(l.nombre)}</span>`).join("")
+      : '<div class="vacio" style="font-size:.8em">Nadie libre</div>';
+  }
+
+  // ─── Render · incidencias ───
+  function pintarIncidencias(lista) {
+    hayIncidencias = lista.length > 0;
+    if (!hayIncidencias) {
+      $("incs").innerHTML = '<div class="vacio">Sin incidencias hoy</div>';
+      return;
+    }
+    $("incs").innerHTML = lista.slice(0, 3).map(i => {
+      const sev = String(i.tipo || "LEVE").toLowerCase();
+      return `
+        <article class="inc inc--${sev}">
+          <div class="incHora">${esc(i.hora || "")}</div>
+          <span class="incSev incSev--${sev}">${esc(String(i.tipo || "").toUpperCase())}</span>
+          <div>
+            <div class="incNota">${esc(i.nota || "Sin detalle")}</div>
+            <div class="incMeta">${esc(i.tecnico || "")}</div>
+          </div>
+          <div class="incVin">${esc(String(i.vin || "").slice(-6))}</div>
+        </article>`;
+    }).join("");
+  }
+
+  // ─── Render · alerta de carros varados ───
+  // Un carro parado muchas horas en zona es el "vuelo demorado" del taller:
+  // no lo reporta nadie porque nadie lo está mirando. La pantalla sí.
+  function pintarVarados(lista) {
+    const a = $("alerta");
+    if (!lista.length) { a.hidden = true; return; }
+    const p = lista[0];
+    const h = Math.floor(p.minutos / 60);
+    a.hidden = false;
+    a.textContent = lista.length === 1
+      ? `Z${p.zona} varado ${h} h`
+      : `${lista.length} varados · Z${p.zona} ${h} h`;
+  }
+
+  // ─── Render · producción del pie ───
+  function pintarProduccion(m) {
+    if (!m) return;
+    $("pCompletos").textContent = m.completos ?? 0;
+    $("pObjetivo").textContent  = "/" + (m.objetivo ?? 0);
+
+    const dif = Number(m.diferencia ?? 0);
+    const chip = $("pRitmo");
+    if (m.esperado == null) {
+      chip.className = "ritmo";
+      chip.textContent = "—";
+    } else if (dif >= 0) {
+      chip.className = "ritmo bien";
+      chip.textContent = dif === 0 ? "En ritmo" : `+${dif} sobre ritmo`;
+    } else {
+      chip.className = "ritmo " + (dif <= -3 ? "mal" : "justo");
+      chip.textContent = `${dif} del ritmo`;
+    }
+
+    $("pProy").textContent = m.proyeccion != null ? `Proyecta ${m.proyeccion}` : "";
+  }
+
+  // ─── Render · escena mapa ───
+  const VARIANTE = {
+    LIBRE: "libre", ESPERANDO: "esperando",
+    EN_CONVERSION: "conversion", FINALIZADO: "finalizado",
+  };
+
+  function transcurrido(iso) {
+    if (!iso) return "";
+    const min = Math.max(0, Math.round((Date.now() - new Date(iso)) / 60000));
+    if (min < 60) return min + "m";
+    return Math.floor(min / 60) + "h" + String(min % 60).padStart(2, "0");
+  }
+
+  function spotHTML(z) {
+    const est = String(z.estado || "LIBRE").toUpperCase();
+    const v = VARIANTE[est] || "libre";
+
+    if (!z.vin) {
+      return `<div class="spot spot--libre">
+        <div class="spotTop"><span class="spotZona">Z${z.zona_id}</span></div>
+        <div class="spotVacio">P</div>
+        <div class="spotPie"></div>
+      </div>`;
+    }
+
+    const del = z.tecnicos?.delantero || "";
+    const tan = z.tecnicos?.tanquero  || "";
+    const tecs = (del || tan)
+      ? `<div class="spotTec"><span class="rol motor">M</span><span>${esc(del || "—")}</span></div>
+         <div class="spotTec"><span class="rol tanque">T</span><span>${esc(tan || "—")}</span></div>`
+      : `<div class="spotTec"><span>Sin asignar</span></div>`;
+
+    return `<div class="spot spot--${v}">
+      <div class="spotTop">
+        <span class="spotZona">Z${z.zona_id}</span>
+        <span class="spotTiempo">${transcurrido(z.registrado_at)}</span>
+      </div>
+      <div class="spotTecs">${tecs}</div>
+      <div class="spotPie">
+        <span>${esc(z.modelo || "")}</span>
+        <span>${esc(z.vin.slice(-6))}</span>
+      </div>
+    </div>`;
+  }
+
+  function pintarMapa(data) {
+    const byId = new Map((data.zonas || []).map(z => [z.zona_id, z]));
+    const fila = nums => nums
+      .map(n => spotHTML(byId.get(n) || { zona_id: n, vin: null, estado: "LIBRE" }))
+      .join("");
+
+    $("filaArriba").innerHTML = fila(FILA_ARRIBA);
+    $("filaAbajo").innerHTML  = fila(FILA_ABAJO);
+
+    const sz = (data.sin_zona || []).length;
+    $("sinZona").innerHTML = sz ? `<b>${sz}</b> sin ubicación` : "";
+  }
+
+  // ─── Ciclo de datos ───
+  async function cargarDespacho() {
+    let d;
+    try {
+      const r = await fetch("/api/despacho/tv" + (DEMO ? "?demo=1" : ""), { cache: "no-store" });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      d = await r.json();
+    } catch (e) {
+      if (!DEMO) throw e;         // en real, un fallo es un fallo
+      d = DEMO_FALLBACK;          // en demo, se ve igual sin servidor
+    }
+
+    if (d.demo) {
+      $("conexion").className = "conexion demo";
+      $("conexion").textContent = "DEMO";
+    }
+    if (d.asistencia) {
+      $("kAsis").textContent = `${d.asistencia.presentes}/${d.asistencia.esperados}`;
+      const aus = d.asistencia.ausentes || [];
+      $("ausentes").textContent = aus.length ? "No marcaron: " + aus.join(" · ") : "";
+    }
+    pintarProduccion(d.meta);
+    pintarAsignaciones(d.asignaciones || []);
+    pintarCola(d.cola || []);
+    pintarLibres(d.libres || []);
+    pintarIncidencias(d.incidencias || []);
+    pintarVarados(d.varados || []);
+    return d.demo;
+  }
+
+  async function cargarMapa() {
+    let d;
+    try {
+      if (DEMO) throw new Error("demo");
+      const r = await fetch("/api/zonas", { cache: "no-store" });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      d = await r.json();
+    } catch (e) {
+      if (!DEMO) throw e;
+      d = DEMO_ZONAS;
+    }
+    pintarMapa(d);
+  }
+
+  async function cargar() {
+    try {
+      // En paralelo: el mapa se sigue actualizando aunque no esté en pantalla,
+      // así al rotar ya está fresco en vez de aparecer vacío y llenarse.
+      const [esDemo] = await Promise.all([cargarDespacho(), cargarMapa()]);
+      ultimoOk = Date.now();
+      if (!esDemo) {
+        $("conexion").className = "conexion ok";
+        $("conexion").textContent = "EN VIVO";
+      }
+    } catch {
+      // Se conserva lo último pintado. Una pantalla en blanco no dice nada;
+      // una pantalla con datos viejos y un aviso, sí.
+      const min = Math.round((Date.now() - ultimoOk) / 60000);
+      if (min >= 1) {
+        $("conexion").className = "conexion mal";
+        $("conexion").textContent = `SIN CONEXIÓN · hace ${min} min`;
+      }
+    }
+  }
+
+  cargar();
+  setInterval(cargar, REFRESCO_MS);
+
+  // SSE: refresco inmediato cuando algo cambia, sin esperar el intervalo.
+  try {
+    const es = new EventSource("/api/events");
+    es.onmessage = ev => {
+      try {
+        const { topic } = JSON.parse(ev.data || "{}");
+        if (topic === "despacho" || topic === "asignaciones" || topic === "zonas") cargar();
+      } catch { /* heartbeat */ }
+    };
+  } catch { /* sin SSE → queda el polling */ }
+})();
+</script>
+</body>
+</html>

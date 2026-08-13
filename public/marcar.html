@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Marcar asistencia</title>
+<!--
+  Pantalla que abre el celular del técnico al escanear el QR de la TV.
+
+  Diseño: una sola acción, un solo botón, sin menús. El técnico está parado
+  en la puerta del taller con una mano ocupada — cualquier paso extra se
+  convierte en "mejor le digo al supervisor que me marque".
+
+  El email sale de localStorage (`glp_email`, la misma clave que usa la PWA
+  en public/js/core/auth.js), así que quien ya usa la app no escribe nada.
+-->
+<style>
+  :root {
+    --bg0: #0c0e11; --surface: #1e232b; --line: rgba(255,255,255,.12);
+    --text: #e9eaec; --muted: rgba(233,234,236,.58);
+    --amber: #f59e0b; --ok: #22c55e; --danger: #f87171;
+    --font: ui-rounded, Quicksand, Nunito, system-ui, -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    min-height: 100dvh;
+    background: var(--bg0);
+    color: var(--text);
+    font-family: var(--font);
+    display: grid;
+    place-content: center;
+    gap: 22px;
+    padding: 24px max(24px, env(safe-area-inset-left)) calc(24px + env(safe-area-inset-bottom));
+    text-align: center;
+  }
+  h1 { font-size: 26px; font-weight: 800; letter-spacing: .01em; }
+  .sub { color: var(--muted); font-size: 15px; font-weight: 600; line-height: 1.45; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 22px;
+    width: min(92vw, 420px);
+    display: grid;
+    gap: 16px;
+  }
+
+  input {
+    width: 100%;
+    background: #12161c;
+    border: 1px solid rgba(255,255,255,.18);
+    border-radius: 12px;
+    color: var(--text);
+    font: 600 17px var(--font);
+    padding: 14px 16px;
+    text-align: center;
+  }
+  input:focus { outline: 2px solid var(--amber); outline-offset: 1px; }
+
+  button {
+    width: 100%;
+    border: 0;
+    border-radius: 14px;
+    background: linear-gradient(120deg, var(--amber), #ea7317);
+    color: #14171c;
+    font: 800 19px var(--font);
+    padding: 18px;
+    letter-spacing: .02em;
+    cursor: pointer;
+    /* Área grande: se toca con guantes de taller. */
+    min-height: 62px;
+  }
+  button:disabled { opacity: .5; }
+  button.salida { background: linear-gradient(120deg, #64748b, #475569); color: #f1f5f9; }
+
+  .estado {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--muted);
+  }
+  .estado b { color: var(--text); }
+
+  .msg {
+    border-radius: 14px;
+    padding: 18px;
+    font-size: 17px;
+    font-weight: 700;
+    line-height: 1.4;
+    display: none;
+  }
+  .msg.on { display: block; }
+  .msg.ok   { background: rgba(34,197,94,.16);  border: 1px solid rgba(34,197,94,.45);  color: #bbf7d0; }
+  .msg.err  { background: rgba(248,113,113,.16); border: 1px solid rgba(248,113,113,.45); color: #fecaca; }
+  .hora { display: block; font-size: 40px; font-weight: 800; margin-top: 6px; font-variant-numeric: tabular-nums; }
+
+  /* ─── Dupla de trabajo ───
+     Aparece DESPUÉS de marcar ingreso, no antes: primero lo obligatorio,
+     luego lo opcional. Si se mezclan, marcar asistencia se vuelve un trámite
+     de dos pasos y la gente deja de hacerlo. */
+  .dupla { display: none; width: min(92vw, 420px); }
+  .dupla.on { display: grid; gap: 14px; }
+  .dupla h2 {
+    font-size: 17px; font-weight: 800; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .1em;
+  }
+  select {
+    width: 100%;
+    background: #12161c;
+    border: 1px solid rgba(255,255,255,.18);
+    border-radius: 12px;
+    color: var(--text);
+    font: 700 17px var(--font);
+    padding: 14px 12px;
+  }
+  button.sec {
+    background: transparent;
+    border: 2px solid rgba(255,255,255,.24);
+    color: var(--text);
+    font-size: 16px;
+    min-height: 52px;
+  }
+  .aviso {
+    background: rgba(245,158,11,.14);
+    border: 1px solid rgba(245,158,11,.5);
+    border-radius: 14px;
+    padding: 16px;
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1.4;
+    color: #fde3ac;
+  }
+  .aviso b { color: var(--amber); }
+</style>
+</head>
+<body>
+
+<h1>Marcar asistencia</h1>
+<div class="sub" id="sub">Confirma tu registro de entrada o salida</div>
+
+<div class="card" id="card">
+  <div class="estado" id="estado"></div>
+  <input id="email" type="email" inputmode="email" autocomplete="email"
+         placeholder="tu correo" spellcheck="false">
+  <button id="btn">Marcar ingreso</button>
+</div>
+
+<div class="msg" id="msg"></div>
+
+<!-- Dupla: solo se muestra si ya marcó ingreso -->
+<section class="dupla" id="dupla">
+  <h2>¿Trabajas en dupla hoy?</h2>
+  <div id="duplaCuerpo"></div>
+</section>
+
+<script>
+(() => {
+  "use strict";
+
+  const $ = id => document.getElementById(id);
+  const token = new URLSearchParams(location.search).get("t") || "";
+
+  // Misma clave que public/js/core/auth.js — quien ya usa la PWA no escribe nada.
+  const EMAIL_KEY = "glp_email";
+  let email = "";
+  let miUserId = "";
+  try { email = localStorage.getItem(EMAIL_KEY) || ""; } catch {}
+  $("email").value = email;
+  if (email) $("email").style.display = "none";
+
+  const esc = s => String(s ?? "").replace(/[&<>"]/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  function mostrar(tipo, html) {
+    const m = $("msg");
+    m.className = "msg on " + tipo;
+    m.innerHTML = html;
+    $("card").style.display = tipo === "ok" ? "none" : "";
+  }
+
+  // ─── Dupla de trabajo ───
+  // Dos técnicos del mismo rol que trabajan juntos: el sistema los cuenta
+  // como UNA unidad y les asigna un solo carro a la vez. El crédito no se
+  // parte a la mitad, se alterna carro a carro.
+  async function cargarDupla() {
+    if (!email) return;
+    let d;
+    try {
+      const r = await fetch("/api/despacho/duplas?email=" + encodeURIComponent(email));
+      d = r.ok ? await r.json() : null;
+    } catch { return; }
+    if (!d?.ok) return;
+
+    const mia = (d.duplas || []).find(x => x.miembros?.includes(miUserId));
+    const cont = $("duplaCuerpo");
+    $("dupla").classList.add("on");
+
+    // Caso 1 — alguien me invitó y falta que yo confirme.
+    if (mia && mia.estado === "PENDIENTE" && mia.lider_user_id !== miUserId) {
+      const otro = mia.miembrosNombres?.find((_, i) => mia.miembros[i] !== miUserId) || "tu compañero";
+      cont.innerHTML = `
+        <div class="aviso"><b>${esc(otro)}</b> quiere trabajar en dupla contigo.
+          Van a recibir un carro a la vez y el crédito alterna: uno para cada uno.</div>
+        <button id="bConf">Aceptar dupla</button>
+        <button id="bRech" class="sec">Rechazar</button>`;
+      $("bConf").onclick = () => accionDupla("confirmar", mia.id);
+      $("bRech").onclick = () => accionDupla("disolver", mia.id);
+      return;
+    }
+
+    // Caso 2 — propuse yo y espero respuesta.
+    if (mia && mia.estado === "PENDIENTE") {
+      const otro = mia.miembrosNombres?.find((_, i) => mia.miembros[i] !== miUserId) || "tu compañero";
+      cont.innerHTML = `
+        <div class="aviso">Esperando que <b>${esc(otro)}</b> acepte.</div>
+        <button id="bRech" class="sec">Cancelar</button>`;
+      $("bRech").onclick = () => accionDupla("disolver", mia.id);
+      return;
+    }
+
+    // Caso 3 — dupla activa.
+    if (mia && mia.estado === "ACTIVA") {
+      const otro = mia.miembrosNombres?.find((_, i) => mia.miembros[i] !== miUserId) || "";
+      cont.innerHTML = `
+        <div class="aviso">Trabajando en dupla con <b>${esc(otro)}</b> (${esc(mia.rol_trabajo)}).
+          Reciben un carro a la vez.</div>
+        <button id="bRech" class="sec">Deshacer dupla</button>`;
+      $("bRech").onclick = () => accionDupla("disolver", mia.id);
+      return;
+    }
+
+    // Caso 4 — sin dupla: ofrecer armarla.
+    let cands = [];
+    try {
+      const r = await fetch("/api/despacho/companeros?email=" + encodeURIComponent(email));
+      const c = r.ok ? await r.json() : null;
+      cands = c?.candidatos || [];
+    } catch {}
+
+    if (!cands.length) {
+      cont.innerHTML = `<div class="aviso">No hay compañeros disponibles de tu mismo rol
+        que ya hayan marcado asistencia.</div>`;
+      return;
+    }
+    cont.innerHTML = `
+      <select id="socio">
+        <option value="">Trabajo solo</option>
+        ${cands.map(c => `<option value="${esc(c.id)}">${esc(c.nombre)}</option>`).join("")}
+      </select>
+      <button id="bProp">Proponer dupla</button>`;
+    $("bProp").onclick = async () => {
+      const socioUserId = $("socio").value;
+      if (!socioUserId) { $("dupla").classList.remove("on"); return; }
+      $("bProp").disabled = true;
+      $("bProp").textContent = "Enviando…";
+      try {
+        const r = await fetch("/api/despacho/dupla/proponer", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, socioUserId }),
+        });
+        const d = await r.json();
+        if (!d.ok) throw new Error(d.error);
+        cont.innerHTML = `<div class="aviso">Listo. Esperando que
+          <b>${esc(d.esperandoA)}</b> acepte desde su celular.</div>`;
+      } catch (e) {
+        cont.innerHTML = `<div class="aviso">${esc(e.message || "No se pudo proponer")}</div>`;
+      }
+    };
+  }
+
+  async function accionDupla(accion, duplaId) {
+    try {
+      await fetch("/api/despacho/dupla/" + accion, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, duplaId }),
+      });
+    } catch {}
+    cargarDupla();
+  }
+
+  if (!token) {
+    mostrar("err", "Falta el código.<br>Escanea el QR de la pantalla del taller.");
+    return;
+  }
+
+  // Estado actual: define si el botón dice "ingreso" o "salida", para que el
+  // técnico no tenga que elegir entre dos botones y se equivoque.
+  let tipoSiguiente = "INGRESO";
+  async function cargarEstado() {
+    if (!email) return;
+    try {
+      const r = await fetch("/api/despacho/mi-estado?email=" + encodeURIComponent(email));
+      if (!r.ok) return;
+      const d = await r.json();
+      miUserId = d.userId || "";
+      $("estado").innerHTML = `Hola, <b>${esc(d.nombre || "")}</b>`;
+      if (d.estado && d.estado !== "FUERA") {
+        tipoSiguiente = "SALIDA";
+        $("btn").textContent = "Marcar salida";
+        $("btn").classList.add("salida");
+        $("sub").textContent = "Ingresaste a las " +
+          new Date(d.ingreso).toLocaleTimeString("es-PE",
+            { timeZone: "America/Lima", hour: "2-digit", minute: "2-digit", hour12: false });
+        // Ya está adentro → tiene sentido ofrecerle la dupla.
+        cargarDupla();
+      }
+    } catch { /* sin conexión: el botón queda en INGRESO, el backend valida */ }
+  }
+  cargarEstado();
+
+  $("btn").addEventListener("click", async () => {
+    const correo = ($("email").value || email).trim().toLowerCase();
+    if (!correo) { $("email").style.display = ""; $("email").focus(); return; }
+    try { localStorage.setItem(EMAIL_KEY, correo); } catch {}
+
+    $("btn").disabled = true;
+    $("btn").textContent = "Registrando…";
+
+    try {
+      const r = await fetch("/api/despacho/marcar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: correo, token, tipo: tipoSiguiente }),
+      });
+      const d = await r.json();
+
+      if (!r.ok || !d.ok) {
+        mostrar("err", (d.error || "No se pudo registrar"));
+        $("btn").disabled = false;
+        $("btn").textContent = tipoSiguiente === "SALIDA" ? "Marcar salida" : "Marcar ingreso";
+        return;
+      }
+
+      mostrar("ok",
+        (d.tipo === "SALIDA" ? "Salida registrada" : "Ingreso registrado") +
+        `<span class="hora">${esc(d.hora)}</span>` +
+        `<div style="font-size:15px;font-weight:600;opacity:.8;margin-top:8px">${esc(d.nombre || "")}</div>`);
+      $("sub").textContent = "Listo, ya puedes cerrar esta página";
+
+      if (d.tipo === "INGRESO") {
+        // Recién entrado: ahora sí ofrecerle armar dupla.
+        await cargarEstado();
+        cargarDupla();
+      } else {
+        $("dupla").classList.remove("on");
+      }
+    } catch (e) {
+      mostrar("err", "Sin conexión. Intenta de nuevo o pide al supervisor que te marque.");
+      $("btn").disabled = false;
+      $("btn").textContent = tipoSiguiente === "SALIDA" ? "Marcar salida" : "Marcar ingreso";
+    }
+  });
+})();
+</script>
+</body>
+</html>

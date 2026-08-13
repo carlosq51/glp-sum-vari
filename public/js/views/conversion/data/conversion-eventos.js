@@ -74,6 +74,10 @@ async function getScheduleConfig_() {
     const cfg = j.config || {};
     _scheduleCache = {
       pausaGlobal:  cfg.PAUSA_GLOBAL_ACTIVA    === "1",
+      // Despacho dirigido: las pausas las maneja el supervisor y el servidor
+      // reanuda al vencer. El temporizador del cliente debe apagarse o
+      // intentaría reanudar y el backend se lo rechazaría.
+      despachoReal: String(cfg.DESPACHO_MODO || "OFF").toUpperCase() === "REAL",
       comidaInicio: cfg.HORARIO_COMIDA_INICIO   || "13:00",
       comidaFin:    cfg.HORARIO_COMIDA_FIN       || "14:00",
       descInicio:   cfg.HORARIO_DESCANSO_INICIO  || "16:30",
@@ -120,6 +124,7 @@ function hhmm_(t) {
 export async function isInfinitePauseWindow_() {
   const cfg = await getScheduleConfig_();
   if (cfg.pausaGlobal) return true;          // Pausa global forzada desde admin
+  if (cfg.despachoReal) return true;         // Pausas del supervisor: sin auto-resume local
 
   const now = new Date();
   const t = now.getHours() * 60 + now.getMinutes();

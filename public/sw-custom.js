@@ -7,7 +7,12 @@ import { createHandlerBoundToURL } from 'workbox-precaching';
 
 precacheAndRoute(self.__WB_MANIFEST);
 cleanupOutdatedCaches();
-registerRoute(new NavigationRoute(createHandlerBoundToURL('index.html')));
+// El fallback de navegación devuelve index.html para que la PWA funcione
+// offline. denylist saca las páginas que NO son parte de la SPA: son HTML
+// autónomos servidos por Express (routes/despacho.js) y deben llegar a la red.
+registerRoute(new NavigationRoute(createHandlerBoundToURL('index.html'), {
+  denylist: [/^\/tv(\/|$|\?)/, /^\/marcar(\/|$|\?)/, /^\/despacho(\/|$|\?)/],
+}));
 
 self.skipWaiting();
 self.addEventListener('activate', e => e.waitUntil(

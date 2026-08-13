@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Consola de despacho</title>
+<!--
+  Consola del supervisor.
+
+  El motor auto-publica; esto NO aprueba, CORRIGE. Por eso el diseño no tiene
+  bandeja de pendientes: muestra lo que ya está en la pantalla del taller y
+  deja intervenir sobre ello — revocar, reasignar, o asignar a dedo.
+
+  Pensada para el celular del supervisor, que es donde va a estar: una columna,
+  botones grandes, sin tablas anchas.
+-->
+<style>
+  :root {
+    --bg0: #0c0e11; --bg1: #14171c; --surface: #1e232b; --surface2: #181c23;
+    --line: rgba(255,255,255,.14); --text: #e9eaec; --muted: rgba(233,234,236,.60);
+    --amber: #f59e0b; --ok: #22c55e; --danger: #f87171; --note: #7dd3fc; --warn: #facc15;
+    --font: ui-rounded, Quicksand, Nunito, system-ui, -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg0); color: var(--text); font-family: var(--font);
+    padding: 16px 14px calc(28px + env(safe-area-inset-bottom));
+    max-width: 720px; margin: 0 auto;
+  }
+  header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; }
+  h1 { font-size: 21px; font-weight: 800; }
+  h1 span { color: var(--amber); }
+  .modo {
+    font-size: 12px; font-weight: 800; letter-spacing: .1em;
+    padding: 3px 9px; border-radius: 99px; background: var(--surface); border: 1px solid var(--line);
+  }
+  .modo.REAL   { background: rgba(34,197,94,.18);  border-color: var(--ok);    color: #bbf7d0; }
+  .modo.SOMBRA { background: rgba(125,211,252,.16); border-color: var(--note); color: #bae6fd; }
+  .hora { margin-left: auto; font-size: 15px; font-weight: 800; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+  h2 {
+    font-size: 12px; text-transform: uppercase; letter-spacing: .14em;
+    color: var(--muted); font-weight: 800; margin: 20px 0 8px;
+  }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--line);
+    border-left: 4px solid var(--amber); border-radius: 12px;
+    padding: 12px 14px; margin-bottom: 8px;
+  }
+  .card.libre { border-left-color: var(--muted); }
+  .fila { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .zona { font-size: 22px; font-weight: 800; color: var(--amber); font-variant-numeric: tabular-nums; }
+  .modelo { font-size: 14px; color: var(--muted); font-weight: 700; }
+  .vin { font-size: 12px; color: var(--muted); margin-left: auto; font-variant-numeric: tabular-nums; }
+
+  .puesto {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 0; border-top: 1px solid rgba(255,255,255,.08); margin-top: 8px;
+  }
+  .rol {
+    font-size: 11px; font-weight: 800; color: #14171c; border-radius: 4px;
+    padding: 1px 6px; text-transform: uppercase;
+  }
+  .rol.MOTOR { background: var(--note); }
+  .rol.TANQUE { background: var(--warn); }
+  .nombre { font-size: 16px; font-weight: 800; flex: 1; }
+  .razon { font-size: 12px; color: var(--muted); font-weight: 600; margin-top: 2px; }
+
+  .acciones { display: flex; gap: 6px; }
+
+  /* Pausas: el técnico ya no las maneja, así que tienen que estar a un toque
+     del supervisor y no escondidas en un menú. */
+  .pausas {
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    padding: 8px 0 2px; border-top: 1px dashed rgba(255,255,255,.10); margin-top: 6px;
+  }
+  .pausas button { padding: 7px 10px; min-height: 36px; font-size: 12px; }
+  .etq { font-size: 12px; color: var(--muted); font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
+  .restante { font-size: 13px; color: var(--warn); font-weight: 800; }
+  button {
+    border: 1px solid var(--line); background: var(--surface2); color: var(--text);
+    font: 800 13px var(--font); padding: 9px 12px; border-radius: 9px; cursor: pointer;
+    min-height: 40px;
+  }
+  button.rev { border-color: rgba(248,113,113,.5); color: #fecaca; }
+  button.pri { background: linear-gradient(120deg, var(--amber), #ea7317); color: #14171c; border: 0; }
+  button:disabled { opacity: .5; }
+
+  select {
+    background: #12161c; border: 1px solid var(--line); color: var(--text);
+    font: 700 15px var(--font); padding: 11px; border-radius: 9px; width: 100%;
+  }
+  .fila-form { display: grid; gap: 8px; margin-top: 8px; }
+
+  .vacio { color: var(--muted); font-size: 14px; font-weight: 700; padding: 10px 2px; }
+  .err {
+    background: rgba(248,113,113,.16); border: 1px solid rgba(248,113,113,.5);
+    color: #fecaca; border-radius: 10px; padding: 12px; font-weight: 700; margin-bottom: 12px;
+  }
+  .chip {
+    font-size: 12px; font-weight: 800; padding: 2px 8px; border-radius: 99px;
+    background: rgba(34,197,94,.16); border: 1px solid rgba(34,197,94,.45); color: #bbf7d0;
+  }
+  .chip.off { background: rgba(255,255,255,.06); border-color: var(--line); color: var(--muted); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Despacho<span>.</span></h1>
+  <span class="modo" id="modo">—</span>
+  <span class="hora" id="hora">--:--</span>
+</header>
+
+<div id="error"></div>
+
+<h2>Asignado ahora</h2>
+<div id="asignado"></div>
+
+<h2>Carros sin asignar</h2>
+<div id="cola"></div>
+
+<h2>Técnicos</h2>
+<div id="tecnicos"></div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? "").replace(/[&<>"]/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  // Mismo almacenamiento que la PWA: el supervisor ya inició sesión ahí.
+  let email = "";
+  try { email = localStorage.getItem("glp_email") || ""; } catch {}
+
+  let datos = null;
+
+  function pintarError(msg) {
+    $("error").innerHTML = msg ? `<div class="err">${esc(msg)}</div>` : "";
+  }
+
+  async function cargar() {
+    if (!email) { pintarError("No hay sesión. Abre la app principal e inicia sesión primero."); return; }
+    try {
+      const r = await fetch("/api/despacho/panel?email=" + encodeURIComponent(email));
+      const d = await r.json();
+      if (!d.ok) { pintarError(d.error || "No autorizado"); return; }
+      pintarError("");
+      datos = d;
+      $("modo").textContent = d.modo || "—";
+      $("modo").className = "modo " + (d.modo || "");
+      $("hora").textContent = d.hora || "";
+      pintarAsignado();
+      pintarCola();
+      pintarTecnicos();
+    } catch (e) {
+      pintarError("Sin conexión con el servidor");
+    }
+  }
+
+  function opcionesTecnicos(rol) {
+    return (datos.tecnicos || [])
+      .filter(t => !rol || t.especialidad === rol || t.especialidad === "AMBOS")
+      .map(t => `<option value="${esc(t.user_id)}">${esc(t.nombre)}${
+        t.estado === "DISPONIBLE" ? " · libre" : ""}</option>`).join("");
+  }
+
+  function pintarAsignado() {
+    const props = datos.propuestas || [];
+    if (!props.length) { $("asignado").innerHTML = '<div class="vacio">Nada asignado todavía</div>'; return; }
+
+    // Agrupar por carro para ver MOTOR y TANQUE juntos.
+    const porVin = new Map();
+    for (const p of props) {
+      if (!porVin.has(p.vin)) porVin.set(p.vin, []);
+      porVin.get(p.vin).push(p);
+    }
+
+    $("asignado").innerHTML = [...porVin.entries()].map(([vin, ps]) => `
+      <div class="card">
+        <div class="fila">
+          <span class="zona">Z${esc(ps[0].zona_id ?? "–")}</span>
+          <span class="vin">${esc(vin.slice(-8))}</span>
+        </div>
+        ${ps.map(p => `
+          <div class="puesto">
+            <span class="rol ${esc(p.rol_trabajo)}">${esc(p.rol_trabajo[0])}</span>
+            <div style="flex:1">
+              <div class="nombre">${esc(p.nombre || "—")}</div>
+              <div class="razon">${esc(p.razon || "")}</div>
+            </div>
+            <div class="acciones">
+              <button class="rev" data-rev="${esc(p.id)}">Revocar</button>
+              <button data-rea="${esc(p.asignacion_id || "")}" data-rol="${esc(p.rol_trabajo)}"
+                ${p.asignacion_id ? "" : "disabled"}>Cambiar</button>
+            </div>
+          </div>
+          <div class="pausas" data-asg="${esc(p.asignacion_id || "")}">
+            ${p.asignacion_id ? (p.pausado
+              ? `<button class="pri" data-reanudar="${esc(p.asignacion_id)}">▶ Reanudar</button>
+                 <span class="restante">${esc(p.pausaTxt || "en pausa")}</span>`
+              : `<span class="etq">Pausar:</span>
+                 <button data-pausa="${esc(p.asignacion_id)}" data-min="5">5 min</button>
+                 <button data-pausa="${esc(p.asignacion_id)}" data-min="10">10 min</button>
+                 <button data-pausa="${esc(p.asignacion_id)}" data-min="15">15 min</button>
+                 <button data-pausa="${esc(p.asignacion_id)}" data-min="0">Indefinida</button>`)
+              : ""}
+          </div>`).join("")}
+      </div>`).join("");
+
+    for (const b of document.querySelectorAll("[data-rev]")) {
+      b.onclick = () => accion("revocar", { propuestaId: b.dataset.rev }, b);
+    }
+    for (const b of document.querySelectorAll("[data-rea]")) {
+      b.onclick = () => abrirCambio(b);
+    }
+    for (const b of document.querySelectorAll("[data-pausa]")) {
+      b.onclick = () => accion("pausa-ot", {
+        asignacionId: b.dataset.pausa, minutos: Number(b.dataset.min),
+      }, b);
+    }
+    for (const b of document.querySelectorAll("[data-reanudar]")) {
+      b.onclick = () => accion("reanudar-ot", { asignacionId: b.dataset.reanudar }, b);
+    }
+  }
+
+  function abrirCambio(btn) {
+    const cont = btn.closest(".puesto");
+    if (cont.querySelector("select")) return;
+    const form = document.createElement("div");
+    form.className = "fila-form";
+    form.style.width = "100%";
+    form.innerHTML = `
+      <select>${opcionesTecnicos(btn.dataset.rol)}</select>
+      <button class="pri">Reasignar</button>`;
+    cont.parentNode.insertBefore(form, cont.nextSibling);
+    form.querySelector("button").onclick = () =>
+      accion("reasignar", {
+        asignacionId: btn.dataset.rea,
+        nuevoUserId: form.querySelector("select").value,
+      }, form.querySelector("button"));
+  }
+
+  function pintarCola() {
+    const cola = datos.cola || [];
+    if (!cola.length) { $("cola").innerHTML = '<div class="vacio">Todos los carros en zona están asignados</div>'; return; }
+
+    $("cola").innerHTML = cola.map(c => `
+      <div class="card libre">
+        <div class="fila">
+          <span class="zona">Z${esc(c.zona)}</span>
+          <span class="modelo">${esc(c.modelo || "")}</span>
+          <span class="vin">${esc(String(c.vin).slice(-8))} · ${esc(c.espera || "")}</span>
+        </div>
+        <div class="fila-form">
+          <select data-rol-sel="${esc(c.vin)}">
+            <option value="MOTOR">MOTOR</option>
+            <option value="TANQUE">TANQUE</option>
+          </select>
+          <select data-tec-sel="${esc(c.vin)}">${opcionesTecnicos(null)}</select>
+          <button class="pri" data-man="${esc(c.vin)}" data-zona="${esc(c.zona)}">Asignar a dedo</button>
+        </div>
+      </div>`).join("");
+
+    for (const b of document.querySelectorAll("[data-man]")) {
+      b.onclick = () => accion("asignar-manual", {
+        vin: b.dataset.man,
+        zonaId: Number(b.dataset.zona),
+        rol: document.querySelector(`[data-rol-sel="${CSS.escape(b.dataset.man)}"]`).value,
+        userId: document.querySelector(`[data-tec-sel="${CSS.escape(b.dataset.man)}"]`).value,
+      }, b);
+    }
+  }
+
+  function pintarTecnicos() {
+    const t = datos.tecnicos || [];
+    if (!t.length) { $("tecnicos").innerHTML = '<div class="vacio">Sin técnicos</div>'; return; }
+    $("tecnicos").innerHTML = `<div class="card libre" style="display:flex;flex-wrap:wrap;gap:6px">` +
+      t.map(x => `<span class="chip ${x.estado === "DISPONIBLE" ? "" : "off"}">${
+        esc(x.nombre)} · ${esc(x.estado)}</span>`).join("") + `</div>`;
+  }
+
+  async function accion(ruta, cuerpo, btn) {
+    if (btn) { btn.disabled = true; btn.textContent = "…"; }
+    try {
+      let r;
+      if (ruta === "reasignar") {
+        // Reusa la reasignación de OT que ya existe en Admin: opera sobre la
+        // asignación real, que es lo que ahora crea el motor.
+        r = await fetch("/api/admin/asignaciones/" + encodeURIComponent(cuerpo.asignacionId), {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", "x-user-email": email },
+          body: JSON.stringify({ user_id: cuerpo.nuevoUserId, email }),
+        });
+      } else {
+        const url = (ruta === "asignar-manual" || ruta === "pausa-ot" || ruta === "reanudar-ot")
+          ? "/api/despacho/" + ruta
+          : "/api/despacho/propuesta/" + ruta;
+        r = await fetch(url, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, ...cuerpo }),
+        });
+      }
+      const d = await r.json();
+      if (!d.ok) pintarError(d.error || "No se pudo aplicar");
+    } catch { pintarError("Sin conexión"); }
+    cargar();
+  }
+
+  cargar();
+  setInterval(cargar, 15_000);
+
+  try {
+    const es = new EventSource("/api/events");
+    es.onmessage = ev => {
+      try {
+        const { topic } = JSON.parse(ev.data || "{}");
+        if (topic === "despacho" || topic === "zonas") cargar();
+      } catch {}
+    };
+  } catch {}
+})();
+</script>
+</body>
+</html>

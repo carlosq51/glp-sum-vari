@@ -11,6 +11,7 @@ import { addServerTiming_ } from "../lib/timing.js";
 import { r2GetStatus } from "../r2-uploads.js";
 import { pendingSuggestions_ } from "../lib/ml-state.js";
 import { emitEvent_ } from "../lib/events.js";
+import { getConfig_ } from "../lib/config.js";
 
 const router = Router();
 
@@ -415,6 +416,38 @@ router.post("/api/evento", async (req, res) => {
 
     // 5?? Si existe asignación del usuario actual, usarla; si no, será null (crearemos nueva)
     let asignacion = asignacionActiva && asignacionActiva.user_id === userId ? asignacionActiva : null;
+
+    // 5b?? DESPACHO EN MODO REAL — dos restricciones sobre el técnico:
+    //   · No puede ABRIR un carro nuevo de conversión: lo reparte la pantalla.
+    //   · No puede PAUSAR ni REANUDAR: las pausas las pone el supervisor, con
+    //     duración (5/10/15/indefinida), vía /api/despacho/pausa-ot.
+    // INICIO, FIN y NOTA siguen siendo suyos. Con el módulo en OFF o SOMBRA
+    // no cambia absolutamente nada del flujo actual.
+    if (rolTrabajo === "MOTOR" || rolTrabajo === "TANQUE") {
+      const cfgDesp = await getConfig_();
+      const enReal  = String(cfgDesp.DESPACHO_MODO || "OFF").toUpperCase() === "REAL";
+      const deSupervisor = String(nota || "").includes("supervisión")
+        || String(nota || "").startsWith("__SUP_")
+        || String(nota || "").startsWith("__ADMIN_");
+
+      if (enReal && !asignacion) {
+        return res.status(409).json({
+          ok: false,
+          error: "El taller está en despacho dirigido: espera a que la pantalla te asigne el carro. Si necesitas este vehículo, pídeselo al supervisor.",
+          errorType: "DESPACHO_DIRIGIDO",
+          vin,
+        });
+      }
+
+      if (enReal && !deSupervisor && (accion === "PAUSA" || accion === "REANUDAR")) {
+        return res.status(409).json({
+          ok: false,
+          error: "Las pausas las maneja el supervisor. Pídele que la registre desde su consola.",
+          errorType: "PAUSA_SOLO_SUPERVISOR",
+          vin,
+        });
+      }
+    }
 
     // 6?? Calcular nuevo estado según acción
     const estadoActual = asignacion?.estado_actual || "SIN_INICIAR";

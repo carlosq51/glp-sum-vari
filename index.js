@@ -17,6 +17,7 @@ import mlRouter, { scheduleAutoRetrain_, loadPairingModelFromSupabase_ } from ".
 import vinsRouter from "./routes/vins.js";
 import zonasRouter from "./routes/zonas.js";
 import profileRouter from "./routes/profile.js";
+import despachoRouter, { scheduleCierreJornada_, scheduleMotor_ } from "./routes/despacho.js";
 import { sseHandler_ } from "./lib/events.js";
 
 dotenv.config();
@@ -101,6 +102,9 @@ app.use(mlRouter);
 app.use(vinsRouter);
 app.use(zonasRouter);
 app.use(profileRouter);
+// Despacho: inerte mientras DESPACHO_MODO=OFF (los endpoints de escritura
+// responden 503 y nada del flujo actual cambia). Ver supabase/despacho.sql.
+app.use(despachoRouter);
 
 // ── Start server ──────────────────────────────────────────────────────────────
 app.listen(PORT, "0.0.0.0", () => {
@@ -111,4 +115,6 @@ app.listen(PORT, "0.0.0.0", () => {
   }
   scheduleAutoRetrain_();
   scheduleAutoNormalize_();
+  scheduleCierreJornada_(); // no-op mientras DESPACHO_MODO=OFF
+  scheduleMotor_();         // idem: el motor no corre con el módulo apagado
 });
