@@ -812,6 +812,146 @@
   }
 }
 
+/* ── Códigos: código de empresa + número de serie (SN) ── */
+.invCodChip {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 6px;
+  background: var(--pillBg);
+  border: var(--border-w) solid var(--surfaceLine);
+  font-family: var(--fontMono, ui-monospace, "SFMono-Regular", Menlo, monospace);
+  font-size: var(--fs-xs, 11px);
+  letter-spacing: .3px;
+  white-space: nowrap;
+}
+.invCodChipSn { color: var(--muted); }
+/* Dos campos lado a lado dentro de los modales del inventario */
+.invCodGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+/* ── Resultados del buscador global (código / SN / herramienta) ── */
+.invBusqBox {
+  margin: 4px 0 10px;
+  border: var(--border-w) solid var(--surfaceLine);
+  border-radius: var(--radiusSm);
+  background: var(--glass);
+  padding: 8px 10px;
+}
+.invBusqHead {
+  font-size: var(--fs-xs, 12px);
+  font-weight: var(--fw-bold, 600);
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+/* ── Modal de traspaso ── */
+.invTrasHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.invTrasTabla { max-height: 320px; overflow-y: auto; }
+.invTrasTabla input[type="number"] { width: 100%; }
+
+/* ── Auditoría: pasar lista marcando el estado de cada herramienta ── */
+.invAudTabla { max-height: 60vh; overflow-y: auto; }
+.invAudTabla td { vertical-align: top; }
+.invAudNota { width: 100%; min-width: 120px; }
+.invAudEstados {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+/* Cada opción es un radio disfrazado de pastilla: un toque = un estado. */
+.invAudOpt {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 14px;
+  border: var(--border-w) solid var(--surfaceLine);
+  background: var(--glass);
+  color: var(--muted);
+  font-size: var(--fs-xs, 12px);
+  font-weight: var(--fw-bold, 600);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--dur-fast), color var(--dur-fast), border-color var(--dur-fast), transform var(--dur-fast);
+}
+.invAudOpt:active { transform: scale(.94); }
+.invAudOpt input {
+  position: absolute;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  left: 0;
+  top: 0;
+  margin: 0;
+  cursor: pointer;
+}
+.invAudOpt:has(input:checked) { color: var(--text); border-color: currentColor; }
+.invAudOpt--OK:has(input:checked)       { background: var(--okBg, var(--surface));     color: var(--ok, var(--text)); }
+.invAudOpt--FALTA:has(input:checked)    { background: var(--warnBg, var(--surface));   color: var(--warn, var(--text)); }
+.invAudOpt--MAL:has(input:checked)      { background: var(--dangerBg, var(--surface)); color: var(--danger, var(--text)); }
+.invAudOpt--NO_STOCK:has(input:checked) { background: var(--surface);                  color: var(--text); }
+.invAudOpt input:focus-visible + span { text-decoration: underline; }
+
+/* ── Selector múltiple de técnicos (asignación masiva) ── */
+.invTecPickWrap {
+  max-height: 300px;
+  overflow-y: auto;
+  border: var(--border-w) solid var(--surfaceLine);
+  border-radius: var(--radiusSm);
+  padding: 8px 10px;
+  background: var(--glass);
+}
+.invTecPickGroup + .invTecPickGroup { margin-top: 12px; }
+.invTecPickTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-xs, 12px);
+  font-weight: var(--fw-bold, 700);
+  letter-spacing: .4px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.invTecPickGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 6px;
+}
+.invTecPick {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 8px;
+  border-radius: var(--radiusSm);
+  border: var(--border-w) solid transparent;
+  font-size: var(--fs-sm, 13px);
+  cursor: pointer;
+  transition: background var(--dur-fast), border-color var(--dur-fast);
+}
+.invTecPick:hover { background: var(--surface); }
+.invTecPick:has(input:checked) {
+  background: var(--surface);
+  border-color: var(--surfaceLine);
+}
+.invTecPick input { cursor: pointer; }
+.invTecPickNew {
+  margin-left: auto;
+  font-size: var(--fs-xs, 11px);
+  color: var(--muted);
+  background: var(--pillBg);
+  border-radius: 8px;
+  padding: 0 6px;
+}
+.invTecPickFiltro { max-width: 200px; }
+
 /* Bloque plegable "Crear nueva herramienta" dentro del modal de ítem */
 .invNuevaHerr {
   border: var(--border-w) solid var(--surfaceLine);

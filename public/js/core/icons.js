@@ -88,6 +88,8 @@ const ICONS = {
   chevronRight: '<path d="m9 18 6-6-6-6"/>',
   chevronLeft:  '<path d="m15 18-6-6 6-6"/>',
   search:       '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+  // Traspaso: flechas en ambos sentidos (de un técnico a otro).
+  swap:         '<path d="m8 3-4 4 4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/>',
   plus:         '<path d="M5 12h14"/><path d="M12 5v14"/>',
   pencil:
     '<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/>',

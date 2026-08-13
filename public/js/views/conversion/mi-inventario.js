@@ -77,14 +77,25 @@ export async function loadMiInventario_(containerId = "tecInventarioContent") {
   }, {});
   const totalUnidades = items.reduce((s, it) => s + cant(it), 0);
 
+  // Chips de código de empresa / número de serie (equipos identificables).
+  const codigosChips = it => {
+    const out = [];
+    if ((it.codigo || "").trim()) out.push(`<span class="invCodChip">${esc(it.codigo.trim())}</span>`);
+    if ((it.serie || "").trim())  out.push(`<span class="invCodChip invCodChipSn">SN ${esc(it.serie.trim())}</span>`);
+    return out.join(" ");
+  };
+  const hayCodigos = items.some(it => codigosChips(it));
+
   // Agrupar repetidos: 2 martillos = 1 fila con cantidad 2.
   const grupos = new Map();
   items.forEach(it => {
     const key = it.herramienta_id || `libre:${(it.descripcion_libre || "").trim().toLowerCase()}`;
-    if (!grupos.has(key)) grupos.set(key, { nombre: nombreItem(it), cantidad: 0, marcas: new Set(), porEstado: {} });
+    if (!grupos.has(key)) grupos.set(key, { nombre: nombreItem(it), cantidad: 0, marcas: new Set(), codigos: [], porEstado: {} });
     const g = grupos.get(key);
     g.cantidad += cant(it);
     if ((it.marca || "").trim()) g.marcas.add(it.marca.trim());
+    const cods = codigosChips(it);
+    if (cods) g.codigos.push(cods);
     g.porEstado[it.estado] = (g.porEstado[it.estado] || 0) + cant(it);
   });
 
@@ -96,6 +107,7 @@ export async function loadMiInventario_(containerId = "tecInventarioContent") {
     return `
       <tr>
         <td>${esc(g.nombre)}</td>
+        ${hayCodigos ? `<td>${g.codigos.join(" ") || `<span class="small muted">—</span>`}</td>` : ""}
         <td>${esc([...g.marcas].join(", ") || "—")}</td>
         <td style="text-align:center;"><strong>${g.cantidad}</strong></td>
         <td>${badges}</td>
@@ -123,8 +135,8 @@ export async function loadMiInventario_(containerId = "tecInventarioContent") {
 
     <div class="adminTableScroll" style="margin-top:10px;">
       <table class="adminTable">
-        <thead><tr><th>Herramienta</th><th>Marca</th><th>Cant.</th><th>Estado</th></tr></thead>
-        <tbody>${filas || `<tr><td colspan="4" class="small muted" style="padding:12px;">Tu hoja está vacía.</td></tr>`}</tbody>
+        <thead><tr><th>Herramienta</th>${hayCodigos ? "<th>Código / SN</th>" : ""}<th>Marca</th><th>Cant.</th><th>Estado</th></tr></thead>
+        <tbody>${filas || `<tr><td colspan="${hayCodigos ? 5 : 4}" class="small muted" style="padding:12px;">Tu hoja está vacía.</td></tr>`}</tbody>
       </table>
     </div>
   `;
