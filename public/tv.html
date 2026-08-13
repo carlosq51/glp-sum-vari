@@ -471,6 +471,30 @@
     color: rgba(11,15,20,.30);
   }
 
+  /* QR grande en el hueco de la fila de arriba (3 columnas libres). */
+  .qrMapa {
+    grid-column: span 3;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    gap: calc(var(--u) * .8);
+    background: var(--surface);
+    border: 2px dashed var(--lineFuerte);
+    border-radius: calc(var(--u) * .5);
+    padding: calc(var(--u) * .6) calc(var(--u) * .8);
+    min-width: 0;
+  }
+  .qrMapa img {
+    width: calc(var(--u) * 9);
+    height: calc(var(--u) * 9);
+    background: #fff;
+    border-radius: calc(var(--u) * .3);
+    display: block;
+  }
+  .qrMapa .qrTxt b { font-size: calc(var(--u) * 1.5); }
+  .qrMapa .qrTxt small { font-size: calc(var(--u) * .95); }
+  .qrMapa .cuenta { width: 100%; height: calc(var(--u) * .3); }
+
   /* Zona 16 virtual: carros en proceso sin ubicación física asignada. */
   .sinZona {
     display: flex;
@@ -734,11 +758,11 @@
 </div>
 
 <footer>
-  <img id="qr" alt="Código QR de asistencia">
+  <img class="qrImg" alt="Código QR de asistencia">
   <div class="qrTxt">
     <b>Marca tu asistencia</b>
     <small>Escanea · ingreso y salida</small>
-    <div class="cuenta"><i id="cuenta" style="width:100%"></i></div>
+    <div class="cuenta"><i></i></div>
   </div>
 
   <!-- Producción del día. El número grande dice dónde vamos; el chip de
@@ -858,27 +882,68 @@
   tick(); setInterval(tick, 10_000);
 
   // ─── QR rotativo ───
-  let ventanaSeg = 30, restan = 30;
+  // La barra se calcula desde el INSTANTE de vencimiento, no con un contador
+  // que resta 1 cada segundo. Dos razones: el navegador estrangula los
+  // temporizadores de pestañas en segundo plano y el contador se desfasaría; y
+  // partir de un valor supuesto hace que la barra pegue un salto cuando llega
+  // la ventana real del servidor.
+  let ventanaSeg = 0;      // 0 = todavía no sabemos nada, no pintar
+  let venceEnMs = 0;
+  let qrSrcActual = "";
+
+  /** Aplica el estado del QR a todas sus copias en pantalla (pie y mapa). */
+  function aplicarQr({ sinAnimar = false } = {}) {
+    for (const img of document.querySelectorAll(".qrImg")) {
+      if (qrSrcActual && img.src !== qrSrcActual) img.src = qrSrcActual;
+    }
+    if (!ventanaSeg) return;
+    const restan = Math.max(0, (venceEnMs - Date.now()) / 1000);
+    const pct = Math.min(100, (restan / ventanaSeg) * 100);
+    for (const b of document.querySelectorAll(".cuenta i")) {
+      // Al renovarse el código la barra vuelve a 100%: sin cortar la
+      // transición se vería "llenándose" hacia atrás durante un segundo.
+      if (sinAnimar) {
+        b.style.transition = "none";
+        b.style.width = pct + "%";
+        void b.offsetWidth;                 // fuerza el reflujo
+        b.style.transition = "";
+      } else {
+        b.style.width = pct + "%";
+      }
+    }
+  }
+
   async function refrescarQr() {
     try {
       const r = await fetch("/api/despacho/qr", { cache: "no-store" });
       const d = await r.json();
-      ventanaSeg = d.ventanaSeg || 30;
-      restan = d.expiraEn || ventanaSeg;
-    } catch { restan = ventanaSeg; }
-    $("qr").src = "/api/despacho/qr.svg?ts=" + Date.now();
+      ventanaSeg = d.ventanaSeg || 300;
+      venceEnMs  = Date.now() + (d.expiraEn ?? ventanaSeg) * 1000;
+    } catch {
+      // Sin servidor: se deja correr la última ventana conocida.
+      if (!ventanaSeg) return;
+      venceEnMs = Date.now() + ventanaSeg * 1000;
+    }
+    qrSrcActual = "/api/despacho/qr.svg?ts=" + Date.now();
+    aplicarQr({ sinAnimar: true });
   }
+
   function tickQr() {
-    restan -= 1;
-    $("cuenta").style.width = Math.max(0, (restan / ventanaSeg) * 100) + "%";
-    if (restan <= 0) refrescarQr();
+    if (!ventanaSeg) return;
+    if (Date.now() >= venceEnMs) { refrescarQr(); return; }
+    aplicarQr();
   }
+
   // Abierto como archivo suelto no hay backend que firme el QR: se avisa en
   // vez de dejar el ícono roto de imagen.
-  $("qr").addEventListener("error", () => {
-    $("qr").style.display = "none";
-    document.querySelector(".qrTxt b").textContent = "QR en vivo (requiere servidor)";
-  });
+  document.addEventListener("error", (e) => {
+    if (!e.target.classList?.contains("qrImg")) return;
+    e.target.style.display = "none";
+    for (const t of document.querySelectorAll(".qrTxt b")) {
+      t.textContent = "QR en vivo (requiere servidor)";
+    }
+  }, true);
+
   refrescarQr();
   setInterval(tickQr, 1000);
 
@@ -1095,14 +1160,29 @@
     </div>`;
   }
 
+  // La fila de arriba tiene 6 zonas en una rejilla de 9: sobran 3 columnas.
+  // Ese hueco es el mejor sitio de toda la pantalla para el QR — grande, a la
+  // altura de la vista y sin quitarle espacio a nada.
+  const qrMapaHTML = () => `
+    <div class="qrMapa">
+      <img class="qrImg" alt="Código QR de asistencia">
+      <div class="qrTxt">
+        <b>Marca tu asistencia</b>
+        <small>Escanea con tu celular</small>
+        <div class="cuenta"><i></i></div>
+      </div>
+    </div>`;
+
   function pintarMapa(data) {
     const byId = new Map((data.zonas || []).map(z => [z.zona_id, z]));
     const fila = nums => nums
       .map(n => spotHTML(byId.get(n) || { zona_id: n, vin: null, estado: "LIBRE" }))
       .join("");
 
-    $("filaArriba").innerHTML = fila(FILA_ARRIBA);
+    $("filaArriba").innerHTML = fila(FILA_ARRIBA) + qrMapaHTML();
     $("filaAbajo").innerHTML  = fila(FILA_ABAJO);
+    // El repintado creó una imagen nueva: hay que devolverle el código actual.
+    aplicarQr({ sinAnimar: true });
 
     const sz = (data.sin_zona || []).length;
     $("sinZona").innerHTML = sz ? `<b>${sz}</b> sin ubicación` : "";
