@@ -112,6 +112,11 @@ export function supervisorView() {
           </div>
           <button id="btnOtCtrlBuscar" type="button" class="btn3" title="Buscar">${icon("search", 15)}</button>
           <button id="btnOtCtrlNueva" type="button" class="btn3" title="Crear una OT">${icon("plus", 15)} Nueva OT</button>
+          <!-- Parada de taller. El texto y el color los pone sup-ot-control.js
+               según haya o no pausa global activa: es un mismo botón que
+               alterna, porque "pausar" y "reanudar" nunca aplican a la vez. -->
+          <button id="btnOtCtrlPausaTodo" type="button" class="btn3 otCtrlPausaTodo"
+            title="Pausar todas las OTs que estén trabajando ahora mismo">⏸ Pausar todas</button>
         </div>
 
         <div class="lvBar" style="margin-top:10px;">

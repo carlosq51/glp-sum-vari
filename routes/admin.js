@@ -4,6 +4,7 @@ import { normalizeModelo_ } from "../lib/utils.js";
 import { getConfig_, invalidateConfigCache_ } from "../lib/config.js";
 import { emitEvent_ } from "../lib/events.js";
 import { requireRol_ } from "../lib/authz.js";
+import { aplicarPausaMasiva_ } from "../lib/pausa-masiva.js";
 
 const router = Router();
 
@@ -189,70 +190,35 @@ router.post("/api/admin/config", requireRol_("ADMIN"), async (req, res) => {
 // POST /api/admin/pausa-masiva
 // body: { accion: "PAUSA" | "REANUDAR", nota?: string }
 // Pausa o reanuda TODAS las asignaciones activas en estado TRABAJANDO (o PAUSADO para reanudar)
-router.post("/api/admin/pausa-masiva", requireRol_("ADMIN"), async (req, res) => {
+//
+// También lo usa el SUPERVISOR desde su panel CONTROL: quien está en piso cuando
+// hay que parar el taller (simulacro, corte de energía, charla) es él, no el
+// admin, y hacerle pedir el botón por WhatsApp era la forma más lenta de pararlo.
+router.post("/api/admin/pausa-masiva", requireRol_("ADMIN", "SUPERVISOR"), async (req, res) => {
   try {
     const { accion, nota } = req.body || {};
     if (!["PAUSA", "REANUDAR"].includes(accion)) {
       return res.status(400).json({ ok: false, error: "accion debe ser PAUSA o REANUDAR" });
     }
 
+    // El trabajo sucio vive en lib/pausa-masiva.js: lo comparte con el disparo
+    // por horario (almuerzo / fin de jornada), que hace exactamente lo mismo.
+    const { afectadas, errores } = await aplicarPausaMasiva_({ accion, nota });
+
+    // Bandera de parada MANUAL. La automática por horario NO la toca: si lo
+    // hiciera, el botón del supervisor pasaría a decir "Reanudar todas" durante
+    // el almuerzo y al pulsarlo levantaría también las OTs que él había pausado
+    // a propósito.
     const SUPABASE_URL = process.env.SUPABASE_URL;
-    const headers = supabaseHeaders_();
-    const now = new Date().toISOString();
-    const estadoBuscar  = accion === "PAUSA" ? "TRABAJANDO" : "PAUSADO";
-    const estadoNuevo   = accion === "PAUSA" ? "PAUSADO"    : "TRABAJANDO";
-    const notaFinal     = nota || (accion === "PAUSA" ? "__ADMIN_PAUSA_MASIVA" : "__ADMIN_REANUDAR_MASIVA");
-
-    // 1. Obtener todas las asignaciones en el estado objetivo
-    const url = `${SUPABASE_URL}/rest/v1/asignaciones?activo=eq.true&estado_actual=eq.${estadoBuscar}&select=id,running_since,tiempo_trab_ms`;
-    const resp = await fetch(url, { method: "GET", headers });
-    if (!resp.ok) throw new Error(`Supabase GET asignaciones: ${resp.status}`);
-    const asignaciones = await resp.json();
-
-    if (!asignaciones.length) {
-      return res.json({ ok: true, afectadas: 0, mensaje: `No hay OTs en estado ${estadoBuscar}` });
-    }
-
-    let afectadas = 0;
-    const errors = [];
-
-    for (const asg of asignaciones) {
-      try {
-        const updateData = { estado_actual: estadoNuevo, updated_at: now, last_nota: notaFinal };
-        if (accion === "PAUSA") {
-          // Acumular tiempo transcurrido
-          const extraMs = asg.running_since
-            ? Math.max(0, Date.now() - new Date(asg.running_since).getTime())
-            : 0;
-          updateData.tiempo_trab_ms = (asg.tiempo_trab_ms || 0) + extraMs;
-          updateData.running_since  = null;
-        } else {
-          // Reanudar
-          updateData.running_since = now;
-        }
-        const patchUrl = `${SUPABASE_URL}/rest/v1/asignaciones?id=eq.${asg.id}`;
-        const pr = await fetch(patchUrl, {
-          method: "PATCH",
-          headers: { ...headers, "Prefer": "return=minimal" },
-          body: JSON.stringify(updateData),
-        });
-        if (!pr.ok) errors.push(asg.id);
-        else afectadas++;
-      } catch {
-        errors.push(asg.id);
-      }
-    }
-
-    // 2. Guardar estado en app_config para que el frontend lo muestre
     await fetch(`${SUPABASE_URL}/rest/v1/app_config`, {
       method: "POST",
-      headers: { ...headers, "Prefer": "resolution=merge-duplicates,return=representation" },
+      headers: { ...supabaseHeaders_(), "Prefer": "resolution=merge-duplicates,return=representation" },
       body: JSON.stringify({ key: "PAUSA_GLOBAL_ACTIVA", value: accion === "PAUSA" ? "1" : "0" }),
     }).catch(() => {});
 
     invalidateConfigCache_(); // PAUSA_GLOBAL_ACTIVA cambió
     emitEvent_("asignaciones", { accion: `PAUSA_MASIVA_${accion}`, afectadas });
-    return res.json({ ok: true, afectadas, errors: errors.length ? errors : undefined });
+    return res.json({ ok: true, afectadas, errors: errores.length ? errores : undefined });
   } catch (e) {
     console.error("[PAUSA_MASIVA]", e.message);
     return res.status(500).json({ ok: false, error: String(e.message || e) });

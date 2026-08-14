@@ -540,6 +540,7 @@ async function loadTab() {
       const comidaFin     = cfg.HORARIO_COMIDA_FIN;
       const descInicio    = cfg.HORARIO_DESCANSO_INICIO;
       const descFin       = cfg.HORARIO_DESCANSO_FIN;
+      const pausaAutoHorario = String(cfg.PAUSA_AUTO_HORARIO ?? "1") === "1";
       const metaDiaria    = String(cfg.META_DIARIA);
       const metaCal       = String(cfg.META_CALIDAD);
       const metaMensual   = String(cfg.META_MENSUAL);
@@ -593,9 +594,17 @@ async function loadTab() {
           <div class="adminConfigSection">
             <h4 class="adminConfigTitle">Horarios de pausa automática</h4>
             <p class="small muted">
-              Durante estos intervalos las OTs en pausa <strong>no se reanudan automáticamente</strong>
-              (pausa indefinida). Los cambios se aplican en el próximo ciclo de polling del técnico.
+              A la <strong>hora de comida</strong> el servidor pausa todas las OTs que estén
+              trabajando, y al terminar reanuda solo las que pausó él (las que pausó el supervisor
+              siguen pausadas). Ocurre aunque nadie tenga la app abierta.
+              El horario de descanso <strong>no pausa a nadie</strong>: el fin del día lo marca la
+              salida de cada técnico, que ya le pausa sus carros.
+              Dentro de ambos intervalos, además, las OTs pausadas no se auto-reanudan a los 8 min.
             </p>
+            <label class="adminCheckLabel" style="margin-bottom:10px;">
+              <input id="cfgPausaAutoHorario" type="checkbox" ${pausaAutoHorario ? "checked" : ""}>
+              Pausar y reanudar automáticamente a la hora de comida
+            </label>
 
             <div class="adminHorarioGrid">
               <div class="adminHorarioGroup">
@@ -1301,6 +1310,7 @@ async function saveHorarios_() {
   const cf     = $id("cfgComidaFin")?.value?.trim()    || "14:00";
   const di     = $id("cfgDescInicio")?.value?.trim()   || "16:30";
   const df     = $id("cfgDescFin")?.value?.trim()      || "07:00";
+  const auto   = !!$id("cfgPausaAutoHorario")?.checked;
   if (btn) btn.disabled = true;
   if (msgEl) msgEl.textContent = "Guardando…";
   try {
@@ -1313,6 +1323,7 @@ async function saveHorarios_() {
           { key: "HORARIO_COMIDA_FIN",       value: cf },
           { key: "HORARIO_DESCANSO_INICIO",  value: di },
           { key: "HORARIO_DESCANSO_FIN",     value: df },
+          { key: "PAUSA_AUTO_HORARIO",       value: auto ? "1" : "0" },
         ],
       }),
     });

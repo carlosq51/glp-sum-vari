@@ -328,8 +328,17 @@ router.post("/api/despacho/marcar-manual", requireModoActivo_,
     if (!insert.ok) throw new Error((await insert.text()).slice(0, 200));
 
     const j = await proyectarJornada_(fecha, targetUserId, [...marcas, (await insert.json())[0]]);
+
+    // Una salida es una salida, la haya marcado el técnico con el QR o el
+    // supervisor por él. Este camino no pausaba nada: al técnico sin celular le
+    // seguía corriendo el cronómetro toda la noche, que es justo lo que la
+    // pausa por salida existe para evitar.
+    let pausados = 0;
+    if (tipo === "SALIDA" || tipo === "CIERRE_AUTO") {
+      pausados = await pausarTrabajoDe_(targetUserId);
+    }
     emitEvent_("despacho", { tipo, user_id: targetUserId });
-    res.json({ ok: true, estado: j.estado });
+    res.json({ ok: true, estado: j.estado, pausados });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }

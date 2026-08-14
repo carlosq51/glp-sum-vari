@@ -47,14 +47,11 @@ const AUTO_START_TIMEOUT_MS = 15000;  // 15 segundos para limpiar
 /** Tiempo máximo de pausa antes de reanudar automáticamente. */
 export const PAUSA_AUTO_RESUME_MS = 8 * 60 * 1000;
 
-/**
- * Horarios de pausa automática forzada: [hora, minuto] en hora local.
- * A esas horas se pausan TODAS las OTs en estado TRABAJANDO.
- */
-export const SCHEDULED_PAUSES = [
-  [13,  0],  // almuerzo
-  [16, 40],  // fin de tarde
-];
+// Las pausas por horario (almuerzo, fin de jornada) las dispara el SERVIDOR:
+// ver lib/pausa-masiva.js. Aquí vivía un array [[13,0],[16,40]] hardcodeado que
+// solo corría si el técnico tenía la app abierta en ese minuto exacto, y que
+// además ignoraba HORARIO_COMIDA_INICIO. Lo que queda en este archivo es solo
+// el auto-resume de 8 min y las ventanas donde ese auto-resume se apaga.
 
 // --------------------------
 // SCHEDULE CONFIG (configurable desde panel admin)

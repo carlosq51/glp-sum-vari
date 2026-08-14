@@ -62,7 +62,7 @@ Envío de eventos de trabajo (INICIO/PAUSA/FIN/NOTA/REANUDAR), auto-inicio al es
 | `enviarEvento` | 165 (export) | Valida acción según estado local, hace `POST /api/evento`, actualiza store (`normalizeItem_`/`mergePrevAndCache_`), re-renderiza, dispara sync diferido y popup obligatorio de zona tras INICIO. | async `(accionOverride, opts)` / respuesta del server o `{ok:false,...}`. |
 | `autoStartFromScan_` | 272 (export) | Tras escanear VIN, si no hay OT o está SIN_INICIAR, llama `enviarEvento("INICIO",...)` con anti-loop por Map y maneja los distintos tipos de error (ya asignado, VIN no existe, acción inválida, timeout) mostrando el modal de error correspondiente. | async `(vin, rolTrabajo)` / void. |
 
-Constantes exportadas: `PAUSA_AUTO_RESUME_MS`, `SCHEDULED_PAUSES`, `autoResumingKeys_`.
+Constantes exportadas: `PAUSA_AUTO_RESUME_MS`, `autoResumingKeys_`. (Las pausas por horario ya no se disparan en el cliente: las pone el servidor, ver `lib/pausa-masiva.js`.)
 
 ## data/conversion-sync.js
 

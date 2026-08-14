@@ -34,7 +34,7 @@ import {
   refreshEstadoForVinRole,
   initEstadoUI_,
 } from "./data/conversion-estado.js";
-import { PAUSA_AUTO_RESUME_MS, autoResumingKeys_, enviarEvento, autoStartFromScan_, SCHEDULED_PAUSES, isInfinitePauseWindow_ } from "./data/conversion-eventos.js";
+import { PAUSA_AUTO_RESUME_MS, autoResumingKeys_, enviarEvento, autoStartFromScan_, isInfinitePauseWindow_ } from "./data/conversion-eventos.js";
 import { initConversionDelegation_ } from "./ui/conversion-delegation.js";
 import { icon } from "../../core/icons.js";
 import { showBanner_, hideBanner_ } from "../../core/banner.js";
@@ -1245,33 +1245,16 @@ async function loadTecIncidencias_() {
 // TICK CLOCK
 // --------------------------
 
-// Rastrea qué pausas programadas ya se dispararon hoy ("YYYY-MM-DD_HH:MM")
-const scheduledPauseFired_ = new Set();
-
 export function tickClocksUI_() {
   if (!isWorkModule_()) return;
 
   const c = ctx_();
   const nowMs = Date.now();
 
-  // ── Pausas programadas (almuerzo 13:00, fin tarde 16:30) ────────────────
-  {
-    const now = new Date(nowMs);
-    for (const [ph, pm] of SCHEDULED_PAUSES) {
-      if (now.getHours() === ph && now.getMinutes() === pm) {
-        const fireKey = `${now.toDateString()}_${ph}:${String(pm).padStart(2, "0")}`;
-        if (!scheduledPauseFired_.has(fireKey)) {
-          scheduledPauseFired_.add(fireKey);
-          for (const it of c.itemsByKey.values()) {
-            if (String(it.estado || "").toUpperCase() === "TRABAJANDO") {
-              enviarEvento("PAUSA", { vin: it.vin, rolTrabajo: it.rolTrabajo })
-                .catch(e => console.warn("[PAUSA-PROGRAMADA] Error:", e));
-            }
-          }
-        }
-      }
-    }
-  }
+  // Las pausas de almuerzo y fin de jornada YA NO se disparan aquí. Corrían en
+  // el celular del técnico: con la pantalla bloqueada o la app cerrada no
+  // pasaba nada y la OT acumulaba la hora de almuerzo como trabajo. Ahora las
+  // pone el servidor a la hora configurada (lib/pausa-masiva.js).
 
   el_("activasBox")
     ?.querySelectorAll(".jobCard[data-key] .js-tiempo")
@@ -1292,13 +1275,19 @@ export function tickClocksUI_() {
           const pausedAt = it.updated_at ? Date.parse(it.updated_at) : NaN;
           const pausedMs = isNaN(pausedAt) ? Infinity : nowMs - pausedAt;
 
-          // En ventana de pausa infinita, pausa muy larga, o pausa impuesta por supervisor
-          // → no mostrar countdown ni auto-reanudar
-          const esSupervisor = String(it.last_nota || "").startsWith("__SUP") ||
-                                String(it.last_nota || "").startsWith("__ADMIN");
+          // En ventana de pausa infinita, pausa muy larga, o pausa que no puso
+          // el técnico → no mostrar countdown ni auto-reanudar.
+          const nota = String(it.last_nota || "");
+          const esSupervisor = nota.startsWith("__SUP") || nota.startsWith("__ADMIN");
+          // Pausa por horario: se dice de dónde viene, porque el técnico ve su
+          // OT detenida sin haberla tocado y lo primero que piensa es que falló.
+          const esHorario = nota.startsWith("__AUTO_PAUSA");
+          const impuesta = esSupervisor || esHorario;
           isInfinitePauseWindow_().then(isInfinite => {
-            if (isInfinite || pausedMs > PAUSA_AUTO_RESUME_MS * 2 || esSupervisor) {
-              cdEl.textContent = esSupervisor ? "⏸ Pausado por supervisor" : "";
+            if (isInfinite || pausedMs > PAUSA_AUTO_RESUME_MS * 2 || impuesta) {
+              cdEl.textContent = esHorario     ? "⏸ Pausa de horario"
+                               : esSupervisor  ? "⏸ Pausado por supervisor"
+                               : "";
               return;
             }
 

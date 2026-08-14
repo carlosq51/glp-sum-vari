@@ -39,6 +39,7 @@ const S = {
   registrado: true,
   editId:  null,     // OT abierta en el modal ("" = nueva)
   usuarios: null,    // cache del picker de reasignación
+  pausaGlobal: false, // hay una parada de taller vigente
 };
 
 const $ = id => document.getElementById(id);
@@ -207,6 +208,9 @@ async function refresh_() {
     render_();
     setTimestamp_();
     setMsg_("");
+    // La parada puede haberla puesto el admin (o el propio supervisor desde
+    // otro dispositivo): el botón se resincroniza en cada poll, no solo al entrar.
+    syncPausaGlobal_().catch(() => {});
   } catch (e) {
     setMsg_(`⚠️ ${e.message}`, true);
   } finally {
@@ -249,6 +253,73 @@ async function togglePausa_(btn) {
     setMsg_(`No se pudo ${verbo.toLowerCase()}: ${e.message}`, true);
     btn.disabled = false;
     btn.textContent = accion === "PAUSA" ? "⏸ Pausar" : "▶ Reanudar";
+  }
+}
+
+// ─── Parada de taller (pausa masiva) ─────────────────────────────────────────
+
+/**
+ * Refleja en el botón si hay parada vigente. El estado no se deduce de las OTs
+ * cargadas —la búsqueda por VIN muestra una sola— sino de PAUSA_GLOBAL_ACTIVA,
+ * que es la misma bandera que apaga el auto-resume de 8 min en el técnico.
+ */
+function pintarBotonPausaTodo_() {
+  const btn = $("btnOtCtrlPausaTodo");
+  if (!btn) return;
+  btn.disabled = false;
+  btn.textContent = S.pausaGlobal ? "▶ Reanudar todas" : "⏸ Pausar todas";
+  btn.title = S.pausaGlobal
+    ? "Reanudar todas las OTs que quedaron pausadas por la parada"
+    : "Pausar todas las OTs que estén trabajando ahora mismo";
+  btn.classList.toggle("otCtrlPausaTodo--activa", S.pausaGlobal);
+}
+
+async function syncPausaGlobal_() {
+  try {
+    // Con cache-buster: /api/config se sirve con max-age=60 y justo después de
+    // pulsar el botón el navegador devolvería la copia vieja, dejando el botón
+    // diciendo lo contrario de lo que acaba de pasar.
+    const j = await getJSON(`/api/config?_=${Date.now()}`);
+    S.pausaGlobal = String(j?.config?.PAUSA_GLOBAL_ACTIVA || "0") === "1";
+  } catch {
+    // Sin config no se inventa estado: se deja el último conocido.
+  }
+  pintarBotonPausaTodo_();
+}
+
+/**
+ * Pausa (o reanuda) TODAS las asignaciones activas del taller de un golpe.
+ * Va al mismo endpoint que usa Admin → Configuración, así que la parada se ve
+ * igual en los dos sitios y deja la bandera PAUSA_GLOBAL_ACTIVA coherente.
+ */
+async function pausaMasiva_() {
+  const btn = $("btnOtCtrlPausaTodo");
+  const accion = S.pausaGlobal ? "REANUDAR" : "PAUSA";
+
+  const pregunta = accion === "PAUSA"
+    ? "¿Pausar TODAS las OTs que están trabajando ahora?\n\nEs para parar el taller entero (simulacro, corte, charla). Los técnicos no podrán reanudar solos hasta que tú reanudes desde aquí."
+    : "¿Reanudar TODAS las OTs pausadas?\n\nVolverán a correr el reloj las que estén en PAUSADO, incluidas las que pausaste una por una.";
+  if (!confirm(pregunta)) return;
+
+  if (btn) { btn.disabled = true; btn.textContent = accion === "PAUSA" ? "Pausando…" : "Reanudando…"; }
+  try {
+    const j = await mandoJson_("/api/admin/pausa-masiva", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accion }),
+    });
+    S.pausaGlobal = accion === "PAUSA";
+    // El técnico cachea la config 5 min; el supervisor no debe verla vieja.
+    try { localStorage.removeItem("glp_app_config_cache"); } catch {}
+    await refresh_();
+    // Después del refresh: refresh_ limpia el mensaje al terminar bien.
+    setMsg_(accion === "PAUSA"
+      ? `Taller detenido: ${j.afectadas} OT(s) pausadas.`
+      : `Taller reanudado: ${j.afectadas} OT(s) en marcha.`);
+  } catch (e) {
+    setMsg_(`No se pudo ${accion === "PAUSA" ? "pausar" : "reanudar"} todo: ${e.message}`, true);
+  } finally {
+    pintarBotonPausaTodo_();
   }
 }
 
@@ -393,6 +464,7 @@ export function bindSupOtControl_() {
   $("btnOtCtrlRefresh")?.addEventListener("click", () => refresh_().catch(() => {}));
   $("btnOtCtrlBuscar")?.addEventListener("click", () => buscarVin_($("otCtrlVin")?.value));
   $("btnOtCtrlNueva")?.addEventListener("click", () => abrirModal_(null));
+  $("btnOtCtrlPausaTodo")?.addEventListener("click", () => void pausaMasiva_());
 
   $("otCtrlVin")?.addEventListener("keydown", e => {
     if (e.key === "Enter" && !e.defaultPrevented) buscarVin_(e.target.value);
@@ -414,6 +486,7 @@ export function bindSupOtControl_() {
 
 export async function enterOtControl_() {
   S.active = true;
+  await syncPausaGlobal_();
   await refresh_();
   startPoll("POLL_SUP_OT_CONTROL_MS", () => refresh_().catch(() => {}), { immediate: false });
 }

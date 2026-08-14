@@ -20,6 +20,7 @@ import zonasRouter from "./routes/zonas.js";
 import profileRouter from "./routes/profile.js";
 import despachoRouter, { scheduleCierreJornada_, scheduleMotor_ } from "./routes/despacho.js";
 import { sseHandler_ } from "./lib/events.js";
+import { scheduleHorariosPausa_ } from "./lib/pausa-masiva.js";
 
 dotenv.config();
 
@@ -117,6 +118,7 @@ app.listen(PORT, "0.0.0.0", () => {
   }
   scheduleAutoRetrain_();
   scheduleAutoNormalize_();
+  scheduleHorariosPausa_(); // hora de comida: pausa y reanuda desde el servidor
   scheduleCierreJornada_(); // no-op mientras DESPACHO_MODO=OFF
   scheduleMotor_();         // idem: el motor no corre con el módulo apagado
 });
