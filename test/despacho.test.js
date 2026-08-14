@@ -5,6 +5,7 @@ const {
   slotActual_, firmarSlot_, verificarToken_,
   aplicarMarca_, reconstruirJornada_, estadoEfectivo_, esAsignable_,
   unidadesDeTrabajo_, proximoResponsable_, validarDupla_,
+  enTurno_, duracionTurno_,
 } = await import("../lib/despacho.js");
 
 // Instante UTC que corresponde a una hora dada de Perú (UTC-5).
@@ -212,8 +213,75 @@ describe("reconstruirJornada_", () => {
 // ─────────────────────────────────────────────
 // Elegibilidad para recibir vehículo
 // ─────────────────────────────────────────────
+// ─────────────────────────────────────────────
+// Ventana de turno — el caso que importa es 07:00 → 01:00
+// ─────────────────────────────────────────────
+const T_INI = 420;   // 07:00
+const T_FIN = 60;    // 01:00 del día siguiente
+
+describe("duracionTurno_", () => {
+  it("turno normal: 07:00 → 17:00 son 10 horas", () => {
+    expect(duracionTurno_(420, 1020)).toBe(600);
+  });
+
+  it("turno que cruza medianoche: 07:00 → 01:00 son 18 horas", () => {
+    expect(duracionTurno_(T_INI, T_FIN)).toBe(18 * 60);
+  });
+
+  it("inicio igual a fin es turno de 24 h", () => {
+    expect(duracionTurno_(420, 420)).toBe(1440);
+  });
+});
+
+describe("enTurno_", () => {
+  it("turno normal deja fuera lo anterior y lo posterior", () => {
+    expect(enTurno_(390, 420, 1020)).toBe(false);   // 06:30
+    expect(enTurno_(600, 420, 1020)).toBe(true);    // 10:00
+    expect(enTurno_(1100, 420, 1020)).toBe(false);  // 18:20
+  });
+
+  // El bug que motivó todo esto: con fin < ini, `ini <= ahora <= fin` daba
+  // falso a toda hora y el motor no corría nunca.
+  it("cruzando medianoche cubre tarde, noche y madrugada", () => {
+    expect(enTurno_(420,  T_INI, T_FIN)).toBe(true);   // 07:00 justo al abrir
+    expect(enTurno_(1220, T_INI, T_FIN)).toBe(true);   // 20:20 — antes fallaba
+    expect(enTurno_(1439, T_INI, T_FIN)).toBe(true);   // 23:59
+    expect(enTurno_(0,    T_INI, T_FIN)).toBe(true);   // 00:00
+    expect(enTurno_(60,   T_INI, T_FIN)).toBe(true);   // 01:00 justo al cerrar
+  });
+
+  it("cruzando medianoche excluye la madrugada muerta", () => {
+    expect(enTurno_(61,  T_INI, T_FIN)).toBe(false);   // 01:01
+    expect(enTurno_(300, T_INI, T_FIN)).toBe(false);   // 05:00
+    expect(enTurno_(419, T_INI, T_FIN)).toBe(false);   // 06:59
+  });
+});
+
 describe("estadoEfectivo_", () => {
   const base = { turnoInicioMin: 420, ahoraMin: 600, tieneTrabajo: false };
+
+  // Con turno 07:00 → 01:00 el técnico debe seguir siendo asignable pasada
+  // la medianoche: si no, el motor deja de repartir justo en el turno noche.
+  it("sigue disponible después de medianoche si el turno cruza", () => {
+    const e = estadoEfectivo_("PRESENTE", {
+      turnoInicioMin: T_INI, turnoFinMin: T_FIN, ahoraMin: 30, tieneTrabajo: false,
+    });
+    expect(e).toBe("DISPONIBLE");
+    expect(esAsignable_(e)).toBe(true);
+  });
+
+  it("deja de ser asignable cuando cierra el turno", () => {
+    const e = estadoEfectivo_("PRESENTE", {
+      turnoInicioMin: T_INI, turnoFinMin: T_FIN, ahoraMin: 180, tieneTrabajo: false,
+    }); // 03:00
+    expect(e).toBe("PRESENTE");
+    expect(esAsignable_(e)).toBe(false);
+  });
+
+  it("sin turnoFinMin conserva el comportamiento viejo", () => {
+    expect(estadoEfectivo_("PRESENTE", { ...base, ahoraMin: 390 })).toBe("PRESENTE");
+    expect(estadoEfectivo_("PRESENTE", { ...base, ahoraMin: 600 })).toBe("DISPONIBLE");
+  });
 
   it("presente antes del turno todavía no es asignable", () => {
     const e = estadoEfectivo_("PRESENTE", { ...base, ahoraMin: 390 }); // 06:30

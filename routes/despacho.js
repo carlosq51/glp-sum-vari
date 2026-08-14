@@ -23,6 +23,7 @@ import {
   slotActual_, firmarSlot_, verificarToken_,
   aplicarMarca_, reconstruirJornada_, estadoEfectivo_,
   validarDupla_, unidadesDeTrabajo_, payloadDemo_,
+  enTurno_, duracionTurno_, JORNADA_INICIO_H,
 } from "../lib/despacho.js";
 import { construirPool_, generarPropuestas_ } from "../lib/despacho-motor.js";
 
@@ -345,8 +346,10 @@ router.get("/api/despacho/mi-estado", requireModoActivo_, async (req, res) => {
     const ocupados = await tecnicosOcupados_();
 
     const turnoMin = hhmmAMinutos_(req.despachoCfg.DESPACHO_TURNO_INICIO) ?? 420;
+    const turnoFin = hhmmAMinutos_(req.despachoCfg.DESPACHO_TURNO_FIN) ?? 60;
     const efectivo = estadoEfectivo_(j.estado, {
       turnoInicioMin: turnoMin,
+      turnoFinMin: turnoFin,
       ahoraMin: minutosDelDia_(),
       tieneTrabajo: ocupados.has(user.id),
     });
@@ -369,6 +372,7 @@ router.get("/api/despacho/asistencia", requireModoActivo_, async (req, res) => {
     const fecha  = jornadaFecha_();
     const cfg    = req.despachoCfg;
     const turnoMin = hhmmAMinutos_(cfg.DESPACHO_TURNO_INICIO) ?? 420;
+    const turnoFin = hhmmAMinutos_(cfg.DESPACHO_TURNO_FIN) ?? 60;
     const ahoraMin = minutosDelDia_();
 
     const [uResp, marcas, ocupados] = await Promise.all([
@@ -391,7 +395,8 @@ router.get("/api/despacho/asistencia", requireModoActivo_, async (req, res) => {
         user_id: t.id, nombre: t.nombre, especialidad: t.especialidad,
         estado: j.estado,
         estadoEfectivo: estadoEfectivo_(j.estado, {
-          turnoInicioMin: turnoMin, ahoraMin, tieneTrabajo: ocupados.has(t.id),
+          turnoInicioMin: turnoMin, turnoFinMin: turnoFin,
+          ahoraMin, tieneTrabajo: ocupados.has(t.id),
         }),
         ingreso: j.ingresoAt, salida: j.salidaAt, minutosPausa: j.minutosPausa,
       };
@@ -836,6 +841,7 @@ async function contextoDelTaller_(cfg, fecha) {
   const ocupadosIds = new Set(
     asgs.filter(a => a.activo && a.estado_actual !== "FINALIZADO").map(a => a.user_id));
   const turnoMin = hhmmAMinutos_(cfg.DESPACHO_TURNO_INICIO) ?? 420;
+  const turnoFin = hhmmAMinutos_(cfg.DESPACHO_TURNO_FIN) ?? 60;
   const ahoraMin = minutosDelDia_();
 
   const tecnicosCtx = tecnicos.map(t => {
@@ -843,7 +849,8 @@ async function contextoDelTaller_(cfg, fecha) {
     return {
       user_id: t.id, nombre: t.nombre, especialidad: t.especialidad,
       estadoEfectivo: estadoEfectivo_(j.estado, {
-        turnoInicioMin: turnoMin, ahoraMin, tieneTrabajo: ocupadosIds.has(t.id),
+        turnoInicioMin: turnoMin, turnoFinMin: turnoFin,
+        ahoraMin, tieneTrabajo: ocupadosIds.has(t.id),
       }),
       zonaUltima: zonaUltima.get(t.id) || null,
     };
@@ -1236,10 +1243,11 @@ export function scheduleMotor_() {
     try {
       const cfg = await getConfig_();
       if (String(cfg.DESPACHO_MODO || "OFF").toUpperCase() === "OFF") return;
-      const finMin = hhmmAMinutos_(cfg.DESPACHO_TURNO_FIN) ?? 1020;
+      const finMin = hhmmAMinutos_(cfg.DESPACHO_TURNO_FIN) ?? 60;
       const iniMin = hhmmAMinutos_(cfg.DESPACHO_TURNO_INICIO) ?? 420;
-      const ahora  = minutosDelDia_();
-      if (ahora < iniMin || ahora > finMin) return;   // fuera de turno no reparte
+      // enTurno_ y no `ini <= ahora <= fin`: el turno cruza medianoche
+      // (07:00 → 01:00) y la comparación directa daría falso todo el día.
+      if (!enTurno_(minutosDelDia_(), iniMin, finMin)) return;   // fuera de turno no reparte
       corriendo = true;
       await correrMotor_({ persistir: true });
     } catch (e) {
@@ -1582,12 +1590,19 @@ async function produccionJornada_(cfg, fecha) {
 
   const objetivo = Number(cfg.META_DIARIA) || 25;
   const iniMin = hhmmAMinutos_(cfg.DESPACHO_TURNO_INICIO) ?? 420;
-  const finMin = hhmmAMinutos_(cfg.DESPACHO_TURNO_FIN)    ?? 1020;
-  const ahora  = minutosDelDia_();
+  const finMin = hhmmAMinutos_(cfg.DESPACHO_TURNO_FIN)    ?? 60;
 
   // Fracción del turno productivo ya transcurrida (0 antes de empezar, 1 al final).
-  const total = Math.max(1, finMin - iniMin);
-  const frac  = Math.min(1, Math.max(0, (ahora - iniMin) / total));
+  //
+  // Se mide sobre INSTANTES, no sobre minutos-del-día: con un turno que cruza
+  // medianoche (07:00 → 01:00) restar `ahora - inicio` da negativo después de
+  // las 00:00 y la barra de la TV se iría a cero en plena producción. `desde`
+  // es el arranque de la jornada (06:00), así que el turno empieza a
+  // `iniMin - 360` minutos de ahí y el resto es aritmética de fechas.
+  const total     = duracionTurno_(iniMin, finMin);
+  const inicioTurno = new Date(desde.getTime() + (iniMin - JORNADA_INICIO_H * 60) * 60_000);
+  const corrido   = (Date.now() - inicioTurno.getTime()) / 60_000;
+  const frac      = Math.min(1, Math.max(0, corrido / total));
 
   const esperado = Math.round(objetivo * frac);
   // Antes de que arranque el turno no hay ritmo que proyectar: proyectar
@@ -1725,6 +1740,7 @@ router.get("/api/despacho/tv", async (req, res) => {
 
     const fecha = jornadaFecha_();
     const turnoMin = hhmmAMinutos_(cfg.DESPACHO_TURNO_INICIO) ?? 420;
+    const turnoFin = hhmmAMinutos_(cfg.DESPACHO_TURNO_FIN) ?? 60;
     const ahoraMin = minutosDelDia_();
 
     const [uResp, marcas, ocupados, produccion, incidencias, varados] = await Promise.all([
@@ -1753,7 +1769,8 @@ router.get("/api/despacho/tv", async (req, res) => {
       if (j.estado === "FUERA") { ausentes.push(t.nombre); continue; }
       presentes++;
       const ef = estadoEfectivo_(j.estado, {
-        turnoInicioMin: turnoMin, ahoraMin, tieneTrabajo: ocupados.has(t.id),
+        turnoInicioMin: turnoMin, turnoFinMin: turnoFin,
+        ahoraMin, tieneTrabajo: ocupados.has(t.id),
       });
       if (ef === "DISPONIBLE") {
         libres.push({
