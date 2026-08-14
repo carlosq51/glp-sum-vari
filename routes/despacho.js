@@ -2134,6 +2134,56 @@ async function varados_(cfg) {
 }
 
 /**
+ * Rellena los puestos vacíos de cada carro con quien figura en la OT.
+ *
+ * Muta el Map que recibe: para los VINs que aún no tienen MOTOR o TANQUE, busca
+ * la work_order de conversión y sus asignaciones activas sin terminar, y pone
+ * el nombre del técnico que ocupa ese puesto.
+ *
+ * Nunca lanza: es información de adorno para una pantalla: si Supabase no
+ * responde, la TV sigue mostrando lo que ya tenía en vez de quedarse en blanco.
+ */
+async function completarPuestosDeOt_(porVin, h) {
+  try {
+    const faltan = [...porVin.values()].filter(c => c.vin && (!c.motor || !c.tanque));
+    if (!faltan.length) return;
+
+    const vins = [...new Set(faltan.map(c => c.vin))].map(encodeURIComponent).join(",");
+    const woRes = await fetch(
+      `${SB()}/rest/v1/work_orders?vin=in.(${vins})&tipo_ot=eq.CONVERSION&select=id,vin`,
+      { headers: h },
+    );
+    if (!woRes.ok) return;
+    const wos = await woRes.json();
+    if (!wos.length) return;
+
+    const woVin = new Map(wos.map(w => [w.id, w.vin]));
+    const ids = wos.map(w => encodeURIComponent(w.id)).join(",");
+    // Se excluye FINALIZADO: un puesto ya cerrado no es quien está trabajando
+    // en el carro ahora. Las PAUSADO sí cuentan — el técnico sigue siendo suyo.
+    const asgRes = await fetch(
+      `${SB()}/rest/v1/asignaciones?work_order_id=in.(${ids})&activo=eq.true` +
+      `&estado_actual=in.(SIN_INICIAR,TRABAJANDO,PAUSADO)` +
+      `&select=work_order_id,user_id,rol_trabajo,updated_at&order=updated_at.desc`,
+      { headers: h },
+    );
+    if (!asgRes.ok) return;
+    const asgs = await asgRes.json();
+    if (!asgs.length) return;
+
+    const nombres = await nombresDe_(asgs.map(a => a.user_id));
+    for (const a of asgs) {
+      const carro = porVin.get(woVin.get(a.work_order_id));
+      if (!carro) continue;
+      const nombre = nombres.get(a.user_id) || "";
+      if (!nombre) continue;
+      if (a.rol_trabajo === "MOTOR"  && !carro.motor)  carro.motor  = nombre;
+      if (a.rol_trabajo === "TANQUE" && !carro.tanque) carro.tanque = nombre;
+    }
+  } catch { /* la TV se queda con lo que ya tenía */ }
+}
+
+/**
  * Lo que ve la TV: las asignaciones publicadas, agrupadas por carro (una
  * tarjeta con su MOTOR y su TANQUE), más los carros en zona que todavía no
  * tienen a nadie.
@@ -2163,23 +2213,37 @@ async function asignacionesDeTV_(fecha) {
     } catch { /* sin modelo */ }
   }
 
-  // Agrupar por carro: la pantalla muestra la dupla MOTOR + TANQUE junta.
-  const porCarro = new Map();
+  // Agrupar por VIN, no por carro_id: la pantalla muestra el carro con sus DOS
+  // puestos juntos, y `carro_id` no sirve para eso. Cada asignación manual nace
+  // con su propio randomUUID(), así que el delantero y el tanquero del mismo
+  // vehículo caían en tarjetas distintas — dos filas "Zona 8", cada una con la
+  // mitad de la dupla y un guión donde debía ir el compañero.
+  //
+  // `props` viene ordenado por decidida_at DESC, así que el primero que se ve
+  // de cada (vin, rol) es el vigente; los anteriores no lo pisan.
+  const porVin = new Map();
   for (const p of props) {
-    if (!porCarro.has(p.carro_id)) {
-      porCarro.set(p.carro_id, {
+    if (!porVin.has(p.vin)) {
+      porVin.set(p.vin, {
         zona: p.zona_id, vin: p.vin, modelo: modelos.get(p.vin) || "",
         motor: "", tanque: "", razon: p.razon,
         estado: "TRABAJANDO", desde: horaPeru_(new Date(p.decidida_at)),
         ts: new Date(p.decidida_at).getTime(),
       });
     }
-    const c = porCarro.get(p.carro_id);
-    if (p.rol_trabajo === "MOTOR")  c.motor  = nombres.get(p.user_id) || "";
-    if (p.rol_trabajo === "TANQUE") c.tanque = nombres.get(p.user_id) || "";
+    const c = porVin.get(p.vin);
+    if (c.zona == null) c.zona = p.zona_id;
+    if (p.rol_trabajo === "MOTOR"  && !c.motor)  c.motor  = nombres.get(p.user_id) || "";
+    if (p.rol_trabajo === "TANQUE" && !c.tanque) c.tanque = nombres.get(p.user_id) || "";
   }
 
-  const asignaciones = [...porCarro.values()].sort((a, b) => b.ts - a.ts);
+  // El puesto que sigue vacío se busca en las asignaciones reales de la OT.
+  // Despacho solo conoce lo que él repartió; quien tomó el carro por su cuenta
+  // —o antes de que el módulo estuviera prendido— no tiene propuesta, pero sí
+  // asignación. Esa tabla es la que manda sobre quién está en el carro.
+  await completarPuestosDeOt_(porVin, h);
+
+  const asignaciones = [...porVin.values()].sort((a, b) => b.ts - a.ts);
   // Los 2 min recién publicados salen marcados como NUEVO en la pantalla.
   const ahora = Date.now();
   for (const a of asignaciones) if (ahora - a.ts < 120_000) a.estado = "NUEVA";

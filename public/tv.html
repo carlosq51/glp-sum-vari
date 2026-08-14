@@ -230,6 +230,19 @@
     overflow: hidden;               /* si no cabe, se corta: no hay scroll */
   }
 
+  /* Con muchos carros en curso el panel se compacta en vez de recortar la
+     lista. En una TV no hay scroll: lo que no entra, no existe — y un carro
+     asignado que no aparece es peor que leerlo un punto más pequeño. */
+  .asigs.densa                 { gap: calc(var(--u) * .32); }
+  .asigs.densa .asig           { padding: calc(var(--u) * .32) calc(var(--u) * .8);
+                                 gap: calc(var(--u) * .7); }
+  .asigs.densa .duo            { font-size: calc(var(--u) * 1.4); }
+  .asigs.densa .zona b         { font-size: calc(var(--u) * 2.1); }
+  .asigs.densa .zona small     { font-size: calc(var(--u) * .62); }
+  .asigs.densa .razon          { font-size: calc(var(--u) * .8); }
+  .asigs.densa .estado b       { font-size: calc(var(--u) * .92); }
+  .asigs.densa .estado small   { font-size: calc(var(--u) * .78); }
+
   .asig {
     display: grid;
     grid-template-columns: calc(var(--u) * 4.6) 1fr auto;
@@ -1001,14 +1014,20 @@
   }
 
   // ─── Render · escena despacho ───
-  // Tope de 5: es lo que cabe legible a 4 metros. El motor entrega las más
-  // recientes primero, así que lo que se corta es lo más viejo — que además
-  // es lo que el técnico ya vio.
-  const MAX_ASIGS = 5;
+  // El servidor entrega las más recientes primero, así que lo que se corta es
+  // lo más viejo — que además es lo que el técnico ya vio.
+  //
+  // Antes el tope era 5, que es lo que cabe legible a 4 metros con la tarjeta
+  // grande. Con el taller lleno eso escondía la mitad del trabajo en curso: se
+  // sube el tope y a partir de DENSA_DESDE las tarjetas se compactan para que
+  // quepan de verdad, en vez de recortarse contra el borde del panel.
+  const MAX_ASIGS   = 10;
+  const DENSA_DESDE = 6;
 
   function pintarAsignaciones(todas) {
     const lista = todas.slice(0, MAX_ASIGS);
     const cont = $("asigs");
+    cont.classList.toggle("densa", lista.length >= DENSA_DESDE);
     if (!lista.length) {
       cont.innerHTML = '<div class="vacio">Sin asignaciones activas<br>' +
         '<span style="font-size:.75em">El motor de despacho aún no reparte trabajo</span></div>';
