@@ -54,6 +54,21 @@ export function tecnicoView() {
         </div>
       </div>
 
+      <!-- ── Panel: Asistencia ──
+           El técnico marca desde su celular, pero solo escaneando el QR de la
+           TV del taller: eso es lo que prueba que estuvo ahí. Sin el escaneo
+           esto sería un botón de "marcar desde casa". -->
+      <div id="tecPanelAsistencia" class="card" style="display:none;">
+        <div class="adminDetailHead">
+          <button class="adminBackBtn tecBackBtn">← Volver</button>
+          <span class="adminDetailTitle">🕐 Mi asistencia</span>
+        </div>
+        <div id="tecAsisEstado"><div class="small muted">Cargando…</div></div>
+        <div id="tecAsisReader" class="tecAsisReader"></div>
+        <div id="tecAsisMsg" class="tecAsisMsg"></div>
+        <div id="tecAsisDupla"></div>
+      </div>
+
       <!-- ── Panel: Cola pendiente ── -->
       <div id="tecPanelCola" class="card" style="display:none;">
         <div class="adminDetailHead">

@@ -484,9 +484,10 @@
     padding: calc(var(--u) * .6) calc(var(--u) * .8);
     min-width: 0;
   }
+  /* 10.4u compensa la zona quieta del SVG — ver nota en `footer img`. */
   .qrMapa img {
-    width: calc(var(--u) * 9);
-    height: calc(var(--u) * 9);
+    width: calc(var(--u) * 10.4);
+    height: calc(var(--u) * 10.4);
     background: #fff;
     border-radius: calc(var(--u) * .3);
     display: block;
@@ -582,9 +583,13 @@
     box-shadow: var(--sombra);
   }
 
+  /* 6.2u y no 5.4u: el SVG lleva 4 módulos de zona quieta (routes/despacho.js),
+     que ocupan ~15% del ancho. Sin este ajuste el código se vería igual de
+     grande pero con módulos más chicos — justo lo contrario de lo que se
+     busca para cámaras de gama baja. */
   footer img {
-    width: calc(var(--u) * 5.4);
-    height: calc(var(--u) * 5.4);
+    width: calc(var(--u) * 6.2);
+    height: calc(var(--u) * 6.2);
     background: #fff;
     border-radius: calc(var(--u) * .25);
     display: block;

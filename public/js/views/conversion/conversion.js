@@ -47,6 +47,7 @@ import { initTecValidar_, openTecBuscarModal_ } from "./ui/conversion-validar.js
 import { escapeHtml, fmtShort_ } from "../../core/format.js";
 import { loadTecMapa_ } from "./tec-mapa.js";
 import { loadMiInventario_ } from "./mi-inventario.js";
+import { loadTecAsistencia_, stopTecAsistencia_ } from "./tec-asistencia.js";
 import { startPoll, stopPoll } from "../../core/poll.js";
 import { cfg } from "../../core/config.js";
 
@@ -54,7 +55,7 @@ import { cfg } from "../../core/config.js";
 // TEC CARD NAVIGATION
 // --------------------------
 
-const TEC_PANELS = ["tecPanelMiOT", "tecPanelCola", "tecPanelRendimiento", "tecPanelIncidencias", "tecPanelMapa", "tecPanelInventario"];
+const TEC_PANELS = ["tecPanelMiOT", "tecPanelCola", "tecPanelRendimiento", "tecPanelIncidencias", "tecPanelMapa", "tecPanelInventario", "tecPanelAsistencia"];
 let tecCardsInited_      = false;
 const notifiedVins_        = new Set();
 
@@ -75,6 +76,7 @@ let pairSuggestShowingSolo_ = false; // true cuando se muestra la pantalla "trab
 let pairSuggestLastHadOT_ = null;  // tracks OT presence for transition detection
 
 function showTecCards_() {
+  stopTecAsistencia_();   // la cámara no debe seguir viva detrás del hub
   const hub = document.getElementById("tecCards");
   if (hub) hub.style.display = "block";
   TEC_PANELS.forEach(id => {
@@ -648,6 +650,7 @@ function initTecCards_() {
   if (!grid) return;
 
   const cards = [
+    { key: "asistencia",  icon: "clock",         label: "Mi asistencia",    desc: "Marca ingreso o salida con el QR del taller", onlyModule: "TECNICO" },
     { key: "miOT",        icon: "wrench",        label: "Mi OT",           desc: "Tu VIN activo y orden de trabajo"    },
     { key: "cola",        icon: "listChecks",    label: "Cola pendiente",   desc: "VINs disponibles y compañeros libres" },
     { key: "validar",     icon: "scanSearch",    label: "Buscar / Validar", desc: "Verificar un VIN por código o QR"    },
@@ -677,6 +680,7 @@ function initTecCards_() {
       if (c.key === "rendimiento")  showTecPanel_("tecPanelRendimiento", loadTecRendimiento_);
       if (c.key === "incidencias")  showTecPanel_("tecPanelIncidencias", loadTecIncidencias_);
       if (c.key === "inventario")   showTecPanel_("tecPanelInventario", () => loadMiInventario_("tecInventarioContent"));
+      if (c.key === "asistencia")   showTecPanel_("tecPanelAsistencia", loadTecAsistencia_);
       if (c.key === "mapa") {
         const email = String(document.getElementById("email")?.value || "").trim().toLowerCase();
         const esp   = String(CORE.state.currentProfile?.especialidad || "").toUpperCase();
@@ -1500,6 +1504,7 @@ export function exit(mod) {
     closePairSuggestModal_();
     hideRamalListoBanner_();
     hideColaBanner_();
+    stopTecAsistencia_();
   }
   destroyRealtime_();
 }

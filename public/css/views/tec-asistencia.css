@@ -1,0 +1,128 @@
+/* =====================================================================
+   views/tec-asistencia.css — Card "Mi asistencia" del técnico
+
+   Pantalla de una sola acción: el técnico está parado en la puerta del
+   taller con una mano ocupada. Todo lo táctil va sobredimensionado — se
+   toca con guantes.
+   ===================================================================== */
+
+/* ── Estado de la jornada ── */
+.tecAsisEstado {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--surface);
+  border: var(--border-w) solid var(--surfaceLine);
+  border-radius: var(--radiusSm);
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+.tecAsisPunto {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: var(--muted);
+}
+.tecAsisEstado.dentro  .tecAsisPunto { background: var(--ok);     box-shadow: 0 0 0 4px var(--okBg); }
+.tecAsisEstado.fuera   .tecAsisPunto { background: var(--warn);   box-shadow: 0 0 0 4px var(--warnBg); }
+.tecAsisTexto  { min-width: 0; }
+.tecAsisTitulo { font-weight: 700; }
+.tecAsisSub    { font-size: .85rem; color: var(--muted); margin-top: 2px; }
+
+/* ── Botón principal ── */
+.tecAsisBtn {
+  width: 100%;
+  border: 0;
+  border-radius: var(--radiusSm);
+  background: linear-gradient(120deg, var(--accent), var(--accent2));
+  color: #14171c;
+  font-weight: 800;
+  font-size: 1.05rem;
+  /* Área grande a propósito: se toca con guantes de taller. */
+  min-height: 58px;
+  padding: 14px 16px;
+  cursor: pointer;
+}
+.tecAsisBtn + .tecAsisBtn { margin-top: 10px; }
+.tecAsisBtn:disabled { opacity: .5; cursor: default; }
+.tecAsisBtn.salida {
+  background: linear-gradient(120deg, #64748b, #475569);
+  color: #f1f5f9;
+}
+.tecAsisBtn.sec {
+  background: transparent;
+  border: 2px solid var(--surfaceLine);
+  color: var(--text);
+  font-size: .95rem;
+  min-height: 48px;
+}
+.tecAsisHint { margin-top: 10px; text-align: center; }
+
+/* ── Visor de cámara ──
+   Colapsado mientras no se escanea: html5-qrcode deja un contenedor vacío
+   con borde que, si no, parece un bloque roto. */
+.tecAsisReader {
+  display: none;
+  margin-top: 12px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: var(--border-w) solid var(--surfaceLine);
+}
+.tecAsisReader.on { display: block; }
+.tecAsisReader video {
+  width: 100% !important;
+  height: auto !important;
+  display: block;
+}
+
+/* ── Mensajes ── */
+.tecAsisMsg { display: none; }
+.tecAsisMsg.on {
+  display: block;
+  margin-top: 12px;
+  border-radius: var(--radiusSm);
+  padding: 14px 16px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.tecAsisMsg.info { background: var(--surface);  border: var(--border-w) solid var(--surfaceLine); color: var(--muted); }
+.tecAsisMsg.ok   { background: var(--okBg);     border: var(--border-w) solid var(--ok);     color: var(--text); }
+.tecAsisMsg.err  { background: var(--dangerBg); border: var(--border-w) solid var(--danger); color: var(--text); }
+.tecAsisHora {
+  display: block;
+  font-size: 2.2rem;
+  font-weight: 800;
+  margin-top: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Dupla de trabajo ── */
+.tecAsisDuplaH {
+  margin: 20px 0 10px;
+  font-size: .78rem;
+  font-weight: 800;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .1em;
+}
+.tecAsisAviso {
+  background: var(--warnBg);
+  border: var(--border-w) solid var(--warn);
+  border-radius: var(--radiusSm);
+  padding: 14px 16px;
+  font-weight: 600;
+  line-height: 1.4;
+  margin-bottom: 10px;
+}
+.tecAsisSelect {
+  width: 100%;
+  background: var(--surface);
+  border: var(--border-w) solid var(--surfaceLine);
+  border-radius: var(--radiusSm);
+  color: var(--text);
+  font-weight: 700;
+  font-size: 1rem;
+  padding: 14px 12px;
+  margin-bottom: 10px;
+}

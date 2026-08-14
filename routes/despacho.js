@@ -170,8 +170,16 @@ router.get("/api/despacho/qr.svg", async (req, res) => {
     const ventana = Number(cfg.DESPACHO_QR_VENTANA_SEG) || 30;
     const token = firmarSlot_(slotActual_(ventana));
     const base = `${req.protocol}://${req.get("host")}`;
+    // margin va en MÓDULOS, no en píxeles: es la "zona quieta" blanca que el
+    // estándar QR exige alrededor del código. Con 1 sola (lo que había) el
+    // fondo oscuro de la TV queda pegado al patrón y los lectores estrictos
+    // se traban. 4 es lo que pide la norma.
+    //
+    // Ojo: la zona quieta vive DENTRO del SVG, así que al subirla el código
+    // ocupa proporcionalmente menos del <img>. Los tamaños en public/tv.html
+    // están compensados para que el módulo siga midiendo lo mismo en pantalla.
     const svg = await QRCode.toString(`${base}/marcar?t=${token}`, {
-      type: "svg", margin: 1, errorCorrectionLevel: "M",
+      type: "svg", margin: 4, errorCorrectionLevel: "M",
       color: { dark: "#0c0e11", light: "#ffffff" },
     });
     res.setHeader("Cache-Control", "no-store");

@@ -172,14 +172,18 @@ export function createScanner(readerId) {
    * @param {function}   opts.onDecoded       – callback(code: string)
    * @param {object}     [opts.config]        – override de la config (opcional)
    * @param {HTMLElement} [opts.msgEl]        – elemento donde mostrar mensajes
+   * @param {boolean}    [opts.normalize=true] – false entrega el texto tal cual.
+   *   Los VIN son mayúsculas sin espacios, pero un QR que lleva una URL con
+   *   token firmado (asistencia) se corrompe si se normaliza: la firma
+   *   distingue mayúsculas de minúsculas.
    */
-  async function start({ mode = "QR", onDecoded, config: customConfig, msgEl } = {}) {
+  async function start({ mode = "QR", onDecoded, config: customConfig, msgEl, normalize = true } = {}) {
     try {
       const inst = ensureInstance();
       const cfg = customConfig || getScanConfig(mode);
 
       const wrappedOnDecoded = async (decodedText) => {
-        const code = normalizeScanText(decodedText);
+        const code = normalize ? normalizeScanText(decodedText) : String(decodedText || "").trim();
         if (!code) return;
         await onDecoded?.(code);
       };
