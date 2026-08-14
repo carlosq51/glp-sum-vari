@@ -210,11 +210,34 @@ router.post("/api/ml/train-pairing", async (req, res) => {
     if (!users.length) return res.json({ ok: false, error: "Sin técnicos activos" });
 
     const since90 = new Date(Date.now() - 90 * 86400000).toISOString();
-    const rFin = await fetch(
-      `${SUPABASE_URL}/rest/v1/asignaciones?estado_actual=eq.FINALIZADO&updated_at=gte.${encodeURIComponent(since90)}&select=user_id,updated_at,tiempo_trab_ms,work_order_id&limit=5000`,
-      { method: "GET", headers: supabaseHeaders_() }
-    );
-    const finRows = rFin.ok ? await rFin.json() : [];
+
+    // Paginado y ORDENADO por fecha descendente. Antes era un `limit=5000` a
+    // secas y sin ORDER BY, el mismo patrón contra el que avisa
+    // contextoDelTaller_: sin orden, el subconjunto que devuelve Postgres es
+    // arbitrario y tiende al orden físico de la tabla — o sea, a lo más
+    // antiguo. Lo que se caía del corte era justo lo más reciente: los carros
+    // de los técnicos recién incorporados, que son pocos y nuevos.
+    //
+    // Con 25 carros/día × 2 roles esto son ~4000 filas en 90 días: ya rozaba
+    // el techo antes de sumar gente.
+    const PAGINA = 1000;
+    const MAX_FILAS = 50000;      // freno de seguridad, no un objetivo
+    const finRows = [];
+    let truncado = false;
+    for (let offset = 0; offset < MAX_FILAS; offset += PAGINA) {
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/asignaciones?estado_actual=eq.FINALIZADO` +
+        `&updated_at=gte.${encodeURIComponent(since90)}` +
+        `&select=user_id,updated_at,tiempo_trab_ms,work_order_id` +
+        `&order=updated_at.desc&limit=${PAGINA}&offset=${offset}`,
+        { method: "GET", headers: supabaseHeaders_() }
+      );
+      if (!r.ok) break;
+      const lote = await r.json();
+      finRows.push(...lote);
+      if (lote.length < PAGINA) break;
+      if (offset + PAGINA >= MAX_FILAS) truncado = true;
+    }
 
     // Enriquecer con modelo del carro: asignaciones → work_orders → vins
     const woIds = [...new Set(finRows.map(r => r.work_order_id).filter(Boolean))];
@@ -309,11 +332,29 @@ router.post("/api/ml/train-pairing", async (req, res) => {
     const TREND_DN_THR  = 0.90;   // −10% → tendencia descendente
     const since7ms      = Date.now() - 7 * 86400000;
 
+    // Quién NO entró y por qué. computeFeatures exige al menos MIN_FILAS carros
+    // terminados: con menos no hay ritmo que medir, solo ruido. Es correcto,
+    // pero antes no se decía en ninguna parte — se reentrenaba, el técnico
+    // nuevo no aparecía y no había forma de saber si era falta de datos o un
+    // fallo. Para esos el motor devuelve compatibilidad neutra (0.5): ni los
+    // premia ni los castiga, simplemente no los puede emparejar por ritmo.
+    const MIN_FILAS = 3;
+    const excluidos = [];
+
     const techFeatures = [];
     for (const user of users) {
       const allRows    = byUser[user.id] || [];
       const baseFeats  = computeFeatures(allRows);
-      if (!baseFeats) continue;
+      if (!baseFeats) {
+        excluidos.push({
+          user_id: user.id, nombre: user.nombre, especialidad: user.especialidad,
+          carros_90d: allRows.length,
+          motivo: allRows.length < MIN_FILAS
+            ? `Necesita ${MIN_FILAS} carros terminados en 90 días, lleva ${allRows.length}`
+            : "Sin fechas utilizables en sus carros terminados",
+        });
+        continue;
+      }
 
       const recentRows  = allRows.filter(r => new Date(r.updated_at).getTime() >= since7ms);
       const recentFeats = recentRows.length >= MIN_RECENT ? computeFeatures(recentRows) : null;
@@ -428,6 +469,11 @@ router.post("/api/ml/train-pairing", async (req, res) => {
       tanque: techFeatures.filter(t => t.especialidad === "TANQUE").length,
       blend_alpha: BLEND_ALPHA,
       trends,
+      // Lo que faltaba para poder responder "¿por qué no salió Fulano?"
+      tecnicos_activos: users.length,
+      filas_analizadas: finRows.length,
+      filas_truncadas: truncado,
+      excluidos,
     });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e.message) });
