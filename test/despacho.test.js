@@ -469,6 +469,26 @@ describe("validarDupla_", () => {
     expect(r.ok).toBe(true);
     expect(r.rol).toBe("TANQUE");
   });
+
+  // La fila que llega de PostgREST solo trae las columnas del `select`. Si el
+  // candidato viene sin `activo`, esto lee undefined y RECHAZA A TODOS: la
+  // lista de compañeros salía vacía siempre y nadie podía armar dupla.
+  it("una fila sin la columna activo no puede pasar por buena", () => {
+    const sinActivo = { id: "B", nombre: "B", especialidad: "TANQUE" };
+    expect(validarDupla_(u("A"), sinActivo).ok).toBe(false);
+  });
+});
+
+// El guardián del bug de arriba: el endpoint filtra por activo=eq.true, pero
+// además tiene que PEDIR la columna, porque validarDupla_ la relee de la fila.
+describe("GET /api/despacho/companeros — consulta de candidatos", () => {
+  it("pide la columna activo, no solo la filtra", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync(new URL("../routes/despacho.js", import.meta.url), "utf8");
+    const bloque = src.slice(src.indexOf('router.get("/api/despacho/companeros"'));
+    const query = bloque.match(/usuarios\?rol=eq\.TECNICO[^`]*/)[0];
+    expect(query).toMatch(/select=[^&]*\bactivo\b/);
+  });
 });
 
 // ─────────────────────────────────────────────

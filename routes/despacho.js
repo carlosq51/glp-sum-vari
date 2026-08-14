@@ -482,7 +482,10 @@ router.get("/api/despacho/companeros", requireModoActivo_, async (req, res) => {
 
     const fecha = jornadaFecha_();
     const [uResp, marcas, duplas] = await Promise.all([
-      fetch(`${SB()}/rest/v1/usuarios?rol=eq.TECNICO&activo=eq.true&select=id,nombre,especialidad&order=nombre.asc`,
+      // `activo` va en el select aunque el filtro ya lo garantice: validarDupla_
+      // lo relee por su cuenta, y con la columna ausente leía `undefined` →
+      // "Hay un técnico inactivo" para TODOS. La lista salía siempre vacía.
+      fetch(`${SB()}/rest/v1/usuarios?rol=eq.TECNICO&activo=eq.true&select=id,nombre,especialidad,activo&order=nombre.asc`,
         { headers: supabaseHeaders_() }),
       marcasDeJornada_(fecha),
       duplasDeJornada_(fecha),
