@@ -790,6 +790,14 @@ async function contextoDelTaller_(cfg, fecha) {
   const modelos = new Map();
   for (const v of vinRows) if (v.modelo_normalizado) modelos.set(v.vin, v.modelo_normalizado);
 
+  // Qué VINs de los que están en zona existen realmente en `vins`.
+  //
+  // Solo vale si la consulta RESPONDIÓ. Si falló, `vinRows` viene vacío y un
+  // Set vacío significaría "ninguno registrado" — el motor excluiría el taller
+  // entero y dejaría de repartir sin que nada lo delate. Ante la duda, null:
+  // no verificar es infinitamente mejor que negar todo por un fetch caído.
+  const registrados = (mdRes && mdRes.ok) ? new Set(vinRows.map(v => v.vin)) : null;
+
   const woVin = new Map(wos.map(w => [w.id, w.vin]));
   const vinEstado = new Map();
   for (const w of wos) if (w.vin) vinEstado.set(w.vin, String(w.estado_general || "").toUpperCase());
@@ -928,9 +936,15 @@ async function contextoDelTaller_(cfg, fecha) {
 
   return {
     zonas, modelos, ocupados, unidades, duplas, tecnicosCtx,
-    finalizados,
+    finalizados, registrados,
     vinesEnZona: new Set(vinsEnZona),
-    listaDiaria: lista.length ? new Set(lista.map(l => l.vin)) : null,
+    // La lista diaria dejó de condicionar el reparto (DESPACHO_EXIGE_LISTA_DIARIA
+    // = "0" por defecto): un carro estacionado en zona es trabajo real, esté o
+    // no en la lista, y la lista se queda corta a media jornada. Se sigue
+    // trayendo porque ponerlo en "1" restaura el filtro sin tocar código.
+    listaDiaria: String(cfg.DESPACHO_EXIGE_LISTA_DIARIA ?? "0") === "1" && lista.length
+      ? new Set(lista.map(l => l.vin))
+      : null,
     ctx: {
       indiceModelos: modelo?.modelFeaturesIndex || {},
       techsPorId,
@@ -1219,7 +1233,7 @@ export async function correrMotor_({ persistir = true, simularAsistencia = false
   }));
 
   const pool = construirPool_({
-    zonas: t.zonas, listaDiaria: t.listaDiaria,
+    zonas: t.zonas, listaDiaria: t.listaDiaria, registrados: t.registrados,
     modelos: t.modelos, ocupados: ocupadosConPropuestas,
   });
 

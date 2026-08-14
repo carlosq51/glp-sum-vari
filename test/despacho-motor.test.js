@@ -107,6 +107,29 @@ describe("construirPool_", () => {
     expect(r.excluidos.VIN1).toBe("NO_EN_LISTA_DIARIA");
   });
 
+  it("sin lista diaria (null) no filtra por lista: reparte lo que esté en zona", () => {
+    const r = construirPool_({ zonas: [zona(4, "VIN1")], listaDiaria: null });
+    expect(r.elegibles).toHaveLength(1);
+    expect(r.excluidos.VIN1).toBeUndefined();
+  });
+
+  // work_orders.vin es FK contra vins: un VIN sin registrar no falla al
+  // asignarse, falla al crear la OT (23503), y el motor lo reintentaría cada
+  // minuto para siempre. Se corta en el pool.
+  it("excluye el VIN que no existe en `vins`, con motivo propio", () => {
+    const r = construirPool_({
+      zonas: [zona(4, "VIN1"), zona(5, "VIN2")],
+      registrados: new Set(["VIN1"]),
+    });
+    expect(r.elegibles.map(e => e.vin)).toEqual(["VIN1"]);
+    expect(r.excluidos.VIN2).toBe("VIN_NO_REGISTRADO");
+  });
+
+  it("registrados en null no verifica nada — un fetch caído no puede vaciar el pool", () => {
+    const r = construirPool_({ zonas: [zona(4, "VIN1")], registrados: null });
+    expect(r.elegibles).toHaveLength(1);
+  });
+
   it("si ya tiene MOTOR, solo queda libre el puesto de TANQUE", () => {
     const r = construirPool_({
       zonas: [zona(4, "VIN1")],
