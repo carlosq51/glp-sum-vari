@@ -550,6 +550,10 @@ async function loadTab() {
       const dspVarado     = String(cfg.DESPACHO_VARADO_MIN);
       const dspInicioMax  = String(cfg.DESPACHO_INICIO_MAX_MIN);
       const dspEsperaTope = String(cfg.DESPACHO_ESPERA_TOPE_MIN);
+      const dspPesoEsp    = String(cfg.DESPACHO_PESO_ESPERA);
+      const dspPesoComp   = String(cfg.DESPACHO_PESO_COMPATIBILIDAD);
+      const dspPesoFam    = String(cfg.DESPACHO_PESO_FAMILIARIDAD);
+      const dspPesoCerc   = String(cfg.DESPACHO_PESO_CERCANIA);
 
       wrap.innerHTML = `
         <div class="adminConfigPanel">
@@ -754,6 +758,34 @@ async function loadTab() {
                 <input id="cfgDspInicioMax" type="number" min="1" max="240" value="${escHtml(dspInicioMax)}" style="width:100px;">
               </label>
             </div>
+
+            <p class="small muted" style="margin:14px 0 8px;">
+              <strong>Importancia de cada criterio</strong> — <b>no</b> tienen que sumar 100:
+              valen como proporción entre ellos. Subir uno baja el peso relativo del resto.
+            </p>
+            <div class="adminHorarioGrid">
+              <label class="adminLabel adminLabelInline">
+                ${icon("clock", 14)} Tiempo esperando
+                <input id="cfgDspPesoEsp" type="number" min="0" max="100" value="${escHtml(dspPesoEsp)}" style="width:90px;">
+              </label>
+              <label class="adminLabel adminLabelInline">
+                ${icon("users", 14)} Mismo ritmo que su pareja
+                <input id="cfgDspPesoComp" type="number" min="0" max="100" value="${escHtml(dspPesoComp)}" style="width:90px;">
+              </label>
+              <label class="adminLabel adminLabelInline">
+                ${icon("wrench", 14)} Rápido en ese modelo
+                <input id="cfgDspPesoFam" type="number" min="0" max="100" value="${escHtml(dspPesoFam)}" style="width:90px;">
+              </label>
+              <label class="adminLabel adminLabelInline">
+                ${icon("map", 14)} Cercanía a la zona
+                <input id="cfgDspPesoCerc" type="number" min="0" max="100" value="${escHtml(dspPesoCerc)}" style="width:90px;">
+              </label>
+            </div>
+            <p class="small muted" style="margin:8px 0 0;">
+              Nota: la similitud de ritmo casi nunca baja de 0.5 aunque dos técnicos sean muy
+              distintos, así que su recorrido real es la mitad que el de la espera. Para que el
+              ritmo <em>mande</em> de verdad, súbelo bastante por encima de la espera.
+            </p>
 
             <div style="margin-top:14px;display:flex;gap:10px;align-items:center;">
               <button id="btnSaveDespacho" type="button" class="adminBtnOk">Guardar despacho</button>
@@ -1170,6 +1202,25 @@ async function saveDespacho_() {
   const varado    = String(Number($id("cfgDspVarado")?.value)     || 240);
   const inicioMax = String(Number($id("cfgDspInicioMax")?.value)  || 20);
 
+  // Los pesos SÍ admiten 0 (apagar un criterio), así que aquí no vale `|| n`:
+  // convertiría un 0 legítimo en el default.
+  const num0 = (id, def) => {
+    const v = Number($id(id)?.value);
+    return String(Number.isFinite(v) && v >= 0 ? v : def);
+  };
+  const pesoEsp  = num0("cfgDspPesoEsp",  30);
+  const pesoComp = num0("cfgDspPesoComp", 30);
+  const pesoFam  = num0("cfgDspPesoFam",  25);
+  const pesoCerc = num0("cfgDspPesoCerc", 15);
+
+  if ([pesoEsp, pesoComp, pesoFam, pesoCerc].every(v => Number(v) === 0)) {
+    if (msgEl) {
+      msgEl.textContent = "Al menos un criterio tiene que pesar más que cero.";
+      msgEl.style.color = "var(--danger)";
+    }
+    return;
+  }
+
   if (turnoIni === turnoFin) {
     if (msgEl) {
       msgEl.textContent = "Inicio y fin de turno no pueden ser iguales.";
@@ -1194,6 +1245,10 @@ async function saveDespacho_() {
         { key: "DESPACHO_TTL_PROPUESTA_MIN", value: ttlProp },
         { key: "DESPACHO_VARADO_MIN",       value: varado },
         { key: "DESPACHO_INICIO_MAX_MIN",   value: inicioMax },
+        { key: "DESPACHO_PESO_ESPERA",         value: pesoEsp },
+        { key: "DESPACHO_PESO_COMPATIBILIDAD", value: pesoComp },
+        { key: "DESPACHO_PESO_FAMILIARIDAD",   value: pesoFam },
+        { key: "DESPACHO_PESO_CERCANIA",       value: pesoCerc },
       ]}),
     });
     const j = await resp.json();

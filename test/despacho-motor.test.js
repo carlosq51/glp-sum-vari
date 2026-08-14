@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 
 const {
-  distanciaZonas_, construirPool_, familiaridad_, espera_, cercania_,
+  distanciaZonas_, construirPool_, familiaridad_, espera_, cercania_, normalizarPesos_,
   compatibilidad_, puntuar_, generarPropuestas_, PESOS,
 } = await import("../lib/despacho-motor.js");
 
@@ -262,6 +262,44 @@ describe("compatibilidad_", () => {
   it("sin datos del modelo es neutro", () => {
     expect(compatibilidad_(unidad(["X"]), unidad(["Y"]), techs)).toBe(0.5);
   });
+
+  // Al elegir el PRIMER puesto del carro todavía no hay pareja: se pregunta
+  // "¿a este candidato le queda algún buen compañero libre?".
+  it("con una lista de candidatos devuelve el mejor calce posible", () => {
+    const v = compatibilidad_(unidad(["A"]), [unidad(["C"]), unidad(["B"])], techs);
+    expect(v).toBe(compatibilidad_(unidad(["A"]), unidad(["B"]), techs));
+  });
+
+  it("con lista vacía es neutro, no cero", () => {
+    expect(compatibilidad_(unidad(["A"]), [], techs)).toBe(0.5);
+  });
+
+  // El caso del taller: al carro solo le falta un rol y el otro ya lo trabaja
+  // alguien. La pareja llega como user_id suelto, no como unidad.
+  it("acepta el user_id de quien ya trabaja el carro", () => {
+    expect(compatibilidad_(unidad(["A"]), "B", techs)).toBe(1);
+  });
+});
+
+describe("normalizarPesos_", () => {
+  it("los pesos valen como proporción: 30/30/25/15 == 6/6/5/3", () => {
+    const a = normalizarPesos_({ espera: 30, compatibilidad: 30, familiaridad: 25, cercania: 15 });
+    const b = normalizarPesos_({ espera: 6,  compatibilidad: 6,  familiaridad: 5,  cercania: 3  });
+    expect(a).toEqual(b);
+    expect(Object.values(a).reduce((x, y) => x + y, 0)).toBeCloseTo(1, 5);
+  });
+
+  it("valores basura o negativos cuentan como cero", () => {
+    const w = normalizarPesos_({ espera: 1, compatibilidad: -5, familiaridad: "x", cercania: 1 });
+    expect(w.compatibilidad).toBe(0);
+    expect(w.familiaridad).toBe(0);
+    expect(w.espera).toBeCloseTo(0.5, 5);
+  });
+
+  it("todo en cero cae a los defaults en vez de romper el score", () => {
+    expect(normalizarPesos_({ espera: 0, compatibilidad: 0, familiaridad: 0, cercania: 0 }))
+      .toEqual(PESOS);
+  });
 });
 
 // ─────────────────────────────────────────────
@@ -409,6 +447,79 @@ describe("generarPropuestas_", () => {
       unidad(["LENTO"],  "TANQUE", { libreDesde: haceMin(50) }),
     ], { ...ctx, ahoraMs: AHORA });
     expect(r.propuestas[0].user_id).toBe("LENTO");
+  });
+
+  // El objetivo del emparejamiento: que MOTOR y TANQUE del mismo carro acaben
+  // a la vez. Al carro solo le falta un rol y el otro ya lo trabaja alguien,
+  // así que el puesto libre debe ir a quien mejor calce con ESE técnico —
+  // aunque otro lleve más rato esperando.
+  it("empareja con el técnico que YA está en el carro", () => {
+    const AHORA = new Date("2026-08-13T20:00:00.000Z").getTime();
+    const haceMin = m => new Date(AHORA - m * 60000).toISOString();
+    const techsPorId = {
+      ENCARRO: { normalized: { avgMs: .5, dailyRate: .5, consistency: .5, peakHour: .5, hourStd: .5 } },
+      CALZA:   { normalized: { avgMs: .5, dailyRate: .5, consistency: .5, peakHour: .5, hourStd: .5 } },
+      DISPAR:  { normalized: { avgMs: 1,  dailyRate: 0,  consistency: 1,  peakHour: 0,  hourStd: 1  } },
+    };
+    const pool = construirPool_({
+      zonas: [zona(4, "V1")],
+      ocupados: [{ vin: "V1", rol_trabajo: "TANQUE", user_id: "ENCARRO" }],
+    });
+    expect(pool.elegibles[0].rolesLibres).toEqual(["MOTOR"]);
+    expect(pool.elegibles[0].ocupadoPor).toEqual({ TANQUE: "ENCARRO" });
+
+    // A igualdad de espera manda el ritmo. Antes este caso era imposible: al
+    // elegir el MOTOR la compatibilidad valía 0.5 fijo y no influía en nada.
+    const r = generarPropuestas_(pool, [
+      unidad(["DISPAR"], "MOTOR", { libreDesde: haceMin(10) }),
+      unidad(["CALZA"],  "MOTOR", { libreDesde: haceMin(10) }),
+    ], { ...ctx, ahoraMs: AHORA, techsPorId });
+
+    expect(r.propuestas[0].user_id).toBe("CALZA");
+    expect(r.propuestas[0].razon).toContain("mismo ritmo");
+  });
+
+  // El límite honesto de los pesos 30/30. La compatibilidad solo llega a 0 si
+  // los cinco rasgos son opuestos absolutos, algo que no pasa con gente real:
+  // en la práctica cae entre 0.5 y 1.0, o sea la mitad del recorrido de la
+  // espera. Con espera al 30 y compatibilidad al 30, una diferencia grande de
+  // espera GANA igual. Para que el ritmo mande de verdad hay que subir su peso
+  // desde el panel.
+  it("una espera muy larga todavía se impone al mejor calce de ritmo", () => {
+    const AHORA = new Date("2026-08-13T20:00:00.000Z").getTime();
+    const haceMin = m => new Date(AHORA - m * 60000).toISOString();
+    const techsPorId = {
+      ENCARRO: { normalized: { avgMs: .5, dailyRate: .5, consistency: .5, peakHour: .5, hourStd: .5 } },
+      CALZA:   { normalized: { avgMs: .5, dailyRate: .5, consistency: .5, peakHour: .5, hourStd: .5 } },
+      DISPAR:  { normalized: { avgMs: 1,  dailyRate: 0,  consistency: 1,  peakHour: 0,  hourStd: 1  } },
+    };
+    const pool = construirPool_({
+      zonas: [zona(4, "V1")],
+      ocupados: [{ vin: "V1", rol_trabajo: "TANQUE", user_id: "ENCARRO" }],
+    });
+    const r = generarPropuestas_(pool, [
+      unidad(["DISPAR"], "MOTOR", { libreDesde: haceMin(40) }),
+      unidad(["CALZA"],  "MOTOR", { libreDesde: haceMin(3)  }),
+    ], { ...ctx, ahoraMs: AHORA, techsPorId });
+    expect(r.propuestas[0].user_id).toBe("DISPAR");
+
+    // …y se invierte subiendo el peso del ritmo, sin tocar código.
+    const r2 = generarPropuestas_(pool, [
+      unidad(["DISPAR"], "MOTOR", { libreDesde: haceMin(40) }),
+      unidad(["CALZA"],  "MOTOR", { libreDesde: haceMin(3)  }),
+    ], {
+      ...ctx, ahoraMs: AHORA, techsPorId,
+      pesos: { espera: 15, compatibilidad: 55, familiaridad: 20, cercania: 10 },
+    });
+    expect(r2.propuestas[0].user_id).toBe("CALZA");
+  });
+
+  it("con quien ya terminó no empareja: se fue del carro", () => {
+    const pool = construirPool_({
+      zonas: [zona(4, "V1")],
+      ocupados: [{ vin: "V1", rol_trabajo: "TANQUE", user_id: "IDO", terminado: true }],
+    });
+    expect(pool.elegibles[0].ocupadoPor).toEqual({});
   });
 
   it("a igualdad de todo, prefiere a quien está más cerca", () => {

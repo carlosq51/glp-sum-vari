@@ -827,6 +827,8 @@ async function contextoDelTaller_(cfg, fecha) {
       vin: woVin.get(a.work_order_id),
       rol_trabajo: a.rol_trabajo,
       terminado: a.estado_actual === "FINALIZADO",
+      // Con quién habrá que sincronizar el ritmo si el otro puesto sigue libre.
+      user_id: a.user_id,
     }));
 
   // Carros acreditados hoy: se cuentan de la consulta acotada por fecha, que
@@ -918,6 +920,14 @@ async function contextoDelTaller_(cfg, fecha) {
       // por espera): se conserva porque el panel del supervisor lo muestra.
       creditosHoy,
       esperaTopeMin: Number(cfg.DESPACHO_ESPERA_TOPE_MIN) || ESPERA_TOPE_MIN,
+      // Importancia relativa de cada criterio, editable desde el panel. No hace
+      // falta que sumen 1: normalizarPesos_ se encarga.
+      pesos: {
+        espera:         Number(cfg.DESPACHO_PESO_ESPERA),
+        compatibilidad: Number(cfg.DESPACHO_PESO_COMPATIBILIDAD),
+        familiaridad:   Number(cfg.DESPACHO_PESO_FAMILIARIDAD),
+        cercania:       Number(cfg.DESPACHO_PESO_CERCANIA),
+      },
       creditosDupla: new Map(),   // se llena abajo
     },
   };
