@@ -908,11 +908,18 @@
   let ventanaSeg = 0;      // 0 = todavía no sabemos nada, no pintar
   let venceEnMs = 0;
   let qrSrcActual = "";
+  let qrEstatico = false;  // modo "sin TV": el código no rota ni vence
 
   /** Aplica el estado del QR a todas sus copias en pantalla (pie y mapa). */
   function aplicarQr({ sinAnimar = false } = {}) {
     for (const img of document.querySelectorAll(".qrImg")) {
       if (qrSrcActual && img.src !== qrSrcActual) img.src = qrSrcActual;
+    }
+    // Sin rotación no hay nada que contar: la barra se esconde en vez de
+    // vaciarse, que es lo que haría creer que el código está por vencer.
+    if (qrEstatico) {
+      for (const c of document.querySelectorAll(".cuenta")) c.style.visibility = "hidden";
+      return;
     }
     if (!ventanaSeg) return;
     const restan = Math.max(0, (venceEnMs - Date.now()) / 1000);
@@ -935,8 +942,9 @@
     try {
       const r = await fetch("/api/despacho/qr", { cache: "no-store" });
       const d = await r.json();
-      ventanaSeg = d.ventanaSeg || 300;
-      venceEnMs  = Date.now() + (d.expiraEn ?? ventanaSeg) * 1000;
+      qrEstatico = !!d.estatico;
+      ventanaSeg = qrEstatico ? 0 : (d.ventanaSeg || 300);
+      venceEnMs  = qrEstatico ? 0 : Date.now() + (d.expiraEn ?? ventanaSeg) * 1000;
     } catch {
       // Sin servidor: se deja correr la última ventana conocida.
       if (!ventanaSeg) return;
@@ -946,7 +954,15 @@
     aplicarQr({ sinAnimar: true });
   }
 
+  let ultimoSondeoQr = Date.now();
   function tickQr() {
+    // En modo fijo no hay vencimiento que vigilar, pero sí hay que releer la
+    // config de vez en cuando: el día que se monte la TV y se vuelva a rotar,
+    // una pantalla encendida desde antes tiene que enterarse sola.
+    if (qrEstatico) {
+      if (Date.now() - ultimoSondeoQr >= 300_000) { ultimoSondeoQr = Date.now(); refrescarQr(); }
+      return;
+    }
     if (!ventanaSeg) return;
     if (Date.now() >= venceEnMs) { refrescarQr(); return; }
     aplicarQr();

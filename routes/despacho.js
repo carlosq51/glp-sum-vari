@@ -20,7 +20,7 @@ import { emitEvent_ } from "../lib/events.js";
 import { sendPushToEmails_ } from "../lib/push.js";
 import {
   jornadaFecha_, jornadaRango_, horaPeru_, minutosDelDia_, hhmmAMinutos_,
-  slotActual_, firmarSlot_, verificarToken_,
+  slotActual_, firmarSlot_, verificarToken_, tokenEstatico_,
   aplicarMarca_, reconstruirJornada_, estadoEfectivo_,
   validarDupla_, unidadesDeTrabajo_, payloadDemo_,
   enTurno_, duracionTurno_, JORNADA_INICIO_H,
@@ -152,15 +152,28 @@ async function tecnicosOcupados_() {
 
 // ─── QR ROTATIVO ──────────────────────────────────────────────────────────────
 
+/**
+ * ¿El QR está en modo fijo? Es el modo "todavía no hay TV": sin pantalla en el
+ * taller no hay dónde mostrar un código que rota, así que el papel impreso vale
+ * todo el día. Se apaga solo (vuelve a rotar) poniendo DESPACHO_QR_ESTATICO=0.
+ */
+function qrEstatico_(cfg) {
+  return String(cfg?.DESPACHO_QR_ESTATICO ?? "0") === "1";
+}
+
 // GET /api/despacho/qr
 // La TV pide un token nuevo cada ventana y lo pinta como QR. El técnico lo
 // escanea desde su celular — así la marca prueba que estuvo en el taller.
+// En modo fijo devuelve siempre el mismo token y sin cuenta regresiva.
 router.get("/api/despacho/qr", async (req, res) => {
   const cfg = await getConfig_();
+  if (qrEstatico_(cfg)) {
+    return res.json({ ok: true, token: tokenEstatico_(), estatico: true, ventanaSeg: 0, expiraEn: null });
+  }
   const ventana = Number(cfg.DESPACHO_QR_VENTANA_SEG) || 30;
   const slot = slotActual_(ventana);
   const expiraEn = ventana - Math.floor((Date.now() / 1000) % ventana);
-  res.json({ ok: true, token: firmarSlot_(slot), ventanaSeg: ventana, expiraEn });
+  res.json({ ok: true, token: firmarSlot_(slot), estatico: false, ventanaSeg: ventana, expiraEn });
 });
 
 // GET /api/despacho/qr.svg — el QR ya renderizado, para que la TV solo tenga
@@ -170,7 +183,7 @@ router.get("/api/despacho/qr.svg", async (req, res) => {
   try {
     const cfg = await getConfig_();
     const ventana = Number(cfg.DESPACHO_QR_VENTANA_SEG) || 30;
-    const token = firmarSlot_(slotActual_(ventana));
+    const token = qrEstatico_(cfg) ? tokenEstatico_() : firmarSlot_(slotActual_(ventana));
     const base = `${req.protocol}://${req.get("host")}`;
     // margin va en MÓDULOS, no en píxeles: es la "zona quieta" blanca que el
     // estándar QR exige alrededor del código. Con 1 sola (lo que había) el
@@ -200,6 +213,20 @@ router.get("/marcar", (_req, res) => {
   }
 });
 
+// GET /qr-tv — pantalla dedicada al QR, a pantalla completa.
+// Mientras no haya TV montada, el código tiene que poder vivir en cualquier
+// parte: una laptop en la puerta, el celular del supervisor o una hoja
+// impresa. /tv es el tablero entero y ahí el QR es una esquina del pie —
+// puesta a tres metros, esa esquina no se escanea.
+// /qrtv y /qr responden igual: es una URL que alguien va a teclear de memoria.
+router.get(["/qr-tv", "/qrtv", "/qr"], (_req, res) => {
+  try {
+    res.type("html").send(readFileSync(resolve("./public/qr-tv.html"), "utf8"));
+  } catch {
+    res.status(404).send("qr-tv.html no encontrado");
+  }
+});
+
 // ─── ASISTENCIA ───────────────────────────────────────────────────────────────
 
 // POST /api/despacho/marcar  { email, token, tipo? }
@@ -209,7 +236,10 @@ router.post("/api/despacho/marcar", requireModoActivo_, async (req, res) => {
     const { email, token, tipo } = req.body || {};
     const cfg = req.despachoCfg;
 
-    const ver = verificarToken_(token, Number(cfg.DESPACHO_QR_VENTANA_SEG) || 30);
+    const ver = verificarToken_(
+      token, Number(cfg.DESPACHO_QR_VENTANA_SEG) || 30, new Date(),
+      { estatico: qrEstatico_(cfg) },
+    );
     if (!ver.ok) return res.status(400).json({ ok: false, error: ver.error });
 
     const user = await userPorEmail_(email);
@@ -228,7 +258,10 @@ router.post("/api/despacho/marcar", requireModoActivo_, async (req, res) => {
       headers: { ...supabaseHeaders_(), "Prefer": "return=representation" },
       body:    JSON.stringify({
         user_id: user.id, tipo: tipoFinal, origen: "QR",
-        token_slot: ver.slot, registrado_por: user.id,
+        // Con el QR fijo `ver.slot` es null y no se escribe slot: el índice
+        // único (token_slot, user_id) es parcial (WHERE token_slot IS NOT NULL),
+        // así que ingreso y salida del mismo día dejan de chocar entre sí.
+        token_slot: ver.slot ?? null, registrado_por: user.id,
       }),
     });
 

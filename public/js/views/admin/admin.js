@@ -553,6 +553,7 @@ async function loadTab() {
       const dspTurnoFin   = String(cfg.DESPACHO_TURNO_FIN);
       const dspIntervalo  = String(cfg.DESPACHO_INTERVALO_SEG);
       const dspQrVentana  = String(cfg.DESPACHO_QR_VENTANA_SEG);
+      const dspQrEstatico = String(cfg.DESPACHO_QR_ESTATICO ?? "0") === "1";
       const dspTtlProp    = String(cfg.DESPACHO_TTL_PROPUESTA_MIN);
       const dspVarado     = String(cfg.DESPACHO_VARADO_MIN);
       const dspInicioMax  = String(cfg.DESPACHO_INICIO_MAX_MIN);
@@ -773,6 +774,20 @@ async function loadTab() {
                 <input id="cfgDspInicioMax" type="number" min="1" max="240" value="${escHtml(dspInicioMax)}" style="width:100px;">
               </label>
             </div>
+
+            <label class="adminCheckLabel" style="margin-top:12px;">
+              <input id="cfgDspQrEstatico" type="checkbox" ${dspQrEstatico ? "checked" : ""}>
+              QR fijo — mientras no haya TV en el taller
+            </label>
+            <p class="small muted" style="margin:4px 0 0;">
+              Con esto el código deja de rotar: el mismo código
+              (<a href="/qr-tv" target="_blank" rel="noopener">abrir pantalla del QR</a> — desde ahí
+              se imprime con Ctrl+P) sirve todo el día, para entrada y salida.
+              Sin pantalla que muestre el código nuevo,
+              el técnico intenta marcar su salida con la foto de la mañana y le rebota.
+              <strong>Contrapartida:</strong> un papel se fotografía y se comparte, así que la marca
+              deja de probar que estuvo en el taller. Desmarcar al montar la TV.
+            </p>
 
             <p class="small muted" style="margin:14px 0 8px;">
               <strong>Importancia de cada criterio</strong> — <b>no</b> tienen que sumar 100:
@@ -1234,6 +1249,7 @@ async function saveDespacho_() {
   const esperaTop = String(Number($id("cfgDspEsperaTope")?.value) || 30);
   const intervalo = String(Number($id("cfgDspIntervalo")?.value)  || 60);
   const qrVentana = String(Number($id("cfgDspQrVentana")?.value)  || 300);
+  const qrEstatico = $id("cfgDspQrEstatico")?.checked ? "1" : "0";
   const ttlProp   = String(Number($id("cfgDspTtlProp")?.value)    || 10);
   const varado    = String(Number($id("cfgDspVarado")?.value)     || 240);
   const inicioMax = String(Number($id("cfgDspInicioMax")?.value)  || 20);
@@ -1278,6 +1294,7 @@ async function saveDespacho_() {
         { key: "DESPACHO_ESPERA_TOPE_MIN",  value: esperaTop },
         { key: "DESPACHO_INTERVALO_SEG",    value: intervalo },
         { key: "DESPACHO_QR_VENTANA_SEG",   value: qrVentana },
+        { key: "DESPACHO_QR_ESTATICO",      value: qrEstatico },
         { key: "DESPACHO_TTL_PROPUESTA_MIN", value: ttlProp },
         { key: "DESPACHO_VARADO_MIN",       value: varado },
         { key: "DESPACHO_INICIO_MAX_MIN",   value: inicioMax },

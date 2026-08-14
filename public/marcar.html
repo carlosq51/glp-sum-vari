@@ -151,7 +151,8 @@
   <div class="estado" id="estado"></div>
   <input id="email" type="email" inputmode="email" autocomplete="email"
          placeholder="tu correo" spellcheck="false">
-  <button id="btn">Marcar ingreso</button>
+  <!-- Dice "asistencia" hasta saber si toca entrada o salida (ver etiquetaBoton). -->
+  <button id="btn">Marcar asistencia</button>
 </div>
 
 <div class="msg" id="msg"></div>
@@ -303,7 +304,21 @@
 
   // Estado actual: define si el botón dice "ingreso" o "salida", para que el
   // técnico no tenga que elegir entre dos botones y se equivoque.
-  let tipoSiguiente = "INGRESO";
+  //
+  // Arranca en null = "todavía no sé". No es lo mismo que INGRESO: si no lo
+  // sabemos, el POST va SIN `tipo` y el servidor alterna según el estado real.
+  // Suponer INGRESO era el bug de la salida — el técnico que escribe su correo
+  // a mano (nunca abrió la PWA, así que no hay nada en localStorage) nunca
+  // llegaba a consultar su estado, mandaba INGRESO estando adentro, y recibía
+  // "ya marcaste tu ingreso" sin que su salida quedara registrada.
+  let tipoSiguiente = null;
+
+  function etiquetaBoton() {
+    return tipoSiguiente === "SALIDA" ? "Marcar salida"
+         : tipoSiguiente === "INGRESO" ? "Marcar ingreso"
+         : "Marcar asistencia";
+  }
+
   async function cargarEstado() {
     if (!email) return;
     try {
@@ -312,23 +327,35 @@
       const d = await r.json();
       miUserId = d.userId || "";
       $("estado").innerHTML = `Hola, <b>${esc(d.nombre || "")}</b>`;
-      if (d.estado && d.estado !== "FUERA") {
-        tipoSiguiente = "SALIDA";
-        $("btn").textContent = "Marcar salida";
-        $("btn").classList.add("salida");
+      const dentro = d.estado && d.estado !== "FUERA";
+      tipoSiguiente = dentro ? "SALIDA" : "INGRESO";
+      $("btn").textContent = etiquetaBoton();
+      $("btn").classList.toggle("salida", dentro);
+      if (dentro) {
         $("sub").textContent = "Ingresaste a las " +
           new Date(d.ingreso).toLocaleTimeString("es-PE",
             { timeZone: "America/Lima", hour: "2-digit", minute: "2-digit", hour12: false });
         // Ya está adentro → tiene sentido ofrecerle la dupla.
         cargarDupla();
       }
-    } catch { /* sin conexión: el botón queda en INGRESO, el backend valida */ }
+    } catch { /* sin conexión: sin `tipo`, decide el servidor */ }
   }
   cargarEstado();
+
+  // Correo escrito a mano: en cuanto lo termina de escribir se consulta su
+  // estado, para que el botón diga lo que realmente va a pasar.
+  $("email").addEventListener("change", () => {
+    const correo = ($("email").value || "").trim().toLowerCase();
+    if (!correo || correo === email) return;
+    email = correo;
+    try { localStorage.setItem(EMAIL_KEY, correo); } catch {}
+    cargarEstado();
+  });
 
   $("btn").addEventListener("click", async () => {
     const correo = ($("email").value || email).trim().toLowerCase();
     if (!correo) { $("email").style.display = ""; $("email").focus(); return; }
+    email = correo;
     try { localStorage.setItem(EMAIL_KEY, correo); } catch {}
 
     $("btn").disabled = true;
@@ -338,14 +365,20 @@
       const r = await fetch("/api/despacho/marcar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: correo, token, tipo: tipoSiguiente }),
+        // Sin `tipo` cuando no conocemos el estado: alterna el servidor, que
+        // sí lo sabe. Mandar uno a ciegas es cómo se perdían las salidas.
+        body: JSON.stringify({ email: correo, token, ...(tipoSiguiente ? { tipo: tipoSiguiente } : {}) }),
       });
       const d = await r.json();
 
       if (!r.ok || !d.ok) {
         mostrar("err", (d.error || "No se pudo registrar"));
         $("btn").disabled = false;
-        $("btn").textContent = tipoSiguiente === "SALIDA" ? "Marcar salida" : "Marcar ingreso";
+        $("btn").textContent = etiquetaBoton();
+        // El rechazo puede venir de que el botón estaba desfasado (ya marcó
+        // desde otro celular, o el supervisor lo marcó por él): se relee el
+        // estado real para que el siguiente toque haga lo correcto.
+        cargarEstado();
         return;
       }
 
@@ -365,7 +398,7 @@
     } catch (e) {
       mostrar("err", "Sin conexión. Intenta de nuevo o pide al supervisor que te marque.");
       $("btn").disabled = false;
-      $("btn").textContent = tipoSiguiente === "SALIDA" ? "Marcar salida" : "Marcar ingreso";
+      $("btn").textContent = etiquetaBoton();
     }
   });
 })();

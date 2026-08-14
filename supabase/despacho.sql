@@ -359,6 +359,10 @@ INSERT INTO app_config (key, value) VALUES
   ('DESPACHO_JORNADA_FIN',     '05:00'),
   -- QR rotativo de la TV: duración de cada ventana de token, en segundos.
   ('DESPACHO_QR_VENTANA_SEG',  '300'),
+  -- '1' = QR fijo, para el taller que todavía no tiene la TV montada: el
+  -- código deja de rotar y el papel impreso vale para entrada y salida. La
+  -- marca deja de probar presencia física — volver a '0' al montar la TV.
+  ('DESPACHO_QR_ESTATICO',     '0'),
   -- Minutos que una propuesta espera confirmación antes de EXPIRAR.
   ('DESPACHO_TTL_PROPUESTA_MIN', '10'),
   -- Cada cuánto corre el motor de despacho, en segundos.

@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 
 const {
   jornadaFecha_, jornadaRango_, hhmmAMinutos_,
-  slotActual_, firmarSlot_, verificarToken_,
+  slotActual_, firmarSlot_, verificarToken_, tokenEstatico_, SLOT_ESTATICO,
   aplicarMarca_, reconstruirJornada_, estadoEfectivo_, esAsignable_,
   unidadesDeTrabajo_, proximoResponsable_, validarDupla_,
   duplaPendienteVencida_, avanceSolo_,
@@ -115,6 +115,42 @@ describe("token del QR", () => {
   it("rechaza basura", () => {
     expect(verificarToken_("", 30).ok).toBe(false);
     expect(verificarToken_("abc", 30).ok).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────
+// QR fijo (mientras no hay TV en el taller)
+// ─────────────────────────────────────────────
+describe("QR estático", () => {
+  it("el token fijo NO vale con el QR rotativo encendido", () => {
+    const r = verificarToken_(tokenEstatico_(), 300);
+    expect(r.ok).toBe(false);
+  });
+
+  it("vale en modo estático, y sigue valiendo un día después", () => {
+    const manana = new Date(Date.now() + 24 * 3600_000);
+    expect(verificarToken_(tokenEstatico_(), 300, new Date(), { estatico: true }).ok).toBe(true);
+    expect(verificarToken_(tokenEstatico_(), 300, manana, { estatico: true }).ok).toBe(true);
+  });
+
+  it("no guarda slot: si lo guardara, la salida chocaría contra el índice único", () => {
+    const r = verificarToken_(tokenEstatico_(), 300, new Date(), { estatico: true });
+    expect(r.slot).toBe(null);
+    expect(r.estatico).toBe(true);
+  });
+
+  it("el modo estático no revive tokens rotativos vencidos", () => {
+    const viejo = firmarSlot_(slotActual_(300) - 10);
+    expect(verificarToken_(viejo, 300, new Date(), { estatico: true }).ok).toBe(false);
+  });
+
+  it("el slot fijo no es alcanzable por la rotación real", () => {
+    expect(SLOT_ESTATICO).toBe(0);
+    expect(slotActual_(300)).toBeGreaterThan(0);
+  });
+
+  it("sin firma válida, el slot fijo tampoco entra", () => {
+    expect(verificarToken_("0.xxxxxxxxxxxxxxxxxxxxxx", 300, new Date(), { estatico: true }).ok).toBe(false);
   });
 });
 
