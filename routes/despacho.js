@@ -24,6 +24,7 @@ import {
   aplicarMarca_, reconstruirJornada_, estadoEfectivo_,
   validarDupla_, unidadesDeTrabajo_, payloadDemo_,
   enTurno_, duracionTurno_, JORNADA_INICIO_H,
+  porQueMuereLaPropuesta_,
 } from "../lib/despacho.js";
 import { construirPool_, generarPropuestas_, ESPERA_TOPE_MIN } from "../lib/despacho-motor.js";
 
@@ -1008,19 +1009,8 @@ async function reconciliarPropuestas_(fecha, { vinesEnZona, finalizados }) {
     for (const a of rows) asgPorId.set(a.id, a);
   }
 
-  const porQueMuere = (p) => {
-    if (!vinesEnZona.has(p.vin)) return "El carro salió de zona";
-    if (finalizados.has(`${p.vin}|${p.rol_trabajo}`)) return "El puesto ya se cerró";
-    if (!p.asignacion_id) return null;                  // aún sin OT real: sigue viva
-    const a = asgPorId.get(p.asignacion_id);
-    if (!a) return "La asignación que la respaldaba ya no existe";
-    if (!a.activo) return "La asignación que la respaldaba se dio de baja";
-    if (a.user_id !== p.user_id) return "El puesto se reasignó a otro técnico";
-    return null;
-  };
-
   const muertas = vivas
-    .map(p => ({ p, motivo: porQueMuere(p) }))
+    .map(p => ({ p, motivo: porQueMuereLaPropuesta_(p, { vinesEnZona, finalizados, asgPorId }) }))
     .filter(x => x.motivo);
 
   // Agrupadas por motivo: el motivo es lo que permite entender después por qué
@@ -1134,7 +1124,29 @@ async function crearAsignacionReal_(p) {
       }
       return { ok: false, error: txt.slice(0, 160) };
     }
-    const asignacionId = (await asg.json())[0]?.id || null;
+    // El id es OBLIGATORIO, no un extra: la propuesta que se publica después lo
+    // guarda en asignacion_id, y una propuesta sin él es inmortal — ver
+    // reconciliarPropuestas_. Un solo INSERT que responda 2xx con el cuerpo
+    // vacío deja al técnico congelado el resto de la jornada, en silencio.
+    //
+    // Antes de rendirse se busca la fila recién creada: el POST puede haber
+    // funcionado y ser solo la respuesta la que vino sin representación. Si
+    // tampoco aparece ahí, se trata como fallo: el motor lo apunta en
+    // `fallidas` y reintenta a la corrida siguiente.
+    let asignacionId = (await asg.json())[0]?.id || null;
+    if (!asignacionId) {
+      const rescate = await fetch(
+        `${SB()}/rest/v1/asignaciones?work_order_id=eq.${workOrderId}` +
+        `&rol_trabajo=eq.${encodeURIComponent(p.rol_trabajo)}&activo=is.true` +
+        `&select=id,user_id&limit=1`,
+        { headers: h },
+      ).then(r => r.ok ? r.json() : []).catch(() => []);
+      // Solo vale si es la asignación de ESTE técnico: si el puesto acabó en
+      // manos de otro, adoptar su id ataría la propuesta a la persona
+      // equivocada.
+      if (rescate[0]?.user_id === p.user_id) asignacionId = rescate[0].id;
+    }
+    if (!asignacionId) return { ok: false, error: "La asignación no devolvió id" };
 
     // 3. El evento INICIO, para que los reportes basados en `eventos` cuadren.
     await fetch(`${SB()}/rest/v1/eventos`, {
@@ -1586,6 +1598,12 @@ router.post("/api/despacho/propuesta/revocar", requireModoActivo_,
 // POST /api/despacho/asignar-manual  { email, vin, zonaId, userId, rol }
 // Asignación a dedo, saltándose el motor. Existe porque el taller siempre
 // tiene un caso que el algoritmo no contempla.
+//
+// Crea la OT REAL, igual que el motor. Antes solo insertaba la propuesta: el
+// técnico veía su carro en la TV pero no tenía nada abierto, y la propuesta
+// quedaba sin asignacion_id — o sea inmortal (ver reconciliarPropuestas_), lo
+// que lo dejaba sin recibir trabajo el resto de la jornada. Cada asignación a
+// dedo fabricaba ese bloqueo.
 router.post("/api/despacho/asignar-manual", requireModoActivo_,
   requireRol_("SUPERVISOR", "ADMIN"), async (req, res) => {
   try {
@@ -1595,6 +1613,18 @@ router.post("/api/despacho/asignar-manual", requireModoActivo_,
     }
     const sup = await userPorEmail_(email);
     const fecha = jornadaFecha_();
+    const rolTrabajo = String(rol).toUpperCase();
+
+    // Primero la OT: si el puesto ya está tomado, no debe quedar rastro de una
+    // propuesta que nunca fue.
+    const real = await crearAsignacionReal_({ vin, user_id: userId, rol_trabajo: rolTrabajo });
+    if (!real.ok) {
+      const conflicto = /ya lo tomó|duplicate key|23505/.test(real.error || "");
+      return res.status(conflicto ? 409 : 500).json({
+        ok: false,
+        error: conflicto ? "Ese puesto ya está asignado" : real.error,
+      });
+    }
 
     const r = await fetch(`${SB()}/rest/v1/despacho_propuestas`, {
       method: "POST",
@@ -1602,8 +1632,9 @@ router.post("/api/despacho/asignar-manual", requireModoActivo_,
       body: JSON.stringify({
         jornada_fecha: fecha, carro_id: randomUUID(), vin,
         zona_id: zonaId || null, user_id: userId,
-        rol_trabajo: String(rol).toUpperCase(), estado: "CONFIRMADA",
+        rol_trabajo: rolTrabajo, estado: "CONFIRMADA",
         decidida_at: new Date().toISOString(), decidida_por: sup?.id || null,
+        asignacion_id: real.asignacionId,
         score: 0, razon: "Asignado por supervisión",
       }),
     });
@@ -1616,7 +1647,8 @@ router.post("/api/despacho/asignar-manual", requireModoActivo_,
     }
 
     emitEvent_("despacho", { tipo: "MANUAL" });
-    res.json({ ok: true });
+    emitEvent_("asignaciones", { accion: "DESPACHO_MANUAL" });
+    res.json({ ok: true, asignacionId: real.asignacionId });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }

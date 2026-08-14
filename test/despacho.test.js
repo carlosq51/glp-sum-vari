@@ -5,7 +5,7 @@ const {
   slotActual_, firmarSlot_, verificarToken_,
   aplicarMarca_, reconstruirJornada_, estadoEfectivo_, esAsignable_,
   unidadesDeTrabajo_, proximoResponsable_, validarDupla_,
-  enTurno_, duracionTurno_,
+  enTurno_, duracionTurno_, porQueMuereLaPropuesta_,
 } = await import("../lib/despacho.js");
 
 // Instante UTC que corresponde a una hora dada de Perú (UTC-5).
@@ -468,5 +468,67 @@ describe("validarDupla_", () => {
     const r = validarDupla_(u("A", "AMBOS"), u("B", "TANQUE"));
     expect(r.ok).toBe(true);
     expect(r.rol).toBe("TANQUE");
+  });
+});
+
+// ─────────────────────────────────────────────
+// porQueMuereLaPropuesta_ — qué suelta el puesto reservado
+//
+// Equivocarse aquí es caro en una sola dirección: una propuesta que muere de
+// más se vuelve a generar en la corrida siguiente; una que no muere nunca deja
+// al técnico sin trabajo el resto de la jornada.
+// ─────────────────────────────────────────────
+describe("porQueMuereLaPropuesta_", () => {
+  const VIN = "LSJA24U97PZ041882";
+  const prop = (extra = {}) => ({
+    id: "p1", vin: VIN, rol_trabajo: "MOTOR", user_id: "tec-a",
+    asignacion_id: "asg-1", ...extra,
+  });
+  const ctx = (extra = {}) => ({
+    vinesEnZona: new Set([VIN]),
+    finalizados: new Set(),
+    asgPorId: new Map([["asg-1", { user_id: "tec-a", activo: true }]]),
+    ...extra,
+  });
+
+  it("con su asignación viva y el carro en zona, sigue en pie", () => {
+    expect(porQueMuereLaPropuesta_(prop(), ctx())).toBe(null);
+  });
+
+  it("muere si el carro salió de zona", () => {
+    const r = porQueMuereLaPropuesta_(prop(), ctx({ vinesEnZona: new Set() }));
+    expect(r).toMatch(/salió de zona/);
+  });
+
+  it("muere si ese puesto ya se cerró", () => {
+    const r = porQueMuereLaPropuesta_(prop(), ctx({ finalizados: new Set([`${VIN}|MOTOR`]) }));
+    expect(r).toMatch(/ya se cerró/);
+  });
+
+  it("el puesto cerrado es por rol: cerrar el TANQUE no mata la del MOTOR", () => {
+    const r = porQueMuereLaPropuesta_(prop(), ctx({ finalizados: new Set([`${VIN}|TANQUE`]) }));
+    expect(r).toBe(null);
+  });
+
+  // El bug de LUIS URIBE (2026-08-14): publicada sin asignación real, ninguna
+  // otra condición podía matarla y lo dejó sin recibir carro toda la jornada.
+  it("muere si se publicó sin asignación real, aunque el carro siga en zona", () => {
+    const r = porQueMuereLaPropuesta_(prop({ asignacion_id: null }), ctx());
+    expect(r).toMatch(/sin asignación real/);
+  });
+
+  it("muere si la asignación que la respaldaba desapareció", () => {
+    const r = porQueMuereLaPropuesta_(prop(), ctx({ asgPorId: new Map() }));
+    expect(r).toMatch(/ya no existe/);
+  });
+
+  it("muere si esa asignación se dio de baja", () => {
+    const asgPorId = new Map([["asg-1", { user_id: "tec-a", activo: false }]]);
+    expect(porQueMuereLaPropuesta_(prop(), ctx({ asgPorId }))).toMatch(/se dio de baja/);
+  });
+
+  it("muere si el puesto se reasignó a otro técnico", () => {
+    const asgPorId = new Map([["asg-1", { user_id: "tec-b", activo: true }]]);
+    expect(porQueMuereLaPropuesta_(prop(), ctx({ asgPorId }))).toMatch(/se reasignó/);
   });
 });
