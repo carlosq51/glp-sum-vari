@@ -426,7 +426,13 @@ function renderSupervisor_(j) {
     return;
   }
 
-  if (sum) sum.textContent = `Resultados: ${uiList.length}`;
+  // j.truncated: el backend recortó por volumen (pasa solo en el listado sin
+  // filtros). Decirlo, para que nadie lea el número como si fuera el total.
+  if (sum) {
+    sum.textContent = j.truncated
+      ? `Resultados: ${uiList.length} — vista recortada. Elige un mes, un rango o busca un VIN/técnico para ver todo.`
+      : `Resultados: ${uiList.length}`;
+  }
 
   renderTable_(box, { uiList, escapeHtml, fmtShort_ });
 }

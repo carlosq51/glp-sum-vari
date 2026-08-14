@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { supabaseHeaders_, supabaseGet_ } from "../lib/supabase.js";
+import { supabaseHeaders_, supabaseGet_, supabaseFetchAll_ } from "../lib/supabase.js";
 import { addServerTiming_ } from "../lib/timing.js";
 import { getConfig_, CONFIG_DEFAULTS } from "../lib/config.js";
 
@@ -21,6 +21,8 @@ router.get("/api/supervisor/report", async (req, res) => {
   try {
     const payload = {
       q:         String(req.query.q         || "").trim(),
+      name:      String(req.query.name      || "").trim(),
+      vin:       String(req.query.vin       || "").trim(),
       from:      String(req.query.from      || "").trim(),
       to:        String(req.query.to        || "").trim(),
       month:     String(req.query.month     || "").trim(),
@@ -33,16 +35,86 @@ router.get("/api/supervisor/report", async (req, res) => {
   }
 });
 
+/**
+ * resolveSearchScope_ — traduce el texto buscado a filtros que entiende Supabase.
+ *
+ * Antes la búsqueda se hacía en Node sobre las filas ya traídas. Como PostgREST
+ * corta en db-max-rows (1000), un VIN de hace dos meses simplemente no venía en
+ * el lote y el reporte lo daba por inexistente aunque estuviera en la base.
+ * Ahora el filtro viaja a la BD: primero resolvemos qué work_orders/usuarios
+ * coinciden y después pedimos SOLO sus asignaciones.
+ *
+ * Devuelve { extra, vacio }: `extra` son params ya listos para concatenar a la
+ * URL; `vacio` indica que el término no coincide con nada (no hay que consultar).
+ */
+async function resolveSearchScope_({ SUPABASE_URL, headers, nameQ, vinQ, q }) {
+  const like_ = (t) => encodeURIComponent(`*${t}*`);
+
+  // null = la consulta auxiliar falló → mejor no filtrar en BD que devolver vacío
+  const ids_ = async (url) => {
+    const r = await fetch(url, { method: "GET", headers }).catch(() => null);
+    if (!r || !r.ok) return null;
+    const rows = await r.json().catch(() => []);
+    return (rows || []).map((x) => x.id);
+  };
+  const woIds_   = (t) => ids_(`${SUPABASE_URL}/rest/v1/work_orders?select=id&vin=ilike.${like_(t)}`);
+  const userIds_ = (t) => ids_(`${SUPABASE_URL}/rest/v1/usuarios?select=id&or=(nombre.ilike.${like_(t)},email.ilike.${like_(t)})`);
+
+  const params = [];
+  let vacio = false;
+
+  if (vinQ) {
+    const ids = await woIds_(vinQ);
+    if (ids && !ids.length) vacio = true;
+    else if (ids) params.push(`work_order_id=in.(${ids.join(",")})`);
+  }
+  if (nameQ) {
+    const ids = await userIds_(nameQ);
+    if (ids && !ids.length) vacio = true;
+    else if (ids) params.push(`user_id=in.(${ids.join(",")})`);
+  }
+  if (!vinQ && !nameQ && q) {
+    // Término suelto (POST antiguo / URL a mano): puede ser VIN o persona.
+    const [wo, us] = await Promise.all([woIds_(q), userIds_(q)]);
+    if (wo && us) {
+      if (!wo.length && !us.length) vacio = true;
+      else params.push(`and=(or(work_order_id.in.(${wo.join(",")}),user_id.in.(${us.join(",")})))`);
+    }
+  }
+
+  return { extra: params.length ? "&" + params.join("&") : "", vacio };
+}
+
 async function handleSupervisorReport_(payload, res) {
   const t1 = Date.now();
   const track = String(payload.track || "CONVERSION").toUpperCase();
   const q = String(payload.q || "").trim().toLowerCase();
-  const from = String(payload.from || "").trim();
-  const to = String(payload.to || "").trim();
-  const month = String(payload.month || "").trim(); // YYYY-MM
+  const nameQ = String(payload.name || "").trim().toLowerCase();
+  const vinQ = String(payload.vin || "").trim().toLowerCase();
+
+  // Un VIN es único: buscarlo tiene que encontrarlo esté o no dentro del rango.
+  // Las fechas solo acotan listados generales o búsquedas por técnico.
+  const ignoraFechas = !!vinQ;
+  const from = ignoraFechas ? "" : String(payload.from || "").trim();
+  const to = ignoraFechas ? "" : String(payload.to || "").trim();
+  const month = ignoraFechas ? "" : String(payload.month || "").trim(); // YYYY-MM
 
   const headers = supabaseHeaders_();
   const SUPABASE_URL = process.env.SUPABASE_URL;
+  const cfg = await getConfig_();
+  // Sin rango ni búsqueda el reporte es un listado exploratorio: traer los 6k+
+  // registros históricos costaría ~9 s. Ahí sí se recorta (y se avisa con
+  // `truncated`). En cuanto hay fecha o término de búsqueda se trae TODO.
+  const hayFiltro = !!(from || to || month || nameQ || vinQ || q);
+  const pageOpts = {
+    pageSize: cfg.LIM_PAGINA_SUPABASE,
+    maxRows: hayFiltro ? cfg.LIM_REPORTE_MAX_FILAS : cfg.LIM_PAGINA_SUPABASE,
+  };
+
+  const scope = await resolveSearchScope_({ SUPABASE_URL, headers, nameQ, vinQ, q });
+  if (scope.vacio) {
+    return res.json({ ok: true, items: [], count: 0, isHistorical: false, _timing: `${Date.now() - t1}ms`, _source: "supabase" });
+  }
 
   // Determinar tipo_ot según track
   let tipoOtFilter = "";
@@ -164,27 +236,27 @@ async function handleSupervisorReport_(payload, res) {
       `&order=updated_at.desc`;
   }
 
-  const fetches = [
-    fetch(urlMain, { method: "GET", headers }),
-    urlCrossFin    ? fetch(urlCrossFin,    { method: "GET", headers }) : Promise.resolve(null),
-    urlCrossActive ? fetch(urlCrossActive, { method: "GET", headers }) : Promise.resolve(null),
-    urlHistStart   ? fetch(urlHistStart,   { method: "GET", headers }) : Promise.resolve(null),
-  ];
+  // El filtro de búsqueda va en TODAS las consultas (incluidas las cross-day)
+  const conScope_ = (url) => (url ? url + scope.extra : null);
 
-  const [resp, respCrossFin, respCrossActive, respHistStart] = await Promise.all(fetches);
+  // Paginado obligatorio: un mes de conversión pasa de 1300 asignaciones y
+  // PostgREST devolvía solo las primeras 1000 sin marcar el recorte.
+  const traer_ = (url) => (url
+    ? supabaseFetchAll_(conScope_(url), headers, pageOpts)
+    : Promise.resolve({ ok: true, rows: [], truncated: false }));
 
-  if (!resp.ok) {
-    const text = await resp.text().catch(() => "");
-    console.error("[SUPERVISOR_REPORT] Supabase error:", resp.status, text.slice(0, 300));
-    return res.status(500).json({ ok: false, error: `Supabase: ${resp.status}` });
+  const [rMain, rCrossFin, rCrossActive, rHistStart] = await Promise.all([
+    traer_(urlMain), traer_(urlCrossFin), traer_(urlCrossActive), traer_(urlHistStart),
+  ]);
+
+  if (!rMain.ok) {
+    console.error("[SUPERVISOR_REPORT] Supabase error:", rMain.status, rMain.error);
+    return res.status(500).json({ ok: false, error: `Supabase: ${rMain.status}` });
   }
 
-  const [rawMain, rawCrossFin, rawCrossActive, rawHistStart] = await Promise.all([
-    resp.json(),
-    respCrossFin    ? respCrossFin.json().catch(() => [])    : [],
-    respCrossActive ? respCrossActive.json().catch(() => []) : [],
-    respHistStart   ? respHistStart.json().catch(() => [])   : [],
-  ]);
+  const truncated = rMain.truncated || rCrossFin.truncated || rCrossActive.truncated || rHistStart.truncated;
+  const rawMain = rMain.rows, rawCrossFin = rCrossFin.rows;
+  const rawCrossActive = rCrossActive.rows, rawHistStart = rHistStart.rows;
 
   // Merge deduplicando por id; marcar cross-day
   // - Histórico Q1: items cerrados dentro del rango (_crossDay: false)
@@ -212,18 +284,17 @@ async function handleSupervisorReport_(payload, res) {
     if (wo.vin) vinsSet.add(wo.vin);
   });
 
-  let vinsMap = {};
-  if (vinsSet.size > 0) {
-    const vinsArray = Array.from(vinsSet);
-    const vinsUrl = `${SUPABASE_URL}/rest/v1/vins?select=vin,modelo&vin=in.(${vinsArray.join(",")})`;
+  // En trozos: un mes entero son cientos de VINs y un solo `in.(...)` produce
+  // una URL que el servidor rechaza por longitud.
+  const vinsMap = {};
+  const vinsArray = Array.from(vinsSet);
+  for (let i = 0; i < vinsArray.length; i += cfg.LIM_VINS_POR_CONSULTA) {
+    const trozo = vinsArray.slice(i, i + cfg.LIM_VINS_POR_CONSULTA);
+    const vinsUrl = `${SUPABASE_URL}/rest/v1/vins?select=vin,modelo&vin=in.(${trozo.join(",")})`;
     const vinsResp = await fetch(vinsUrl, { method: "GET", headers }).catch(() => null);
-
-    if (vinsResp && vinsResp.ok) {
-      const vinsData = await vinsResp.json();
-      (vinsData || []).forEach(v => {
-        vinsMap[v.vin] = v.modelo || "";
-      });
-    }
+    if (!vinsResp || !vinsResp.ok) continue;
+    const vinsData = await vinsResp.json().catch(() => []);
+    (vinsData || []).forEach(v => { vinsMap[v.vin] = v.modelo || ""; });
   }
 
   // Mapear a formato esperado por el frontend
@@ -263,19 +334,24 @@ async function handleSupervisorReport_(payload, res) {
     };
   });
 
-  // Filtro por texto (nombre, email, vin)
-  if (q) {
+  // Afinado en memoria sobre lo que ya acotó la BD. Nombre y VIN se evalúan por
+  // separado: unidos en un solo texto ("juan LVTD...") nunca calzaban, porque en
+  // el registro el email va entre medio.
+  if (nameQ || vinQ || q) {
     items = items.filter(it => {
-      const haystack = [it.userName, it.userEmail, it.vin, it.tipoRamal]
-        .join(" ").toLowerCase();
-      return haystack.includes(q);
+      if (vinQ && !String(it.vin || "").toLowerCase().includes(vinQ)) return false;
+      if (nameQ && !`${it.userName} ${it.userEmail}`.toLowerCase().includes(nameQ)) return false;
+      if (!nameQ && !vinQ && q) {
+        return [it.userName, it.userEmail, it.vin, it.tipoRamal].join(" ").toLowerCase().includes(q);
+      }
+      return true;
     });
   }
 
   const duration = Date.now() - t1;
-  console.log(`[SUPERVISOR_REPORT] ${track} ${isHistorical ? "HISTÓRICO(updated_at)" : "HOY(fecha_asignacion)"}: ${items.length} items en ${duration}ms`);
+  console.log(`[SUPERVISOR_REPORT] ${track} ${isHistorical ? "HISTÓRICO(updated_at)" : "HOY(fecha_asignacion)"}: ${items.length} items en ${duration}ms${truncated ? " ⚠ TRUNCADO" : ""}`);
 
-  return res.json({ ok: true, items, count: items.length, isHistorical, _timing: `${duration}ms`, _source: "supabase" });
+  return res.json({ ok: true, items, count: items.length, isHistorical, truncated, _timing: `${duration}ms`, _source: "supabase" });
 }
 
 // =========================
