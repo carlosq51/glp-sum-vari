@@ -25,7 +25,7 @@ import {
   validarDupla_, unidadesDeTrabajo_, payloadDemo_,
   enTurno_, duracionTurno_, JORNADA_INICIO_H,
 } from "../lib/despacho.js";
-import { construirPool_, generarPropuestas_ } from "../lib/despacho-motor.js";
+import { construirPool_, generarPropuestas_, ESPERA_TOPE_MIN } from "../lib/despacho-motor.js";
 
 // El modelo de emparejamiento vive donde lo deja routes/ml.js al entrenar.
 const PAIRING_MODEL_PATH = "./pairing-model.json";
@@ -836,6 +836,22 @@ async function contextoDelTaller_(cfg, fecha) {
     creditosHoy.set(a.user_id, (creditosHoy.get(a.user_id) || 0) + 1);
   }
 
+  // Desde cuándo está parado cada técnico — alimenta el criterio de espera.
+  //
+  // Es el más reciente entre "terminé mi último carro" y "marqué ingreso":
+  // quien nunca ha terminado nada hoy lleva esperando desde que entró, y quien
+  // acaba de entregar un carro empieza a contar desde ese momento. Sin el
+  // ingreso, el que llega a media mañana entraría con espera infinita y se
+  // llevaría todos los carros de golpe.
+  const ultimoFin = new Map();
+  for (const a of finHoy) {
+    const ts = new Date(a.updated_at).getTime();
+    if (!Number.isFinite(ts)) continue;
+    if (!ultimoFin.has(a.user_id) || ts > ultimoFin.get(a.user_id)) {
+      ultimoFin.set(a.user_id, ts);
+    }
+  }
+
   // Dónde está cada técnico: la zona del carro que tiene o tuvo más
   // recientemente. Es lo que alimenta el criterio de cercanía.
   const zonaUltima = new Map();
@@ -860,6 +876,10 @@ async function contextoDelTaller_(cfg, fecha) {
 
   const tecnicosCtx = tecnicos.map(t => {
     const j = reconstruirJornada_(porUser.get(t.id) || []);
+    const ingresoMs = j.ingresoAt ? new Date(j.ingresoAt).getTime() : null;
+    const finMs     = ultimoFin.get(t.id) ?? null;
+    const libreDesde = finMs != null && ingresoMs != null ? Math.max(finMs, ingresoMs)
+                     : finMs ?? ingresoMs;
     return {
       user_id: t.id, nombre: t.nombre, especialidad: t.especialidad,
       estadoEfectivo: estadoEfectivo_(j.estado, {
@@ -867,6 +887,7 @@ async function contextoDelTaller_(cfg, fecha) {
         ahoraMin, tieneTrabajo: ocupadosIds.has(t.id),
       }),
       zonaUltima: zonaUltima.get(t.id) || null,
+      libreDesde: libreDesde != null ? new Date(libreDesde).toISOString() : null,
     };
   });
 
@@ -893,8 +914,10 @@ async function contextoDelTaller_(cfg, fecha) {
     ctx: {
       indiceModelos: modelo?.modelFeaturesIndex || {},
       techsPorId,
+      // creditosHoy ya no puntúa (lo hacía el criterio de equidad, sustituido
+      // por espera): se conserva porque el panel del supervisor lo muestra.
       creditosHoy,
-      metaCarros: Number(cfg.META_CARROS_TEC) || 2,
+      esperaTopeMin: Number(cfg.DESPACHO_ESPERA_TOPE_MIN) || ESPERA_TOPE_MIN,
       creditosDupla: new Map(),   // se llena abajo
     },
   };

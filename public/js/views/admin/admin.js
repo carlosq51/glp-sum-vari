@@ -538,6 +538,18 @@ async function loadTab() {
       const metaCal       = String(cfg.META_CALIDAD);
       const metaMensual   = String(cfg.META_MENSUAL);
       const metaCarrosTec = String(cfg.META_CARROS_TEC);
+      // Despacho dirigido. Hasta ahora estas claves solo se podían tocar
+      // entrando a Supabase a mano, que es justo lo que hay que evitar:
+      // son los valores que se afinan mientras el taller está corriendo.
+      const dspModo       = String(cfg.DESPACHO_MODO || "OFF").toUpperCase();
+      const dspTurnoIni   = String(cfg.DESPACHO_TURNO_INICIO);
+      const dspTurnoFin   = String(cfg.DESPACHO_TURNO_FIN);
+      const dspIntervalo  = String(cfg.DESPACHO_INTERVALO_SEG);
+      const dspQrVentana  = String(cfg.DESPACHO_QR_VENTANA_SEG);
+      const dspTtlProp    = String(cfg.DESPACHO_TTL_PROPUESTA_MIN);
+      const dspVarado     = String(cfg.DESPACHO_VARADO_MIN);
+      const dspInicioMax  = String(cfg.DESPACHO_INICIO_MAX_MIN);
+      const dspEsperaTope = String(cfg.DESPACHO_ESPERA_TOPE_MIN);
 
       wrap.innerHTML = `
         <div class="adminConfigPanel">
@@ -660,6 +672,95 @@ async function loadTab() {
             </div>
           </div>
 
+          <!-- DESPACHO DIRIGIDO -->
+          <div class="adminConfigSection">
+            <h4 class="adminConfigTitle">${icon("zap", 15)} Despacho dirigido</h4>
+            <p class="small muted">
+              El motor que decide qué carro le toca a quién. Corre solo cada
+              <em>intervalo</em>, pero únicamente dentro de la ventana de turno.
+            </p>
+
+            <p class="small muted" style="margin:14px 0 8px;">
+              <strong>Modo</strong> —
+              <b>Apagado</b>: no hace nada.
+              <b>Sombra</b>: calcula y guarda propuestas que <em>nadie ve</em>, para auditar el criterio.
+              <b>Real</b>: crea la OT y avisa al celular del técnico.
+            </p>
+            <div class="adminHorarioGrid">
+              <label class="adminLabel adminLabelInline">
+                ${icon("settings", 14)} Modo del motor
+                <select id="cfgDspModo" style="width:150px;">
+                  <option value="OFF"    ${dspModo === "OFF"    ? "selected" : ""}>Apagado</option>
+                  <option value="SOMBRA" ${dspModo === "SOMBRA" ? "selected" : ""}>Sombra (no publica)</option>
+                  <option value="REAL"   ${dspModo === "REAL"   ? "selected" : ""}>Real</option>
+                </select>
+              </label>
+            </div>
+
+            <p class="small muted" style="margin:14px 0 8px;">
+              <strong>Ventana de turno</strong> — fuera de este rango el motor no reparte.
+              El fin <em>puede ser menor que el inicio</em>: 07:00 → 01:00 significa que
+              cruza la medianoche.
+            </p>
+            <div class="adminHorarioGrid">
+              <div class="adminHorarioRow">
+                <label class="adminLabel adminLabelInline">
+                  Inicio
+                  <input id="cfgDspTurnoIni" type="time" value="${escHtml(dspTurnoIni)}" style="width:120px;">
+                </label>
+                <label class="adminLabel adminLabelInline">
+                  Fin
+                  <input id="cfgDspTurnoFin" type="time" value="${escHtml(dspTurnoFin)}" style="width:120px;">
+                </label>
+              </div>
+            </div>
+
+            <p class="small muted" style="margin:14px 0 8px;">
+              <strong>Reparto</strong> — el carro va a quien lleva más tiempo parado.
+              El <em>tope de espera</em> es a partir de cuántos minutos esa prioridad ya
+              está al máximo: más allá de eso, seguir esperando no suma.
+            </p>
+            <div class="adminHorarioGrid">
+              <label class="adminLabel adminLabelInline">
+                ${icon("clock", 14)} Tope de espera (min)
+                <input id="cfgDspEsperaTope" type="number" min="1" max="240" value="${escHtml(dspEsperaTope)}" style="width:100px;">
+              </label>
+              <label class="adminLabel adminLabelInline">
+                ${icon("zap", 14)} Intervalo del motor (seg)
+                <input id="cfgDspIntervalo" type="number" min="15" max="900" value="${escHtml(dspIntervalo)}" style="width:100px;">
+              </label>
+            </div>
+
+            <p class="small muted" style="margin:14px 0 8px;">
+              <strong>Tiempos de control</strong> — vida del QR de asistencia, espera antes de
+              expirar una propuesta sin confirmar, minutos en zona sin terminar que disparan
+              alerta de varado, y margen para arrancar un carro asignado antes de devolverlo a la cola.
+            </p>
+            <div class="adminHorarioGrid">
+              <label class="adminLabel adminLabelInline">
+                QR asistencia (seg)
+                <input id="cfgDspQrVentana" type="number" min="15" max="3600" value="${escHtml(dspQrVentana)}" style="width:100px;">
+              </label>
+              <label class="adminLabel adminLabelInline">
+                Propuesta expira (min)
+                <input id="cfgDspTtlProp" type="number" min="1" max="120" value="${escHtml(dspTtlProp)}" style="width:100px;">
+              </label>
+              <label class="adminLabel adminLabelInline">
+                Alerta de varado (min)
+                <input id="cfgDspVarado" type="number" min="10" max="1440" value="${escHtml(dspVarado)}" style="width:100px;">
+              </label>
+              <label class="adminLabel adminLabelInline">
+                Margen para arrancar (min)
+                <input id="cfgDspInicioMax" type="number" min="1" max="240" value="${escHtml(dspInicioMax)}" style="width:100px;">
+              </label>
+            </div>
+
+            <div style="margin-top:14px;display:flex;gap:10px;align-items:center;">
+              <button id="btnSaveDespacho" type="button" class="adminBtnOk">Guardar despacho</button>
+              <span id="cfgDespachoMsg" class="small muted"></span>
+            </div>
+          </div>
+
           <!-- FECHA CORTE MOVILIZADOR -->
           <div class="adminConfigSection">
             <h4 class="adminConfigTitle">Configuración del Movilizador</h4>
@@ -775,6 +876,7 @@ async function loadTab() {
       $id("btnSaveConfig")?.addEventListener("click", saveConfig_);
       $id("btnSaveHorarios")?.addEventListener("click", saveHorarios_);
       $id("btnSaveMetas")?.addEventListener("click", saveMetas_);
+      $id("btnSaveDespacho")?.addEventListener("click", saveDespacho_);
 
       $id("btnTrainVinModel")?.addEventListener("click", async () => {
         const msg = $id("mlMsg");
@@ -1040,6 +1142,69 @@ async function saveMetas_() {
     const j = await resp.json();
     if (!j?.ok) throw new Error(j?.error || "Error");
     if (msgEl) { msgEl.textContent = "\u2714 Guardado"; msgEl.style.color = "var(--ok)"; }
+  } catch (e) {
+    if (msgEl) { msgEl.textContent = `Error: ${e.message}`; msgEl.style.color = "var(--danger)"; }
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+/**
+ * Guarda la config del despacho dirigido.
+ *
+ * Los `||` de abajo NO son valores mágicos: son el mismo default que declara
+ * lib/config.js, repetido aquí solo para que un campo borrado no mande "" a
+ * app_config (una cadena vacía sí sobreescribe el default en el servidor).
+ */
+async function saveDespacho_() {
+  const btn   = $id("btnSaveDespacho");
+  const msgEl = $id("cfgDespachoMsg");
+
+  const modo      = $id("cfgDspModo")?.value || "OFF";
+  const turnoIni  = $id("cfgDspTurnoIni")?.value?.trim() || "07:00";
+  const turnoFin  = $id("cfgDspTurnoFin")?.value?.trim() || "01:00";
+  const esperaTop = String(Number($id("cfgDspEsperaTope")?.value) || 30);
+  const intervalo = String(Number($id("cfgDspIntervalo")?.value)  || 60);
+  const qrVentana = String(Number($id("cfgDspQrVentana")?.value)  || 300);
+  const ttlProp   = String(Number($id("cfgDspTtlProp")?.value)    || 10);
+  const varado    = String(Number($id("cfgDspVarado")?.value)     || 240);
+  const inicioMax = String(Number($id("cfgDspInicioMax")?.value)  || 20);
+
+  if (turnoIni === turnoFin) {
+    if (msgEl) {
+      msgEl.textContent = "Inicio y fin de turno no pueden ser iguales.";
+      msgEl.style.color = "var(--danger)";
+    }
+    return;
+  }
+
+  if (btn) btn.disabled = true;
+  if (msgEl) { msgEl.textContent = "Guardando…"; msgEl.style.color = ""; }
+  try {
+    const resp = await adminFetch_("/api/admin/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ configs: [
+        { key: "DESPACHO_MODO",             value: modo },
+        { key: "DESPACHO_TURNO_INICIO",     value: turnoIni },
+        { key: "DESPACHO_TURNO_FIN",        value: turnoFin },
+        { key: "DESPACHO_ESPERA_TOPE_MIN",  value: esperaTop },
+        { key: "DESPACHO_INTERVALO_SEG",    value: intervalo },
+        { key: "DESPACHO_QR_VENTANA_SEG",   value: qrVentana },
+        { key: "DESPACHO_TTL_PROPUESTA_MIN", value: ttlProp },
+        { key: "DESPACHO_VARADO_MIN",       value: varado },
+        { key: "DESPACHO_INICIO_MAX_MIN",   value: inicioMax },
+      ]}),
+    });
+    const j = await resp.json();
+    if (!j?.ok) throw new Error(j?.error || "Error");
+    if (msgEl) {
+      msgEl.textContent = modo === "REAL"
+        ? "✔ Guardado — el motor reparte en la próxima corrida"
+        : "✔ Guardado";
+      msgEl.style.color = "var(--ok)";
+    }
+    try { localStorage.removeItem("glp_app_config_cache"); } catch {}
   } catch (e) {
     if (msgEl) { msgEl.textContent = `Error: ${e.message}`; msgEl.style.color = "var(--danger)"; }
   } finally {

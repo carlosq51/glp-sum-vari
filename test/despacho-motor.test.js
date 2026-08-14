@@ -1,21 +1,26 @@
 import { describe, it, expect } from "vitest";
 
 const {
-  distanciaZonas_, construirPool_, familiaridad_, equidad_, cercania_,
+  distanciaZonas_, construirPool_, familiaridad_, espera_, cercania_,
   compatibilidad_, puntuar_, generarPropuestas_, PESOS,
 } = await import("../lib/despacho-motor.js");
 
 const tec = (id, esp = "TANQUE") => ({ user_id: id, nombre: id, especialidad: esp });
 
-const unidad = (ids, rol = "TANQUE", extra = {}) => ({
-  tipo: ids.length > 1 ? "DUPLA" : "SOLO",
-  duplaId: ids.length > 1 ? "d-" + ids.join("") : null,
-  rol,
-  miembros: ids.map(i => tec(i, rol)),
-  asignable: true,
-  ultimoResponsable: null,
-  ...extra,
-});
+const unidad = (ids, rol = "TANQUE", extra = {}) => {
+  // `libreDesde` viaja en los MIEMBROS, no en la unidad: en dupla cada uno
+  // queda libre en su momento y el criterio se queda con el más reciente.
+  const { libreDesde = null, libresDesde = null, ...rest } = extra;
+  return {
+    tipo: ids.length > 1 ? "DUPLA" : "SOLO",
+    duplaId: ids.length > 1 ? "d-" + ids.join("") : null,
+    rol,
+    miembros: ids.map(i => ({ ...tec(i, rol), libreDesde: libresDesde?.[i] ?? libreDesde })),
+    asignable: true,
+    ultimoResponsable: null,
+    ...rest,
+  };
+};
 
 const zona = (zona_id, vin, extra = {}) => ({
   zona_id, vin, estado: "ESPERANDO",
@@ -190,17 +195,35 @@ describe("familiaridad_", () => {
   });
 });
 
-describe("equidad_", () => {
-  it("quien no ha hecho nada tiene prioridad máxima", () => {
-    expect(equidad_(unidad(["A"]), new Map(), 2)).toBe(1);
+describe("espera_", () => {
+  const AHORA = new Date("2026-08-13T20:00:00.000Z").getTime();
+  const haceMin = m => new Date(AHORA - m * 60000).toISOString();
+
+  it("quien acaba de quedar libre no tiene prioridad", () => {
+    expect(espera_(unidad(["A"], "TANQUE", { libreDesde: haceMin(0) }), AHORA)).toBe(0);
   });
 
-  it("quien ya cumplió la meta baja a cero", () => {
-    expect(equidad_(unidad(["A"]), new Map([["A", 2]]), 2)).toBe(0);
+  it("a mitad del tope queda a la mitad", () => {
+    expect(espera_(unidad(["A"], "TANQUE", { libreDesde: haceMin(15) }), AHORA, 30)).toBe(0.5);
   });
 
-  it("a mitad de meta queda a la mitad", () => {
-    expect(equidad_(unidad(["A"]), new Map([["A", 1]]), 2)).toBe(0.5);
+  it("pasado el tope se queda en el máximo, no sigue escalando", () => {
+    const justo = espera_(unidad(["A"], "TANQUE", { libreDesde: haceMin(30) }), AHORA, 30);
+    const mucho = espera_(unidad(["A"], "TANQUE", { libreDesde: haceMin(300) }), AHORA, 30);
+    expect(justo).toBe(1);
+    expect(mucho).toBe(1);
+  });
+
+  // La dupla no está libre hasta que lo están sus dos miembros.
+  it("en dupla manda el que lleva MENOS esperando", () => {
+    const u = unidad(["A", "B"], "TANQUE", {
+      libresDesde: { A: haceMin(60), B: haceMin(6) },
+    });
+    expect(espera_(u, AHORA, 30)).toBeCloseTo(0.2, 5);
+  });
+
+  it("sin dato de cuándo quedó libre es neutro", () => {
+    expect(espera_(unidad(["A"]), AHORA)).toBe(0.5);
   });
 });
 
@@ -257,7 +280,7 @@ describe("puntuar_", () => {
     expect(p.score).toBeGreaterThan(0);
     expect(p.score).toBeLessThanOrEqual(1);
     expect(Object.keys(p.detalle).sort()).toEqual(
-      ["cercania", "compatibilidad", "equidad", "familiaridad"]);
+      ["cercania", "compatibilidad", "espera", "familiaridad"]);
     expect(p.razon).toContain("Zona 4");
   });
 
@@ -281,7 +304,7 @@ describe("puntuar_", () => {
 // Reparto completo
 // ─────────────────────────────────────────────
 describe("generarPropuestas_", () => {
-  const ctx = { indiceModelos: {}, creditosHoy: new Map(), metaCarros: 2, techsPorId: {} };
+  const ctx = { indiceModelos: {}, techsPorId: {} };
 
   it("cubre los dos puestos de un carro con las unidades de cada rol", () => {
     const pool = construirPool_({ zonas: [zona(4, "V1")] });
@@ -363,11 +386,29 @@ describe("generarPropuestas_", () => {
     expect(r.propuestas[0].user_id).toBe("EXPERTO");
   });
 
-  it("a igualdad de todo, prefiere a quien va atrasado en su meta", () => {
+  it("a igualdad de todo, prefiere a quien lleva más esperando", () => {
+    const AHORA = new Date("2026-08-13T20:00:00.000Z").getTime();
+    const haceMin = m => new Date(AHORA - m * 60000).toISOString();
     const pool = construirPool_({ zonas: [zona(4, "V1")] });
-    const ctx2 = { ...ctx, creditosHoy: new Map([["ADELANTADO", 2], ["ATRASADO", 0]]) };
-    const r = generarPropuestas_(pool, [unidad(["ADELANTADO"], "TANQUE"), unidad(["ATRASADO"], "TANQUE")], ctx2);
-    expect(r.propuestas[0].user_id).toBe("ATRASADO");
+    const r = generarPropuestas_(pool, [
+      unidad(["RECIEN"],  "TANQUE", { libreDesde: haceMin(1) }),
+      unidad(["PARADO"],  "TANQUE", { libreDesde: haceMin(45) }),
+    ], { ...ctx, ahoraMs: AHORA });
+    expect(r.propuestas[0].user_id).toBe("PARADO");
+    expect(r.propuestas[0].razon).toContain("el que más lleva esperando");
+  });
+
+  // Lo que cambia respecto al criterio viejo: la espera NO se satura. Con
+  // equidad, pasados los 2 carros del día todos valían 0 y el criterio moría.
+  it("la espera sigue ordenando aunque ambos hayan hecho muchos carros", () => {
+    const AHORA = new Date("2026-08-13T20:00:00.000Z").getTime();
+    const haceMin = m => new Date(AHORA - m * 60000).toISOString();
+    const pool = construirPool_({ zonas: [zona(4, "V1")] });
+    const r = generarPropuestas_(pool, [
+      unidad(["RAPIDO"], "TANQUE", { libreDesde: haceMin(2) }),
+      unidad(["LENTO"],  "TANQUE", { libreDesde: haceMin(50) }),
+    ], { ...ctx, ahoraMs: AHORA });
+    expect(r.propuestas[0].user_id).toBe("LENTO");
   });
 
   it("a igualdad de todo, prefiere a quien está más cerca", () => {
