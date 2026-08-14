@@ -119,6 +119,38 @@ describe("construirPool_", () => {
     expect(r.excluidos.VIN1).toBe("PUESTOS_OCUPADOS");
   });
 
+  // El bug del 13-ago-2026: un puesto FINALIZADO (que conserva activo=true)
+  // no contaba como ocupado, el motor lo proponía y el INSERT chocaba contra
+  // idx_asg_active. El error moría en un console.warn y el motor reintentaba
+  // en bucle sin asignar nada.
+  it("un puesto ya terminado no se vuelve a repartir", () => {
+    const r = construirPool_({
+      zonas: [zona(4, "VIN1")],
+      ocupados: [{ vin: "VIN1", rol_trabajo: "MOTOR", terminado: true }],
+    });
+    expect(r.elegibles[0].rolesLibres).toEqual(["TANQUE"]);
+  });
+
+  it("distingue trabajo completo de puestos en curso", () => {
+    const completo = construirPool_({
+      zonas: [zona(4, "VIN1")],
+      ocupados: [
+        { vin: "VIN1", rol_trabajo: "MOTOR",  terminado: true },
+        { vin: "VIN1", rol_trabajo: "TANQUE", terminado: true },
+      ],
+    });
+    expect(completo.excluidos.VIN1).toBe("TRABAJO_COMPLETO");
+
+    const mixto = construirPool_({
+      zonas: [zona(4, "VIN1")],
+      ocupados: [
+        { vin: "VIN1", rol_trabajo: "MOTOR",  terminado: true },
+        { vin: "VIN1", rol_trabajo: "TANQUE" },
+      ],
+    });
+    expect(mixto.excluidos.VIN1).toBe("PUESTOS_OCUPADOS");
+  });
+
   it("ordena FIFO: el carro que lleva más esperando va primero", () => {
     const r = construirPool_({
       zonas: [

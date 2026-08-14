@@ -810,10 +810,24 @@ async function contextoDelTaller_(cfg, fecha) {
     estado: z.vin ? (vinEstado.get(z.vin) === "FINALIZADO" ? "FINALIZADO" : "ACTIVO") : "LIBRE",
   }));
 
-  // Puestos ya tomados: asignaciones activas sin terminar.
+  // Puestos ya tomados.
+  //
+  // El criterio tiene que calzar EXACTAMENTE con idx_asg_active (UNIQUE sobre
+  // work_order_id+rol_trabajo WHERE activo), que es quien tiene la última
+  // palabra en el INSERT. Antes esto excluía las FINALIZADO y el motor las veía
+  // como puesto libre: proponía el carro, el índice rechazaba el INSERT y el
+  // error moría en un console.warn. El motor reintentaba cada 60 s, para
+  // siempre, sin que nada apareciera en pantalla.
+  //
+  // Incluirlas además es lo correcto de fondo: en este modelo `activo` no se
+  // apaga al terminar, y un puesto ya terminado no es trabajo que repartir.
   const ocupados = asgs
-    .filter(a => a.activo && a.estado_actual !== "FINALIZADO" && woVin.get(a.work_order_id))
-    .map(a => ({ vin: woVin.get(a.work_order_id), rol_trabajo: a.rol_trabajo }));
+    .filter(a => a.activo && woVin.get(a.work_order_id))
+    .map(a => ({
+      vin: woVin.get(a.work_order_id),
+      rol_trabajo: a.rol_trabajo,
+      terminado: a.estado_actual === "FINALIZADO",
+    }));
 
   // Carros acreditados hoy: se cuentan de la consulta acotada por fecha, que
   // abarca TODA la jornada (incluidos carros que ya salieron del taller).
@@ -1135,6 +1149,7 @@ export async function correrMotor_({ persistir = true, simularAsistencia = false
     unidadesAsignables: t.unidades.filter(u => u.asignable).length,
     unidadesLibres, carrosSinCubrir,
     propuestas,
+    fallidas: [],          // se llena al publicar; ver el bucle de CONFIRMADA
   };
 
   resumen.vivas = vivas.length;
@@ -1165,7 +1180,13 @@ export async function correrMotor_({ persistir = true, simularAsistencia = false
     for (const p of propuestas) {
       const r = await crearAsignacionReal_(p);
       if (!r.ok) {
+        // Además del log: al resumen. Un fallo que solo existe en stdout es un
+        // fallo invisible — el motor puede pasarse horas reintentando lo mismo
+        // sin que nada lo delate en pantalla ni en /motor/preview.
         console.warn(`[Despacho] Z${p.zona_id} ${p.rol_trabajo}: ${r.error}`);
+        resumen.fallidas.push({
+          zona_id: p.zona_id, vin: p.vin, rol_trabajo: p.rol_trabajo, error: r.error,
+        });
         continue;
       }
       await fetch(`${SB()}/rest/v1/despacho_propuestas`, {
