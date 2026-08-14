@@ -316,7 +316,9 @@ router.get("/api/admin/asignaciones", async (req, res) => {
 });
 
 // PATCH /api/admin/asignaciones/:id  body: { user_id }
-router.patch("/api/admin/asignaciones/:id", requireRol_("ADMIN"), async (req, res) => {
+// También lo usa el supervisor desde su consola de OTs en vivo: reasignar un
+// trabajo es una corrección de piso, no una tarea de administración.
+router.patch("/api/admin/asignaciones/:id", requireRol_("ADMIN", "SUPERVISOR"), async (req, res) => {
   try {
     const { id } = req.params;
     const { user_id } = req.body || {};
@@ -325,11 +327,15 @@ router.patch("/api/admin/asignaciones/:id", requireRol_("ADMIN"), async (req, re
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const headers = supabaseHeaders_();
 
+    // return=representation, no minimal: un PATCH que no encuentra la fila es
+    // un 200 con lista vacía en PostgREST. Con "minimal" el servidor respondía
+    // ok:true y la vista decía "técnico reasignado" sin que se hubiera tocado
+    // nada — justo el caso de una asignación ya cerrada o recargada.
     const resp = await fetch(
-      `${SUPABASE_URL}/rest/v1/asignaciones?id=eq.${encodeURIComponent(id)}`,
+      `${SUPABASE_URL}/rest/v1/asignaciones?id=eq.${encodeURIComponent(id)}&select=id,user_id`,
       {
         method: "PATCH",
-        headers: { ...headers, "Prefer": "return=minimal" },
+        headers: { ...headers, "Prefer": "return=representation" },
         body: JSON.stringify({ user_id, updated_at: new Date().toISOString() }),
       }
     );
@@ -337,6 +343,14 @@ router.patch("/api/admin/asignaciones/:id", requireRol_("ADMIN"), async (req, re
       const txt = await resp.text().catch(() => "");
       throw new Error(`Supabase PATCH: ${resp.status} ${txt.slice(0, 200)}`);
     }
+    const filas = await resp.json().catch(() => []);
+    if (!filas.length) {
+      return res.status(404).json({
+        ok: false,
+        error: "Esa asignación ya no existe. Actualiza la vista y vuelve a intentarlo.",
+      });
+    }
+
     emitEvent_("asignaciones", { accion: "REASIGNADA", id });
     return res.json({ ok: true });
   } catch (e) {

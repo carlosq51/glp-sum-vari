@@ -28,6 +28,7 @@ const S = {
   rows: [],
   editId: null,
   searchTimer: null,
+  loadSeq: 0,      // descarta respuestas de búsquedas que llegaron tarde
   userModulos: [],
 };
 
@@ -119,23 +120,28 @@ const TABLE_DEF = {
   },
 };
 
-function renderTable(rows, query = "") {
+// La búsqueda YA viene resuelta por el servidor (/api/admin/tabla/:seccion):
+// filtrar aquí sobre S.rows era el bug de "busco un VIN y no lo encuentra",
+// porque S.rows solo tenía las primeras 1000 filas que devuelve PostgREST.
+function renderTable(rows, { query = "", truncated = false } = {}) {
   const def = TABLE_DEF[S.tab];
-  const q = query.trim().toLowerCase();
-  const filtered = q
-    ? rows.filter(r => JSON.stringify(r).toLowerCase().includes(q))
-    : rows;
 
-  if (!filtered.length) {
+  if (!rows.length) {
     return `<div class="adminEmpty">
       <span class="adminEmptyIcon" aria-hidden="true">${icon("inbox", 28)}</span>
       <div class="adminEmptyTitle">Sin resultados</div>
-      <div class="small muted">${q ? "Prueba con otro término de búsqueda." : "Aún no hay registros en esta sección."}</div>
+      <div class="small muted">${query ? `Ningún registro coincide con “${escHtml(query)}”.` : "Aún no hay registros en esta sección."}</div>
     </div>`;
   }
 
+  const aviso = truncated
+    ? `<div class="adminMsg small muted" style="padding:6px 2px;">
+         Mostrando las primeras ${rows.length} filas. Usa el buscador para acotar: la búsqueda recorre TODOS los registros.
+       </div>`
+    : "";
+
   const head = def.cols.map(c => `<th>${c}</th>`).join("");
-  const body = filtered.map(r => {
+  const body = rows.map(r => {
     const cells = def.row(r).map(c => `<td>${c}</td>`).join("");
     const rowId = r.id ?? r.vin;
     return `<tr data-id="${escHtml(String(rowId))}">
@@ -147,7 +153,7 @@ function renderTable(rows, query = "") {
     </tr>`;
   }).join("");
 
-  return `<div class="adminTableScroll"><table class="adminTable">
+  return `${aviso}<div class="adminTableScroll"><table class="adminTable">
     <thead><tr>${head}<th></th></tr></thead>
     <tbody>${body}</tbody>
   </table></div>`;
@@ -1118,12 +1124,33 @@ async function loadTab() {
   wrap.innerHTML = `<div class="small muted" style="padding:12px;">Cargando…</div>`;
   msg("");
 
+  await fetchRows_();
+}
+
+/**
+ * Trae las filas de la sección actual con la búsqueda aplicada EN LA BASE.
+ * Cada tecla del buscador dispara una consulta nueva (debounced): es la única
+ * forma de encontrar un registro que no esté en la primera página.
+ */
+async function fetchRows_() {
+  const wrap = $id("adminTableContent");
+  if (!wrap) return;
+
+  const q = ($id("adminSearch")?.value || "").trim();
+  const seq = ++S.loadSeq;
+
   try {
-    const table = TABLE_MAP[S.tab];
-    S.rows = await supabaseGet(table);
-    wrap.innerHTML = renderTable(S.rows, $id("adminSearch")?.value || "");
+    const resp = await fetch(`/api/admin/tabla/${encodeURIComponent(S.tab)}?q=${encodeURIComponent(q)}`);
+    const j = await resp.json();
+    if (!j?.ok) throw new Error(j?.error || "Error al cargar");
+    if (seq !== S.loadSeq) return; // llegó tarde: ya hay una búsqueda más nueva
+
+    S.rows = j.rows || [];
+    wrap.innerHTML = renderTable(S.rows, { query: q, truncated: !q && j.truncated });
     bindTableActions();
+    msg(q ? `${S.rows.length} resultado(s) para “${q}”.` : "");
   } catch (e) {
+    if (seq !== S.loadSeq) return;
     wrap.innerHTML = `<div class="small" style="color:var(--danger);padding:12px;">${escHtml(e.message)}</div>`;
     msg(e.message, true);
   }
@@ -1366,10 +1393,17 @@ function formVin(r = {}) {
   `;
 }
 
-function formOt(r = {}) {
+export function formOt(r = {}) {
   return `
     <label class="adminLabel">Tipo OT<select id="fTipoOt">${opts(TIPOS_OT, r.tipo_ot || "CONVERSION")}</select></label>
-    <label class="adminLabel">VIN<input id="fOtVin" type="text" value="${escHtml(r.vin || "")}" placeholder="Ej: 1HGBH41JXMN109186"></label>
+    <label class="adminLabel">VIN
+      <div class="vinWrap">
+        <input id="fOtVin" type="text" value="${escHtml(r.vin || "")}" placeholder="Ej: 1HGBH41JXMN109186"
+          autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false">
+        <div id="fOtVinSuggest" class="vinSuggest hidden" role="listbox"></div>
+      </div>
+    </label>
+    <label class="adminLabel">N° de OT<input id="fNumeroOt" type="text" value="${escHtml(r.numero_ot || "")}" placeholder="Opcional"></label>
     <label class="adminLabel">Estado<select id="fEstado">${opts(ESTADOS_GEN, r.estado_general || "PENDIENTE")}</select></label>
     <label class="adminLabel">Observaciones<textarea id="fObs">${escHtml(r.observaciones || "")}</textarea></label>
     <label class="adminLabel">Tanque registrado<input id="fTanqueReg" type="text" value="${escHtml(r.tanque_registrado || "")}"></label>
@@ -1401,6 +1435,28 @@ const TITLE_MAP = {
   incidencias: "Incidencia",
 };
 
+// Los campos de formOt() se leen desde aquí y desde el panel CONTROL del
+// supervisor, que reutiliza el mismo formulario.
+export function collectFormOt_() {
+  const v = id => $id(id)?.value?.trim() ?? "";
+  return {
+    tipo_ot: v("fTipoOt"),
+    vin: v("fOtVin").toUpperCase() || null,
+    numero_ot: v("fNumeroOt"),
+    estado_general: v("fEstado"),
+    observaciones: v("fObs"),
+    tanque_registrado: v("fTanqueReg"),
+    reductor_registrado: v("fReductorReg"),
+  };
+}
+
+/** null si es válido; si no, el mensaje a mostrar. */
+export function validarOt_(data) {
+  if (!data.tipo_ot) return "Elige el tipo de OT.";
+  if (data.tipo_ot !== "RAMALERO" && !data.vin) return "El VIN es requerido para este tipo de OT.";
+  return null;
+}
+
 // ─── Collect form data ───────────────────────────────────────────────
 function collectForm() {
   const v = id => $id(id)?.value?.trim() ?? "";
@@ -1425,14 +1481,7 @@ function collectForm() {
     reductor_asignado: v("fReductor"),
     tanque_asignado: v("fTanque"),
   };
-  if (S.tab === "ots") return {
-    tipo_ot: v("fTipoOt"),
-    vin: v("fOtVin") || null,
-    estado_general: v("fEstado"),
-    observaciones: v("fObs"),
-    tanque_registrado: v("fTanqueReg"),
-    reductor_registrado: v("fReductorReg"),
-  };
+  if (S.tab === "ots") return collectFormOt_();
   if (S.tab === "incidencias") {
     const vinRaw = v("fIncVin");
     const now = new Date();
@@ -1457,14 +1506,27 @@ function validate(data) {
   if (S.tab === "vins") {
     if (!data.vin || data.vin.length !== 17) return "El VIN debe tener exactamente 17 caracteres.";
   }
-  if (S.tab === "ots") {
-    if (data.tipo_ot !== "RAMALERO" && !data.vin) return "El VIN es requerido para este tipo de OT.";
-  }
+  if (S.tab === "ots") return validarOt_(data);
   if (S.tab === "incidencias") {
     if (!data.tecnico) return "El técnico es requerido.";
     if (!data.registrado_por) return "Quién registra es requerido.";
   }
   return null;
+}
+
+/**
+ * Engancha el autocompletado al #fOtVin del formulario de OT.
+ * El widget se recrea con cada modal porque el input muere al cerrarlo.
+ */
+export function bindOtVinSuggest_() {
+  const inp = $id("fOtVin");
+  if (!inp || inp.dataset.sugBound) return;
+  inp.dataset.sugBound = "1";
+  createVinSuggest_({
+    input: "fOtVin", box: "fOtVinSuggest",
+    min: 2, debounce: 220, limit: 8,
+    onPick: item => { inp.value = item.vin; },
+  }).bind();
 }
 
 // ─── Modal open/close ────────────────────────────────────────────────
@@ -1482,6 +1544,10 @@ function openModal(titleText, formHtml) {
 }
 
 function bindModalExtras_() {
+  // Autocompletado de VIN en el formulario de OT: el VIN es FK a `vins`,
+  // así que teclearlo a mano es la vía rápida a un error de integridad.
+  if (S.tab === "ots") bindOtVinSuggest_();
+
   // Cámara QR para el campo VIN en "Nuevo VIN"
   if (S.tab === "vins" && !S.editId) {
     $id("btnAdminVinQr")?.addEventListener("click", async () => {
@@ -1508,6 +1574,18 @@ function closeModal() {
   S.editId = null;
 }
 
+/** Crea (id vacío) o actualiza una OT vía API. Compartido con el panel CONTROL. */
+export async function guardarOt_(id, data) {
+  const resp = await adminFetch_(id ? `/api/ots/${encodeURIComponent(id)}` : "/api/ots", {
+    method: id ? "PATCH" : "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  const j = await resp.json().catch(() => ({}));
+  if (!j?.ok) throw new Error(j?.error || `Error ${resp.status}`);
+  return j;
+}
+
 // ─── Save (create / update) ──────────────────────────────────────────
 async function save() {
   const data = collectForm();
@@ -1519,6 +1597,16 @@ async function save() {
   msg("Guardando…");
 
   try {
+    // Las OTs van por el API: valida el tipo, comprueba que el VIN exista en
+    // `vins` y devuelve un error legible en vez del 409 crudo de PostgREST.
+    if (S.tab === "ots") {
+      await guardarOt_(S.editId, data);
+      msg(S.editId ? "OT actualizada." : "OT creada.");
+      closeModal();
+      await loadTab();
+      return;
+    }
+
     const table = TABLE_MAP[S.tab];
     const { _modulos, ...rowData } = (S.tab === "usuarios") ? data : { ...data, _modulos: undefined };
     if (S.editId) {
@@ -1571,12 +1659,29 @@ async function deleteRow(id) {
   }
 }
 
-// ─── Eliminar OT + todo lo relacionado (cascade manual) ──────────────
-// No hay ON DELETE CASCADE en el schema, así que borramos en orden:
-// primero los hijos que referencian work_order_id, luego la OT.
+// ─── Eliminar OT + todo lo relacionado ───────────────────────────────
+// El borrado lo hace el servidor (DELETE /api/ots/:id) en una sola transacción
+// lógica. Antes se encadenaban cinco DELETE desde el navegador y bastaba que
+// uno fallara —típicamente asignaciones, por la FK de despacho_propuestas—
+// para dejar la OT a medio borrar sin que nadie se enterara.
 async function deleteOtCascade_(workOrderId) {
+  if (!confirmBorradoOt_()) return;
+
+  msg("Eliminando OT y registros relacionados…");
+  try {
+    const r = await borrarOt_(workOrderId);
+    msg(`OT eliminada (${r.asignaciones_borradas} asignación(es) y sus eventos, incidencias y solicitudes de ramal).`);
+    await loadTab();
+  } catch (e) {
+    msg(e.message, true);
+  }
+}
+
+/** Doble confirmación: la acción es destructiva e irreversible. */
+export function confirmBorradoOt_(vin = "") {
+  const quien = vin ? ` del VIN ${vin}` : "";
   const ok1 = confirm(
-    "¿ELIMINAR esta OT y TODO lo relacionado?\n\n" +
+    `¿ELIMINAR esta OT${quien} y TODO lo relacionado?\n\n` +
     "Se borrarán de forma permanente:\n" +
     "• La orden de trabajo\n" +
     "• Sus asignaciones\n" +
@@ -1585,26 +1690,16 @@ async function deleteOtCascade_(workOrderId) {
     "• Sus solicitudes de ramal\n\n" +
     "Esta acción NO se puede deshacer."
   );
-  if (!ok1) return;
+  if (!ok1) return false;
+  return confirm("Confirma de nuevo: la eliminación es DEFINITIVA. ¿Continuar?");
+}
 
-  // Doble confirmación por ser una acción destructiva.
-  const ok2 = confirm("Confirma de nuevo: la eliminación es DEFINITIVA. ¿Continuar?");
-  if (!ok2) return;
-
-  msg("Eliminando OT y registros relacionados…");
-  try {
-    // Hijos primero (respetando las FKs hacia work_orders.id)
-    await supabaseDelete("eventos",          { work_order_id: workOrderId });
-    await supabaseDelete("asignaciones",      { work_order_id: workOrderId });
-    await supabaseDelete("incidencias",       { work_order_id: workOrderId });
-    await supabaseDelete("solicitudes_ramal", { work_order_id: workOrderId });
-    // Finalmente la OT
-    await supabaseDelete("work_orders",       { id: workOrderId });
-    msg("OT y registros relacionados eliminados.");
-    await loadTab();
-  } catch (e) {
-    msg(e.message, true);
-  }
+/** DELETE /api/ots/:id — lanza con el mensaje del servidor si falla. */
+export async function borrarOt_(workOrderId) {
+  const resp = await adminFetch_(`/api/ots/${encodeURIComponent(workOrderId)}`, { method: "DELETE" });
+  const j = await resp.json().catch(() => ({}));
+  if (!j?.ok) throw new Error(j?.error || `Error ${resp.status}`);
+  return j;
 }
 
 // ─── Bind table action buttons ───────────────────────────────────────
@@ -1690,17 +1785,31 @@ export function init() {
   // Volver a cartillas
   $id("btnAdminBack")?.addEventListener("click", showAdminCards_);
 
-  // Search
-  $id("adminSearch")?.addEventListener("input", e => {
+  // Search — va a la BD, no filtra el lote ya cargado
+  $id("adminSearch")?.addEventListener("input", () => {
     clearTimeout(S.searchTimer);
-    S.searchTimer = setTimeout(() => {
-      const wrap = $id("adminTableContent");
-      if (wrap) {
-        wrap.innerHTML = renderTable(S.rows, e.target.value);
-        bindTableActions();
-      }
-    }, 220);
+    S.searchTimer = setTimeout(() => fetchRows_(), 260);
   });
+  $id("adminSearch")?.addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.defaultPrevented) {
+      clearTimeout(S.searchTimer);
+      fetchRows_();
+    }
+  });
+
+  // Sugerencias de VIN sobre el mismo buscador. Solo aporta en las secciones
+  // cuyo registro se identifica por VIN; en Usuarios sería ruido.
+  createVinSuggest_({
+    input: "adminSearch", box: "adminSearchSuggest",
+    min: 2, debounce: 220, limit: 8,
+    guard: () => ["ots", "vins", "incidencias"].includes(S.tab),
+    onPick: item => {
+      const inp = $id("adminSearch");
+      if (inp) inp.value = item.vin;
+      clearTimeout(S.searchTimer);
+      fetchRows_();
+    },
+  }).bind();
 
   // Nuevo
   $id("btnAdminNuevo")?.addEventListener("click", () => {

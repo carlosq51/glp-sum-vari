@@ -37,7 +37,9 @@ export function adminView() {
         <div class="adminToolbar" id="adminToolbar">
           <div class="adminSearchWrap">
             <span class="adminSearchIcon" aria-hidden="true">${icon("search", 16)}</span>
-            <input id="adminSearch" type="text" placeholder="Buscar…" autocomplete="off">
+            <input id="adminSearch" type="text" placeholder="Buscar…" autocomplete="off"
+              autocapitalize="characters" autocorrect="off" spellcheck="false">
+            <div id="adminSearchSuggest" class="vinSuggest hidden" role="listbox"></div>
           </div>
           <button id="btnAdminNuevo" type="button">${icon("plus", 16)} Nuevo</button>
         </div>

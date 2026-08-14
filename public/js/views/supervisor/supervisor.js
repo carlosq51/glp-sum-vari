@@ -30,7 +30,7 @@ import { bindSupVinSuggest_ } from "./sup-vin-suggest.js";
 import { bindSupQuickDates_ } from "./sup-quick-dates.js";
 import { bindSupPausaIndefinida_ } from "./sup-pausa-indefinida.js";
 import { bindSupLive_, enterLive_, exitLive_ } from "./sup-live.js";
-import { bindSupUbicaciones_, enterUbicaciones_, exitUbicaciones_ } from "./sup-ubicaciones.js";
+import { bindSupOtControl_, enterOtControl_, exitOtControl_ } from "./sup-ot-control.js";
 import { bindSupIncidenciasReport_, enterIncReport_, exitIncReport_ } from "./sup-incidencias-report.js";
 
 import { createScanner } from "../../core/qr-scanner.js";
@@ -468,34 +468,34 @@ export function init() {
       );
       const panelReporte     = document.getElementById("supPanelReporte");
       const panelLive        = document.getElementById("supPanelLive");
-      const panelUbicaciones = document.getElementById("supPanelUbicaciones");
+      const panelControl     = document.getElementById("supPanelOtControl");
       const panelIncidencias = document.getElementById("supPanelIncidencias");
       const panelValidar     = document.getElementById("supPanelValidar");
       if (panelReporte)     panelReporte.style.display     = tab === "REPORTE"     ? "" : "none";
       if (panelLive)        panelLive.style.display        = tab === "LIVE"        ? "" : "none";
-      if (panelUbicaciones) panelUbicaciones.style.display = tab === "UBICACIONES" ? "" : "none";
+      if (panelControl)     panelControl.style.display     = tab === "CONTROL"     ? "" : "none";
       if (panelIncidencias) panelIncidencias.style.display = tab === "INCIDENCIAS" ? "" : "none";
       if (panelValidar)     panelValidar.style.display     = tab === "VALIDAR"     ? "" : "none";
 
       if (tab === "LIVE") {
-        exitUbicaciones_();
+        exitOtControl_();
         exitIncReport_();
         enterLive_();
-      } else if (tab === "UBICACIONES") {
+      } else if (tab === "CONTROL") {
         exitLive_();
         exitIncReport_();
-        enterUbicaciones_();
+        enterOtControl_();
       } else if (tab === "INCIDENCIAS") {
         exitLive_();
-        exitUbicaciones_();
+        exitOtControl_();
         enterIncReport_();
       } else if (tab === "VALIDAR") {
         exitLive_();
-        exitUbicaciones_();
+        exitOtControl_();
         exitIncReport_();
       } else {
         exitLive_();
-        exitUbicaciones_();
+        exitOtControl_();
         exitIncReport_();
         fetchSupervisorReport_().catch(() => {});
       }
@@ -541,7 +541,7 @@ export function init() {
   bindSupVinSuggest_({ CORE, escapeHtml, onApply: () => fetchSupervisorReport_().catch(() => {}) });
   bindSupPausaIndefinida_({ getJSON_user });
   bindSupLive_();
-  bindSupUbicaciones_();
+  bindSupOtControl_();
   bindSupIncidenciasReport_({ getJSON_user, escapeHtml });
   bindSupDrill_(); // píldoras del avg-card → drill-down
 
@@ -669,10 +669,12 @@ export function enter() {
   );
   const panelReporte     = document.getElementById("supPanelReporte");
   const panelLive        = document.getElementById("supPanelLive");
+  const panelControl     = document.getElementById("supPanelOtControl");
   const panelIncidencias = document.getElementById("supPanelIncidencias");
   const panelValidar     = document.getElementById("supPanelValidar");
   if (panelReporte)     panelReporte.style.display     = "none";
   if (panelLive)        panelLive.style.display        = "";
+  if (panelControl)     panelControl.style.display     = "none";
   if (panelIncidencias) panelIncidencias.style.display = "none";
   if (panelValidar)     panelValidar.style.display     = "none";
   enterLive_();
@@ -683,6 +685,6 @@ export function exit() {
   destroyTrendChart_();
   destroySupDashboard_();
   exitLive_();
-  exitUbicaciones_();
+  exitOtControl_();
   exitIncReport_();
 }

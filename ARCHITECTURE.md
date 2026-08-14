@@ -42,6 +42,7 @@ glp-ui/
 │   ├── ramal.js              ← /api/solicitud-ramal/*
 │   ├── incidencias.js        ← /api/incidencia, /api/incidencias/*
 │   ├── supervisor.js         ← /api/supervisor/*
+│   ├── ots.js                ← /api/ots/*, /api/admin/tabla/*
 │   ├── trabajo.js            ← /api/me, /api/evento, /api/sync, …
 │   ├── admin.js              ← /api/admin/*
 │   ├── movilizador.js        ← /api/movilizador/*, /api/vin-validar
@@ -159,6 +160,21 @@ POST /api/supervisor/report        → reporte histórico con filtros
 ── Admin ─────────────────────────────────────────────────────────────────
 GET  /api/admin/config             → configuración global (horarios, flags)
 POST /api/admin/config             → actualiza config
+GET  /api/admin/tabla/:seccion     → listado + BÚSQUEDA server-side de las
+                                     secciones CRUD (ots|vins|usuarios|
+                                     incidencias). El filtro va a la BD:
+                                     nunca se busca sobre un lote parcial.
+
+── OTs (Admin → OTs y Supervisor → CONTROL) ──────────────────────────────
+GET    /api/ots/vivas              → OTs abiertas + asignaciones + técnicos
+GET    /api/ots?vin=XXX            → todas las OTs de un VIN (sin filtro de
+                                     fecha: un VIN aparece esté donde esté)
+POST   /api/ots                    → crea OT (valida tipo y que el VIN exista)
+PATCH  /api/ots/:id                → edita OT (solo columnas permitidas)
+DELETE /api/ots/:id                → borra la OT y TODO lo relacionado:
+                                     eventos, asignaciones, incidencias y
+                                     solicitudes_ramal; antes suelta
+                                     despacho_propuestas.asignacion_id
 
 ── Zonas ─────────────────────────────────────────────────────────────────
 GET  /api/zonas/vin/:vin           → zona asignada a un VIN

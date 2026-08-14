@@ -602,10 +602,6 @@ button[data-suptrack].active {
   flex-shrink: 0;
 }
 
-/* Tarjetas de solo lectura en UBICACIONES */
-.ub-card-readonly { pointer-events: none; opacity: .95; }
-.ub-card-readonly .ub-card-status { margin-top: 4px; }
-
 /* ── Modal detalle del día ── */
 .live-detail-body {
   display: flex;
@@ -665,13 +661,121 @@ button[data-suptrack].active {
 }
 
 /* =====================================================================
-   UBICACIONES — cards de zona en grid en desktop
+   CONTROL — consola de OTs en vivo
    ===================================================================== */
+.otCtrlBar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.otCtrlBar .supVinWrap { flex: 1 1 200px; }
+.otCtrlBar .btn3 { flex: 0 0 auto; height: var(--h-input); }
+
+.otCtrlHeader {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  background: var(--pillBg);
+  border: 1px solid var(--surfaceLine);
+  border-radius: var(--radiusSm);
+}
+.otCtrlHeaderVin code {
+  font-family: var(--font-mono);
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-black);
+  letter-spacing: .5px;
+}
+
+.otCtrlList { display: flex; flex-direction: column; gap: 10px; }
+
+.otCtrlCard {
+  background: var(--glass);
+  border: 1px solid var(--surfaceLine);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+}
+.otCtrlCardHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+.otCtrlCardTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.otCtrlVin {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-extrabold);
+  letter-spacing: .5px;
+}
+.otCtrlCardActions { display: flex; gap: 6px; flex-shrink: 0; }
+.otCtrlCardSub { margin-top: 4px; }
+
+.otCtrlAsgList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+.otCtrlAsg {
+  padding: 8px 10px;
+  background: var(--pillBg);
+  border: 1px solid var(--surfaceLine);
+  border-radius: 10px;
+}
+.otCtrlAsgTop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+.otCtrlRol { font-weight: var(--fw-extrabold); font-size: var(--fs-sm); }
+.otCtrlEstado {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-black);
+  border-radius: 999px;
+  padding: 2px 9px;
+}
+.otCtrlAsgSub,
+.otCtrlNota { margin-top: 3px; }
+.otCtrlNota { font-style: italic; }
+.otCtrlAsgActions {
+  display: flex;
+  gap: 6px;
+  margin-top: 7px;
+  flex-wrap: wrap;
+}
+.otCtrlAsgActions .btn3 { height: 32px; padding: 0 12px; }
+
+.otCtrlReasigBox {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 7px;
+}
+.otCtrlReasigBox.hidden { display: none; }
+.otCtrlReasigSel { flex: 1 1 160px; min-width: 0; }
+.otCtrlEmptyAsg { margin-top: 8px; }
+
 @media (min-width: 860px) {
-  body[data-app-module="SUPERVISOR"] #supPanelUbicaciones .movCardList {
+  body[data-app-module="SUPERVISOR"] #supPanelOtControl .otCtrlList {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 8px;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 10px;
   }
 }
 

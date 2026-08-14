@@ -6,11 +6,11 @@ export function supervisorView() {
     <div id="viewSUPERVISOR" class="card" style="display:none;">
       <h3>Supervisor</h3>
 
-      <!-- Pestañas principales: REPORTE / LIVE / UBICACIONES / INCIDENCIAS / LISTA -->
+      <!-- Pestañas principales: REPORTE / LIVE / CONTROL / INCIDENCIAS / VALIDAR -->
       <div class="sup-tab-row">
         <button type="button" class="btn sup-tab" data-suptab="REPORTE">${icon("chart", 14)} REPORTE</button>
         <button type="button" class="btn sup-tab active" data-suptab="LIVE">${icon("radio", 14)} LIVE</button>
-        <button type="button" class="btn sup-tab" data-suptab="UBICACIONES">${icon("mapPin", 14)} UBIC.</button>
+        <button type="button" class="btn sup-tab" data-suptab="CONTROL">${icon("clipboardList", 14)} OTs</button>
         <button type="button" class="btn sup-tab" data-suptab="INCIDENCIAS">${icon("alertTriangle", 14)} INCID.</button>
         <button type="button" class="btn sup-tab" data-suptab="VALIDAR">${icon("scanSearch", 14)} VALIDAR</button>
       </div>
@@ -99,91 +99,29 @@ export function supervisorView() {
       </div>
 
       <!-- ══════════════════════════════════════════════
-           PANEL UBICACIONES (solo lectura, datos del movilizador)
+           PANEL CONTROL — OTs en vivo (busca, edita, pausa, elimina)
+           Sustituye al antiguo panel UBICACIONES (solo lectura).
       ══════════════════════════════════════════════ -->
-      <div id="supPanelUbicaciones" style="display:none;">
+      <div id="supPanelOtControl" style="display:none;">
 
-        <!-- Mapa de zonas de conversión (solo lectura) -->
-        <div class="movPanel open" id="ubPanelZonas" style="margin-top:10px;">
-          <button class="movPanelHeader" type="button" aria-expanded="true">
-            <span class="movPanelIcon">🗺️</span>
-            <div class="movPanelTitleGroup">
-              <span class="movPanelTitle">Mapa de Zonas de Conversión</span>
-              <span class="movPanelHint">Estado en tiempo real de las 15 zonas</span>
-            </div>
-            <span class="movChevron" aria-hidden="true">▼</span>
-          </button>
-          <div class="movPanelBody" style="padding:8px 12px 12px;">
-            <div class="zonasMapaBar">
-              <span class="zonasMapaTs" id="supZonasMapaTs"></span>
-              <button class="zonasMapaRefreshBtn" id="supZonasMapaRefreshBtn" type="button">↻</button>
-            </div>
-            <div id="supZonasMapaContainer"></div>
+        <div class="otCtrlBar">
+          <div class="supVinWrap">
+            <input id="otCtrlVin" type="text" placeholder="Buscar OT por VIN…"
+              autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" />
+            <div id="otCtrlVinSuggest" class="vinSuggest hidden" role="listbox"></div>
           </div>
+          <button id="btnOtCtrlBuscar" type="button" class="btn3" title="Buscar">${icon("search", 15)}</button>
+          <button id="btnOtCtrlNueva" type="button" class="btn3" title="Crear una OT">${icon("plus", 15)} Nueva OT</button>
         </div>
 
         <div class="lvBar" style="margin-top:10px;">
-          <span class="lvBar__date">Estado de traslados</span>
-          <span id="ubLastUpdate" class="lvBar__ago"></span>
-          <button type="button" id="btnUbRefresh" class="lvBar__btn" title="Actualizar ahora">↻</button>
-        </div>
-        <div id="ubError" class="small" style="color:#f87171;"></div>
-
-        <!-- Panel 0: En espera de conversión -->
-        <div class="movPanel open" id="ubPanel0">
-          <button class="movPanelHeader" type="button" aria-expanded="true">
-            <span class="movPanelIcon">🚗</span>
-            <div class="movPanelTitleGroup">
-              <span class="movPanelTitle">En Espera de Conversión</span>
-              <span class="movPanelHint">Ingresados al taller, pendientes de conversión</span>
-            </div>
-            <span id="ubBadge0" class="movBadge movBadgeWarn" style="display:none;"></span>
-            <span class="movChevron" aria-hidden="true">▼</span>
-          </button>
-          <div id="ubPanel0Body" class="movPanelBody"></div>
+          <span class="lvBar__date">OTs en vivo</span>
+          <span id="otCtrlLastUpdate" class="lvBar__ago"></span>
+          <button type="button" id="btnOtCtrlRefresh" class="lvBar__btn" title="Actualizar ahora">↻</button>
         </div>
 
-        <!-- Panel 1: Conversión finalizada -->
-        <div class="movPanel open" id="ubPanel1">
-          <button class="movPanelHeader" type="button" aria-expanded="true">
-            <span class="movPanelIcon">⚙️</span>
-            <div class="movPanelTitleGroup">
-              <span class="movPanelTitle">Conversión Finalizada</span>
-              <span class="movPanelHint">Pendientes de traslado a zona de espera</span>
-            </div>
-            <span id="ubBadge1" class="movBadge movBadgeWarn" style="display:none;"></span>
-            <span class="movChevron" aria-hidden="true">▼</span>
-          </button>
-          <div id="ubPanel1Body" class="movPanelBody"></div>
-        </div>
-
-        <!-- Panel 2: Zona de espera -->
-        <div class="movPanel open" id="ubPanel2">
-          <button class="movPanelHeader" type="button" aria-expanded="true">
-            <span class="movPanelIcon">🕐</span>
-            <div class="movPanelTitleGroup">
-              <span class="movPanelTitle">Zona de Espera</span>
-              <span class="movPanelHint">En espera o en revisión técnica</span>
-            </div>
-            <span id="ubBadge2" class="movBadge movBadgeNote" style="display:none;"></span>
-            <span class="movChevron" aria-hidden="true">▼</span>
-          </button>
-          <div id="ubPanel2Body" class="movPanelBody"></div>
-        </div>
-
-        <!-- Panel 3: Revisión finalizada -->
-        <div class="movPanel open" id="ubPanel3">
-          <button class="movPanelHeader" type="button" aria-expanded="true">
-            <span class="movPanelIcon">✅</span>
-            <div class="movPanelTitleGroup">
-              <span class="movPanelTitle">Revisión Técnica Finalizada</span>
-              <span class="movPanelHint">Listo para trasladar a otras áreas</span>
-            </div>
-            <span id="ubBadge3" class="movBadge movBadgeOk" style="display:none;"></span>
-            <span class="movChevron" aria-hidden="true">▼</span>
-          </button>
-          <div id="ubPanel3Body" class="movPanelBody"></div>
-        </div>
+        <div id="otCtrlMsg" class="small muted" style="margin:6px 2px;"></div>
+        <div id="otCtrlBody"></div>
       </div>
 
       <!-- ══════════════════════════════════════════════
@@ -264,6 +202,27 @@ export function supValidarQrModalTemplate() {
         <div class="modalBody">
           <div id="supValidarQrReader"></div>
           <div id="supValidarQrMsg" class="small" style="margin-top:10px;"></div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// Modal de crear/editar OT del panel CONTROL. Vive fuera de viewSUPERVISOR
+// por el mismo motivo que el QR de VALIDAR: un position:fixed dentro de un
+// padre display:none infla el scroll en WebKit.
+export function supOtControlModal() {
+  return `
+    <div id="otCtrlModal" class="modal" aria-hidden="true">
+      <div class="modalBox adminModalBox">
+        <div class="modalHead">
+          <span id="otCtrlModalTitle" class="modalTitle"></span>
+          <button id="btnOtCtrlModalClose" type="button" title="Cerrar">✕</button>
+        </div>
+        <div class="modalBody" id="otCtrlModalBody"></div>
+        <div class="adminModalFoot">
+          <button id="btnOtCtrlModalCancel" type="button" class="adminBtnGhost">Cancelar</button>
+          <button id="btnOtCtrlModalSave" type="button" class="adminBtnOk">Guardar</button>
         </div>
       </div>
     </div>

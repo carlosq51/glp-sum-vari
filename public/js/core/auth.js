@@ -58,8 +58,22 @@ export function clearEmail() {
   localStorage.removeItem(EMAIL_KEY);
 }
 
+/**
+ * Email del usuario en sesión — la identidad que viaja en `x-user-email` y que
+ * el servidor usa para autorizar (lib/authz.js).
+ *
+ * El orden importa: la identidad vive en la SESIÓN, no en el DOM. Leer solo el
+ * input de login hacía que en un arranque restaurado (PWA reabierta, recarga
+ * donde Safari no repuebla el formulario, o el input vaciado por autofill) se
+ * enviara `x-user-email: ""` con la sesión perfectamente iniciada: la vista se
+ * veía normal y cualquier acción protegida —reasignar un técnico, guardar
+ * config, editar una OT— respondía "No autorizado" sin motivo aparente.
+ */
 export function getEmail() {
-  return String($("email")?.value || "").trim().toLowerCase();
+  const norm_ = v => String(v || "").trim().toLowerCase();
+  return norm_(CORE.state.currentProfile?.email)
+      || norm_(loadEmail())
+      || norm_($("email")?.value);
 }
 
 export function getVin() {
