@@ -115,6 +115,17 @@
   line-height: 1.4;
   margin-bottom: 10px;
 }
+/* Nota secundaria bajo el aviso principal: explica la CONSECUENCIA de dejar
+   la invitación sin responder (ninguno de los dos recibe carros). Va apagada
+   a propósito — si compitiera en peso con el aviso de arriba, la pantalla
+   tendría dos titulares y ninguno se leería. */
+.tecAsisAviso--warn {
+  background: var(--surface);
+  border-color: var(--surfaceLine);
+  color: var(--muted);
+  font-weight: 600;
+  font-size: .9rem;
+}
 .tecAsisSelect {
   width: 100%;
   background: var(--surface);

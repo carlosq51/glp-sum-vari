@@ -48,6 +48,10 @@ export function tecnicoView() {
         <div id="estadoBox" class="small"></div>
         <div id="activasBox"></div>
 
+        <!-- Avanzar el siguiente carro: solo lo ven las duplas (y quien
+             trabaja con ayudantes que no marcan). Vacío para el resto. -->
+        <div id="tecAvanceMiOT"></div>
+
         <div id="finalizadosWrap" style="display:none; margin-top:12px;">
           <h4>Finalizados</h4>
           <div id="finalizadosBox"></div>
@@ -67,6 +71,7 @@ export function tecnicoView() {
         <div id="tecAsisReader" class="tecAsisReader"></div>
         <div id="tecAsisMsg" class="tecAsisMsg"></div>
         <div id="tecAsisDupla"></div>
+        <div id="tecAvanceAsis"></div>
       </div>
 
       <!-- ── Panel: Cola pendiente ── -->

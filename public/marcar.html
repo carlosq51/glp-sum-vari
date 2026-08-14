@@ -131,6 +131,15 @@
     color: #fde3ac;
   }
   .aviso b { color: var(--amber); }
+  /* Nota secundaria: la consecuencia, no el titular. Apagada a propósito para
+     no competir con el aviso que lleva la decisión. */
+  .avisoSec {
+    background: rgba(148,163,184,.10);
+    border-color: rgba(148,163,184,.35);
+    color: #cbd5e1;
+    font-size: 14px;
+    font-weight: 600;
+  }
 </style>
 </head>
 <body>
@@ -195,12 +204,20 @@
     const cont = $("duplaCuerpo");
     $("dupla").classList.add("on");
 
+    // Mientras la invitación está en el aire, NINGUNO de los dos recibe carro
+    // (ver unidadesDeTrabajo_): si el motor le diera uno al que propuso, el
+    // otro aceptaría y se lo encontraría ya metido en un carro. Decirlo evita
+    // que el bloqueo se lea como que el sistema los olvidó.
+    const avisoBloqueo = `<div class="aviso avisoSec">
+      ⏸ Mientras se decide, ninguno de los dos recibe carros nuevos.</div>`;
+
     // Caso 1 — alguien me invitó y falta que yo confirme.
     if (mia && mia.estado === "PENDIENTE" && mia.lider_user_id !== miUserId) {
       const otro = mia.miembrosNombres?.find((_, i) => mia.miembros[i] !== miUserId) || "tu compañero";
       cont.innerHTML = `
         <div class="aviso"><b>${esc(otro)}</b> quiere trabajar en dupla contigo.
           Van a recibir un carro a la vez y el crédito alterna: uno para cada uno.</div>
+        ${avisoBloqueo}
         <button id="bConf">Aceptar dupla</button>
         <button id="bRech" class="sec">Rechazar</button>`;
       $("bConf").onclick = () => accionDupla("confirmar", mia.id);
@@ -213,6 +230,7 @@
       const otro = mia.miembrosNombres?.find((_, i) => mia.miembros[i] !== miUserId) || "tu compañero";
       cont.innerHTML = `
         <div class="aviso">Esperando que <b>${esc(otro)}</b> acepte.</div>
+        ${avisoBloqueo}
         <button id="bRech" class="sec">Cancelar</button>`;
       $("bRech").onclick = () => accionDupla("disolver", mia.id);
       return;

@@ -5,6 +5,7 @@ const {
   slotActual_, firmarSlot_, verificarToken_,
   aplicarMarca_, reconstruirJornada_, estadoEfectivo_, esAsignable_,
   unidadesDeTrabajo_, proximoResponsable_, validarDupla_,
+  duplaPendienteVencida_, avanceSolo_,
   enTurno_, duracionTurno_, porQueMuereLaPropuesta_,
 } = await import("../lib/despacho.js");
 
@@ -348,6 +349,96 @@ describe("unidadesDeTrabajo_", () => {
     expect(u).toHaveLength(1);
     expect(u[0].tipo).toBe("SOLO");
     expect(u[0].asignable).toBe(true);
+  });
+
+  // Una invitación en el aire tiene que sacar a los DOS del reparto. Si el
+  // motor le da un carro al que propuso, el invitado acepta y se encuentra al
+  // compañero ya metido en otro carro: la dupla nace rota.
+  describe("dupla PENDIENTE", () => {
+    const ahora = Date.parse("2026-08-14T12:00:00Z");
+    const pendiente = (minAtras) => ([{
+      id: "d1", rol_trabajo: "TANQUE", estado: "PENDIENTE",
+      propuesta_at: new Date(ahora - minAtras * 60000).toISOString(),
+      miembros: ["A", "B"],
+    }]);
+
+    it("congela a sus dos miembros mientras se decide", () => {
+      const u = unidadesDeTrabajo_([tec("A"), tec("B")], pendiente(2), { ahoraMs: ahora });
+      expect(u).toHaveLength(1);
+      expect(u[0].asignable).toBe(false);
+      expect(u[0].bloqueo).toBe("DUPLA_PENDIENTE");
+      // Ninguno reaparece como unidad suelta por la puerta de atrás.
+      expect(u.filter(x => x.tipo === "SOLO")).toHaveLength(0);
+    });
+
+    it("no cuelga propuestas de una dupla que aún puede rechazarse", () => {
+      const u = unidadesDeTrabajo_([tec("A"), tec("B")], pendiente(2), { ahoraMs: ahora });
+      expect(u[0].duplaId).toBe(null);
+    });
+
+    // Lo que impide que esto se convierta en el bug de siempre: dos técnicos
+    // parados toda la jornada porque nadie contestó una invitación.
+    it("deja de bloquear al vencer el TTL y los devuelve a la cola", () => {
+      const u = unidadesDeTrabajo_([tec("A"), tec("B")], pendiente(11),
+        { ahoraMs: ahora, ttlPendienteMin: 10 });
+      expect(u).toHaveLength(2);
+      expect(u.every(x => x.tipo === "SOLO" && x.asignable)).toBe(true);
+    });
+
+    it("una dupla ACTIVA sigue siendo una unidad de trabajo normal", () => {
+      const duplas = [{ id: "d1", rol_trabajo: "TANQUE", estado: "ACTIVA", miembros: ["A", "B"] }];
+      const u = unidadesDeTrabajo_([tec("A"), tec("B")], duplas, { ahoraMs: ahora });
+      expect(u[0].tipo).toBe("DUPLA");
+      expect(u[0].duplaId).toBe("d1");
+      expect(u[0].asignable).toBe(true);
+    });
+  });
+});
+
+// ─────────────────────────────────────────────
+// Caducidad de la invitación a dupla
+// ─────────────────────────────────────────────
+describe("duplaPendienteVencida_", () => {
+  const ahora = Date.parse("2026-08-14T12:00:00Z");
+  const hace = min => ({ propuesta_at: new Date(ahora - min * 60000).toISOString() });
+
+  it("sigue viva dentro del TTL", () => {
+    expect(duplaPendienteVencida_(hace(9), ahora, 10)).toBe(false);
+  });
+
+  it("vence justo al cumplirse el TTL", () => {
+    expect(duplaPendienteVencida_(hace(10), ahora, 10)).toBe(true);
+  });
+
+  // Sin fecha no se puede saber cuánto lleva esperando, y el error barato es
+  // dejarla pasar: el motor la vuelve a considerar en la corrida siguiente.
+  // Bloquear "por si acaso" congelaría a dos personas sin poder explicarlo.
+  it("una fila sin propuesta_at no bloquea a nadie", () => {
+    expect(duplaPendienteVencida_({}, ahora, 10)).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────
+// Excepción del botón "avanzar" (ayudantes que no marcan)
+// ─────────────────────────────────────────────
+describe("avanceSolo_", () => {
+  it("lee la lista de ids separados por coma", () => {
+    const s = avanceSolo_({ DESPACHO_AVANCE_SOLO: "aaa,bbb" });
+    expect(s.has("aaa")).toBe(true);
+    expect(s.has("bbb")).toBe(true);
+  });
+
+  it("tolera espacios y comas sueltas de un copiar-pegar", () => {
+    const s = avanceSolo_({ DESPACHO_AVANCE_SOLO: " aaa , , bbb ," });
+    expect([...s]).toEqual(["aaa", "bbb"]);
+  });
+
+  // Sin la clave, NADIE tiene el botón fuera de las duplas. El default abierto
+  // sería el error caro: media plantilla sirviéndose carros a mano.
+  it("sin configurar, la excepción no existe", () => {
+    expect(avanceSolo_({}).size).toBe(0);
+    expect(avanceSolo_({ DESPACHO_AVANCE_SOLO: "" }).size).toBe(0);
+    expect(avanceSolo_(null).size).toBe(0);
   });
 });
 

@@ -24,9 +24,9 @@ import {
   aplicarMarca_, reconstruirJornada_, estadoEfectivo_,
   validarDupla_, unidadesDeTrabajo_, payloadDemo_,
   enTurno_, duracionTurno_, JORNADA_INICIO_H,
-  porQueMuereLaPropuesta_,
+  porQueMuereLaPropuesta_, proximoResponsable_, avanceSolo_,
 } from "../lib/despacho.js";
-import { construirPool_, generarPropuestas_, ESPERA_TOPE_MIN } from "../lib/despacho-motor.js";
+import { construirPool_, generarPropuestas_, puntuar_, ESPERA_TOPE_MIN } from "../lib/despacho-motor.js";
 
 // El modelo de emparejamiento vive donde lo deja routes/ml.js al entrenar.
 const PAIRING_MODEL_PATH = "./pairing-model.json";
@@ -439,7 +439,12 @@ async function duplasDeJornada_(fecha, estados = ["PENDIENTE", "ACTIVA"]) {
 
   return duplas.map(d => ({
     ...d,
-    miembros: miembros.filter(m => m.dupla_id === d.id).map(m => m.user_id),
+    // Ordenados: el A y el B de la alternancia tienen que ser los mismos en el
+    // motor y en el botón de avanzar. Sin orden fijo, PostgREST puede devolver
+    // los miembros al revés entre una llamada y otra y el primer carro de la
+    // dupla caería en quien tocara.
+    miembros: miembros.filter(m => m.dupla_id === d.id)
+      .map(m => m.user_id).sort(),
   }));
 }
 
@@ -759,7 +764,9 @@ async function contextoDelTaller_(cfg, fecha) {
     fetch(`${SB()}/rest/v1/lista_diaria_activa?select=vin`, { headers: h }),
     fetch(`${SB()}/rest/v1/usuarios?rol=eq.TECNICO&activo=eq.true&select=id,nombre,especialidad`, { headers: h }),
     marcasDeJornada_(fecha),
-    duplasDeJornada_(fecha, ["ACTIVA"]),
+    // PENDIENTE entra a propósito: mientras una invitación está en el aire,
+    // sus dos técnicos salen del reparto (ver unidadesDeTrabajo_).
+    duplasDeJornada_(fecha, ["ACTIVA", "PENDIENTE"]),
     // Quién tiene trabajo abierto, SIN pasar por las zonas. Ver el porqué en
     // el cálculo de `ocupadosIds` más abajo.
     tecnicosOcupados_(),
@@ -923,7 +930,9 @@ async function contextoDelTaller_(cfg, fecha) {
     };
   });
 
-  const unidades = unidadesDeTrabajo_(tecnicosCtx, duplas).map(u => ({
+  const unidades = unidadesDeTrabajo_(tecnicosCtx, duplas, {
+    ttlPendienteMin: Number(cfg.DESPACHO_TTL_DUPLA_MIN) || 10,
+  }).map(u => ({
     ...u,
     // La unidad hereda la zona del miembro que la tenga más reciente.
     zonaUltima: u.miembros.map(m => m.zonaUltima).find(Boolean) || null,
@@ -1222,8 +1231,13 @@ export async function correrMotor_({ persistir = true, simularAsistencia = false
   }
   t.ctx.creditosDupla = await creditosPorDupla_(t.duplas, fecha);
 
-  // Antes de repartir: devolver a TRABAJANDO lo que cumplió su pausa.
-  if (persistir && modo === "REAL") await reanudarPausasVencidas_();
+  // Antes de repartir: devolver a TRABAJANDO lo que cumplió su pausa, y cerrar
+  // las invitaciones a dupla que nadie contestó — mientras viven, sus dos
+  // técnicos están fuera del reparto.
+  if (persistir && modo === "REAL") {
+    await reanudarPausasVencidas_();
+    await expirarDuplasPendientes_(Number(cfg.DESPACHO_TTL_DUPLA_MIN) || 10);
+  }
 
   // Propuestas que siguen en pie. Ocupan puesto igual que una asignación real:
   // si no, cada corrida volvería a repartir los mismos carros.
@@ -1657,6 +1671,190 @@ router.post("/api/despacho/asignar-manual", requireModoActivo_,
   }
 });
 
+// ─── AVANZAR EL SIGUIENTE CARRO ───────────────────────────────────────────────
+// Una dupla puede adelantar trabajo: mientras uno cierra el carro en curso, el
+// otro abre el siguiente. El motor NO puede repartir esto solo — desde fuera,
+// una dupla con un carro abierto está ocupada, y darle un segundo por criterio
+// automático sería exactamente el acaparamiento que el modelo de unidades
+// existe para evitar. Aquí no lo decide el motor: lo piden ellos, y el crédito
+// va al que le toca por alternancia (A, B, A, B…), no al que pulsa.
+//
+// Excepción por configuración: quien trabaja con ayudantes que no marcan
+// asistencia (caso Cahuana) tiene el mismo botón sin estar en dupla, porque su
+// situación real es la de una dupla que el sistema no puede ver. Ahí el
+// crédito es suyo: los ayudantes no son usuarios.
+
+/**
+ * ¿Puede este técnico avanzar un carro, y a quién le tocaría el crédito?
+ * Barato a propósito: lo consulta la pantalla del técnico, no hace falta
+ * reconstruir el taller entero para pintar un botón.
+ */
+async function derechoAAvanzar_(email, cfg) {
+  const yo = await userPorEmail_(email);
+  if (!yo) return { status: 403, error: "Usuario no encontrado" };
+
+  const fecha = jornadaFecha_();
+  const j = reconstruirJornada_(await marcasDeJornada_(fecha, yo.id));
+  if (j.estado === "FUERA") {
+    return { yo, fecha, puede: false, motivo: "Marca tu ingreso antes de avanzar un carro" };
+  }
+
+  const duplas = await duplasDeJornada_(fecha);
+  const mia = duplas.find(d => d.miembros.includes(yo.id));
+
+  if (mia && String(mia.estado).toUpperCase() === "PENDIENTE") {
+    return { yo, fecha, puede: false, motivo: "Tienes una dupla sin confirmar" };
+  }
+
+  if (mia) {
+    const creditos = (await creditosPorDupla_([mia], fecha)).get(mia.id) || new Map();
+    const tocaA = proximoResponsable_(
+      { miembros: mia.miembros.map(id => ({ user_id: id })), ultimoResponsable: mia.ultimo_responsable_user_id },
+      creditos,
+    );
+    const nombres = await nombresDe_(mia.miembros);
+    return {
+      yo, fecha, puede: true, modo: "DUPLA", dupla: mia,
+      rol: mia.rol_trabajo, tocaA, tocaANombre: nombres.get(tocaA) || "",
+      companeroNombre: nombres.get(mia.miembros.find(id => id !== yo.id)) || "",
+    };
+  }
+
+  if (avanceSolo_(cfg).has(yo.id)) {
+    // Sin dupla en el sistema: el crédito es suyo, los ayudantes no son usuarios.
+    return {
+      yo, fecha, puede: true, modo: "SOLO", dupla: null,
+      rol: String(yo.especialidad || "").toUpperCase(),
+      tocaA: yo.id, tocaANombre: yo.nombre, companeroNombre: "",
+    };
+  }
+
+  return { yo, fecha, puede: false, motivo: "El botón de avanzar es solo para duplas" };
+}
+
+// GET /api/despacho/avance?email= — ¿pinto el botón, y a nombre de quién?
+router.get("/api/despacho/avance", requireModoActivo_, async (req, res) => {
+  try {
+    const d = await derechoAAvanzar_(req.query.email, req.despachoCfg);
+    if (d.status) return res.status(d.status).json({ ok: false, error: d.error });
+    res.json({
+      ok: true, puede: !!d.puede, motivo: d.motivo || "",
+      modo: d.modo || null, duplaId: d.dupla?.id || null, rol: d.rol || null,
+      tocaA: d.tocaA || null, tocaANombre: d.tocaANombre || "",
+      companeroNombre: d.companeroNombre || "",
+      esMiTurno: d.tocaA === d.yo?.id,
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// POST /api/despacho/avanzar  { email }
+// Toma el mejor carro libre del pool para el rol de la unidad y lo abre a
+// nombre de quien toca. Mismo criterio que el motor: no es "el primero que
+// haya", es el que el reparto habría elegido.
+router.post("/api/despacho/avanzar", requireModoActivo_, async (req, res) => {
+  try {
+    const cfg = req.despachoCfg;
+    const d = await derechoAAvanzar_(req.body?.email, cfg);
+    if (d.status) return res.status(d.status).json({ ok: false, error: d.error });
+    if (!d.puede) return res.status(403).json({ ok: false, error: d.motivo });
+
+    const fecha = d.fecha;
+    const t = await contextoDelTaller_(cfg, fecha);
+
+    // La unidad real, con su zona y su historia — es lo que hace que el carro
+    // elegido sea el de al lado y no el del otro extremo del taller.
+    const unidad = t.unidades.find(u => u.miembros.some(m => m.user_id === d.yo.id))
+      || { tipo: "SOLO", duplaId: null, rol: d.rol, miembros: [{ user_id: d.yo.id }], zonaUltima: null };
+
+    // Las propuestas vivas reservan puesto igual que una asignación: sin esto
+    // el botón entregaría un carro que el motor ya le prometió a otro.
+    const vivas = await reconciliarPropuestas_(fecha, {
+      vinesEnZona: t.vinesEnZona, finalizados: t.finalizados,
+    });
+    const pool = construirPool_({
+      zonas: t.zonas, listaDiaria: t.listaDiaria, registrados: t.registrados,
+      modelos: t.modelos,
+      ocupados: [...t.ocupados, ...vivas.map(p => ({ vin: p.vin, rol_trabajo: p.rol_trabajo }))],
+    });
+
+    const roles = d.rol === "AMBOS" ? ["MOTOR", "TANQUE"] : [d.rol];
+    let mejor = null;
+    for (const carro of pool.elegibles) {
+      for (const rol of roles) {
+        if (!carro.rolesLibres.includes(rol)) continue;
+        const otro = rol === "MOTOR" ? "TANQUE" : "MOTOR";
+        const p = puntuar_(unidad, carro, { ...t.ctx, parejaDe: carro.ocupadoPor?.[otro] || null });
+        if (!mejor || p.score > mejor.p.score) mejor = { carro, rol, p };
+      }
+    }
+    if (!mejor) {
+      return res.status(409).json({ ok: false, error: "No hay carros libres para adelantar ahora" });
+    }
+
+    const real = await crearAsignacionReal_({
+      vin: mejor.carro.vin, user_id: d.tocaA, rol_trabajo: mejor.rol,
+    });
+    if (!real.ok) {
+      const conflicto = /ya lo tomó|duplicate key|23505/.test(real.error || "");
+      return res.status(conflicto ? 409 : 500).json({
+        ok: false,
+        error: conflicto ? "Ese puesto acaba de tomarlo alguien" : real.error,
+      });
+    }
+
+    // La propuesta no es decorado: es lo que cuenta el carro dentro de la dupla
+    // (creditosPorDupla_ suma por unidad_dupla_id + user_id), o sea lo que hace
+    // que el SIGUIENTE avance le toque al otro. Sin ella la alternancia se
+    // queda clavada en la misma persona.
+    await fetch(`${SB()}/rest/v1/despacho_propuestas`, {
+      method: "POST",
+      headers: { ...supabaseHeaders_(), Prefer: "return=minimal" },
+      body: JSON.stringify({
+        jornada_fecha: fecha, carro_id: randomUUID(),
+        vin: mejor.carro.vin, zona_id: mejor.carro.zona,
+        user_id: d.tocaA, unidad_dupla_id: d.dupla?.id || null,
+        rol_trabajo: mejor.rol, estado: "CONFIRMADA",
+        decidida_at: new Date().toISOString(),
+        asignacion_id: real.asignacionId,
+        score: mejor.p.score, score_detalle: mejor.p.detalle,
+        razon: d.modo === "DUPLA" ? "Adelantado por la dupla" : "Adelantado con ayudantes",
+      }),
+    }).catch(() => {});
+
+    if (d.dupla) {
+      await fetch(`${SB()}/rest/v1/despacho_duplas?id=eq.${d.dupla.id}`, {
+        method: "PATCH",
+        headers: { ...supabaseHeaders_(), Prefer: "return=minimal" },
+        body: JSON.stringify({
+          ultimo_responsable_user_id: d.tocaA,
+          carros_asignados: (Number(d.dupla.carros_asignados) || 0) + 1,
+        }),
+      }).catch(() => {});
+    }
+
+    emitEvent_("asignaciones", { accion: "DESPACHO_AVANCE" });
+    emitEvent_("despacho", {
+      tipo: "ASIGNADA",
+      asignados: [{
+        user_ids: d.dupla ? d.dupla.miembros : [d.yo.id],
+        zona_id: mejor.carro.zona, vin: mejor.carro.vin,
+        modelo: mejor.carro.modelo || "", rol_trabajo: mejor.rol,
+      }],
+    });
+
+    res.json({
+      ok: true, vin: mejor.carro.vin, zonaId: mejor.carro.zona,
+      modelo: mejor.carro.modelo || "", rol: mejor.rol,
+      userId: d.tocaA, nombre: d.tocaANombre,
+      asignacionId: real.asignacionId,
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // ─── PAUSAS CONTROLADAS POR SUPERVISIÓN ───────────────────────────────────────
 // El técnico deja de manejar sus pausas: las pone el supervisor, con duración.
 // Se apoya en lo que ya existía (sup-pausa-indefinida.js usaba /api/evento con
@@ -1785,6 +1983,46 @@ async function reanudarPausasVencidas_() {
 
     emitEvent_("asignaciones", { accion: "REANUDAR_AUTO", n: vencidas.length });
     console.log(`[Despacho] ${vencidas.length} pausa(s) vencida(s) reanudadas.`);
+    return vencidas.length;
+  } catch { return 0; }
+}
+
+/**
+ * Cierra las invitaciones a dupla que nadie contestó.
+ *
+ * El motor ya deja de contarlas al vencer el TTL (unidadesDeTrabajo_), así que
+ * esto no desbloquea a nadie: lo que hace es que la pantalla no mienta. Sin
+ * ello el invitado seguiría viendo "X quiere trabajar en dupla contigo" tres
+ * horas después, y aceptarla armaría una dupla que el motor ya descartó.
+ */
+async function expirarDuplasPendientes_(ttlMin) {
+  try {
+    const limite = new Date(Date.now() - Math.max(0, ttlMin) * 60000).toISOString();
+    const vencidas = await fetch(
+      `${SB()}/rest/v1/despacho_duplas?jornada_fecha=eq.${jornadaFecha_()}` +
+      `&estado=eq.PENDIENTE&propuesta_at=lte.${limite}&select=id`,
+      { headers: supabaseHeaders_() },
+    ).then(r => r.ok ? r.json() : []).catch(() => []);
+    if (!vencidas.length) return 0;
+
+    const ids = vencidas.map(v => v.id).join(",");
+    await fetch(`${SB()}/rest/v1/despacho_dupla_miembros?dupla_id=in.(${ids})`, {
+      method: "PATCH",
+      headers: { ...supabaseHeaders_(), Prefer: "return=minimal" },
+      body: JSON.stringify({ activa: false }),
+    }).catch(() => {});
+    await fetch(`${SB()}/rest/v1/despacho_duplas?id=in.(${ids})`, {
+      method: "PATCH",
+      headers: { ...supabaseHeaders_(), Prefer: "return=minimal" },
+      body: JSON.stringify({
+        estado: "RECHAZADA",
+        disuelta_at: new Date().toISOString(),
+        motivo: `Sin respuesta en ${ttlMin} min`,
+      }),
+    }).catch(() => {});
+
+    emitEvent_("despacho", { tipo: "DUPLA_EXPIRADA", n: vencidas.length });
+    console.log(`[Despacho] ${vencidas.length} invitación(es) a dupla sin respuesta.`);
     return vencidas.length;
   } catch { return 0; }
 }

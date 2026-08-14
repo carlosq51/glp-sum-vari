@@ -15,6 +15,7 @@ import { CORE } from "../../core/core.js";
 import { getJSON, postJSON } from "../../core/api.js";
 import { escapeHtml } from "../../core/format.js";
 import { createScanner } from "../../core/qr-scanner.js";
+import { renderAvance_, limpiarAvance_ } from "./tec-avance.js";
 
 const READER_ID = "tecAsisReader";
 
@@ -194,6 +195,7 @@ async function registrar_(texto, tipo) {
 function limpiarDupla_() {
   const box = $("tecAsisDupla");
   if (box) box.innerHTML = "";
+  limpiarAvance_("tecAvanceAsis");
 }
 
 async function cargarDupla_() {
@@ -207,6 +209,10 @@ async function cargarDupla_() {
   catch { return; }
   if (!d?.ok) return;
 
+  // El botón de avanzar se decide aparte (el servidor sabe a quién le toca) y
+  // solo aparece si hay dupla ACTIVA o excepción por ayudantes.
+  renderAvance_("tecAvanceAsis");
+
   const mia = (d.duplas || []).find(x => x.miembros?.includes(miUserId_));
   const otroDe = m => m.miembrosNombres?.find((_, i) => m.miembros[i] !== miUserId_) || "tu compañero";
 
@@ -214,11 +220,19 @@ async function cargarDupla_() {
     <h4 class="tecAsisDuplaH">¿Trabajas en dupla hoy?</h4>
     <div class="tecAsisDuplaBody">${cuerpo}</div>`;
 
+  // Mientras la invitación está en el aire, NINGUNO de los dos recibe carro:
+  // si el motor le diera uno al que propuso, el otro aceptaría y se lo
+  // encontraría ya metido en un carro. Decirlo aquí evita la lectura fácil y
+  // equivocada ("el sistema me tiene olvidado") y empuja a resolverla ya.
+  const avisoBloqueo = `<div class="tecAsisAviso tecAsisAviso--warn">
+    ⏸ Mientras se decide, ninguno de los dos recibe carros nuevos.</div>`;
+
   // Me invitaron y falta que yo confirme.
   if (mia?.estado === "PENDIENTE" && mia.lider_user_id !== miUserId_) {
     box.innerHTML = marco(`
       <div class="tecAsisAviso"><b>${escapeHtml(otroDe(mia))}</b> quiere trabajar en dupla contigo.
         Reciben un carro a la vez y el crédito alterna: uno para cada uno.</div>
+      ${avisoBloqueo}
       <button id="tecAsisDupOk" class="tecAsisBtn" type="button">Aceptar dupla</button>
       <button id="tecAsisDupNo" class="tecAsisBtn sec" type="button">Rechazar</button>`);
     $("tecAsisDupOk").onclick = () => accionDupla_("confirmar", mia.id);
@@ -230,6 +244,7 @@ async function cargarDupla_() {
   if (mia?.estado === "PENDIENTE") {
     box.innerHTML = marco(`
       <div class="tecAsisAviso">Esperando que <b>${escapeHtml(otroDe(mia))}</b> acepte.</div>
+      ${avisoBloqueo}
       <button id="tecAsisDupNo" class="tecAsisBtn sec" type="button">Cancelar</button>`);
     $("tecAsisDupNo").onclick = () => accionDupla_("disolver", mia.id);
     return;

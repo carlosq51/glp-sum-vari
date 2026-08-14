@@ -48,6 +48,7 @@ import { escapeHtml, fmtShort_ } from "../../core/format.js";
 import { loadTecMapa_ } from "./tec-mapa.js";
 import { loadMiInventario_ } from "./mi-inventario.js";
 import { loadTecAsistencia_, stopTecAsistencia_ } from "./tec-asistencia.js";
+import { renderAvance_ } from "./tec-avance.js";
 import { startPoll, stopPoll } from "../../core/poll.js";
 import { cfg } from "../../core/config.js";
 
@@ -108,6 +109,15 @@ function showTecPanel_(panelId, loader) {
     const el = document.getElementById(id);
     if (el) el.style.display = id === panelId ? "block" : "none";
   });
+  // "Avanzar siguiente carro" se monta aquí y no en cada llamador: a Mi OT se
+  // entra por media docena de caminos (la tarjeta, el mapa, el escaneo, la
+  // sugerencia de pareja) y colgarlo de uno solo lo dejaría ausente en los
+  // demás. Se repinta en cada entrada porque el turno rota.
+  if (panelId === "tecPanelMiOT") {
+    renderAvance_("tecAvanceMiOT", {
+      onAsignado: () => syncNow({ forceFull: true, showOut: false }).catch(() => {}),
+    });
+  }
   if (loader) loader();
 }
 

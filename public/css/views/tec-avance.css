@@ -1,0 +1,50 @@
+/* =========================
+   views/tec-avance.css — botón "Avanzar siguiente carro"
+
+   Se monta en dos pantallas (Mi OT y Mi asistencia), así que no puede heredar
+   los márgenes de ninguna de las dos: se separa por arriba con su propia línea.
+
+   El color es deliberadamente distinto al botón de marcar asistencia. Aquel es
+   la acción obligatoria del día; este es voluntario y crea trabajo real — un
+   toque accidental abre una OT. Que no se parezcan es parte del diseño.
+   ========================= */
+
+.tecAvance {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: var(--border-w) solid var(--surfaceLine);
+}
+
+.tecAvanceBtn {
+  width: 100%;
+  border: 0;
+  border-radius: var(--radiusSm);
+  background: linear-gradient(120deg, #0ea5e9, #6366f1);
+  color: #f8fafc;
+  font-weight: 800;
+  font-size: 1.05rem;
+  /* Igual que el resto de botones del taller: se toca con guantes. */
+  min-height: 58px;
+  padding: 14px 16px;
+  cursor: pointer;
+}
+.tecAvanceBtn:disabled { opacity: .5; cursor: default; }
+
+.tecAvanceSub {
+  margin-top: 8px;
+  text-align: center;
+  line-height: 1.4;
+}
+
+.tecAvanceMsg { display: none; }
+.tecAvanceMsg.ok,
+.tecAvanceMsg.err {
+  display: block;
+  margin-top: 10px;
+  border-radius: var(--radiusSm);
+  padding: 12px 14px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.tecAvanceMsg.ok  { background: var(--okBg);     border: var(--border-w) solid var(--ok);     color: var(--text); }
+.tecAvanceMsg.err { background: var(--dangerBg); border: var(--border-w) solid var(--danger); color: var(--text); }
