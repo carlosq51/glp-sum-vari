@@ -419,10 +419,16 @@ router.post("/api/evento", async (req, res) => {
 
     // 5b?? DESPACHO EN MODO REAL — dos restricciones sobre el técnico:
     //   · No puede ABRIR un carro nuevo de conversión: lo reparte la pantalla.
-    //   · No puede PAUSAR ni REANUDAR: las pausas las pone el supervisor, con
-    //     duración (5/10/15/indefinida), vía /api/despacho/pausa-ot.
-    // INICIO, FIN y NOTA siguen siendo suyos. Con el módulo en OFF o SOMBRA
-    // no cambia absolutamente nada del flujo actual.
+    //   · No puede PAUSAR: las pausas las pone el supervisor, con duración
+    //     (5/10/15/indefinida), vía /api/despacho/pausa-ot.
+    // INICIO, REANUDAR, FIN y NOTA siguen siendo suyos. Con el módulo en OFF o
+    // SOMBRA no cambia absolutamente nada del flujo actual.
+    //
+    // REANUDAR estuvo bloqueado junto con PAUSA y era una trampa: al marcar
+    // salida, pausarTrabajoDe_ deja sus carros en PAUSADO SIN pausa_hasta, así
+    // que reanudarPausasVencidas_ no los toca nunca y el técnico tampoco podía.
+    // Volvía al taller y dependía de que el supervisor se lo levantara a mano.
+    // Poner una pausa es decisión de supervisión; volver al trabajo no lo es.
     if (rolTrabajo === "MOTOR" || rolTrabajo === "TANQUE") {
       const cfgDesp = await getConfig_();
       const enReal  = String(cfgDesp.DESPACHO_MODO || "OFF").toUpperCase() === "REAL";
@@ -439,7 +445,7 @@ router.post("/api/evento", async (req, res) => {
         });
       }
 
-      if (enReal && !deSupervisor && (accion === "PAUSA" || accion === "REANUDAR")) {
+      if (enReal && !deSupervisor && accion === "PAUSA") {
         return res.status(409).json({
           ok: false,
           error: "Las pausas las maneja el supervisor. Pídele que la registre desde su consola.",
@@ -545,6 +551,10 @@ router.post("/api/evento", async (req, res) => {
         updateData.last_nota = nota;
         updateData.last_nota_ts = new Date().toISOString();
       }
+      // Al volver al trabajo, la pausa dejó de existir: si venía con reloj
+      // (pausa de supervisión de 5/10/15 min), su vencimiento ya no aplica.
+      // Sin esto queda un pausa_hasta futuro sobre una OT que está TRABAJANDO.
+      if (accion === "REANUDAR") updateData.pausa_hasta = null;
 
       const updateResult = await supabasePatch_("asignaciones",
         { id: asignacion.id },

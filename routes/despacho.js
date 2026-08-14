@@ -750,12 +750,15 @@ async function contextoDelTaller_(cfg, fecha) {
   // work_orders tiene años de historia y sin ORDER BY el límite devuelve un
   // subconjunto arbitrario: las OTs de los carros que están AHORA en el taller
   // pueden no venir. Se filtran por los VINs en zona, que son ~15.
-  const [zRes, ldRes, uRes, marcas, duplas] = await Promise.all([
+  const [zRes, ldRes, uRes, marcas, duplas, ocupadosGlobal] = await Promise.all([
     fetch(`${SB()}/rest/v1/conversion_zonas?select=zona_id,vin,registrado_at&order=zona_id.asc`, { headers: h }),
     fetch(`${SB()}/rest/v1/lista_diaria_activa?select=vin`, { headers: h }),
     fetch(`${SB()}/rest/v1/usuarios?rol=eq.TECNICO&activo=eq.true&select=id,nombre,especialidad`, { headers: h }),
     marcasDeJornada_(fecha),
     duplasDeJornada_(fecha, ["ACTIVA"]),
+    // Quién tiene trabajo abierto, SIN pasar por las zonas. Ver el porqué en
+    // el cálculo de `ocupadosIds` más abajo.
+    tecnicosOcupados_(),
   ]);
 
   const zonasRaw = zRes.ok  ? await zRes.json()  : [];
@@ -870,8 +873,23 @@ async function contextoDelTaller_(cfg, fecha) {
     if (!porUser.has(m.user_id)) porUser.set(m.user_id, []);
     porUser.get(m.user_id).push(m);
   }
-  const ocupadosIds = new Set(
-    asgs.filter(a => a.activo && a.estado_actual !== "FINALIZADO").map(a => a.user_id));
+  // Quién NO puede recibir carro porque ya tiene uno.
+  //
+  // `asgs` solo cubre los VINs que están AHORA en conversion_zonas, y eso no
+  // alcanza: si alguien libera la zona (o mueve el VIN) con la OT todavía
+  // abierta, su técnico desaparece de aquí y el motor lo ve DISPONIBLE aunque
+  // siga con el carro en las manos. Lo mismo pasa con un carro sin zona
+  // registrada. Peor aún, la propuesta viva que lo protegía muere por el mismo
+  // motivo en reconciliarPropuestas_ — los dos guardarraíles caen juntos, y el
+  // resultado es una segunda OT encima de la que ya tenía.
+  //
+  // Por eso la ocupación se pregunta también sin pasar por las zonas, igual
+  // que hacen /mi-estado y /asistencia. La unión, no el reemplazo: `asgs`
+  // sigue aportando cualquier estado que la consulta global no enumere.
+  const ocupadosIds = new Set([
+    ...ocupadosGlobal,
+    ...asgs.filter(a => a.activo && a.estado_actual !== "FINALIZADO").map(a => a.user_id),
+  ]);
   const turnoMin = hhmmAMinutos_(cfg.DESPACHO_TURNO_INICIO) ?? 420;
   const turnoFin = hhmmAMinutos_(cfg.DESPACHO_TURNO_FIN) ?? 60;
   const ahoraMin = minutosDelDia_();

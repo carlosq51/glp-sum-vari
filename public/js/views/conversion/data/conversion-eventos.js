@@ -74,9 +74,10 @@ async function getScheduleConfig_() {
     const cfg = j.config || {};
     _scheduleCache = {
       pausaGlobal:  cfg.PAUSA_GLOBAL_ACTIVA    === "1",
-      // Despacho dirigido: las pausas las maneja el supervisor y el servidor
-      // reanuda al vencer. El temporizador del cliente debe apagarse o
-      // intentaría reanudar y el backend se lo rechazaría.
+      // Despacho dirigido: las pausas las pone el supervisor y el servidor
+      // reanuda solo las que tienen reloj. El auto-resume de 8 min del cliente
+      // sobra aquí y pelearía con ese vencimiento. El botón manual sigue vivo:
+      // volver al trabajo es del técnico, poner la pausa no.
       despachoReal: String(cfg.DESPACHO_MODO || "OFF").toUpperCase() === "REAL",
       comidaInicio: cfg.HORARIO_COMIDA_INICIO   || "13:00",
       comidaFin:    cfg.HORARIO_COMIDA_FIN       || "14:00",
