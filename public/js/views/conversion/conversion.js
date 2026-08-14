@@ -506,6 +506,65 @@ function hideRamalListoBanner_() {
   hideBanner_("ramalListoBanner");
 }
 
+// ── Popup "Te asignaron un carro" ────────────────────────────────────────────
+// El despacho dirigido reparte desde el servidor, así que el técnico se entera
+// por push… salvo que tenga la app abierta, que es justo cuando el push del
+// sistema no se muestra. Este es el aviso para ese caso, y es el que importa:
+// el técnico acaba de marcar FIN y está mirando la pantalla.
+//
+// No se cierra solo a propósito. Es una orden de trabajo — "ve a la zona 7" —,
+// no una notificación de cortesía, y si se desvanece a los 5 segundos mientras
+// el técnico guarda la herramienta, se perdió.
+
+function showCarroAsignadoBanner_({ zona_id, modelo, rol_trabajo, vin }) {
+  const detalle = [modelo, rol_trabajo].filter(Boolean).join(" · ");
+  showBanner_({
+    id: "carroAsignadoBanner",
+    kind: "top-card",
+    zIndex: 9200,
+    style:
+      "background:var(--ok);color:var(--bg0);padding:16px 18px;" +
+      "border-radius:14px;display:flex;align-items:flex-start;gap:12px;",
+    html: `
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:1.05rem;font-weight:800;line-height:1.25;">
+          🚗 Carro asignado — ve a la zona ${escapeHtml(String(zona_id ?? "?"))}
+        </div>
+        ${detalle ? `<div style="font-size:.9rem;font-weight:600;opacity:.9;margin-top:3px;">${escapeHtml(detalle)}</div>` : ""}
+        ${vin ? `<div style="font-size:.78rem;opacity:.8;margin-top:2px;font-family:monospace;">${escapeHtml(vin)}</div>` : ""}
+      </div>
+      <button data-banner-close aria-label="Cerrar" style="
+        background:none;border:none;cursor:pointer;flex:0 0 auto;
+        font-size:1.4rem;color:var(--bg0);line-height:1;padding:0 2px;opacity:.85;
+      ">×</button>`,
+  });
+}
+
+/**
+ * Reacciona al reparto del servidor (SSE topic "despacho", tipo "ASIGNADA").
+ * El evento es broadcast a todos los clientes: cada uno se queda solo con lo
+ * que va dirigido a su propio user_id.
+ */
+function onDespachoLive_(ev) {
+  const msg = ev?.detail;
+  if (msg?.topic !== "despacho" || msg?.tipo !== "ASIGNADA") return;
+  if (CORE.state.currentModule !== "TECNICO") return;
+
+  const yo = CORE.state.currentProfile?.id || "";
+  if (!yo) return;
+  const mio = (msg.asignados || []).find(a => (a.user_ids || []).includes(yo));
+  if (!mio) return;
+
+  showCarroAsignadoBanner_(mio);
+  // El popup trae los datos dentro, pero la lista de OTs todavía no tiene el
+  // carro: sin esto el técnico ve el aviso y abajo nada que abrir.
+  syncNow({ forceFull: true, showOut: false }).catch(() => {});
+}
+
+function hideCarroAsignadoBanner_() {
+  hideBanner_("carroAsignadoBanner");
+}
+
 async function checkRamalListo_() {
   if (CORE.state.currentModule !== "TECNICO") return;
   const email = String(document.getElementById("email")?.value || "").trim().toLowerCase();
@@ -1479,6 +1538,9 @@ export function enter(mod) {
     startPoll("POLL_RAMAL_LISTO_MS",   checkRamalListo_);
     startPoll("POLL_COLA_POSICION_MS", checkColaPosicion_);
     document.addEventListener("glp:ramal-solicitado", checkColaPosicion_);
+    // Reparto del despacho dirigido → popup "ve a la zona XX". Va en window,
+    // que es donde core/live.js emite "glp:live".
+    window.addEventListener("glp:live", onDespachoLive_);
 
     // Pair suggest popup: check on enter + poll para transición fin-de-OT
     pairSuggestLastHadOT_ = null;
@@ -1499,11 +1561,13 @@ export function exit(mod) {
   if (mod === "TECNICO") {
     TEC_POLL_KEYS.forEach(stopPoll);
     document.removeEventListener("glp:ramal-solicitado", checkColaPosicion_);
+    window.removeEventListener("glp:live", onDespachoLive_);
     notifiedVins_.clear();
     pairSuggestLastHadOT_ = null;
     closePairSuggestModal_();
     hideRamalListoBanner_();
     hideColaBanner_();
+    hideCarroAsignadoBanner_();
     stopTecAsistencia_();
   }
   destroyRealtime_();

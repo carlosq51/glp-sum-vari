@@ -12,6 +12,7 @@ import { r2GetStatus } from "../r2-uploads.js";
 import { pendingSuggestions_ } from "../lib/ml-state.js";
 import { emitEvent_ } from "../lib/events.js";
 import { getConfig_ } from "../lib/config.js";
+import { dispararMotor_, despachoReparteAhora_ } from "./despacho.js";
 
 const router = Router();
 
@@ -658,6 +659,21 @@ router.post("/api/evento", async (req, res) => {
     console.log(`[EVENTO] ? Exitoso: ${accion} para VIN=${vin}, ROL=${rolTrabajo}, ESTADO=${nuevoEstado}`);
     // Aviso en vivo a todas las vistas conectadas (supervisor live, mapas, colas)
     emitEvent_("asignaciones", { vin, rol: rolTrabajo, accion, estado: nuevoEstado });
+
+    // Un FIN libera al técnico: el motor reparte YA, no en el próximo intervalo.
+    // Sin esto se queda parado hasta un minuto en medio del taller, que es el
+    // tiempo muerto que el despacho dirigido venía a eliminar.
+    //
+    // Fire-and-forget a propósito: la respuesta del FIN no puede quedar colgada
+    // de una corrida del motor, que consulta media base. Si falla, el intervalo
+    // lo recoge igual — el disparo es un atajo, nunca el único camino.
+    if (accion === "FIN" && tipoOt === "CONVERSION" &&
+        (rolTrabajo === "MOTOR" || rolTrabajo === "TANQUE")) {
+      despachoReparteAhora_()
+        .then(puede => { if (puede) return dispararMotor_(`FIN de ${vin}`); })
+        .catch(err => console.warn("[EVENTO] Disparo del motor falló:", err.message));
+    }
+
     return res.json(respuesta);
   } catch (e) {
     console.error("[POST /api/evento]", e.message, e.stack);

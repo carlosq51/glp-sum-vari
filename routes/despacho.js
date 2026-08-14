@@ -959,8 +959,9 @@ async function contextoDelTaller_(cfg, fecha) {
  * abriendo el carro desde su app), así que el motor no tendría forma de saber
  * que ese puesto ya está hablado.
  *
- * Una propuesta muere cuando el carro sale de zona o cuando ese puesto ya
- * quedó FINALIZADO. Todo lo demás sigue vivo y ocupa su puesto.
+ * Una propuesta muere cuando el carro sale de zona, cuando ese puesto ya quedó
+ * FINALIZADO, o cuando la asignación que respalda la propuesta dejó de ser de
+ * ese técnico. Todo lo demás sigue vivo y ocupa su puesto.
  */
 async function reconciliarPropuestas_(fecha, { vinesEnZona, finalizados }) {
   let vivas = [];
@@ -968,31 +969,64 @@ async function reconciliarPropuestas_(fecha, { vinesEnZona, finalizados }) {
     const r = await fetch(
       `${SB()}/rest/v1/despacho_propuestas?jornada_fecha=eq.${fecha}` +
       `&estado=in.(PROPUESTA,CONFIRMADA)` +
-      `&select=id,vin,rol_trabajo,user_id,unidad_dupla_id,zona_id,razon,score,propuesta_at`,
+      `&select=id,vin,rol_trabajo,user_id,unidad_dupla_id,zona_id,razon,score,propuesta_at,asignacion_id`,
       { headers: supabaseHeaders_() },
     );
     if (r.ok) vivas = await r.json();
   } catch { return []; }
   if (!vivas.length) return [];
 
-  const muertas = vivas.filter(p =>
-    !vinesEnZona.has(p.vin) || finalizados.has(`${p.vin}|${p.rol_trabajo}`));
-
-  if (muertas.length) {
-    await fetch(
-      `${SB()}/rest/v1/despacho_propuestas?id=in.(${muertas.map(m => m.id).join(",")})`,
-      {
-        method: "PATCH",
-        headers: { ...supabaseHeaders_(), Prefer: "return=minimal" },
-        body: JSON.stringify({
-          estado: "EXPIRADA", decidida_at: new Date().toISOString(),
-          motivo: "El carro salió de zona o el puesto ya se cerró",
-        }),
-      },
-    ).catch(() => {});
+  // Estado real de las asignaciones que respaldan estas propuestas.
+  //
+  // Una propuesta es solo un espejo de la asignación, y el espejo se despega:
+  // basta un PATCH de user_id (reasignar desde la consola) o un activo=false
+  // para que la propuesta siga reservando a alguien que ya no tiene el carro.
+  // Como el VIN sigue en zona y el puesto no está FINALIZADO, las otras dos
+  // condiciones no la matan nunca y el técnico se queda sin recibir trabajo el
+  // resto de la jornada. Se comprueba contra la asignación, que es la verdad.
+  const asgIds = [...new Set(vivas.map(p => p.asignacion_id).filter(Boolean))];
+  const asgPorId = new Map();
+  if (asgIds.length) {
+    const rows = await fetch(
+      `${SB()}/rest/v1/asignaciones?id=in.(${asgIds.join(",")})&select=id,user_id,activo,estado_actual`,
+      { headers: supabaseHeaders_() },
+    ).then(r => r.ok ? r.json() : []).catch(() => []);
+    for (const a of rows) asgPorId.set(a.id, a);
   }
 
-  const muertasIds = new Set(muertas.map(m => m.id));
+  const porQueMuere = (p) => {
+    if (!vinesEnZona.has(p.vin)) return "El carro salió de zona";
+    if (finalizados.has(`${p.vin}|${p.rol_trabajo}`)) return "El puesto ya se cerró";
+    if (!p.asignacion_id) return null;                  // aún sin OT real: sigue viva
+    const a = asgPorId.get(p.asignacion_id);
+    if (!a) return "La asignación que la respaldaba ya no existe";
+    if (!a.activo) return "La asignación que la respaldaba se dio de baja";
+    if (a.user_id !== p.user_id) return "El puesto se reasignó a otro técnico";
+    return null;
+  };
+
+  const muertas = vivas
+    .map(p => ({ p, motivo: porQueMuere(p) }))
+    .filter(x => x.motivo);
+
+  // Agrupadas por motivo: el motivo es lo que permite entender después por qué
+  // una propuesta murió, y un texto genérico para todas no sirve de nada.
+  const porMotivo = new Map();
+  for (const { p, motivo } of muertas) {
+    if (!porMotivo.has(motivo)) porMotivo.set(motivo, []);
+    porMotivo.get(motivo).push(p.id);
+  }
+  for (const [motivo, ids] of porMotivo) {
+    await fetch(`${SB()}/rest/v1/despacho_propuestas?id=in.(${ids.join(",")})`, {
+      method: "PATCH",
+      headers: { ...supabaseHeaders_(), Prefer: "return=minimal" },
+      body: JSON.stringify({
+        estado: "EXPIRADA", decidida_at: new Date().toISOString(), motivo,
+      }),
+    }).catch(() => {});
+  }
+
+  const muertasIds = new Set(muertas.map(x => x.p.id));
   return vivas.filter(p => !muertasIds.has(p.id));
 }
 
@@ -1261,6 +1295,24 @@ export async function correrMotor_({ persistir = true, simularAsistencia = false
       // que aparece su nombre.
       avisarAsignados_(publicadas, t.tecnicosCtx).catch(() => {});
       emitEvent_("asignaciones", { accion: "DESPACHO" });
+
+      // Y el aviso dentro de la app, que es el que ve el técnico que YA la
+      // tiene abierta — el push del sistema no aparece con la app en primer
+      // plano. Va con los datos dentro para que el popup salga al instante,
+      // sin esperar a que el sync le traiga la OT nueva.
+      //
+      // El SSE es broadcast: cada cliente filtra por su propio user_id. Solo
+      // viajan ids opacos, ni nombres ni correos.
+      emitEvent_("despacho", {
+        tipo: "ASIGNADA",
+        asignados: publicadas.map(p => ({
+          user_ids: p.miembros?.length ? p.miembros : [p.user_id],
+          zona_id: p.zona_id,
+          vin: p.vin,
+          modelo: p.modelo || "",
+          rol_trabajo: p.rol_trabajo,
+        })),
+      });
     }
   }
 
@@ -1301,31 +1353,90 @@ router.get("/api/despacho/motor/preview", async (req, res) => {
 router.post("/api/despacho/motor/correr", requireModoActivo_,
   requireRol_("SUPERVISOR", "ADMIN"), async (_req, res) => {
   try {
-    res.json({ ok: true, ...(await correrMotor_({ persistir: true })) });
+    res.json({ ok: true, ...(await dispararMotor_("supervisor")) });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }
 });
 
+// ─── DISPARO DEL MOTOR ────────────────────────────────────────────────────────
+// El motor corre por dos vías: el intervalo de siempre y, desde ahora, el
+// evento — un técnico marca FIN y el reparto ocurre en el acto, sin esperar
+// hasta un minuto parado en el taller.
+//
+// Las dos vías comparten este candado, y no es opcional: una corrida lee el
+// taller entero y DESPUÉS escribe. Dos corridas solapadas ven el mismo puesto
+// libre, las dos lo proponen, y el índice único idx_asg_active deja a una en el
+// suelo — que es exactamente el fallo silencioso que ya documenta
+// contextoDelTaller_. Con dos técnicos terminando a la vez esto deja de ser
+// hipotético.
+//
+// Un disparo que llega con el motor corriendo NO se descarta: se agenda otra
+// corrida al terminar. La que está en vuelo sacó su foto del taller ANTES de
+// ese FIN, así que el carro recién liberado no aparece en ella y descartar el
+// disparo perdería el reparto hasta el siguiente intervalo.
+let _motorCorriendo = false;
+let _motorPendiente = false;
+
+// Tope de corridas encadenadas por disparos entrantes. Sin él, un taller con
+// mucho movimiento podría mantener el bucle girando; el intervalo recoge lo
+// que quede fuera.
+const MAX_CORRIDAS_ENCADENADAS = 3;
+
+/**
+ * Corre el motor respetando el candado. Si ya hay una corrida en curso,
+ * encola una sola repetición.
+ * @param {string} motivo  para el log: de dónde vino el disparo
+ */
+export async function dispararMotor_(motivo = "evento") {
+  if (_motorCorriendo) {
+    _motorPendiente = true;
+    return { ok: true, encolado: true };
+  }
+  _motorCorriendo = true;
+  try {
+    let r = null;
+    for (let i = 0; i < MAX_CORRIDAS_ENCADENADAS; i++) {
+      _motorPendiente = false;
+      r = await correrMotor_({ persistir: true });
+      if (!_motorPendiente) break;
+    }
+    return { ok: true, ...r };
+  } catch (e) {
+    console.warn(`[Despacho] Motor (${motivo}) falló:`, e.message);
+    return { ok: false, error: e.message };
+  } finally {
+    _motorCorriendo = false;
+  }
+}
+
+/**
+ * ¿Se puede repartir ahora mismo? Modo activo y dentro del turno.
+ * La comparten el intervalo y el disparo por evento: un FIN a las 03:00 no
+ * debe repartir carros con el turno cerrado.
+ */
+export async function despachoReparteAhora_() {
+  const cfg = await getConfig_();
+  if (String(cfg.DESPACHO_MODO || "OFF").toUpperCase() !== "REAL") return false;
+  const iniMin = hhmmAMinutos_(cfg.DESPACHO_TURNO_INICIO) ?? 420;
+  const finMin = hhmmAMinutos_(cfg.DESPACHO_TURNO_FIN) ?? 60;
+  // enTurno_ y no `ini <= ahora <= fin`: el turno cruza medianoche
+  // (07:00 → 01:00) y la comparación directa daría falso todo el día.
+  return enTurno_(minutosDelDia_(), iniMin, finMin);
+}
+
 /** El motor corre solo cada DESPACHO_INTERVALO_SEG. No-op si el modo es OFF. */
 export function scheduleMotor_() {
-  let corriendo = false;
   setInterval(async () => {
-    if (corriendo) return;                    // una corrida a la vez
     try {
       const cfg = await getConfig_();
       if (String(cfg.DESPACHO_MODO || "OFF").toUpperCase() === "OFF") return;
       const finMin = hhmmAMinutos_(cfg.DESPACHO_TURNO_FIN) ?? 60;
       const iniMin = hhmmAMinutos_(cfg.DESPACHO_TURNO_INICIO) ?? 420;
-      // enTurno_ y no `ini <= ahora <= fin`: el turno cruza medianoche
-      // (07:00 → 01:00) y la comparación directa daría falso todo el día.
       if (!enTurno_(minutosDelDia_(), iniMin, finMin)) return;   // fuera de turno no reparte
-      corriendo = true;
-      await correrMotor_({ persistir: true });
+      await dispararMotor_("intervalo");
     } catch (e) {
       console.warn("[Despacho] Motor falló:", e.message);
-    } finally {
-      corriendo = false;
     }
   }, 60_000).unref?.();
 }

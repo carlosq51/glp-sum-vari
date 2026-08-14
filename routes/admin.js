@@ -351,7 +351,27 @@ router.patch("/api/admin/asignaciones/:id", requireRol_("ADMIN", "SUPERVISOR"), 
       });
     }
 
+    // La propuesta del despacho apunta a ESTA asignación y guarda a quién se le
+    // reservó el puesto. Si no se mueve con ella, queda reservando a alguien que
+    // ya no tiene el carro: reconciliarPropuestas_ la ve viva (el VIN sigue en
+    // zona y el puesto no está FINALIZADO), el motor lo cuenta como "ya tiene
+    // trabajo" y ese técnico no recibe nada más en toda la jornada.
+    // Caso real: VICTOR BAILON quedó parado tras reasignarse su Z8 a otro.
+    //
+    // unidad_dupla_id se limpia porque la dupla era del técnico anterior: el
+    // crédito del carro ya no le corresponde.
+    await fetch(
+      `${SUPABASE_URL}/rest/v1/despacho_propuestas?asignacion_id=eq.${encodeURIComponent(id)}` +
+      `&estado=in.(PROPUESTA,CONFIRMADA)`,
+      {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ user_id, unidad_dupla_id: null }),
+      }
+    ).catch(() => { /* la propuesta es un espejo: no tumba la reasignación */ });
+
     emitEvent_("asignaciones", { accion: "REASIGNADA", id });
+    emitEvent_("despacho",     { tipo: "REASIGNADA", asignacion_id: id });
     return res.json({ ok: true });
   } catch (e) {
     return res.status(500).json({ ok: false, error: String(e.message || e) });
