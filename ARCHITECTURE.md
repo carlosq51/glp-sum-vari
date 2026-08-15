@@ -299,7 +299,7 @@ conversion/
 │   ├── conversion-delegation.js    ← Event delegation en cards activas/finalizados
 │   ├── conversion-vin-autocomplete.js
 │   ├── conversion-qr.js
-│   └── conversion-validar.js
+│   └── conversion-zona.js          ← Panel "Registrar carro": VIN + picker de zona
 └── modals/
     ├── ramal-alert.js          ← Banner ramal listo + suscripción Web Push
     ├── error-modal.js

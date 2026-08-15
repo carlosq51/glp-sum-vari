@@ -43,7 +43,7 @@ import { initAvatarUpload } from "../avatar-upload.js";
 import { checkPendingAlerts_, getMyNombre_ } from "./modals/incidencia-alert.js";
 import { requestNotifPermission } from "../../core/push-client.js";
 import { initConversionQR_ } from "./ui/conversion-qr.js";
-import { initTecValidar_, openTecBuscarModal_ } from "./ui/conversion-validar.js";
+import { initTecZona_, loadTecZona_, stopTecZona_ } from "./ui/conversion-zona.js";
 import { escapeHtml, fmtShort_ } from "../../core/format.js";
 import { loadTecMapa_ } from "./tec-mapa.js";
 import { loadMiInventario_ } from "./mi-inventario.js";
@@ -56,7 +56,7 @@ import { cfg } from "../../core/config.js";
 // TEC CARD NAVIGATION
 // --------------------------
 
-const TEC_PANELS = ["tecPanelMiOT", "tecPanelCola", "tecPanelRendimiento", "tecPanelIncidencias", "tecPanelMapa", "tecPanelInventario", "tecPanelAsistencia"];
+const TEC_PANELS = ["tecPanelMiOT", "tecPanelCola", "tecPanelRendimiento", "tecPanelIncidencias", "tecPanelMapa", "tecPanelInventario", "tecPanelAsistencia", "tecPanelZona"];
 let tecCardsInited_      = false;
 const notifiedVins_        = new Set();
 
@@ -78,6 +78,7 @@ let pairSuggestLastHadOT_ = null;  // tracks OT presence for transition detectio
 
 function showTecCards_() {
   stopTecAsistencia_();   // la cámara no debe seguir viva detrás del hub
+  stopTecZona_();         // idem: el escáner del panel de zonas
   const hub = document.getElementById("tecCards");
   if (hub) hub.style.display = "block";
   TEC_PANELS.forEach(id => {
@@ -722,7 +723,7 @@ function initTecCards_() {
     { key: "asistencia",  icon: "clock",         label: "Mi asistencia",    desc: "Marca ingreso o salida con el QR del taller", onlyModule: "TECNICO" },
     { key: "miOT",        icon: "wrench",        label: "Mi OT",           desc: "Tu VIN activo y orden de trabajo"    },
     { key: "cola",        icon: "listChecks",    label: "Cola pendiente",   desc: "VINs disponibles y compañeros libres" },
-    { key: "validar",     icon: "scanSearch",    label: "Buscar / Validar", desc: "Verificar un VIN por código o QR"    },
+    { key: "zona",        icon: "mapPin",        label: "Registrar carro",  desc: "Deja un VIN ubicado en una zona a tu nombre", onlyModule: "TECNICO" },
     { key: "rendimiento", icon: "chart",         label: "Mi rendimiento",   desc: "Historial, estadísticas y meta"      },
     { key: "incidencias", icon: "alertTriangle", label: "Mis incidencias",  desc: "Registrar y ver fallas detectadas"   },
     { key: "mapa",        icon: "map",           label: "Mapa de zonas",   desc: "Ve a qué zona ir y con quién trabajar", onlyModule: "TECNICO" },
@@ -743,7 +744,7 @@ function initTecCards_() {
     `;
     if (c.onlyModule) btn.dataset.tecCardModule = c.onlyModule;
     btn.addEventListener("click", () => {
-      if (c.key === "validar")      { openTecBuscarModal_(); return; }
+      if (c.key === "zona")         showTecPanel_("tecPanelZona", loadTecZona_);
       if (c.key === "miOT")         { showTecPanel_("tecPanelMiOT", null); checkAndShowPairSuggest_(); }
       if (c.key === "cola")         showTecPanel_("tecPanelCola", loadTecCola_);
       if (c.key === "rendimiento")  showTecPanel_("tecPanelRendimiento", loadTecRendimiento_);
@@ -1338,7 +1339,7 @@ export function init() {
   initEstadoUI_();
   initVinAutocomplete_();
   initConversionQR_();
-  initTecValidar_();
+  initTecZona_();
 
   initIncidenciasUI_();
   initConformidadUI_();

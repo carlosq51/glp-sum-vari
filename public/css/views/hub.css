@@ -161,7 +161,7 @@
 /* Tonos — cartillas de técnico (secciones) */
 .hubCard[data-tec-card="miOT"]        { --tone: var(--tone-blue); }
 .hubCard[data-tec-card="cola"]        { --tone: var(--tone-amber); }
-.hubCard[data-tec-card="validar"]     { --tone: var(--tone-violet); }
+.hubCard[data-tec-card="zona"]        { --tone: var(--tone-violet); }
 .hubCard[data-tec-card="rendimiento"] { --tone: var(--tone-green); }
 .hubCard[data-tec-card="incidencias"] { --tone: var(--tone-red); }
 .hubCard[data-tec-card="mapa"]        { --tone: var(--tone-cyan); }

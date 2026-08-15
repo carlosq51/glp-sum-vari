@@ -110,6 +110,37 @@ export function tecnicoView() {
         <div id="tecInventarioContent"><div class="small muted">Cargando…</div></div>
       </div>
 
+      <!-- ── Panel: Registrar carro en zona ──
+           De noche no hay movilizador: el técnico ubica el carro él mismo y
+           queda registrado a su nombre (mismo endpoint que usa movilizador). -->
+      <div id="tecPanelZona" class="card" style="display:none;">
+        <div class="adminDetailHead">
+          <button class="adminBackBtn tecBackBtn">← Volver</button>
+          <span class="adminDetailTitle">📍 Registrar carro</span>
+        </div>
+
+        <div class="fullStack">
+          <div class="small muted">Ingresa o escanea el VIN del carro y elige en qué zona lo dejaste.</div>
+          <div class="vinRow3">
+            <div class="vinWrap">
+              <input id="tecZonaVin" type="text" placeholder="Ingresa VIN o escanea QR"
+                autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" />
+              <div id="tecZonaSuggest" class="vinSuggest hidden" role="listbox"></div>
+            </div>
+            <button id="btnTecZonaQr" type="button" title="Escanear QR">📷</button>
+            <button id="btnTecZonaElegir" type="button" disabled>Elegir zona</button>
+          </div>
+        </div>
+
+        <div id="tecZonaQrArea" style="display:none;margin-top:10px;">
+          <div id="tecZonaQrReader"></div>
+          <div id="tecZonaQrMsg" class="small" style="margin-top:6px;"></div>
+        </div>
+
+        <div id="tecZonaActual" style="margin-top:10px;"></div>
+        <div id="tecZonaMsg" class="small" style="margin-top:10px;"></div>
+      </div>
+
       <!-- ── Panel: Mapa de zonas ── -->
       <div id="tecPanelMapa" class="card" style="display:none;">
         <div class="adminDetailHead">
@@ -136,41 +167,12 @@ export function tecnicoView() {
       <button id="btnNotaOnly" style="display:none;"></button>
       <button id="btnEnviar" style="display:none;"></button>
       <button id="btnVerMisInc" style="display:none;"></button>
-      <button id="btnTecBuscar" style="display:none;"></button>
 
       <div id="debugWrap" class="debug-hidden">
         <h3 style="margin-top:14px;">Respuesta</h3>
         <pre id="out">{}</pre>
       </div>
 
-    </div>
-  `;
-}
-
-// Modal fuera de viewTECNICO para evitar bug WebKit position:fixed en padre display:none
-export function tecBuscarModalTemplate() {
-  return `
-    <div id="tecBuscarModal" class="modal" aria-hidden="true" style="display:none;">
-      <div class="modalBox">
-        <div class="modalHead">
-          <div class="modalTitle">🔍 Buscar VIN — Conversión</div>
-          <button id="btnTecBuscarClose" type="button" title="Cerrar">✕</button>
-        </div>
-        <div class="modalBody">
-          <div style="position:relative;">
-            <div style="display:flex;gap:8px;align-items:center;">
-              <input id="tecBuscarVin" type="text" placeholder="Ingresa VIN o escanea QR"
-                autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false"
-                style="flex:1;" />
-              <button id="btnTecBuscarQr" type="button" class="btn" style="flex:0 0 auto;padding:9px 14px;">📷</button>
-            </div>
-            <div id="tecBuscarSuggest" class="vinSuggest hidden" role="listbox"></div>
-          </div>
-          <div id="tecBuscarQrReader" style="margin-top:10px;"></div>
-          <div id="tecBuscarMsg" class="small" style="margin-top:10px;"></div>
-          <div id="tecBuscarResult" style="margin-top:12px;"></div>
-        </div>
-      </div>
     </div>
   `;
 }
