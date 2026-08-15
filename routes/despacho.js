@@ -1532,6 +1532,145 @@ export function scheduleMotor_() {
 // única barrera entre "corregir una asignación" y "elegir mi propio carro".
 
 // GET /api/despacho/panel — todo lo que necesita la consola, en una llamada
+/**
+ * El taller como plazas de estacionamiento: cada zona con sus DOS puestos
+ * resueltos por separado — delantero (MOTOR) y tanquero (TANQUE).
+ *
+ * Quién ocupa un puesto lo dice la ASIGNACIÓN, no la propuesta. El técnico que
+ * tomó el carro por su cuenta lo ocupa igual, y una consola que solo mirara lo
+ * que repartió el motor ofrecería como libre un puesto que no lo está. La
+ * propuesta solo aporta el porqué y el id con el que se revoca.
+ *
+ * Los dos puestos viajan SIEMPRE separados (uno puede venir en null): es lo que
+ * permite agregar al tanquero de un carro que ya tiene delantero, que antes era
+ * imposible porque el carro desaparecía de la cola en cuanto alguien lo tomaba.
+ */
+async function zonasConPuestos_(props) {
+  const h = supabaseHeaders_();
+
+  const zonaRows = await fetch(
+    `${SB()}/rest/v1/conversion_zonas?select=zona_id,vin,registrado_at&order=zona_id.asc`,
+    { headers: h },
+  ).then(r => r.ok ? r.json() : []).catch(() => []);
+
+  const vins = [...new Set([
+    ...zonaRows.map(z => z.vin),
+    ...props.map(p => p.vin),
+  ].filter(Boolean))];
+
+  const vacio = { MOTOR: null, TANQUE: null };
+  if (!vins.length) {
+    return { zonas: zonaRows.map(z => ({
+      zona_id: z.zona_id, vin: null, modelo: "", registrado_at: null,
+      espera: null, puestos: { ...vacio },
+    })), sinZona: [] };
+  }
+
+  const vinQ = vins.map(encodeURIComponent).join(",");
+  const [wos, modeloRows] = await Promise.all([
+    fetch(`${SB()}/rest/v1/work_orders?vin=in.(${vinQ})&tipo_ot=eq.CONVERSION&select=id,vin`,
+      { headers: h }).then(r => r.ok ? r.json() : []).catch(() => []),
+    fetch(`${SB()}/rest/v1/vins?vin=in.(${vinQ})&select=vin,modelo_normalizado`,
+      { headers: h }).then(r => r.ok ? r.json() : []).catch(() => []),
+  ]);
+
+  const modelos = new Map(modeloRows.map(v => [v.vin, v.modelo_normalizado || ""]));
+  const woVin   = new Map(wos.map(w => [w.id, w.vin]));
+
+  let asgs = [];
+  if (wos.length) {
+    const ids = wos.map(w => encodeURIComponent(w.id)).join(",");
+    asgs = await fetch(
+      `${SB()}/rest/v1/asignaciones?work_order_id=in.(${ids})&activo=eq.true` +
+      `&estado_actual=in.(SIN_INICIAR,TRABAJANDO,PAUSADO)` +
+      `&select=id,work_order_id,user_id,rol_trabajo,estado_actual,pausa_hasta,updated_at` +
+      `&order=updated_at.desc`,
+      { headers: h },
+    ).then(r => r.ok ? r.json() : []).catch(() => []);
+  }
+
+  const nombres = await nombresDe_([
+    ...asgs.map(a => a.user_id), ...props.map(p => p.user_id),
+  ]);
+
+  // La propuesta se busca por su asignación; la clave (vin, rol) queda de
+  // respaldo para las propuestas viejas que nacieron sin OT detrás.
+  const propPorAsg    = new Map();
+  const propPorPuesto = new Map();
+  for (const p of props) {
+    if (p.asignacion_id && !propPorAsg.has(p.asignacion_id)) propPorAsg.set(p.asignacion_id, p);
+    const k = `${p.vin}|${p.rol_trabajo}`;
+    if (!propPorPuesto.has(k)) propPorPuesto.set(k, p);
+  }
+
+  const puestos = new Map();
+  const slotDe_ = vin => {
+    if (!puestos.has(vin)) puestos.set(vin, { MOTOR: null, TANQUE: null });
+    return puestos.get(vin);
+  };
+
+  for (const a of asgs) {
+    const vin = woVin.get(a.work_order_id);
+    const rol = String(a.rol_trabajo || "").toUpperCase();
+    if (!vin || (rol !== "MOTOR" && rol !== "TANQUE")) continue;
+    const s = slotDe_(vin);
+    if (s[rol]) continue;                       // viene ordenado: la última manda
+    const prop    = propPorAsg.get(a.id) || null;
+    const pausado = a.estado_actual === "PAUSADO";
+    const restan  = pausado && a.pausa_hasta
+      ? Math.max(0, Math.round((new Date(a.pausa_hasta) - Date.now()) / 60000))
+      : null;
+    s[rol] = {
+      rol, user_id: a.user_id, nombre: nombres.get(a.user_id) || "",
+      asignacionId: a.id, propuestaId: prop?.id || null,
+      razon: prop?.razon || "", estadoOt: a.estado_actual, pausado,
+      pausaTxt: pausado ? (restan !== null ? `${restan} min restantes` : "pausa indefinida") : "",
+    };
+  }
+
+  // Propuesta viva sin OT detrás: en la TV ese puesto se ve tomado, así que
+  // aquí también. Ofrecerlo como libre lo asignaría dos veces.
+  for (const [k, p] of propPorPuesto) {
+    const sep = k.lastIndexOf("|");
+    const vin = k.slice(0, sep);
+    const rol = k.slice(sep + 1);
+    if (rol !== "MOTOR" && rol !== "TANQUE") continue;
+    if (p.asignacion_id) continue;              // su OT ya no está activa → libre
+    const s = slotDe_(vin);
+    if (s[rol]) continue;
+    s[rol] = {
+      rol, user_id: p.user_id, nombre: nombres.get(p.user_id) || "",
+      asignacionId: null, propuestaId: p.id, razon: p.razon || "",
+      estadoOt: null, pausado: false, pausaTxt: "",
+    };
+  }
+
+  const ahora  = Date.now();
+  const enZona = new Set();
+  const zonas  = zonaRows.map(z => {
+    if (z.vin) enZona.add(z.vin);
+    return {
+      zona_id: z.zona_id,
+      vin: z.vin || null,
+      modelo: z.vin ? (modelos.get(z.vin) || "") : "",
+      registrado_at: z.registrado_at || null,
+      espera: z.vin && z.registrado_at
+        ? Math.round((ahora - new Date(z.registrado_at)) / 60000) : null,
+      puestos: z.vin ? (puestos.get(z.vin) || { ...vacio }) : { ...vacio },
+    };
+  });
+
+  // Carros con gente encima pero sin plaza física: la zona 16.
+  const sinZona = [...puestos.keys()]
+    .filter(vin => !enZona.has(vin))
+    .map(vin => ({
+      zona_id: 16, vin, modelo: modelos.get(vin) || "",
+      registrado_at: null, espera: null, puestos: puestos.get(vin),
+    }));
+
+  return { zonas, sinZona };
+}
+
 router.get("/api/despacho/panel", requireModoActivo_,
   requireRol_("SUPERVISOR", "ADMIN"), async (req, res) => {
   try {
@@ -1544,9 +1683,14 @@ router.get("/api/despacho/panel", requireModoActivo_,
 
     const props = await fetch(
       `${SB()}/rest/v1/despacho_propuestas?jornada_fecha=eq.${fecha}&estado=eq.CONFIRMADA` +
-      `&select=id,vin,zona_id,user_id,rol_trabajo,razon,score,asignacion_id`,
+      `&select=id,vin,zona_id,user_id,rol_trabajo,razon,score,asignacion_id,decidida_at` +
+      `&order=decidida_at.desc`,
       { headers: supabaseHeaders_() },
     ).then(r => r.ok ? r.json() : []).catch(() => []);
+
+    // El mapa se arma con las propuestas ya leídas: son las mismas filas, y
+    // pedirlas dos veces solo agregaría una carrera entre las dos vistas.
+    const mapa = await zonasConPuestos_(props);
 
     const nombres = await nombresDe_([
       ...props.map(p => p.user_id),
@@ -1568,6 +1712,7 @@ router.get("/api/despacho/panel", requireModoActivo_,
     res.json({
       ok: true, jornada: fecha, hora: horaPeru_(), modo: req.despachoModo,
       asignaciones, cola,
+      zonas: mapa.zonas, sinZona: mapa.sinZona,
       propuestas: props.map(p => {
         const a = estados.get(p.asignacion_id);
         const pausado = a?.estado_actual === "PAUSADO";
@@ -1708,6 +1853,102 @@ router.post("/api/despacho/asignar-manual", requireModoActivo_,
     emitEvent_("despacho", { tipo: "MANUAL" });
     emitEvent_("asignaciones", { accion: "DESPACHO_MANUAL" });
     res.json({ ok: true, asignacionId: real.asignacionId });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// POST /api/despacho/puesto/liberar  { email, vin, rol, forzar }
+// Deja vacío UN puesto del carro — el delantero o el tanquero, no los dos.
+//
+// Existe además de /propuesta/revocar porque revocar necesita una propuesta, y
+// la mitad de los puestos ocupados del taller no tienen una: el técnico que
+// abrió el carro por su cuenta ocupa el puesto igual. El supervisor no puede
+// distinguir esos dos casos a simple vista, así que la consola no se lo pide:
+// liberar un puesto es liberar un puesto, venga de donde venga.
+router.post("/api/despacho/puesto/liberar", requireModoActivo_,
+  requireRol_("SUPERVISOR", "ADMIN"), async (req, res) => {
+  try {
+    const { email, vin, rol, forzar } = req.body || {};
+    if (!vin || !rol) return res.status(400).json({ ok: false, error: "Faltan vin o rol" });
+
+    const rolTrabajo = String(rol).toUpperCase();
+    if (rolTrabajo !== "MOTOR" && rolTrabajo !== "TANQUE") {
+      return res.status(400).json({ ok: false, error: "Rol inválido" });
+    }
+
+    const sup   = await userPorEmail_(email);
+    const h     = supabaseHeaders_();
+    const fecha = jornadaFecha_();
+
+    const wo = await fetch(
+      `${SB()}/rest/v1/work_orders?vin=eq.${encodeURIComponent(vin)}&tipo_ot=eq.CONVERSION&select=id&limit=1`,
+      { headers: h },
+    ).then(r => r.ok ? r.json() : []).catch(() => []);
+
+    let asg = null;
+    if (wo.length) {
+      const rows = await fetch(
+        `${SB()}/rest/v1/asignaciones?work_order_id=eq.${wo[0].id}` +
+        `&rol_trabajo=eq.${rolTrabajo}&activo=eq.true` +
+        `&estado_actual=in.(SIN_INICIAR,TRABAJANDO,PAUSADO)` +
+        `&select=id,estado_actual,running_since,tiempo_trab_ms&order=updated_at.desc&limit=1`,
+        { headers: h },
+      ).then(r => r.ok ? r.json() : []).catch(() => []);
+      asg = rows[0] || null;
+    }
+
+    // Quitar a alguien que ya está con las manos en el carro no se hace de un
+    // toque accidental: la consola vuelve a preguntar y reenvía con forzar.
+    if (asg && asg.estado_actual !== "SIN_INICIAR" && !forzar) {
+      return res.status(409).json({
+        ok: false, requiereForzar: true,
+        error: "Ese técnico ya empezó el carro. Confirma para quitarlo igual.",
+      });
+    }
+
+    const ahoraIso = new Date().toISOString();
+
+    // La propuesta muere aunque no haya OT: si sobrevive, el motor la sigue
+    // dando por vigente y el puesto nunca se vuelve a repartir.
+    await fetch(
+      `${SB()}/rest/v1/despacho_propuestas?jornada_fecha=eq.${fecha}` +
+      `&vin=eq.${encodeURIComponent(vin)}&rol_trabajo=eq.${rolTrabajo}&estado=eq.CONFIRMADA`,
+      {
+        method: "PATCH",
+        headers: { ...h, Prefer: "return=minimal" },
+        body: JSON.stringify({
+          estado: "RECHAZADA", decidida_at: ahoraIso, decidida_por: sup?.id || null,
+          motivo: "Puesto liberado por supervisión",
+        }),
+      },
+    ).catch(() => {});
+
+    if (asg) {
+      // El reloj se cierra antes de soltar la OT: las horas corridas son suyas
+      // aunque el carro deje de serlo.
+      const corrido = asg.estado_actual === "TRABAJANDO" && asg.running_since
+        ? Math.max(0, Date.now() - new Date(asg.running_since).getTime())
+        : 0;
+      const patch = { activo: false, updated_at: ahoraIso };
+      if (asg.estado_actual !== "SIN_INICIAR") {
+        patch.estado_actual  = "PAUSADO";
+        patch.running_since  = null;
+        patch.tiempo_trab_ms = (asg.tiempo_trab_ms || 0) + corrido;
+        patch.last_nota      = "Puesto liberado por supervisión";
+        patch.last_nota_ts   = ahoraIso;
+      }
+      const r = await fetch(`${SB()}/rest/v1/asignaciones?id=eq.${asg.id}`, {
+        method: "PATCH",
+        headers: { ...h, Prefer: "return=minimal" },
+        body: JSON.stringify(patch),
+      });
+      if (!r.ok) throw new Error((await r.text()).slice(0, 200));
+    }
+
+    emitEvent_("despacho", { tipo: "PUESTO_LIBERADO" });
+    emitEvent_("asignaciones", { accion: "PUESTO_LIBERADO" });
+    res.json({ ok: true, liberado: !!asg });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }
