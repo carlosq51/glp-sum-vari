@@ -198,14 +198,18 @@ function renderSupervisor_(j) {
 
   const marcaSel = String(document.getElementById("supMarca")?.value || "ALL").toUpperCase();
   const filtered = items.filter((it) => matchMarca_(it, marcaSel));
-  const list = filtered;
+  // `siblingFin` = mitad del mismo carro cerrada FUERA del rango, que el backend
+  // adjunta para que el carro se vea completo. Solo alimenta el agrupado por VIN:
+  // queda fuera de `list`, que es la base de promedios, KPIs y gráficos del rango.
+  const siblings = filtered.filter((it) => it.siblingFin);
+  const list = filtered.filter((it) => !it.siblingFin);
   _lastReportItems_ = list;
 
   const rawTechName = String(document.getElementById("supName")?.value || "").trim();
   const hasTechFilter = !!rawTechName;
 
   const uiList = (!hasTechFilter && supTrack === "CONVERSION")
-    ? groupByVinForUI_(list)
+    ? groupByVinForUI_([...list, ...siblings])
     : list;
 
   // -------- promedio robusto (solo FINALIZADOS, no RAMAL) --------
@@ -295,8 +299,10 @@ function renderSupervisor_(j) {
     // MODO GENERAL: contar desde grupos (un carro = MOTOR Y TANQUE ambos listos)
     for (const grupo of uiList) {
       if (grupo._kind !== "group") continue;
-      if (isFinalizado_(grupo.motor?.estado))  motorCount++;
-      if (isFinalizado_(grupo.tanque?.estado)) tanqueCount++;
+      // Las mitades hermanas completan el carro, pero su trabajo se hizo fuera
+      // del rango: no suman al conteo de trabajos MOTOR/TANQUE del periodo.
+      if (isFinalizado_(grupo.motor?.estado)  && !grupo.motor?.siblingFin)  motorCount++;
+      if (isFinalizado_(grupo.tanque?.estado) && !grupo.tanque?.siblingFin) tanqueCount++;
       if (grupo.estado === "FINALIZADO")       finalizedCount++;
     }
   } else {
@@ -355,7 +361,9 @@ function renderSupervisor_(j) {
   let vinSinCalidad = 0;
   if (supTrack === "CONVERSION") {
     const vinStatus = new Map(); // vin → { motorFin, tanqueFin }
-    for (const it of list) {
+    // Con hermanas: un carro completado por una mitad de otro día también está
+    // convertido y sin revisar — dejarlo fuera lo escondería de la alerta.
+    for (const it of [...list, ...siblings]) {
       const vin = String(it.vin || "").trim();
       if (!vin) continue;
       const rol = String(it.rol || it.rolTrabajo || "").toUpperCase();

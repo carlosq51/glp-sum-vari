@@ -277,6 +277,41 @@ async function handleSupervisorReport_(payload, res) {
     }
   }
 
+  // ── Mitades hermanas fuera de la ventana ────────────────────────────────
+  // La ventana del reporte (por inicio o por cierre, según el modo) puede dejar
+  // fuera la OTRA mitad del mismo carro: si el tanque cerró el 15 y el motor el
+  // 17, un filtro del 17 solo trae el motor y el carro aparece como "falta
+  // TANQUE" aunque esté completo. Traemos esas mitades marcadas `_sibling` para
+  // que el agrupado por VIN muestre el estado real; van excluidas de las
+  // estadísticas (promedios, producción por día), que siguen midiendo el rango.
+  let rawSiblings = [];
+  if (track === "CONVERSION" && raw.length) {
+    const woIds = [...new Set(raw.map(a => a.work_order_id).filter(Boolean))];
+    const yaVistoWoRol = new Set(raw.map(a => `${a.work_order_id}|${String(a.rol_trabajo || "").toUpperCase()}`));
+    const trozos = [];
+    for (let i = 0; i < woIds.length; i += cfg.LIM_VINS_POR_CONSULTA) {
+      trozos.push(woIds.slice(i, i + cfg.LIM_VINS_POR_CONSULTA));
+    }
+    const respHermanas = await Promise.all(trozos.map(trozo => {
+      const u = `${SUPABASE_URL}/rest/v1/asignaciones?select=${selectFields}` +
+        `&${tipoOtFilter}&activo=eq.true&estado_actual=eq.FINALIZADO` +
+        `&work_order_id=in.(${trozo.join(",")})`;
+      return fetch(u, { method: "GET", headers })
+        .then(r => (r.ok ? r.json() : []))
+        .catch(() => []);
+    }));
+    for (const rows of respHermanas) {
+      for (const asg of (rows || [])) {
+        const key = `${asg.work_order_id}|${String(asg.rol_trabajo || "").toUpperCase()}`;
+        if (seenIds.has(asg.id) || yaVistoWoRol.has(key)) continue;
+        seenIds.add(asg.id);
+        yaVistoWoRol.add(key);
+        rawSiblings.push({ ...asg, _crossDay: false, _sibling: true });
+      }
+    }
+    raw.push(...rawSiblings);
+  }
+
   // Obtener modelos de VINs (consulta separada)
   const vinsSet = new Set();
   (raw || []).forEach(asg => {
@@ -331,6 +366,9 @@ async function handleSupervisorReport_(payload, res) {
       activo: asg.activo,
       // Cross-day flag: started before range start, finalized/active within range
       crossDay: asg._crossDay === true,
+      // Mitad hermana traída fuera del rango: solo para completar el carro en la
+      // vista agrupada por VIN. No entra en promedios ni en gráficos.
+      siblingFin: asg._sibling === true,
     };
   });
 
@@ -349,9 +387,11 @@ async function handleSupervisorReport_(payload, res) {
   }
 
   const duration = Date.now() - t1;
-  console.log(`[SUPERVISOR_REPORT] ${track} ${isHistorical ? "HISTÓRICO(updated_at)" : "HOY(fecha_asignacion)"}: ${items.length} items en ${duration}ms${truncated ? " ⚠ TRUNCADO" : ""}`);
+  // `count` = lo que cae en el rango; las hermanas son relleno para el agrupado.
+  const nSiblings = items.filter(it => it.siblingFin).length;
+  console.log(`[SUPERVISOR_REPORT] ${track} ${isHistorical ? "HISTÓRICO(updated_at)" : "HOY(fecha_asignacion)"}: ${items.length - nSiblings} items (+${nSiblings} mitades hermanas) en ${duration}ms${truncated ? " ⚠ TRUNCADO" : ""}`);
 
-  return res.json({ ok: true, items, count: items.length, isHistorical, truncated, _timing: `${duration}ms`, _source: "supabase" });
+  return res.json({ ok: true, items, count: items.length - nSiblings, isHistorical, truncated, _timing: `${duration}ms`, _source: "supabase" });
 }
 
 // =========================
@@ -459,27 +499,74 @@ router.get("/api/supervisor/live", async (req, res) => {
       if (!seenIds.has(asg.id)) { seenIds.add(asg.id); raw.push({ ...asg, _arrastre: true }); }
     }
 
+    // ── Q6: mitades hermanas cerradas ANTES de hoy ────────────────────────────
+    // Una mitad que empezó Y terminó un día anterior no entra en Q1 (empezados
+    // hoy), ni en Q2 (cerrados hoy), ni en Q5 (abiertas de días previos): es
+    // invisible. Sin ella, un carro cuya ÚLTIMA mitad cierra hoy se veía a medias
+    // y no sumaba a la meta — y tampoco había sumado el día que cerró la primera,
+    // así que se perdía para siempre. Solo alimenta el resumen por VIN; la
+    // producción por técnico sigue midiendo únicamente la jornada de hoy.
+    const woIdsHoy = [...new Set(raw
+      .filter(a => !a._arrastre && String(a.tipo_ot || "").toUpperCase() === "CONVERSION")
+      .map(a => a.work_order_id).filter(Boolean))];
+    const yaVistoWoRol = new Set(raw.map(a => `${a.work_order_id}|${String(a.rol_trabajo || "").toUpperCase()}`));
+    const hermanas = [];
+    if (woIdsHoy.length) {
+      const trozos = [];
+      for (let i = 0; i < woIdsHoy.length; i += cfg.LIM_VINS_POR_CONSULTA) {
+        trozos.push(woIdsHoy.slice(i, i + cfg.LIM_VINS_POR_CONSULTA));
+      }
+      const respHermanas = await Promise.all(trozos.map(trozo => {
+        const u = `${SUPABASE_URL}/rest/v1/asignaciones?` +
+          `select=id,work_order_id,rol_trabajo,estado_actual,updated_at,work_orders(vin)` +
+          `&tipo_ot=eq.CONVERSION&activo=eq.true&estado_actual=eq.FINALIZADO` +
+          `&work_order_id=in.(${trozo.join(",")})`;
+        return fetch(u, { method: "GET", headers })
+          .then(r => (r.ok ? r.json() : []))
+          .catch(() => []);
+      }));
+      for (const rows of respHermanas) {
+        for (const asg of (rows || [])) {
+          const key = `${asg.work_order_id}|${String(asg.rol_trabajo || "").toUpperCase()}`;
+          if (seenIds.has(asg.id) || yaVistoWoRol.has(key)) continue;
+          yaVistoWoRol.add(key);
+          hermanas.push(asg);
+        }
+      }
+    }
+
     // ── VIN-level summary: CONVERSION = MOTOR+TANQUE ambos FINALIZADO; CALIDAD = CALIDAD FINALIZADO ──
-    const vinConv = {}; // vin → { motorFin, tanqueFin, hasActive }
+    // Un carro se convierte el día en que cierra su ÚLTIMA mitad: por eso se
+    // guarda el cierre más tardío (`ultFinMs`) y no basta con que alguna mitad
+    // haya cerrado hoy — si no, el carro sumaría el día de cada mitad.
+    const diaPE_ = (iso) => (iso
+      ? new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Lima" }).format(new Date(iso))
+      : "");
+    const vinConv = {}; // vin → { motorFin, tanqueFin, hasActive, ultFinMs }
     const vinCal  = {}; // vin → { done, active }
-    for (const asg of raw) {
+    for (const asg of [...raw, ...hermanas]) {
       if (asg._arrastre) continue;               // trabajo de días previos: no es producción de hoy
       const wo     = Array.isArray(asg.work_orders) ? asg.work_orders[0] : (asg.work_orders || {});
       const vin    = wo.vin || "";
       if (!vin) continue;
-      const tipoOt = (asg.tipo_ot || "").toUpperCase();
+      const tipoOt = (asg.tipo_ot || "CONVERSION").toUpperCase(); // las hermanas ya vienen filtradas
       const rol    = (asg.rol_trabajo || "").toUpperCase();
       const done   = asg.estado_actual === "FINALIZADO";
       if (tipoOt === "CONVERSION") {
-        if (!vinConv[vin]) vinConv[vin] = { motorFin: false, tanqueFin: false, hasActive: false };
+        if (!vinConv[vin]) vinConv[vin] = { motorFin: false, tanqueFin: false, hasActive: false, ultFinMs: 0 };
         if (rol === "MOTOR")  { if (done) vinConv[vin].motorFin  = true; else vinConv[vin].hasActive = true; }
         if (rol === "TANQUE") { if (done) vinConv[vin].tanqueFin = true; else vinConv[vin].hasActive = true; }
+        if (done) {
+          const ms = Date.parse(asg.updated_at || "") || 0;
+          if (ms > vinConv[vin].ultFinMs) vinConv[vin].ultFinMs = ms;
+        }
       } else if (tipoOt === "CALIDAD") {
         if (!vinCal[vin])  vinCal[vin] = { done: false, active: false };
         if (done) vinCal[vin].done = true; else vinCal[vin].active = true;
       }
     }
-    const convDone   = Object.values(vinConv).filter(v => v.motorFin && v.tanqueFin).length;
+    const convDone   = Object.values(vinConv)
+      .filter(v => v.motorFin && v.tanqueFin && diaPE_(v.ultFinMs) === todayStr).length;
     const convActive = Object.values(vinConv).filter(v => !(v.motorFin && v.tanqueFin)).length;
     const calDone    = Object.values(vinCal).filter(v => v.done).length;
     const calActive  = Object.values(vinCal).filter(v => v.active && !v.done).length;
