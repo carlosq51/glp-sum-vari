@@ -43,7 +43,7 @@
   body {
     background: var(--bg0); color: var(--text); font-family: var(--font);
     padding: 16px 14px calc(28px + env(safe-area-inset-bottom));
-    max-width: 720px; margin: 0 auto;
+    max-width: 1040px; margin: 0 auto;
   }
   header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; }
   h1 { font-size: 21px; font-weight: 800; }
@@ -79,23 +79,41 @@
     font: 700 15px var(--font); padding: 11px; border-radius: 9px; width: 100%;
   }
 
-  /* ── El lote ────────────────────────────────────────────────────────────── */
+  /* ── El lote ────────────────────────────────────────────────────────────────
+     Horizontal, igual que la escena 2 de la TV: dos filas (6 zonas arriba,
+     9 abajo) con el pasillo cruzando en medio. Es la misma orientación que ve
+     el taller en la pantalla grande, así el supervisor no tiene que rotar el
+     plano en la cabeza para pasar de una a otra.
+
+     Las dos filas comparten la MISMA rejilla de 9 columnas: así las 6 de
+     arriba miden igual que las 9 de abajo y quedan alineadas a la izquierda,
+     que es como está el taller. En un celular esas 9 columnas no entran, y
+     encogerlas volvería ilegibles los nombres: el lote se desplaza de lado. */
+  .loteScroll { overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px; }
   .lote {
-    display: grid; grid-template-columns: 1fr 44px 1fr; gap: 0; align-items: stretch;
-    background: radial-gradient(120% 80% at 50% 0%, var(--lot-bg), var(--lot-bg2) 78%);
+    display: grid; grid-template-rows: auto auto auto; gap: 7px;
+    background: radial-gradient(80% 120% at 0% 50%, var(--lot-bg), var(--lot-bg2) 78%);
     border-radius: 18px; padding: 10px;
     box-shadow: inset 0 0 0 1px var(--paint-soft);
+    min-width: max-content;
   }
-  .col { display: flex; flex-direction: column; gap: 6px; }
-  .col:first-child { justify-content: flex-end; }
+  /* Columna de ancho fijo a propósito: con 1fr el ancho lo terminaría fijando
+     el nombre más largo del taller (van en nowrap) y el mapa cambiaría de
+     tamaño solo, según quién esté trabajando ese día. */
+  .fila { display: grid; grid-template-columns: repeat(9, 78px); gap: 6px; }
+  @media (min-width: 820px) {
+    .lote { min-width: 0; }
+    .fila { grid-template-columns: repeat(9, 1fr); }
+  }
   .pasillo {
-    background: linear-gradient(90deg, var(--lot-bg2), var(--road-bg) 30%, var(--road-bg) 70%, var(--lot-bg2));
-    display: flex; flex-direction: column; align-items: center; justify-content: space-between;
-    padding: 8px 0; border-radius: 4px; color: var(--muted); font-size: 12px; font-weight: 800;
+    background: linear-gradient(180deg, var(--lot-bg2), var(--road-bg) 30%, var(--road-bg) 70%, var(--lot-bg2));
+    display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px;
+    padding: 0 8px; height: 26px; border-radius: 4px;
+    color: var(--muted); font-size: 12px; font-weight: 800;
   }
   .pasilloLinea {
-    flex: 1; width: 2px; margin: 6px 0;
-    background: repeating-linear-gradient(180deg, var(--paint) 0 10px, transparent 10px 22px);
+    height: 2px;
+    background: repeating-linear-gradient(90deg, var(--paint) 0 12px, transparent 12px 26px);
   }
 
   /* ── La plaza ───────────────────────────────────────────────────────────── */
@@ -269,9 +287,9 @@
   const esc = s => String(s ?? "").replace(/[&<>"]/g, c =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
-  // Layout físico del taller, igual que en la PWA y en la TV.
-  const COL_IZQ = [15, 14, 13, 12, 11, 10];
-  const COL_DER = [9, 8, 7, 6, 5, 4, 3, 2, 1];
+  // Layout físico del taller en horizontal, el mismo orden que la TV.
+  const FILA_ARRIBA = [10, 11, 12, 13, 14, 15];
+  const FILA_ABAJO  = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 
   const ROL_LABEL   = { MOTOR: "Delantero", TANQUE: "Tanquero" };
   const ESTADO_LABEL = { SIN_INICIAR: "sin arrancar", TRABAJANDO: "trabajando", PAUSADO: "en pausa" };
@@ -371,12 +389,14 @@
   }
 
   function pintarMapa() {
-    const col = nums => nums.map(n => plazaHTML(zonaDe(n))).join("");
+    const fila = nums => nums.map(n => plazaHTML(zonaDe(n))).join("");
     $("mapa").innerHTML = `
-      <div class="lote">
-        <div class="col">${col(COL_IZQ)}</div>
-        <div class="pasillo">▼<div class="pasilloLinea"></div>▲</div>
-        <div class="col">${col(COL_DER)}</div>
+      <div class="loteScroll">
+        <div class="lote">
+          <div class="fila">${fila(FILA_ARRIBA)}</div>
+          <div class="pasillo">◀<div class="pasilloLinea"></div>▶</div>
+          <div class="fila">${fila(FILA_ABAJO)}</div>
+        </div>
       </div>`;
     $("mapa").onclick = e => {
       const p = e.target.closest(".plaza[data-zona]");
