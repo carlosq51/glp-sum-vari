@@ -5,7 +5,7 @@ const {
   slotActual_, firmarSlot_, verificarToken_, tokenEstatico_, SLOT_ESTATICO,
   aplicarMarca_, reconstruirJornada_, estadoEfectivo_, esAsignable_,
   unidadesDeTrabajo_, proximoResponsable_, validarDupla_,
-  duplaPendienteVencida_, avanceSolo_,
+  duplaPendienteVencida_, avanceSolo_, avanceSoloTodos_,
   enTurno_, duracionTurno_, porQueMuereLaPropuesta_,
 } = await import("../lib/despacho.js");
 
@@ -469,12 +469,33 @@ describe("avanceSolo_", () => {
     expect([...s]).toEqual(["aaa", "bbb"]);
   });
 
-  // Sin la clave, NADIE tiene el botón fuera de las duplas. El default abierto
-  // sería el error caro: media plantilla sirviéndose carros a mano.
-  it("sin configurar, la excepción no existe", () => {
+  // Sin la clave, la LISTA nominal está vacía. Quién tiene el botón cuando el
+  // permiso es de todos lo decide avanceSoloTodos_, no esta función.
+  it("sin configurar, la lista nominal está vacía", () => {
     expect(avanceSolo_({}).size).toBe(0);
     expect(avanceSolo_({ DESPACHO_AVANCE_SOLO: "" }).size).toBe(0);
     expect(avanceSolo_(null).size).toBe(0);
+  });
+
+  // "*" no es un user_id: si se colara en la lista, un técnico cuyo id fuera
+  // literalmente "*" no existe, pero peor, nadie más entraría por nombre.
+  it("con el comodín, la lista nominal no inventa un id llamado *", () => {
+    expect(avanceSolo_({ DESPACHO_AVANCE_SOLO: "*" }).has("*")).toBe(true);
+    expect(avanceSoloTodos_({ DESPACHO_AVANCE_SOLO: "*" })).toBe(true);
+  });
+});
+
+describe("avanceSoloTodos_", () => {
+  it("solo el comodín abre el permiso a todo el taller", () => {
+    expect(avanceSoloTodos_({ DESPACHO_AVANCE_SOLO: "*" })).toBe(true);
+    expect(avanceSoloTodos_({ DESPACHO_AVANCE_SOLO: " * " })).toBe(true);
+  });
+
+  it("una lista nominal NO abre el permiso a los demás", () => {
+    expect(avanceSoloTodos_({ DESPACHO_AVANCE_SOLO: "aaa,bbb" })).toBe(false);
+    expect(avanceSoloTodos_({ DESPACHO_AVANCE_SOLO: "" })).toBe(false);
+    expect(avanceSoloTodos_({})).toBe(false);
+    expect(avanceSoloTodos_(null)).toBe(false);
   });
 });
 

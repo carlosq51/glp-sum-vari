@@ -11,9 +11,10 @@
 //
 // Quién lo ve:
 //   · las duplas ACTIVAS, y
-//   · quien esté en DESPACHO_AVANCE_SOLO — el técnico que trabaja con
-//     ayudantes que no marcan asistencia y por tanto no puede formar dupla
-//     en el sistema aunque en el taller la tenga.
+//   · todo técnico con su ingreso marcado, mientras DESPACHO_AVANCE_SOLO
+//     sea "*" (lo es desde 2026-08-17). Antes era un permiso nominal para
+//     quien trabaja con ayudantes que no marcan asistencia; resultó que esa
+//     situación la tiene cualquiera, así que el permiso es de todos.
 //
 // El crédito NO es de quien pulsa: va al que le toca por alternancia (A, B,
 // A, B…). Eso lo decide el servidor; aquí solo se anuncia, porque un botón
@@ -39,9 +40,9 @@ function primerNombre_(n) {
 
 /**
  * Pinta el botón dentro del contenedor, o lo deja vacío si no aplica.
- * Silencioso a propósito cuando no hay derecho: la enorme mayoría de técnicos
- * no está en dupla y no tiene por qué ver un botón deshabilitado ni una
- * explicación de algo que no le incumbe.
+ * Silencioso a propósito cuando no hay derecho: quien no marcó ingreso, o
+ * tiene una dupla sin confirmar, no gana nada con un botón deshabilitado —
+ * lo que le falta se lo dice la pantalla de asistencia, no este botón.
  *
  * @param {string} containerId  id del div donde montarlo
  * @param {object} opts.onAsignado  callback tras avanzar (refrescar la OT)
@@ -65,7 +66,7 @@ export async function renderAvance_(containerId, { onAsignado } = {}) {
     : `el crédito va para <b>${escapeHtml(quien || "tu compañero")}</b>`;
   const sub = d.modo === "DUPLA"
     ? `Dupla con <b>${escapeHtml(primerNombre_(d.companeroNombre) || "tu compañero")}</b> · ${turno}`
-    : "Trabajas con ayudantes · el crédito es tuyo";
+    : "Sin dupla · el crédito es tuyo";
 
   box.innerHTML = `
     <div class="tecAvance">

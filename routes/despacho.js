@@ -24,7 +24,7 @@ import {
   aplicarMarca_, reconstruirJornada_, estadoEfectivo_,
   validarDupla_, unidadesDeTrabajo_, payloadDemo_,
   enTurno_, duracionTurno_, JORNADA_INICIO_H,
-  porQueMuereLaPropuesta_, proximoResponsable_, avanceSolo_,
+  porQueMuereLaPropuesta_, proximoResponsable_, avanceSolo_, avanceSoloTodos_,
 } from "../lib/despacho.js";
 import { construirPool_, generarPropuestas_, puntuar_, ESPERA_TOPE_MIN } from "../lib/despacho-motor.js";
 
@@ -1962,10 +1962,12 @@ router.post("/api/despacho/puesto/liberar", requireModoActivo_,
 // existe para evitar. Aquí no lo decide el motor: lo piden ellos, y el crédito
 // va al que le toca por alternancia (A, B, A, B…), no al que pulsa.
 //
-// Excepción por configuración: quien trabaja con ayudantes que no marcan
-// asistencia (caso Cahuana) tiene el mismo botón sin estar en dupla, porque su
-// situación real es la de una dupla que el sistema no puede ver. Ahí el
-// crédito es suyo: los ayudantes no son usuarios.
+// Sin dupla también se puede, según DESPACHO_AVANCE_SOLO. Empezó como permiso
+// nominal para quien trabaja con ayudantes que no marcan asistencia —una dupla
+// que el sistema no puede ver— y hoy está abierto a todo el taller: la ayuda
+// informal no es de una sola persona, y quien esté listo para abrir el
+// siguiente carro rinde igual con botón que sin él. Ahí el crédito es de quien
+// pulsa: no hay compañero registrado con quien alternarlo.
 
 /**
  * ¿Puede este técnico avanzar un carro, y a quién le tocaría el crédito?
@@ -2003,8 +2005,8 @@ async function derechoAAvanzar_(email, cfg) {
     };
   }
 
-  if (avanceSolo_(cfg).has(yo.id)) {
-    // Sin dupla en el sistema: el crédito es suyo, los ayudantes no son usuarios.
+  if (avanceSoloTodos_(cfg) || avanceSolo_(cfg).has(yo.id)) {
+    // Sin dupla en el sistema: el crédito es suyo, no hay con quién alternarlo.
     return {
       yo, fecha, puede: true, modo: "SOLO", dupla: null,
       rol: String(yo.especialidad || "").toUpperCase(),
@@ -2102,7 +2104,7 @@ router.post("/api/despacho/avanzar", requireModoActivo_, async (req, res) => {
         decidida_at: new Date().toISOString(),
         asignacion_id: real.asignacionId,
         score: mejor.p.score, score_detalle: mejor.p.detalle,
-        razon: d.modo === "DUPLA" ? "Adelantado por la dupla" : "Adelantado con ayudantes",
+        razon: d.modo === "DUPLA" ? "Adelantado por la dupla" : "Adelantado sin dupla",
       }),
     }).catch(() => {});
 
