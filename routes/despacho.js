@@ -1241,12 +1241,16 @@ async function crearDuplaAuto_(fecha, { rol, anclaId, ayudanteId, vin }) {
 }
 
 /**
- * Aplica la regla del carro extra: forma las duplas que tocan y deshace las que
- * ya cumplieron su carro. Corre ANTES del reparto, en cada corrida del motor.
+ * Qué haría la regla del carro extra ahora mismo. SOLO LECTURAS.
  *
- * → { cambio, formadas, disueltas } · null si la regla está apagada.
+ * Separado de aplicarDuplasAuto_ para que el preview del motor —que no escribe
+ * nada— pueda enseñarlo igual. Si el plan solo existiera dentro de la corrida
+ * real, la única forma de saber si la regla funciona sería esperar a que
+ * pasara: no habría dónde mirarla antes de encender el modo REAL.
+ *
+ * → { formar, disolver } · null si la regla está apagada.
  */
-async function reconciliarDuplasAuto_(fecha, cfg, t) {
+async function planDuplasAuto_(fecha, cfg, t) {
   if (String(cfg.DESPACHO_DUPLA_AUTO ?? "1") !== "1") return null;
 
   // Todas las de la jornada, incluidas las ya deshechas: son las que dicen
@@ -1254,7 +1258,7 @@ async function reconciliarDuplasAuto_(fecha, cfg, t) {
   const historicas = await duplasDeJornada_(fecha,
     ["PENDIENTE", "ACTIVA", "RECHAZADA", "DISUELTA"]);
 
-  const { formar, disolver } = pareoCarroExtra_({
+  return pareoCarroExtra_({
     tecnicos:    t.tecnicosCtx,
     duplasVivas: t.duplas,
     yaParearon:  new Set(historicas.filter(esDuplaAuto_).flatMap(d => d.miembros)),
@@ -1262,6 +1266,29 @@ async function reconciliarDuplasAuto_(fecha, cfg, t) {
     creditos:    t.ctx.creditosHoy,
     meta:        Number(cfg.META_CARROS_TEC) || 2,
   });
+}
+
+/** El plan en castellano, para el resumen del motor y el panel del supervisor. */
+function explicarDuplasAuto_(plan, t) {
+  const nombre = id => t.tecnicosCtx.find(x => x.user_id === id)?.nombre || id;
+  return {
+    formaria: plan.formar.map(f => ({
+      rol: f.rol, zona_id: f.zonaId, vin: f.vin,
+      ancla: nombre(f.anclaId), ayudante: nombre(f.ayudanteId),
+    })),
+    disolveria: plan.disolver.map(d => ({
+      dupla_id: d.id, vin: d.vin, miembros: d.miembros.map(nombre),
+    })),
+  };
+}
+
+/**
+ * Ejecuta el plan: crea las duplas que tocan y deshace las que ya cumplieron su
+ * carro. Corre ANTES del reparto, en cada corrida real del motor.
+ *
+ * → { cambio, formadas, disueltas }
+ */
+async function aplicarDuplasAuto_(fecha, { formar, disolver }, t) {
   if (!formar.length && !disolver.length) return { cambio: false, formadas: 0, disueltas: 0 };
 
   for (const d of disolver) {
@@ -1481,20 +1508,31 @@ export async function correrMotor_({ persistir = true, simularAsistencia = false
   // Antes de repartir: devolver a TRABAJANDO lo que cumplió su pausa, y cerrar
   // las invitaciones a dupla que nadie contestó — mientras viven, sus dos
   // técnicos están fuera del reparto.
-  let duplasAuto = null;
   if (persistir && modo === "REAL") {
     await reanudarPausasVencidas_();
     await expirarDuplasPendientes_(Number(cfg.DESPACHO_TTL_DUPLA_MIN) || 10);
+  }
 
-    // Y la regla del carro extra, que también cambia quién puede recibir carro:
-    // el que acaba de quedar de ayudante NO entra al reparto, entra al carro de
-    // su compañero. Va antes de generar propuestas por eso mismo — un minuto
-    // más tarde ya tendría carro propio y la regla no se cumpliría nunca.
-    duplasAuto = await reconciliarDuplasAuto_(fecha, cfg, t).catch(e => {
+  // La regla del carro extra, que también cambia quién puede recibir carro: el
+  // que acaba de quedar de ayudante NO entra al reparto, entra al carro de su
+  // compañero. Va antes de generar propuestas por eso mismo — un minuto más
+  // tarde ya tendría carro propio y la regla no se cumpliría nunca.
+  //
+  // El plan se calcula SIEMPRE (son lecturas) y así el preview lo enseña sin
+  // escribir; aplicarlo es lo que queda reservado al modo REAL.
+  const planAuto = await planDuplasAuto_(fecha, cfg, t).catch(e => {
+    console.warn(`[Despacho] dupla auto: ${e.message}`);
+    return null;
+  });
+  let duplasAuto = planAuto ? explicarDuplasAuto_(planAuto, t) : null;
+
+  if (planAuto && persistir && modo === "REAL") {
+    const hecho = await aplicarDuplasAuto_(fecha, planAuto, t).catch(e => {
       console.warn(`[Despacho] dupla auto: ${e.message}`);
       return null;
     });
-    if (duplasAuto?.cambio) {
+    if (hecho) duplasAuto = { ...duplasAuto, formadas: hecho.formadas, disueltas: hecho.disueltas };
+    if (hecho?.cambio) {
       t.duplas   = await duplasDeJornada_(fecha, ["ACTIVA", "PENDIENTE"]);
       t.unidades = armarUnidades_(t.tecnicosCtx, t.duplas, cfg);
     }
@@ -1545,9 +1583,10 @@ export async function correrMotor_({ persistir = true, simularAsistencia = false
     unidades: t.unidades.length,
     unidadesAsignables: t.unidades.filter(u => u.asignable).length,
     unidadesLibres, carrosSinCubrir,
-    // Qué hizo la regla del carro extra en esta corrida. Sin esto, una dupla
-    // que nace sola no deja rastro en ningún lado salvo la tabla.
-    duplasAuto: duplasAuto ? { formadas: duplasAuto.formadas, disueltas: duplasAuto.disueltas } : null,
+    // Qué haría (preview) o qué hizo (corrida real) la regla del carro extra,
+    // con nombres. Sin esto, una dupla que nace sola no deja rastro en ningún
+    // lado salvo la tabla. `null` = la regla está apagada.
+    duplasAuto,
     propuestas,
     fallidas: [],          // se llena al publicar; ver el bucle de CONFIRMADA
   };
