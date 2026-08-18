@@ -76,11 +76,34 @@ describe("pareoCarroExtra_ · formación", () => {
     expect(pareoCarroExtra_(base({ yaParearon: new Set(["franz"]) })).formar).toEqual([]);
   });
 
-  it("respeta las duplas que los técnicos armaron a mano", () => {
-    const { formar } = pareoCarroExtra_(base({
-      duplasVivas: [{ id: "d1", lider_user_id: "ana", miembros: ["ana"], motivo: "" }],
-    }));
-    expect(formar).toEqual([]);
+  it("deja fuera a quien ya trabaja en una dupla armada a mano", () => {
+    // De ayudante…
+    expect(pareoCarroExtra_(base({
+      duplasVivas: [{ id: "d1", estado: "ACTIVA", lider_user_id: "ana", miembros: ["ana", "otro"], motivo: "" }],
+    })).formar).toEqual([]);
+
+    // …y de ancla: la dupla manual ya es una unidad de dos, no admite un tercero.
+    expect(pareoCarroExtra_(base({
+      duplasVivas: [{ id: "d1", estado: "ACTIVA", lider_user_id: "franz", miembros: ["franz", "otro"], motivo: "" }],
+    })).formar).toEqual([]);
+  });
+
+  it("una invitación a dupla sin contestar también bloquea… mientras no caduque", () => {
+    const ahoraMs = Date.parse("2026-08-18T16:00:00Z");
+    const pendiente = estado_at => ({
+      id: "p1", estado: "PENDIENTE", lider_user_id: "ana",
+      miembros: ["ana", "otro"], motivo: "", propuesta_at: estado_at,
+    });
+
+    // Recién propuesta: bloquea, igual que en el reparto.
+    expect(pareoCarroExtra_(base({
+      duplasVivas: [pendiente("2026-08-18T15:55:00Z")], ahoraMs, ttlPendienteMin: 10,
+    })).formar).toEqual([]);
+
+    // Caducada: ya volvieron a la cola, así que no puede seguir dejándolos fuera.
+    expect(pareoCarroExtra_(base({
+      duplasVivas: [pendiente("2026-08-18T15:30:00Z")], ahoraMs, ttlPendienteMin: 10,
+    })).formar).toHaveLength(1);
   });
 
   it("con varios en carro extra, ayuda al que lleva más rato en el suyo", () => {

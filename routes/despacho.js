@@ -1265,6 +1265,9 @@ async function planDuplasAuto_(fecha, cfg, t) {
     abiertas:    t.abiertas,
     creditos:    t.ctx.creditosHoy,
     meta:        Number(cfg.META_CARROS_TEC) || 2,
+    // El mismo TTL que usa el reparto: una invitación caducada no bloquea aquí
+    // a quien allá ya volvió a la cola.
+    ttlPendienteMin: Number(cfg.DESPACHO_TTL_DUPLA_MIN) || 10,
   });
 }
 
