@@ -251,8 +251,8 @@ async function cargarDupla_() {
     return;
   }
 
-  // Dupla de apoyo (regla del carro extra o ayudante puesto por el supervisor):
-  // la misma tarjeta que en Mi OT, desde el mismo módulo — dos copias del texto
+  // Dupla del carro extra (la que arma la regla sola): la misma tarjeta que en
+  // Mi OT, desde el mismo módulo — dos copias del texto
   // se desincronizan a la primera corrección. Sin "Deshacer": no la armó él, y
   // para salirse está el supervisor. El botón de avanzar tampoco aplica (lo
   // cierra el servidor).

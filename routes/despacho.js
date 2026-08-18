@@ -25,8 +25,7 @@ import {
   validarDupla_, unidadesDeTrabajo_, payloadDemo_,
   enTurno_, duracionTurno_, JORNADA_INICIO_H,
   porQueMuereLaPropuesta_, proximoResponsable_, avanceSolo_, avanceSoloTodos_,
-  pareoCarroExtra_, esDuplaAuto_, esDuplaApoyo_, esAyudaManual_,
-  motivoDuplaAuto_, motivoAyudaManual_, vinDeDuplaApoyo_, validarAyudante_,
+  pareoCarroExtra_, esDuplaAuto_, motivoDuplaAuto_, vinDeDuplaAuto_,
 } from "../lib/despacho.js";
 import { construirPool_, generarPropuestas_, puntuar_, ESPERA_TOPE_MIN } from "../lib/despacho-motor.js";
 
@@ -525,7 +524,7 @@ router.get("/api/despacho/duplas", requireModoActivo_, async (req, res) => {
     // Las automáticas cuelgan de un carro concreto: sin la zona, el ayudante
     // sabe con quién trabaja pero no adónde ir.
     const zonaPorVin = await zonasDeVins_(
-      duplas.filter(esDuplaApoyo_).map(vinDeDuplaApoyo_).filter(Boolean));
+      duplas.filter(esDuplaAuto_).map(vinDeDuplaAuto_).filter(Boolean));
 
     // Con email, se devuelve también QUIÉN pregunta: la app necesita el user_id
     // para saber de qué lado de la dupla está, y sin esto tendría que pedirlo a
@@ -535,16 +534,14 @@ router.get("/api/despacho/duplas", requireModoActivo_, async (req, res) => {
     res.json({
       ok: true, jornada: fecha, userId: yo?.id || null,
       duplas: duplas.map(d => {
-        const apoyo = esDuplaApoyo_(d);
-        const vin = apoyo ? vinDeDuplaApoyo_(d) : null;
+        const auto = esDuplaAuto_(d);
+        const vin = auto ? vinDeDuplaAuto_(d) : null;
         return {
           ...d,
           miembrosNombres: d.miembros.map(id => nombres.get(id) || ""),
-          // `auto` = es una dupla de apoyo atada a un carro (la pinta la app del
-          // técnico igual venga del motor o del supervisor); `manual` dice cuál
-          // de las dos, que es lo único que cambia el texto.
-          auto: apoyo,
-          manual: esAyudaManual_(d),
+          // `auto` = la armó la regla del carro extra y cuelga de ese carro; es
+          // lo que dispara la tarjeta "apoya a X en la zona N".
+          auto,
           vin,
           zonaId: vin ? (zonaPorVin.get(vin) ?? null) : null,
         };
@@ -655,6 +652,95 @@ router.post("/api/despacho/dupla/proponer", requireModoActivo_, async (req, res)
       ok: true, duplaId: dupla.id, rol: rolFinal,
       esperandoA: socio.nombre,
     });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// POST /api/despacho/dupla/crear  { email, aUserId, bUserId, rol? }
+// La misma dupla, armada desde la consola del taller. Nace ACTIVA sin esperar
+// confirmación: el técnico invita a un igual y por eso el otro tiene que
+// aceptar, pero el supervisor no invita — manda. Pedirle un tap al celular de
+// alguien que está bajo un carro solo dejaría la orden a medias.
+//
+// Es una dupla DE TRABAJO, no un apoyo: no cuelga de ningún carro, recibe
+// carros como unidad y reparte el crédito alternado. Vive hasta que alguien la
+// disuelva (POST /dupla/disolver, que ya acepta supervisores).
+router.post("/api/despacho/dupla/crear", requireModoActivo_,
+  requireRol_("SUPERVISOR", "ADMIN"), async (req, res) => {
+  try {
+    const { aUserId, bUserId, rol } = req.body || {};
+    if (!aUserId || !bUserId) {
+      return res.status(400).json({ ok: false, error: "Elige a los dos técnicos" });
+    }
+
+    const ur = await fetch(
+      `${SB()}/rest/v1/usuarios?id=in.(${encodeURIComponent([aUserId, bUserId].join(","))})` +
+      `&select=id,nombre,email,especialidad,activo`,
+      { headers: supabaseHeaders_() },
+    );
+    const users = ur.ok ? await ur.json() : [];
+    const a = users.find(u => u.id === aUserId);
+    const b = users.find(u => u.id === bUserId);
+    if (!a || !b) return res.status(404).json({ ok: false, error: "Técnico no encontrado" });
+
+    const fecha   = jornadaFecha_();
+    const duplas  = await duplasDeJornada_(fecha);
+    const enDupla = new Set(duplas.flatMap(d => d.miembros));
+
+    const v = validarDupla_(a, b, { yaEnDupla: enDupla });
+    if (!v.ok) return res.status(409).json({ ok: false, error: v.error });
+
+    const rolFinal = v.rol || String(rol || "").toUpperCase();
+    if (!["MOTOR", "TANQUE"].includes(rolFinal)) {
+      return res.status(400).json({ ok: false, error: "Indica el rol de la dupla (MOTOR o TANQUE)" });
+    }
+
+    const ahora = new Date().toISOString();
+    const dr = await fetch(`${SB()}/rest/v1/despacho_duplas`, {
+      method: "POST",
+      headers: { ...supabaseHeaders_(), Prefer: "return=representation" },
+      body: JSON.stringify({
+        jornada_fecha: fecha, rol_trabajo: rolFinal,
+        lider_user_id: a.id, estado: "ACTIVA", confirmada_at: ahora,
+        motivo: "SUPERVISOR",
+      }),
+    });
+    if (!dr.ok) throw new Error((await dr.text()).slice(0, 200));
+    const dupla = (await dr.json())[0];
+
+    const mr = await fetch(`${SB()}/rest/v1/despacho_dupla_miembros`, {
+      method: "POST",
+      headers: { ...supabaseHeaders_(), Prefer: "return=minimal" },
+      body: JSON.stringify([
+        { dupla_id: dupla.id, user_id: a.id, jornada_fecha: fecha, activa: true },
+        { dupla_id: dupla.id, user_id: b.id, jornada_fecha: fecha, activa: true },
+      ]),
+    });
+    if (!mr.ok) {
+      // Alguien entró a otra dupla entre la lectura y el insert. La cabecera
+      // huérfana se borra: viva contaría como dupla del día sin serlo.
+      const txt = await mr.text();
+      await fetch(`${SB()}/rest/v1/despacho_duplas?id=eq.${dupla.id}`, {
+        method: "DELETE", headers: { ...supabaseHeaders_(), Prefer: "return=minimal" },
+      }).catch(() => {});
+      if (/duplicate key|23505/.test(txt)) {
+        return res.status(409).json({ ok: false, error: "Uno de los dos ya entró en otra dupla hoy" });
+      }
+      throw new Error(txt.slice(0, 200));
+    }
+
+    // Los dos tienen que enterarse ahora: a partir de este momento reciben UN
+    // carro entre los dos, y quien no lo sepa va a seguir esperando el suyo.
+    await sendPushToEmails_([a.email, b.email].filter(Boolean), {
+      title: "🤝 Trabajas en dupla",
+      body: `${rolFinal} · ${primerNombre_(a.nombre)} y ${primerNombre_(b.nombre)}`,
+    }).catch(() => {});
+
+    emitEvent_("despacho", {
+      tipo: "DUPLA_ACTIVA", dupla_id: dupla.id, user_ids: [a.id, b.id],
+    });
+    res.json({ ok: true, duplaId: dupla.id, rol: rolFinal, miembros: [a.nombre, b.nombre] });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }
@@ -1180,28 +1266,24 @@ async function creditosPorDupla_(duplas, fecha) {
 // ─── DUPLA AUTOMÁTICA DEL CARRO EXTRA ─────────────────────────────────────────
 
 /**
- * Duplas de apoyo vivas, indexadas por el puesto al que cuelgan: "<vin>|<rol>".
- *
- * Un puesto admite UN ayudante. Con la clave puesta así, poner a otro es
- * encontrar el que había y deshacerlo — que es exactamente lo que hace falta
- * para reasignar sin dejar dos duplas colgando del mismo carro.
+ * Duplas automáticas vivas, indexadas por el puesto del que cuelgan:
+ * "<vin>|<rol>". La consola las lee para decir quién apoya en cada carro.
  */
 async function apoyosPorPuesto_(fecha) {
-  const duplas = (await duplasDeJornada_(fecha, ["ACTIVA"])).filter(esDuplaApoyo_);
+  const duplas = (await duplasDeJornada_(fecha, ["ACTIVA"])).filter(esDuplaAuto_);
   const out = new Map();
   for (const d of duplas) {
-    const vin = vinDeDuplaApoyo_(d);
+    const vin = vinDeDuplaAuto_(d);
     const ayudanteId = (d.miembros || []).find(id => id !== d.lider_user_id) || null;
     if (!vin || !ayudanteId) continue;
     out.set(`${vin}|${String(d.rol_trabajo || "").toUpperCase()}`, {
       duplaId: d.id, anclaId: d.lider_user_id, ayudanteId,
-      manual: esAyudaManual_(d),
     });
   }
   return out;
 }
 
-/** Deshace una dupla de apoyo (automática o puesta a mano). */
+/** Deshace una dupla, sea automática o armada a mano. */
 async function disolverDuplaAuto_(id) {
   const h = supabaseHeaders_();
   await fetch(`${SB()}/rest/v1/despacho_dupla_miembros?dupla_id=eq.${id}`, {
@@ -1231,7 +1313,7 @@ async function disolverDuplaAuto_(id) {
  *
  * → id de la dupla, o null si no se pudo (alguien entró a otra dupla primero).
  */
-async function crearDuplaAuto_(fecha, { rol, anclaId, ayudanteId, vin }, { manual = false } = {}) {
+async function crearDuplaAuto_(fecha, { rol, anclaId, ayudanteId, vin }) {
   const h = supabaseHeaders_();
   const ahora = new Date().toISOString();
 
@@ -1242,11 +1324,9 @@ async function crearDuplaAuto_(fecha, { rol, anclaId, ayudanteId, vin }, { manua
       jornada_fecha: fecha, rol_trabajo: rol,
       lider_user_id: anclaId, estado: "ACTIVA", confirmada_at: ahora,
       ultimo_responsable_user_id: anclaId, carros_asignados: 1,
-      // La marca decide dos cosas: que se deshaga sola al cerrarse el carro
-      // (las dos lo hacen) y si consume el turno de la regla automática (solo
-      // la automática). Un ayudante puesto a mano no gasta ese turno: es una
-      // decisión del supervisor, no la regla del día.
-      motivo: manual ? motivoAyudaManual_(vin) : motivoDuplaAuto_(vin),
+      // La marca hace dos cosas: que la dupla se deshaga sola al cerrarse el
+      // carro, y que sus dos técnicos no vuelvan a entrar a la regla hoy.
+      motivo: motivoDuplaAuto_(vin),
     }),
   });
   if (!dr.ok) {
@@ -1902,9 +1982,9 @@ async function zonasConPuestos_(props) {
     ).then(r => r.ok ? r.json() : []).catch(() => []);
   }
 
-  // Los ayudantes del taller, para que la consola no tenga que preguntarlos
-  // aparte: sin ellos el supervisor no puede ver a quién ya mandó a apoyar, y
-  // reasignar a ciegas es peor que no poder reasignar.
+  // Las duplas del carro extra, para que la consola pueda decir quién está
+  // apoyando en cada puesto. Es informativo: la regla las pone y las quita
+  // sola, el supervisor solo necesita verlas.
   const apoyos = await apoyosPorPuesto_(jornadaFecha_()).catch(() => new Map());
 
   const nombres = await nombresDe_([
@@ -1952,7 +2032,6 @@ async function zonasConPuestos_(props) {
       ayudante: apoyo && apoyo.anclaId === a.user_id ? {
         userId: apoyo.ayudanteId,
         nombre: nombres.get(apoyo.ayudanteId) || "",
-        manual: apoyo.manual,
       } : null,
     };
   }
@@ -2187,135 +2266,6 @@ router.post("/api/despacho/asignar-manual", requireModoActivo_,
   }
 });
 
-// ─── AYUDANTES PUESTOS POR EL SUPERVISOR ──────────────────────────────────────
-// La misma figura que arma sola la regla del carro extra, pero decidida a mano:
-// un segundo técnico sobre un puesto que ya tiene dueño. El carro, la OT y el
-// crédito siguen siendo del dueño; el ayudante solo trabaja.
-//
-// Aquí NO se piden las condiciones de la regla automática (meta cumplida, mismo
-// rol, una vez al día): esto es el mando manual, y existe precisamente para los
-// días en que el criterio automático no alcanza. Lo único que se protege es lo
-// que rompería el modelo — ver validarAyudante_.
-
-/** La asignación viva de un puesto concreto, o null. */
-async function asignacionDelPuesto_(vin, rol) {
-  const h = supabaseHeaders_();
-  const wo = await fetch(
-    `${SB()}/rest/v1/work_orders?vin=eq.${encodeURIComponent(vin)}&tipo_ot=eq.CONVERSION&select=id&limit=1`,
-    { headers: h },
-  ).then(r => r.ok ? r.json() : []).catch(() => []);
-  if (!wo.length) return null;
-
-  const rows = await fetch(
-    `${SB()}/rest/v1/asignaciones?work_order_id=eq.${wo[0].id}` +
-    `&rol_trabajo=eq.${rol}&activo=eq.true&estado_actual=in.(SIN_INICIAR,TRABAJANDO,PAUSADO)` +
-    `&select=id,user_id&order=updated_at.desc&limit=1`,
-    { headers: h },
-  ).then(r => r.ok ? r.json() : []).catch(() => []);
-  return rows[0] || null;
-}
-
-// POST /api/despacho/ayudante  { email, vin, rol, userId }
-// Pone un ayudante en el puesto — y REASIGNA: si el puesto ya tenía uno, o si
-// el elegido estaba apoyando otro carro, esas duplas se deshacen antes. Poner y
-// mover son la misma operación a propósito: para el supervisor es un solo gesto
-// ("que este vaya con aquel"), y partirlo en dos botones solo abre la ventana
-// para dejarlo a medias.
-router.post("/api/despacho/ayudante", requireModoActivo_,
-  requireRol_("SUPERVISOR", "ADMIN"), async (req, res) => {
-  try {
-    const { vin, rol, userId } = req.body || {};
-    const rolTrabajo = String(rol || "").toUpperCase();
-    if (!vin || !userId || (rolTrabajo !== "MOTOR" && rolTrabajo !== "TANQUE")) {
-      return res.status(400).json({ ok: false, error: "Faltan vin, rol o técnico" });
-    }
-
-    const fecha = jornadaFecha_();
-    const asg = await asignacionDelPuesto_(vin, rolTrabajo);
-    if (!asg) {
-      return res.status(409).json({
-        ok: false,
-        error: "Ese puesto no tiene a nadie trabajando — asigna primero al titular",
-      });
-    }
-
-    const ur = await fetch(
-      `${SB()}/rest/v1/usuarios?id=eq.${encodeURIComponent(userId)}&select=id,nombre,email,activo&limit=1`,
-      { headers: supabaseHeaders_() },
-    );
-    const ayudante = ur.ok ? (await ur.json())[0] : null;
-    if (!ayudante) return res.status(404).json({ ok: false, error: "Técnico no encontrado" });
-
-    const vivas = await duplasDeJornada_(fecha, ["ACTIVA", "PENDIENTE"]);
-    const suya  = vivas.find(d => (d.miembros || []).includes(ayudante.id)) || null;
-
-    const v = validarAyudante_({
-      ancla: { user_id: asg.user_id },
-      ayudante: { user_id: ayudante.id, nombre: ayudante.nombre },
-      duplaDelAyudante: suya,
-    });
-    if (!v.ok) return res.status(409).json({ ok: false, error: v.error });
-
-    // Primero se libera: el índice único (jornada, user_id) donde activa
-    // rechazaría la nueva dupla mientras la vieja siga en pie, y el error que
-    // devuelve no le dice nada a nadie.
-    const apoyos  = await apoyosPorPuesto_(fecha);
-    const delPuesto = apoyos.get(`${vin}|${rolTrabajo}`);
-    if (delPuesto) {
-      if (delPuesto.ayudanteId === ayudante.id) {
-        return res.json({ ok: true, sinCambios: true, duplaId: delPuesto.duplaId });
-      }
-      await disolverDuplaAuto_(delPuesto.duplaId);
-    }
-    if (v.moverDe && v.moverDe !== delPuesto?.duplaId) await disolverDuplaAuto_(v.moverDe);
-
-    const duplaId = await crearDuplaAuto_(fecha, {
-      rol: rolTrabajo, anclaId: asg.user_id, ayudanteId: ayudante.id, vin,
-    }, { manual: true });
-    if (!duplaId) {
-      return res.status(409).json({ ok: false, error: "No se pudo emparejar — reintenta" });
-    }
-
-    const nombres = await nombresDe_([asg.user_id]);
-    const titular = nombres.get(asg.user_id) || "su compañero";
-    if (ayudante.email) {
-      await sendPushToEmails_([ayudante.email], {
-        title: `🤝 Apoya a ${primerNombre_(titular)}`,
-        body: `${rolTrabajo} · el carro queda a nombre de él`,
-      }).catch(() => {});
-    }
-
-    emitEvent_("despacho", {
-      tipo: "AYUDANTE",
-      duplas: [{ dupla_id: duplaId, user_ids: [asg.user_id, ayudante.id], vin, rol_trabajo: rolTrabajo }],
-    });
-    res.json({ ok: true, duplaId, ayudante: ayudante.nombre, titular });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
-  }
-});
-
-// POST /api/despacho/ayudante/quitar  { email, vin, rol }
-// El ayudante vuelve a la cola del reparto; el titular se queda con su carro.
-router.post("/api/despacho/ayudante/quitar", requireModoActivo_,
-  requireRol_("SUPERVISOR", "ADMIN"), async (req, res) => {
-  try {
-    const { vin, rol } = req.body || {};
-    const rolTrabajo = String(rol || "").toUpperCase();
-    if (!vin || !rolTrabajo) return res.status(400).json({ ok: false, error: "Faltan vin o rol" });
-
-    const fecha = jornadaFecha_();
-    const apoyo = (await apoyosPorPuesto_(fecha)).get(`${vin}|${rolTrabajo}`);
-    if (!apoyo) return res.status(404).json({ ok: false, error: "Ese puesto no tiene ayudante" });
-
-    await disolverDuplaAuto_(apoyo.duplaId);
-    emitEvent_("despacho", { tipo: "AYUDANTE_FUERA", duplas: [{ dupla_id: apoyo.duplaId, vin }] });
-    res.json({ ok: true });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
-  }
-});
-
 // POST /api/despacho/puesto/liberar  { email, vin, rol, forzar }
 // Deja vacío UN puesto del carro — el delantero o el tanquero, no los dos.
 //
@@ -2454,7 +2404,7 @@ async function derechoAAvanzar_(email, cfg) {
   // sería estirarla a un segundo carro y, peor, mandarle el crédito al ayudante
   // por alternancia — justo lo que la regla no hace: el carro extra es del que
   // lo abrió. Al cerrarlo la dupla se deshace y el botón vuelve solo.
-  if (mia && esDuplaApoyo_(mia)) {
+  if (mia && esDuplaAuto_(mia)) {
     const nombres = await nombresDe_(mia.miembros);
     const otro = nombres.get(mia.miembros.find(id => id !== yo.id)) || "tu compañero";
     return {

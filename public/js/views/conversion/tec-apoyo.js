@@ -12,9 +12,10 @@
 // en Mi asistencia, y por eso es UN solo módulo: dos copias del mismo texto se
 // desincronizan a la primera corrección.
 //
-// La dupla puede venir de la regla del carro extra o de la consola del
-// supervisor. Lo único que cambia entre las dos es una línea de explicación:
-// la automática se explica sola ("ya cerraste tus carros"), la manual no.
+// Es SOLO para la dupla del carro extra —la que arma la regla y deshace sola
+// al cerrarse ese carro—, porque es la única en la que uno de los dos trabaja
+// sin OT propia. La dupla de trabajo (la que proponen los técnicos o arma el
+// supervisor) recibe su carro como unidad y no necesita este cartel.
 // =========================
 
 import { getJSON } from "../../core/api.js";
@@ -38,9 +39,10 @@ export function companeroDe_(dupla, miUserId) {
 }
 
 /**
- * HTML de la tarjeta. Devuelve "" si esa dupla no es de apoyo o no está activa.
+ * HTML de la tarjeta. Devuelve "" si esa dupla no es del carro extra o no está
+ * activa.
  *
- * @param {object} dupla     fila de /api/despacho/duplas (con `auto` y `manual`)
+ * @param {object} dupla     fila de /api/despacho/duplas (con `auto`)
  * @param {string} miUserId  para saber de qué lado del carro estoy
  */
 export function apoyoHTML_(dupla, miUserId) {

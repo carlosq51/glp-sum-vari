@@ -1,8 +1,7 @@
 import { describe, it, expect } from "vitest";
 
 const {
-  pareoCarroExtra_, esDuplaAuto_, esDuplaApoyo_, esAyudaManual_,
-  motivoDuplaAuto_, motivoAyudaManual_, vinDeDuplaApoyo_, validarAyudante_,
+  pareoCarroExtra_, esDuplaAuto_, motivoDuplaAuto_, vinDeDuplaAuto_,
 } = await import("../lib/despacho.js");
 
 // El caso que originó la regla: Franz va en su tercer carro, Ana acaba el
@@ -179,69 +178,24 @@ describe("pareoCarroExtra_ · disolución", () => {
   });
 });
 
-describe("marcas de las duplas de apoyo", () => {
+describe("marcas de la dupla automática", () => {
   it("distingue las automáticas de las de trabajo y recupera su VIN", () => {
     const d = { motivo: motivoDuplaAuto_("LSJA24U97PZ041882") };
     expect(esDuplaAuto_(d)).toBe(true);
-    expect(vinDeDuplaApoyo_(d)).toBe("LSJA24U97PZ041882");
+    expect(vinDeDuplaAuto_(d)).toBe("LSJA24U97PZ041882");
     expect(esDuplaAuto_({ motivo: "se fue a almorzar" })).toBe(false);
-    expect(vinDeDuplaApoyo_({ motivo: "" })).toBe(null);
+    expect(vinDeDuplaAuto_({ motivo: "" })).toBe(null);
   });
 
-  it("el ayudante puesto a mano es de apoyo pero NO cuenta como automático", () => {
-    const d = { motivo: motivoAyudaManual_("VIN9") };
-    expect(esAyudaManual_(d)).toBe(true);
-    expect(esDuplaApoyo_(d)).toBe(true);
-    // Esta es la que decide si gasta el turno del día: tiene que ser false.
-    expect(esDuplaAuto_(d)).toBe(false);
-    expect(vinDeDuplaApoyo_(d)).toBe("VIN9");
-  });
-
-  it("el motor deshace también las manuales cuando su carro se cierra", () => {
-    const manual = {
-      id: "m9", lider_user_id: "franz", miembros: ["franz", "ana"],
-      motivo: motivoAyudaManual_("VIN3"),
+  // La dupla que arma el supervisor NO cuelga de ningún carro: la regla no la
+  // toca ni para deshacerla, aunque sus dos técnicos estén sin carro abierto.
+  it("no deshace la dupla de trabajo que armó el supervisor", () => {
+    const suya = {
+      id: "s1", lider_user_id: "franz", miembros: ["franz", "ana"],
+      motivo: "SUPERVISOR",
     };
     expect(pareoCarroExtra_(base({
-      duplasVivas: [manual], abiertas: new Map(),
-    })).disolver.map(d => d.id)).toEqual(["m9"]);
-
-    // Y la respeta mientras el carro sigue abierto.
-    expect(pareoCarroExtra_(base({ duplasVivas: [manual] })).disolver).toEqual([]);
-  });
-});
-
-describe("validarAyudante_", () => {
-  const ancla = { user_id: "franz" };
-  const ayudante = { user_id: "ana", nombre: "ANA" };
-
-  it("acepta a cualquiera: la consola manda sobre la regla automática", () => {
-    expect(validarAyudante_({ ancla, ayudante })).toEqual({ ok: true, moverDe: null });
-  });
-
-  it("exige que el puesto tenga titular — no hay a quién ayudar si no", () => {
-    expect(validarAyudante_({ ancla: null, ayudante }).ok).toBe(false);
-    expect(validarAyudante_({ ancla, ayudante: null }).ok).toBe(false);
-  });
-
-  it("no deja que alguien se ayude a sí mismo", () => {
-    expect(validarAyudante_({ ancla, ayudante: { user_id: "franz" } }).ok).toBe(false);
-  });
-
-  it("rechaza a quien está en una dupla DE TRABAJO (descuadraría el crédito)", () => {
-    const r = validarAyudante_({
-      ancla, ayudante,
-      duplaDelAyudante: { id: "d1", motivo: "" },
-    });
-    expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/dupla de trabajo/);
-  });
-
-  it("si ya apoyaba otro carro, lo MUEVE: eso es reasignar", () => {
-    const r = validarAyudante_({
-      ancla, ayudante,
-      duplaDelAyudante: { id: "d7", motivo: motivoAyudaManual_("VIN1") },
-    });
-    expect(r).toEqual({ ok: true, moverDe: "d7" });
+      duplasVivas: [suya], abiertas: new Map(),
+    })).disolver).toEqual([]);
   });
 });
