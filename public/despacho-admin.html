@@ -252,6 +252,16 @@
   .etq { font-size: 12px; color: var(--muted); font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
   .restante { font-size: 13px; color: var(--warn); font-weight: 800; }
   .fila-form { display: grid; gap: 8px; margin-top: 10px; }
+  /* El ayudante cuelga del puesto, no es un puesto: va indentado y con la
+     misma separación punteada que las pausas para que se lea como un detalle
+     del titular y no como una segunda persona a cargo del carro. */
+  .ayuda { padding-top: 8px; margin-top: 8px; border-top: 1px dashed rgba(255,255,255,.10); }
+  .ayuda .fila-form { margin-top: 0; }
+  .ayuda .acciones { margin-top: 8px; }
+  .ayudaTop { display: flex; align-items: center; gap: 8px; }
+  .ayudaEtq { font-size: 12px; color: var(--muted); font-weight: 800; }
+  .ayudaNombre { font-size: 15px; font-weight: 800; flex: 1; }
+  .ayudaNota { font-size: 11px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
   .sheetErr { color: #fecaca; font-size: 13px; font-weight: 700; margin-top: 10px; min-height: 16px; }
 </style>
 </head>
@@ -471,6 +481,43 @@
       (otros.length ? `<optgroup label="Otras especialidades">${otros.map(opt).join("")}</optgroup>` : "");
   }
 
+  /**
+   * Ayudante del puesto: un segundo técnico sobre el carro de otro.
+   *
+   * El carro, la OT y el crédito NO cambian de dueño — se dice en pantalla
+   * porque es la primera pregunta que aparece en cuanto dos personas trabajan
+   * en uno solo, y sin respuesta se convierte en discusión de taller.
+   *
+   * Poner y mover son el mismo botón: si el elegido ya estaba apoyando otro
+   * carro, el servidor lo deshace y lo trae. Por eso el desplegable no filtra a
+   * nadie — reasignar es justamente elegir a alguien que ya está ocupado.
+   */
+  function ayudanteHTML(p, rol) {
+    if (!p.asignacionId) return "";     // sin OT real no hay a qué ayudar
+    const a = p.ayudante;
+    if (!a) {
+      return `
+        <div class="ayuda" data-rol="${rol}">
+          <div class="fila-form">
+            <select data-selAyuda="${rol}">${opcionesTecnicos(rol)}</select>
+            <button data-ayuda="${rol}">+ Ayudante</button>
+          </div>
+        </div>`;
+    }
+    return `
+      <div class="ayuda ayuda--puesto" data-rol="${rol}">
+        <div class="ayudaTop">
+          <span class="ayudaEtq">🤝 Ayudante</span>
+          <span class="ayudaNombre">${esc(a.nombre || "—")}</span>
+          <span class="ayudaNota">${a.manual ? "puesto por ti" : "automático"}</span>
+        </div>
+        <div class="acciones">
+          <button data-ayuda-cambiar="${rol}">Cambiar</button>
+          <button class="rev" data-ayuda-quitar="${rol}">Quitar</button>
+        </div>
+      </div>`;
+  }
+
   function puestoHTML(carro, rol) {
     const p = carro.puestos?.[rol] || null;
     if (!p) {
@@ -499,6 +546,7 @@
           <button data-cambiar="${rol}">Cambiar</button>
           <button class="rev" data-quitar="${rol}">Quitar</button>
         </div>
+        ${ayudanteHTML(p, rol)}
         ${p.asignacionId ? `
           <div class="pausas">
             ${p.pausado
@@ -579,6 +627,21 @@
     for (const b of el.querySelectorAll("[data-cambiar]")) {
       b.onclick = () => abrirCambio(el, carro, b.dataset.cambiar);
     }
+    for (const b of el.querySelectorAll("[data-ayuda]")) {
+      b.onclick = () => {
+        const rol = b.dataset.ayuda;
+        const userId = el.querySelector(`[data-selAyuda="${rol}"]`).value;
+        if (!userId) return;
+        accion("/api/despacho/ayudante", { vin, rol, userId }, b);
+      };
+    }
+    for (const b of el.querySelectorAll("[data-ayuda-quitar]")) {
+      b.onclick = () => accion("/api/despacho/ayudante/quitar",
+        { vin, rol: b.dataset.ayudaQuitar }, b);
+    }
+    for (const b of el.querySelectorAll("[data-ayuda-cambiar]")) {
+      b.onclick = () => abrirCambioAyuda(el, vin, b.dataset.ayudaCambiar);
+    }
     for (const b of el.querySelectorAll("[data-pausa]")) {
       b.onclick = () => accion("/api/despacho/pausa-ot",
         { asignacionId: b.dataset.pausa, minutos: Number(b.dataset.min) }, b);
@@ -592,6 +655,27 @@
     const e = document.getElementById("sheetErr");
     if (e) e.textContent = msg || "";
     else pintarError(msg);
+  }
+
+  /**
+   * Cambiar el ayudante por otro. No hace falta quitar antes: el servidor
+   * deshace la pareja anterior y arma la nueva en un paso, así el puesto nunca
+   * queda un instante sin ayudante por culpa de la consola.
+   */
+  function abrirCambioAyuda(el, vin, rol) {
+    const cont = el.querySelector(`.ayuda[data-rol="${rol}"]`);
+    if (!cont || cont.querySelector("select")) return;
+    const form = document.createElement("div");
+    form.className = "fila-form";
+    form.innerHTML = `
+      <select>${opcionesTecnicos(rol)}</select>
+      <button class="pri">Confirmar</button>`;
+    cont.appendChild(form);
+    form.querySelector("button").onclick = () => {
+      const userId = form.querySelector("select").value;
+      if (!userId) return;
+      accion("/api/despacho/ayudante", { vin, rol, userId }, form.querySelector("button"));
+    };
   }
 
   /** Cambiar de técnico sin soltar el puesto: el carro no vuelve a la cola. */

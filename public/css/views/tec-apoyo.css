@@ -1,0 +1,51 @@
+/* =========================
+   views/tec-apoyo.css — "Apoya a FRANZ en la zona 7"
+
+   Se monta en dos pantallas (Mi OT y Mi asistencia) y en Mi OT es lo PRIMERO
+   que ve quien está apoyando: su pantalla no tiene nada más, porque el carro
+   está a nombre del titular. Por eso pesa como un aviso y no como una nota al
+   pie — es la única instrucción que ese técnico va a recibir.
+
+   Sin botones a propósito: no hay nada que decidir aquí. La dupla la deshace
+   el sistema al cerrarse el carro, o el supervisor desde su consola.
+   ========================= */
+
+.tecApoyo {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md, 12px);
+  border: var(--border-w) solid var(--accent);
+  border-left-width: 4px;
+  background: var(--accentBg, var(--pillBg));
+}
+
+/* El titular ya tiene su carro en pantalla: para él esto es una novedad, no
+   una instrucción, así que baja de intensidad. */
+.tecApoyo--titular {
+  border-color: var(--surfaceLine);
+  border-left-color: var(--ok);
+  background: var(--pillBg);
+}
+
+.tecApoyoTitulo {
+  font-size: var(--fs-md, 15px);
+  font-weight: var(--fw-black, 800);
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+.tecApoyo--titular .tecApoyoTitulo { color: var(--ok); }
+
+.tecApoyoTexto {
+  font-size: var(--fs-sm, 13px);
+  font-weight: var(--fw-semibold, 600);
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.tecApoyoVin {
+  margin-top: 6px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--fs-xs, 12px);
+  color: var(--muted);
+  word-break: break-all;
+}

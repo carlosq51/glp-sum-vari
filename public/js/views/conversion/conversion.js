@@ -49,6 +49,7 @@ import { loadTecMapa_ } from "./tec-mapa.js";
 import { loadMiInventario_ } from "./mi-inventario.js";
 import { loadTecAsistencia_, stopTecAsistencia_ } from "./tec-asistencia.js";
 import { renderAvance_ } from "./tec-avance.js";
+import { renderApoyo_ } from "./tec-apoyo.js";
 import { startPoll, stopPoll } from "../../core/poll.js";
 import { cfg } from "../../core/config.js";
 
@@ -118,6 +119,9 @@ function showTecPanel_(panelId, loader) {
     renderAvance_("tecAvanceMiOT", {
       onAsignado: () => syncNow({ forceFull: true, showOut: false }).catch(() => {}),
     });
+    // Y a quién apoyar, por el mismo motivo: quien está en el carro de otro no
+    // tiene OT propia, así que esta pantalla es justo donde va a buscarla.
+    renderApoyo_("tecApoyoMiOT");
   }
   if (loader) loader();
 }

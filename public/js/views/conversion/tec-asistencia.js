@@ -16,6 +16,7 @@ import { getJSON, postJSON } from "../../core/api.js";
 import { escapeHtml } from "../../core/format.js";
 import { createScanner } from "../../core/qr-scanner.js";
 import { renderAvance_, limpiarAvance_ } from "./tec-avance.js";
+import { apoyoHTML_ } from "./tec-apoyo.js";
 
 const READER_ID = "tecAsisReader";
 
@@ -250,21 +251,15 @@ async function cargarDupla_() {
     return;
   }
 
-  // Dupla automática del carro extra: la armó el sistema, no ellos. Se dice
-  // entera —a qué zona ir, de quién es el carro y que se deshace al cerrarlo—
-  // porque el ayudante no la pidió y necesita entender por qué no le llegó
-  // carro propio. Sin "Deshacer": no la armó él, y para salirse está el
-  // supervisor. El botón de avanzar tampoco aplica (lo cierra el servidor).
+  // Dupla de apoyo (regla del carro extra o ayudante puesto por el supervisor):
+  // la misma tarjeta que en Mi OT, desde el mismo módulo — dos copias del texto
+  // se desincronizan a la primera corrección. Sin "Deshacer": no la armó él, y
+  // para salirse está el supervisor. El botón de avanzar tampoco aplica (lo
+  // cierra el servidor).
   if (mia?.auto && mia.estado === "ACTIVA") {
-    const soyAncla = mia.lider_user_id === miUserId_;
-    const zona = mia.zonaId != null ? ` en la <b>zona ${escapeHtml(String(mia.zonaId))}</b>` : "";
-    box.innerHTML = marco(soyAncla
-      ? `<div class="tecAsisAviso">🤝 <b>${escapeHtml(otroDe(mia))}</b> ya cerró sus carros
-           y viene a apoyarte${zona}. El carro sigue a tu nombre; al terminarlo
-           cada uno sigue por su cuenta.</div>`
-      : `<div class="tecAsisAviso">🤝 Terminas este carro con
-           <b>${escapeHtml(otroDe(mia))}</b>${zona}. El carro va a nombre de él;
-           al cerrarlo recibes el tuyo.</div>`);
+    // Sin el marco "¿Trabajas en dupla hoy?": esa pregunta ofrece elegir, y
+    // esto no se eligió — se lo asignaron.
+    box.innerHTML = apoyoHTML_(mia, miUserId_);
     return;
   }
 

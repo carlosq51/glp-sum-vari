@@ -27,6 +27,12 @@ export function tecnicoView() {
           <span class="adminDetailTitle">🔧 Mi OT</span>
         </div>
 
+        <!-- Apoyo: a quién ayudar y en qué zona. Va ARRIBA del todo porque
+             quien apoya NO tiene OT propia — sin esto entra a esta pantalla,
+             la ve vacía y concluye que el sistema se olvidó de él. Vacío para
+             el resto del taller. -->
+        <div id="tecApoyoMiOT"></div>
+
         <div class="fullStack">
           <div class="vinRow3">
             <div class="vinWrap">

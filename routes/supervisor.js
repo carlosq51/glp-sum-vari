@@ -2,7 +2,9 @@ import { Router } from "express";
 import { supabaseHeaders_, supabaseGet_, supabaseFetchAll_ } from "../lib/supabase.js";
 import { addServerTiming_ } from "../lib/timing.js";
 import { getConfig_, CONFIG_DEFAULTS } from "../lib/config.js";
-import { jornadaFecha_, esDuplaAuto_, vinDeDuplaAuto_ } from "../lib/despacho.js";
+import {
+  jornadaFecha_, esDuplaAuto_, esDuplaApoyo_, esAyudaManual_, vinDeDuplaApoyo_,
+} from "../lib/despacho.js";
 
 const router = Router();
 
@@ -24,11 +26,12 @@ async function duplasAutoDeHoy_(SUPABASE_URL, headers) {
     const fecha = jornadaFecha_();
     const r = await fetch(
       `${SUPABASE_URL}/rest/v1/despacho_duplas?jornada_fecha=eq.${fecha}` +
-      `&motivo=like.AUTO_CARRO_EXTRA*&select=id,rol_trabajo,lider_user_id,estado,motivo`,
+      `&or=(motivo.like.AUTO_CARRO_EXTRA*,motivo.like.AYUDA_MANUAL*)` +
+      `&select=id,rol_trabajo,lider_user_id,estado,motivo`,
       { headers },
     );
     if (!r.ok) return vacio;
-    const duplas = (await r.json()).filter(esDuplaAuto_);
+    const duplas = (await r.json()).filter(esDuplaApoyo_);
     if (!duplas.length) return vacio;
 
     const ids = duplas.map(d => d.id).join(",");
@@ -41,7 +44,7 @@ async function duplasAutoDeHoy_(SUPABASE_URL, headers) {
 
     // La zona solo se necesita para las que siguen en curso.
     const vinsActivos = duplas.filter(d => d.estado === "ACTIVA")
-      .map(vinDeDuplaAuto_).filter(Boolean);
+      .map(vinDeDuplaApoyo_).filter(Boolean);
     const zonaPorVin = new Map();
     if (vinsActivos.length) {
       const zr = await fetch(
@@ -54,7 +57,7 @@ async function duplasAutoDeHoy_(SUPABASE_URL, headers) {
     const out = new Map();
     for (const d of duplas) {
       const suyos = miembros.filter(m => m.dupla_id === d.id).map(m => m.user_id);
-      const vin = vinDeDuplaAuto_(d);
+      const vin = vinDeDuplaApoyo_(d);
       for (const uid of suyos) {
         const otro = suyos.find(x => x !== uid) || null;
         const previo = out.get(uid);
@@ -64,6 +67,11 @@ async function duplasAutoDeHoy_(SUPABASE_URL, headers) {
         out.set(uid, {
           duplaId: d.id,
           activa: d.estado === "ACTIVA",
+          // Solo la automática consume el turno del día. Una ayuda que puso el
+          // supervisor no gasta la regla: si mañana el motor quiere emparejar a
+          // esa persona, puede.
+          porRegla: esDuplaAuto_(d),
+          manual: esAyudaManual_(d),
           rol: d.rol_trabajo,
           con: otro,
           soyAncla: d.lider_user_id === uid,
@@ -760,12 +768,13 @@ router.get("/api/supervisor/live", async (req, res) => {
       for (const t of techs) {
         const d = duplasAuto.get(t.userId);
         if (!d) continue;
-        t.duplaAutoUsada = true;
+        t.duplaAutoUsada = d.porRegla;      // solo la automática gasta el turno
         t.duplaAuto = d.activa ? {
           duplaId:   d.duplaId,
           conUserId: d.con,
           conNombre: nombrePorId.get(d.con) || "",
           soyAncla:  d.soyAncla,
+          manual:    d.manual,
           rol:       d.rol,
           vin:       d.vin,
           zonaId:    d.zonaId,
