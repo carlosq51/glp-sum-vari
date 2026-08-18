@@ -116,7 +116,8 @@ describe("renderDuplasPanel_", () => {
     expect(html).toContain("pepe");
     expect(html).toContain("contreras");
     expect(html).toContain("(2.5 / 2.5 c/u)");
-    expect(html).toContain("1 dupla");
+    // "sugerida", no "en curso": este par lo propone el panel, no existe aún.
+    expect(html).toContain("1 sugerida");
   });
 
   it("escapa el nombre del técnico", () => {
@@ -125,5 +126,59 @@ describe("renderDuplasPanel_", () => {
       tech("contreras", "TANQUE", 2),
     ], 2);
     expect(renderDuplasPanel_(m)).not.toContain("<img>");
+  });
+});
+
+// ─────────────────────────────────────────────
+// Dupla automática del carro extra (la arma el despacho, no el panel)
+// ─────────────────────────────────────────────
+const conDupla = (t, con, { soyAncla = false, zonaId = 7, duplaId = "d1" } = {}) =>
+  ({ ...t, duplaAutoUsada: true, duplaAuto: { duplaId, conUserId: con, conNombre: con, soyAncla, zonaId, vin: "VIN3", rol: t.rol } });
+
+describe("clasificarDuplas_ · duplas automáticas", () => {
+  it("pinta la dupla en curso una sola vez, no una por miembro", () => {
+    const franz = conDupla(tech("franz", "MOTOR", 2, 1, "TRABAJANDO"), "ana", { soyAncla: true });
+    const ana   = conDupla(tech("ana",   "MOTOR", 2), "franz");
+    ana.userId = "ana"; franz.userId = "franz";
+
+    const motor = clasificarDuplas_([franz, ana], 2).porRol.find(r => r.rol === "MOTOR");
+    expect(motor.enCurso).toHaveLength(1);
+    expect(motor.enCurso[0]).toMatchObject({ anclaNombre: "franz", ayudanteNombre: "ana", zonaId: 7 });
+    // Y ninguno de los dos se ofrece para emparejar con otro.
+    expect(motor.libres).toEqual([]);
+    expect(motor.enExtra).toEqual([]);
+  });
+
+  it("al que ya hizo su dupla no lo vuelve a proponer: queda en yaPareo", () => {
+    const ana = { ...tech("ana", "MOTOR", 2), duplaAutoUsada: true };
+    const luz = tech("luz", "MOTOR", 2);
+
+    const motor = clasificarDuplas_([ana, luz], 2).porRol.find(r => r.rol === "MOTOR");
+    expect(motor.yaPareo.map(t => t.nombre)).toEqual(["ana"]);
+    expect(motor.duplas).toEqual([]);           // no la empareja con luz
+    expect(motor.libres.map(t => t.nombre)).toEqual(["luz"]);
+  });
+
+  it("los que están en dupla siguen contando como 'en meta' para el pulso", () => {
+    const franz = conDupla(tech("franz", "MOTOR", 2, 1, "TRABAJANDO"), "ana", { soyAncla: true });
+    const ana   = conDupla(tech("ana",   "MOTOR", 2), "franz");
+    expect(clasificarDuplas_([franz, ana], 2).totalMeta).toBe(2);
+  });
+
+  it("el panel distingue la dupla real de las sugeridas", () => {
+    const franz = conDupla(tech("franz", "MOTOR", 2, 1, "TRABAJANDO"), "ana", { soyAncla: true });
+    const ana   = conDupla(tech("ana",   "MOTOR", 2), "franz");
+    const html  = renderDuplasPanel_(clasificarDuplas_([franz, ana], 2));
+
+    expect(html).toContain("EN CURSO");
+    expect(html).toContain("zona <b>7</b>");
+    expect(html).toContain("1 en curso");
+  });
+
+  it("anuncia a quién no se va a volver a emparejar hoy", () => {
+    const ana = { ...tech("ana", "MOTOR", 2), duplaAutoUsada: true };
+    const html = renderDuplasPanel_(clasificarDuplas_([ana], 2));
+    expect(html).toContain("Ya hicieron su dupla");
+    expect(html).toContain("ana");
   });
 });

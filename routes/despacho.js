@@ -25,6 +25,7 @@ import {
   validarDupla_, unidadesDeTrabajo_, payloadDemo_,
   enTurno_, duracionTurno_, JORNADA_INICIO_H,
   porQueMuereLaPropuesta_, proximoResponsable_, avanceSolo_, avanceSoloTodos_,
+  pareoCarroExtra_, esDuplaAuto_, motivoDuplaAuto_, vinDeDuplaAuto_,
 } from "../lib/despacho.js";
 import { construirPool_, generarPropuestas_, puntuar_, ESPERA_TOPE_MIN } from "../lib/despacho-motor.js";
 
@@ -466,7 +467,7 @@ async function duplasDeJornada_(fecha, estados = ["PENDIENTE", "ACTIVA"]) {
   const filtro = `&estado=in.(${estados.join(",")})`;
   const r = await fetch(
     `${SB()}/rest/v1/despacho_duplas?jornada_fecha=eq.${fecha}${filtro}` +
-    `&select=id,rol_trabajo,lider_user_id,estado,ultimo_responsable_user_id,carros_asignados,propuesta_at`,
+    `&select=id,rol_trabajo,lider_user_id,estado,ultimo_responsable_user_id,carros_asignados,propuesta_at,motivo`,
     { headers: supabaseHeaders_() },
   );
   const duplas = r.ok ? await r.json() : [];
@@ -490,6 +491,17 @@ async function duplasDeJornada_(fecha, estados = ["PENDIENTE", "ACTIVA"]) {
   }));
 }
 
+/** vin → zona donde está estacionado ahora. */
+async function zonasDeVins_(vins) {
+  const lista = [...new Set(vins)].filter(Boolean);
+  if (!lista.length) return new Map();
+  const r = await fetch(
+    `${SB()}/rest/v1/conversion_zonas?vin=in.(${lista.map(encodeURIComponent).join(",")})&select=vin,zona_id`,
+    { headers: supabaseHeaders_() },
+  );
+  return new Map((r.ok ? await r.json() : []).map(z => [z.vin, z.zona_id]));
+}
+
 /** user_id → nombre, para no repetir el fetch en cada handler. */
 async function nombresDe_(userIds) {
   const ids = [...new Set(userIds)].filter(Boolean);
@@ -508,12 +520,23 @@ router.get("/api/despacho/duplas", requireModoActivo_, async (req, res) => {
     const fecha  = jornadaFecha_();
     const duplas = await duplasDeJornada_(fecha);
     const nombres = await nombresDe_(duplas.flatMap(d => d.miembros));
+
+    // Las automáticas cuelgan de un carro concreto: sin la zona, el ayudante
+    // sabe con quién trabaja pero no adónde ir.
+    const zonaPorVin = await zonasDeVins_(duplas.map(vinDeDuplaAuto_).filter(Boolean));
+
     res.json({
       ok: true, jornada: fecha,
-      duplas: duplas.map(d => ({
-        ...d,
-        miembrosNombres: d.miembros.map(id => nombres.get(id) || ""),
-      })),
+      duplas: duplas.map(d => {
+        const vin = esDuplaAuto_(d) ? vinDeDuplaAuto_(d) : null;
+        return {
+          ...d,
+          miembrosNombres: d.miembros.map(id => nombres.get(id) || ""),
+          auto: esDuplaAuto_(d),
+          vin,
+          zonaId: vin ? (zonaPorVin.get(vin) ?? null) : null,
+        };
+      }),
     });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
@@ -791,6 +814,24 @@ function leerPairingModel_() {
   } catch { return null; }
 }
 
+/**
+ * Unidades asignables a partir de los técnicos y las duplas vigentes.
+ *
+ * Está fuera de contextoDelTaller_ porque hay que rehacerlas DENTRO de la misma
+ * corrida: la dupla automática del carro extra nace después de leer el taller y
+ * antes de repartir, y unas unidades calculadas con las duplas de hace un
+ * segundo le darían carro propio a quien acaba de quedar de ayudante.
+ */
+function armarUnidades_(tecnicosCtx, duplas, cfg) {
+  return unidadesDeTrabajo_(tecnicosCtx, duplas, {
+    ttlPendienteMin: Number(cfg.DESPACHO_TTL_DUPLA_MIN) || 10,
+  }).map(u => ({
+    ...u,
+    // La unidad hereda la zona del miembro que la tenga más reciente.
+    zonaUltima: u.miembros.map(m => m.zonaUltima).find(Boolean) || null,
+  }));
+}
+
 /** Todo lo que el motor necesita saber del taller, en una sola pasada. */
 async function contextoDelTaller_(cfg, fecha) {
   const { desde } = jornadaRango_(fecha);
@@ -861,7 +902,8 @@ async function contextoDelTaller_(cfg, fecha) {
     const ids = wos.map(w => w.id).map(encodeURIComponent).join(",");
     const r = await fetch(
       `${SB()}/rest/v1/asignaciones?work_order_id=in.(${ids})` +
-      `&select=work_order_id,user_id,rol_trabajo,activo,estado_actual,updated_at&order=updated_at.desc`,
+      `&select=work_order_id,user_id,rol_trabajo,activo,estado_actual,updated_at,fecha_asignacion` +
+      `&order=updated_at.desc`,
       { headers: h },
     );
     if (r.ok) asgs = await r.json();
@@ -895,6 +937,27 @@ async function contextoDelTaller_(cfg, fecha) {
       user_id: a.user_id,
     }));
 
+  const vinZona = new Map(zonasRaw.filter(z => z.vin).map(z => [z.vin, z.zona_id]));
+
+  // Quién está trabajando QUÉ carro, y desde cuándo. Es lo que necesita la
+  // dupla automática del carro extra: sin el VIN no se sabe a qué zona mandar
+  // al que queda libre, y sin la hora de inicio no se puede elegir a quién
+  // ayudar ("al que lleva más rato en el carro").
+  const abiertas = new Map();
+  for (const a of asgs) {
+    if (!a.activo || a.estado_actual === "FINALIZADO") continue;
+    const vin = woVin.get(a.work_order_id);
+    if (!vin) continue;
+    const prev = abiertas.get(a.user_id);
+    const desde = a.fecha_asignacion || a.updated_at || null;
+    // Con dos abiertas (no debería, pero pasa tras una reasignación a mano)
+    // manda la más vieja: es el carro que de verdad está trabajando.
+    if (prev && new Date(prev.desde || 0) <= new Date(desde || 0)) continue;
+    abiertas.set(a.user_id, {
+      vin, rol_trabajo: a.rol_trabajo, zona_id: vinZona.get(vin) ?? null, desde,
+    });
+  }
+
   // Carros acreditados hoy: se cuentan de la consulta acotada por fecha, que
   // abarca TODA la jornada (incluidos carros que ya salieron del taller).
   const creditosHoy = new Map();
@@ -921,7 +984,6 @@ async function contextoDelTaller_(cfg, fecha) {
   // Dónde está cada técnico: la zona del carro que tiene o tuvo más
   // recientemente. Es lo que alimenta el criterio de cercanía.
   const zonaUltima = new Map();
-  const vinZona = new Map(zonasRaw.filter(z => z.vin).map(z => [z.vin, z.zona_id]));
   for (const a of asgs) {                       // ya viene por updated_at desc
     const vin = woVin.get(a.work_order_id);
     if (!vin || zonaUltima.has(a.user_id)) continue;
@@ -972,13 +1034,7 @@ async function contextoDelTaller_(cfg, fecha) {
     };
   });
 
-  const unidades = unidadesDeTrabajo_(tecnicosCtx, duplas, {
-    ttlPendienteMin: Number(cfg.DESPACHO_TTL_DUPLA_MIN) || 10,
-  }).map(u => ({
-    ...u,
-    // La unidad hereda la zona del miembro que la tenga más reciente.
-    zonaUltima: u.miembros.map(m => m.zonaUltima).find(Boolean) || null,
-  }));
+  const unidades = armarUnidades_(tecnicosCtx, duplas, cfg);
 
   const modelo = leerPairingModel_();
   const techsPorId = Object.fromEntries((modelo?.techs || []).map(t => [t.user_id, t]));
@@ -991,7 +1047,7 @@ async function contextoDelTaller_(cfg, fecha) {
 
   return {
     zonas, modelos, ocupados, unidades, duplas, tecnicosCtx,
-    finalizados, registrados,
+    finalizados, registrados, abiertas,
     vinesEnZona: new Set(vinsEnZona),
     // La lista diaria dejó de condicionar el reparto (DESPACHO_EXIGE_LISTA_DIARIA
     // = "0" por defecto): un carro estacionado en zona es trabajo real, esté o
@@ -1108,6 +1164,163 @@ async function creditosPorDupla_(duplas, fecha) {
   } catch { /* sin datos → arranca en cero */ }
   return out;
 }
+
+// ─── DUPLA AUTOMÁTICA DEL CARRO EXTRA ─────────────────────────────────────────
+
+/** Deshace una dupla automática cuyo carro ya se cerró. */
+async function disolverDuplaAuto_(id) {
+  const h = supabaseHeaders_();
+  await fetch(`${SB()}/rest/v1/despacho_dupla_miembros?dupla_id=eq.${id}`, {
+    method: "PATCH", headers: { ...h, Prefer: "return=minimal" },
+    body: JSON.stringify({ activa: false }),
+  });
+  // `motivo` NO se toca: lleva dentro la marca AUTO_CARRO_EXTRA que impide que
+  // estos dos vuelvan a emparejarse solos el resto de la jornada.
+  await fetch(`${SB()}/rest/v1/despacho_duplas?id=eq.${id}`, {
+    method: "PATCH", headers: { ...h, Prefer: "return=minimal" },
+    body: JSON.stringify({ estado: "DISUELTA", disuelta_at: new Date().toISOString() }),
+  });
+}
+
+/**
+ * Crea una dupla automática ya ACTIVA — sin invitación ni confirmación.
+ *
+ * La confirmación existe para las duplas que arman los técnicos porque afectan
+ * el crédito de los dos. Aquí no hay nada que negociar: el carro es del ancla,
+ * sigue a su nombre, y el ayudante no pierde ni gana un carro por entrar. Pedir
+ * un tap sería dejar la regla a merced de un celular en el casillero.
+ *
+ * `ultimo_responsable_user_id` nace apuntando al ancla a propósito: si alguien
+ * usara el botón de avanzar sobre esta dupla, la alternancia le daría el
+ * siguiente al ayudante. Ese botón está cerrado para estas duplas (ver
+ * derechoAAvanzar_), pero el dato correcto no cuesta nada.
+ *
+ * → id de la dupla, o null si no se pudo (alguien entró a otra dupla primero).
+ */
+async function crearDuplaAuto_(fecha, { rol, anclaId, ayudanteId, vin }) {
+  const h = supabaseHeaders_();
+  const ahora = new Date().toISOString();
+
+  const dr = await fetch(`${SB()}/rest/v1/despacho_duplas`, {
+    method: "POST",
+    headers: { ...h, Prefer: "return=representation" },
+    body: JSON.stringify({
+      jornada_fecha: fecha, rol_trabajo: rol,
+      lider_user_id: anclaId, estado: "ACTIVA", confirmada_at: ahora,
+      ultimo_responsable_user_id: anclaId, carros_asignados: 1,
+      motivo: motivoDuplaAuto_(vin),
+    }),
+  });
+  if (!dr.ok) {
+    console.warn(`[Despacho] dupla auto: ${(await dr.text()).slice(0, 160)}`);
+    return null;
+  }
+  const dupla = (await dr.json())[0];
+  if (!dupla?.id) return null;
+
+  const mr = await fetch(`${SB()}/rest/v1/despacho_dupla_miembros`, {
+    method: "POST",
+    headers: { ...h, Prefer: "return=minimal" },
+    body: JSON.stringify([
+      { dupla_id: dupla.id, user_id: anclaId,    jornada_fecha: fecha, activa: true },
+      { dupla_id: dupla.id, user_id: ayudanteId, jornada_fecha: fecha, activa: true },
+    ]),
+  });
+  if (!mr.ok) {
+    // El índice único de miembros ganó: uno de los dos ya está en otra dupla.
+    // La cabecera huérfana se borra en vez de quedarse — viva contaría como
+    // "ya se emparejó hoy" y dejaría a ese técnico fuera de la regla sin que
+    // ninguna dupla exista de verdad.
+    console.warn(`[Despacho] dupla auto sin miembros: ${(await mr.text()).slice(0, 160)}`);
+    await fetch(`${SB()}/rest/v1/despacho_duplas?id=eq.${dupla.id}`, {
+      method: "DELETE", headers: { ...h, Prefer: "return=minimal" },
+    }).catch(() => {});
+    return null;
+  }
+  return dupla.id;
+}
+
+/**
+ * Aplica la regla del carro extra: forma las duplas que tocan y deshace las que
+ * ya cumplieron su carro. Corre ANTES del reparto, en cada corrida del motor.
+ *
+ * → { cambio, formadas, disueltas } · null si la regla está apagada.
+ */
+async function reconciliarDuplasAuto_(fecha, cfg, t) {
+  if (String(cfg.DESPACHO_DUPLA_AUTO ?? "1") !== "1") return null;
+
+  // Todas las de la jornada, incluidas las ya deshechas: son las que dicen
+  // quién agotó su turno de emparejarse hoy.
+  const historicas = await duplasDeJornada_(fecha,
+    ["PENDIENTE", "ACTIVA", "RECHAZADA", "DISUELTA"]);
+
+  const { formar, disolver } = pareoCarroExtra_({
+    tecnicos:    t.tecnicosCtx,
+    duplasVivas: t.duplas,
+    yaParearon:  new Set(historicas.filter(esDuplaAuto_).flatMap(d => d.miembros)),
+    abiertas:    t.abiertas,
+    creditos:    t.ctx.creditosHoy,
+    meta:        Number(cfg.META_CARROS_TEC) || 2,
+  });
+  if (!formar.length && !disolver.length) return { cambio: false, formadas: 0, disueltas: 0 };
+
+  for (const d of disolver) {
+    await disolverDuplaAuto_(d.id).catch(e =>
+      console.warn(`[Despacho] no se pudo disolver la dupla auto ${d.id}: ${e.message}`));
+  }
+
+  const nombres = new Map(t.tecnicosCtx.map(x => [x.user_id, x.nombre]));
+  const formadas = [];
+  for (const f of formar) {
+    const id = await crearDuplaAuto_(fecha, f);
+    if (id) formadas.push({ ...f, id });
+  }
+
+  if (formadas.length) {
+    // El ayudante tiene que enterarse AHORA: no va a recibir carro, y sin aviso
+    // la única lectura posible es que el sistema se olvidó de él.
+    const emails = await emailsDe_(formadas.flatMap(f => [f.anclaId, f.ayudanteId]));
+    for (const f of formadas) {
+      const ancla = nombres.get(f.anclaId) || "tu compañero";
+      const ayuda = nombres.get(f.ayudanteId) || "tu compañero";
+      const zona  = f.zonaId != null ? `zona ${f.zonaId}` : "su carro";
+      await sendPushToEmails_([emails.get(f.ayudanteId)].filter(Boolean), {
+        title: `🤝 Apoya a ${primerNombre_(ancla)}`,
+        body: `${zona} · ${f.rol} · el carro queda a su nombre`,
+      }).catch(() => {});
+      await sendPushToEmails_([emails.get(f.anclaId)].filter(Boolean), {
+        title: `🤝 ${primerNombre_(ayuda)} te apoya`,
+        body: `${zona} · terminan juntos este carro y luego cada uno sigue solo`,
+      }).catch(() => {});
+    }
+    emitEvent_("despacho", {
+      tipo: "DUPLA_AUTO",
+      duplas: formadas.map(f => ({
+        dupla_id: f.id, user_ids: [f.anclaId, f.ayudanteId],
+        zona_id: f.zonaId, vin: f.vin, rol_trabajo: f.rol,
+      })),
+    });
+  }
+
+  return {
+    cambio: formadas.length > 0 || disolver.length > 0,
+    formadas: formadas.length,
+    disueltas: disolver.length,
+  };
+}
+
+/** user_id → email, para los avisos. */
+async function emailsDe_(userIds) {
+  const ids = [...new Set(userIds)].filter(Boolean);
+  if (!ids.length) return new Map();
+  const r = await fetch(
+    `${SB()}/rest/v1/usuarios?id=in.(${encodeURIComponent(ids.join(","))})&select=id,email`,
+    { headers: supabaseHeaders_() },
+  );
+  return new Map((r.ok ? await r.json() : []).map(u => [u.id, u.email]));
+}
+
+const primerNombre_ = n => String(n || "").trim().split(/\s+/)[0] || "";
 
 /**
  * Crea la OT y la asignación real, como si el técnico la hubiera abierto.
@@ -1265,6 +1478,28 @@ export async function correrMotor_({ persistir = true, simularAsistencia = false
 
   const t = await contextoDelTaller_(cfg, fecha);
 
+  // Antes de repartir: devolver a TRABAJANDO lo que cumplió su pausa, y cerrar
+  // las invitaciones a dupla que nadie contestó — mientras viven, sus dos
+  // técnicos están fuera del reparto.
+  let duplasAuto = null;
+  if (persistir && modo === "REAL") {
+    await reanudarPausasVencidas_();
+    await expirarDuplasPendientes_(Number(cfg.DESPACHO_TTL_DUPLA_MIN) || 10);
+
+    // Y la regla del carro extra, que también cambia quién puede recibir carro:
+    // el que acaba de quedar de ayudante NO entra al reparto, entra al carro de
+    // su compañero. Va antes de generar propuestas por eso mismo — un minuto
+    // más tarde ya tendría carro propio y la regla no se cumpliría nunca.
+    duplasAuto = await reconciliarDuplasAuto_(fecha, cfg, t).catch(e => {
+      console.warn(`[Despacho] dupla auto: ${e.message}`);
+      return null;
+    });
+    if (duplasAuto?.cambio) {
+      t.duplas   = await duplasDeJornada_(fecha, ["ACTIVA", "PENDIENTE"]);
+      t.unidades = armarUnidades_(t.tecnicosCtx, t.duplas, cfg);
+    }
+  }
+
   // Simulacro: da por presentes a todos los técnicos. Sirve para evaluar el
   // CRITERIO DE REPARTO con carros y modelos reales antes de que exista una
   // sola marca de asistencia. Nunca se combina con persistir.
@@ -1272,14 +1507,6 @@ export async function correrMotor_({ persistir = true, simularAsistencia = false
     for (const u of t.unidades) u.asignable = true;
   }
   t.ctx.creditosDupla = await creditosPorDupla_(t.duplas, fecha);
-
-  // Antes de repartir: devolver a TRABAJANDO lo que cumplió su pausa, y cerrar
-  // las invitaciones a dupla que nadie contestó — mientras viven, sus dos
-  // técnicos están fuera del reparto.
-  if (persistir && modo === "REAL") {
-    await reanudarPausasVencidas_();
-    await expirarDuplasPendientes_(Number(cfg.DESPACHO_TTL_DUPLA_MIN) || 10);
-  }
 
   // Propuestas que siguen en pie. Ocupan puesto igual que una asignación real:
   // si no, cada corrida volvería a repartir los mismos carros.
@@ -1318,6 +1545,9 @@ export async function correrMotor_({ persistir = true, simularAsistencia = false
     unidades: t.unidades.length,
     unidadesAsignables: t.unidades.filter(u => u.asignable).length,
     unidadesLibres, carrosSinCubrir,
+    // Qué hizo la regla del carro extra en esta corrida. Sin esto, una dupla
+    // que nace sola no deja rastro en ningún lado salvo la tabla.
+    duplasAuto: duplasAuto ? { formadas: duplasAuto.formadas, disueltas: duplasAuto.disueltas } : null,
     propuestas,
     fallidas: [],          // se llena al publicar; ver el bucle de CONFIRMADA
   };
@@ -1990,6 +2220,19 @@ async function derechoAAvanzar_(email, cfg) {
 
   if (mia && String(mia.estado).toUpperCase() === "PENDIENTE") {
     return { yo, fecha, puede: false, motivo: "Tienes una dupla sin confirmar" };
+  }
+
+  // La dupla del carro extra es POR ESE CARRO. Adelantar el siguiente con ella
+  // sería estirarla a un segundo carro y, peor, mandarle el crédito al ayudante
+  // por alternancia — justo lo que la regla no hace: el carro extra es del que
+  // lo abrió. Al cerrarlo la dupla se deshace y el botón vuelve solo.
+  if (mia && esDuplaAuto_(mia)) {
+    const nombres = await nombresDe_(mia.miembros);
+    const otro = nombres.get(mia.miembros.find(id => id !== yo.id)) || "tu compañero";
+    return {
+      yo, fecha, puede: false,
+      motivo: `Estás en el carro de ${otro} — al cerrarlo cada uno sigue por su cuenta`,
+    };
   }
 
   if (mia) {

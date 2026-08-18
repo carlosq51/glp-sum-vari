@@ -250,6 +250,24 @@ async function cargarDupla_() {
     return;
   }
 
+  // Dupla automática del carro extra: la armó el sistema, no ellos. Se dice
+  // entera —a qué zona ir, de quién es el carro y que se deshace al cerrarlo—
+  // porque el ayudante no la pidió y necesita entender por qué no le llegó
+  // carro propio. Sin "Deshacer": no la armó él, y para salirse está el
+  // supervisor. El botón de avanzar tampoco aplica (lo cierra el servidor).
+  if (mia?.auto && mia.estado === "ACTIVA") {
+    const soyAncla = mia.lider_user_id === miUserId_;
+    const zona = mia.zonaId != null ? ` en la <b>zona ${escapeHtml(String(mia.zonaId))}</b>` : "";
+    box.innerHTML = marco(soyAncla
+      ? `<div class="tecAsisAviso">🤝 <b>${escapeHtml(otroDe(mia))}</b> ya cerró sus carros
+           y viene a apoyarte${zona}. El carro sigue a tu nombre; al terminarlo
+           cada uno sigue por su cuenta.</div>`
+      : `<div class="tecAsisAviso">🤝 Terminas este carro con
+           <b>${escapeHtml(otroDe(mia))}</b>${zona}. El carro va a nombre de él;
+           al cerrarlo recibes el tuyo.</div>`);
+    return;
+  }
+
   // Dupla activa.
   if (mia?.estado === "ACTIVA") {
     box.innerHTML = marco(`

@@ -254,6 +254,32 @@ function goalDotsHTML_(cars, meta) {
   return `<span class="lvDots">${out}${extra > 0 ? `<em>+${extra}</em>` : ""}</span>`;
 }
 
+const primerNombre_ = n => String(n || "").trim().split(/\s+/)[0] || "compañero";
+
+/**
+ * Distintivo de la dupla del carro extra en la card.
+ *
+ * Tres estados y los tres dicen algo distinto al supervisor:
+ *   apoya a X  → está en el carro de otro, no le asignes nada
+ *   +X         → es su carro y le mandaron ayuda
+ *   SOLO       → ya hizo su dupla hoy; la regla no lo vuelve a emparejar
+ *
+ * El último es el que evita que alguien "arregle" a mano lo que el sistema
+ * decidió a propósito. Devuelve "" si no aplica, para no pisar LIBRE/EXTRA.
+ */
+function duplaBadgeHTML_(t, dupla) {
+  if (dupla) {
+    const con = primerNombre_(dupla.conNombre);
+    return dupla.soyAncla
+      ? `<span class="lvCard__free is-dupla" title="${escapeHtml(dupla.conNombre || "Un compañero")} lo apoya en este carro — el carro va a su nombre">🤝 +${escapeHtml(con)}</span>`
+      : `<span class="lvCard__free is-dupla" title="Trabaja en el carro de ${escapeHtml(dupla.conNombre || "su compañero")} — el carro va a nombre de él">🤝 apoya a ${escapeHtml(con)}</span>`;
+  }
+  if (t.duplaAutoUsada) {
+    return `<span class="lvCard__free is-sola" title="Ya hizo su dupla del carro extra hoy — trabaja solo el resto de la jornada">SOLO</span>`;
+  }
+  return "";
+}
+
 function cardHTML_(t, metaTec) {
   const em      = estadoMeta(t.estadoActivo);
   const rm      = rolMeta(t.rol);
@@ -265,7 +291,11 @@ function cardHTML_(t, metaTec) {
   const enCurso = enCursoOf_(t);
   const esConv  = ROLES_DUPLA.includes(String(t.rol || "").toUpperCase());
   const enMeta  = cumplioMeta_(t, metaTec);
-  const libre   = enMeta && enCurso === 0;
+  const dupla   = t.duplaAuto || null;
+  // En dupla del carro extra no está "libre" aunque no tenga OT propia: está
+  // trabajando en la de su compañero. Marcarlo LIBRE mandaría al supervisor a
+  // darle carro justo a quien el sistema acaba de asignar a otro.
+  const libre   = enMeta && enCurso === 0 && !dupla;
 
   const asgActual = (t.asignacionesHoy || []).find(a => a.vin === t.vinActivo && a.estado !== "FINALIZADO");
   const tiempo = asgActual?.running_since ? fmtTiempo_(asgActual.tiempo_ms, asgActual.running_since) : "";
@@ -293,7 +323,12 @@ function cardHTML_(t, metaTec) {
     <div class="lvCard__row lvCard__row--vin">
       ${t.vinActivo
         ? `<span class="lvVin">${escapeHtml(t.vinActivo)}</span>${t.vinArrastre ? `<span class="lvVin__old" title="Trabajo abierto un día anterior — no suma a la producción de hoy">ayer</span>` : ""}`
-        : `<span class="lvVin lvVin--none">sin VIN activo</span>`}
+        : dupla
+          // El ayudante no tiene OT propia: el carro es del compañero. Sin esta
+          // línea su card se lee "sin VIN activo", o sea parado, cuando en
+          // realidad está trabajando en la zona de al lado.
+          ? `<span class="lvVin lvVin--dupla" title="Trabaja en el carro de ${escapeHtml(dupla.conNombre || "su compañero")}">🤝 ${escapeHtml(dupla.vin || "carro de " + primerNombre_(dupla.conNombre))}${dupla.zonaId != null ? ` · Z${escapeHtml(String(dupla.zonaId))}` : ""}</span>`
+          : `<span class="lvVin lvVin--none">sin VIN activo</span>`}
       ${tiempo ? `<span class="lvCard__time">⏱ ${escapeHtml(tiempo)}</span>` : ""}
     </div>
 
@@ -302,7 +337,9 @@ function cardHTML_(t, metaTec) {
         ? `${goalDotsHTML_(cars, metaTec)}<span class="lvCard__cars">${cars}<em>/${metaTec}</em></span>`
         : `<span class="lvCard__cars">🚗 ${cars}<em> hoy</em></span>`}
       ${enCurso > 0 ? `<span class="lvCard__curso">⚙️ ${enCurso}</span>` : ""}
-      ${libre ? `<span class="lvCard__free">LIBRE</span>` : enMeta ? `<span class="lvCard__free is-extra">EXTRA</span>` : ""}
+      ${duplaBadgeHTML_(t, dupla) ||
+        (libre ? `<span class="lvCard__free">LIBRE</span>`
+               : enMeta ? `<span class="lvCard__free is-extra">EXTRA</span>` : "")}
     </div>`}
   </article>`;
 }

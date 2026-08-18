@@ -477,6 +477,8 @@ button[data-suptrack].active {
   text-align: left;
 }
 .lvVin--none { font-family: inherit; font-style: italic; opacity: .28; direction: ltr; }
+/* Está en el carro de su compañero: es trabajo real, no un hueco. */
+.lvVin--dupla { color: var(--accent); direction: ltr; }
 .lvVin__old {
   font-size: 9px;
   font-weight: var(--fw-black);
@@ -539,6 +541,10 @@ button[data-suptrack].active {
   white-space: nowrap;
 }
 .lvCard__free.is-extra { color: var(--note); background: var(--noteBg); }
+/* En dupla del carro extra ahora mismo */
+.lvCard__free.is-dupla { color: var(--accent); background: var(--accentBg, var(--pillBg)); }
+/* Ya la hizo: vuelve a trabajar solo el resto de la jornada */
+.lvCard__free.is-sola  { color: var(--muted); background: var(--pillBg); }
 
 .lvCard.is-stalled { border-color: var(--dv-serious, var(--danger)); background: var(--dangerBgFade); }
 .lvCard.is-libre   { border-color: var(--ok); }
@@ -946,6 +952,12 @@ button[data-suptrack].active {
   opacity: .72;
   border-style: dashed;
 }
+/* Dupla real, armada por el despacho y trabajando ahora. Va sólida y con el
+   acento del sistema para que no se lea como una más de las sugeridas. */
+.dupla-card--live {
+  background: var(--okBg, var(--pillBg));
+  border-color: var(--ok);
+}
 .dupla-rol {
   font-size: 10px;
   font-weight: var(--fw-black);
@@ -1008,4 +1020,10 @@ button[data-suptrack].active {
   background: var(--warnBg);
   border-color: var(--warn);
   color: var(--warn);
+}
+/* Ya hizo su dupla del carro extra: apagado a propósito — es información de
+   cierre ("no vuelve a emparejarse"), no algo que reclame atención. */
+.dupla-chip--done {
+  color: var(--muted);
+  opacity: .8;
 }

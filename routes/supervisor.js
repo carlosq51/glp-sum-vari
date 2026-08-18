@@ -2,8 +2,81 @@ import { Router } from "express";
 import { supabaseHeaders_, supabaseGet_, supabaseFetchAll_ } from "../lib/supabase.js";
 import { addServerTiming_ } from "../lib/timing.js";
 import { getConfig_, CONFIG_DEFAULTS } from "../lib/config.js";
+import { jornadaFecha_, esDuplaAuto_, vinDeDuplaAuto_ } from "../lib/despacho.js";
 
 const router = Router();
+
+/**
+ * Duplas automáticas del carro extra, para pintarlas en el LIVE.
+ *
+ * Devuelve un mapa user_id → { activa, con, conNombre, soyAncla, vin, zonaId }.
+ * `activa` false significa "ya hizo su dupla hoy y volvió a trabajar solo": esa
+ * marca es la que impide que el panel lo vuelva a proponer para emparejar. La
+ * regla es de una vez por jornada y el registro que lo garantiza es la propia
+ * fila DISUELTA — por eso se leen TODOS los estados, no solo las vivas.
+ *
+ * Nunca lanza: el LIVE es anterior al módulo de despacho y tiene que seguir
+ * pintándose aunque esas tablas no existan o el módulo esté apagado.
+ */
+async function duplasAutoDeHoy_(SUPABASE_URL, headers) {
+  const vacio = new Map();
+  try {
+    const fecha = jornadaFecha_();
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/despacho_duplas?jornada_fecha=eq.${fecha}` +
+      `&motivo=like.AUTO_CARRO_EXTRA*&select=id,rol_trabajo,lider_user_id,estado,motivo`,
+      { headers },
+    );
+    if (!r.ok) return vacio;
+    const duplas = (await r.json()).filter(esDuplaAuto_);
+    if (!duplas.length) return vacio;
+
+    const ids = duplas.map(d => d.id).join(",");
+    const mr = await fetch(
+      `${SUPABASE_URL}/rest/v1/despacho_dupla_miembros?dupla_id=in.(${encodeURIComponent(ids)})&select=dupla_id,user_id`,
+      { headers },
+    );
+    const miembros = mr.ok ? await mr.json() : [];
+    if (!miembros.length) return vacio;
+
+    // La zona solo se necesita para las que siguen en curso.
+    const vinsActivos = duplas.filter(d => d.estado === "ACTIVA")
+      .map(vinDeDuplaAuto_).filter(Boolean);
+    const zonaPorVin = new Map();
+    if (vinsActivos.length) {
+      const zr = await fetch(
+        `${SUPABASE_URL}/rest/v1/conversion_zonas?vin=in.(${vinsActivos.map(encodeURIComponent).join(",")})&select=vin,zona_id`,
+        { headers },
+      );
+      if (zr.ok) for (const z of await zr.json()) zonaPorVin.set(z.vin, z.zona_id);
+    }
+
+    const out = new Map();
+    for (const d of duplas) {
+      const suyos = miembros.filter(m => m.dupla_id === d.id).map(m => m.user_id);
+      const vin = vinDeDuplaAuto_(d);
+      for (const uid of suyos) {
+        const otro = suyos.find(x => x !== uid) || null;
+        const previo = out.get(uid);
+        // Con más de una (no debería, la regla es de una por jornada) manda la
+        // que sigue viva: es la que cambia lo que el supervisor ve ahora.
+        if (previo?.activa) continue;
+        out.set(uid, {
+          duplaId: d.id,
+          activa: d.estado === "ACTIVA",
+          rol: d.rol_trabajo,
+          con: otro,
+          soyAncla: d.lider_user_id === uid,
+          vin: d.estado === "ACTIVA" ? vin : null,
+          zonaId: d.estado === "ACTIVA" ? (zonaPorVin.get(vin) ?? null) : null,
+        });
+      }
+    }
+    return out;
+  } catch {
+    return vacio;
+  }
+}
 
 // =========================
 // SUPERVISOR REPORT (Supabase directo)
@@ -443,12 +516,13 @@ router.get("/api/supervisor/live", async (req, res) => {
     // para saber en qué está parado ahora mismo un técnico que no abrió nada hoy.
     const url5 = `${SUPABASE_URL}/rest/v1/asignaciones?select=${selectFields}&activo=eq.true&estado_actual=in.(TRABAJANDO,PAUSADO,SIN_INICIAR)&fecha_asignacion=lt.${hoy00}&order=updated_at.desc`;
 
-    const [resp1, resp2, resp3, resp4, resp5] = await Promise.all([
+    const [resp1, resp2, resp3, resp4, resp5, duplasAuto] = await Promise.all([
       fetch(url1, { method: "GET", headers }),
       fetch(url2, { method: "GET", headers }),
       fetch(url3, { method: "GET", headers }),
       fetch(url4, { method: "GET", headers }),
       fetch(url5, { method: "GET", headers }),
+      duplasAutoDeHoy_(SUPABASE_URL, headers),
     ]);
     if (!resp1.ok) {
       const text = await resp1.text().catch(() => "");
@@ -668,6 +742,35 @@ router.get("/api/supervisor/live", async (req, res) => {
         vinsHoy: [],
         asignacionesHoy: [],
       });
+    }
+
+    // 5. Dupla automática del carro extra (módulo de despacho)
+    //
+    // Dos datos distintos y los dos importan en pantalla:
+    //   duplaAuto      → con quién está trabajando AHORA y en qué zona
+    //   duplaAutoUsada → ya la hizo hoy ⇒ trabaja solo el resto de la jornada
+    //
+    // El segundo es el que evita la pregunta obvia del supervisor ("¿y por qué
+    // no juntan a esta otra vez?"): el panel deja de proponerla y lo dice.
+    if (duplasAuto.size) {
+      const nombrePorId = new Map([
+        ...(allUsers || []).map(u => [u.id, u.nombre || ""]),
+        ...techs.map(t => [t.userId, t.nombre || ""]),
+      ]);
+      for (const t of techs) {
+        const d = duplasAuto.get(t.userId);
+        if (!d) continue;
+        t.duplaAutoUsada = true;
+        t.duplaAuto = d.activa ? {
+          duplaId:   d.duplaId,
+          conUserId: d.con,
+          conNombre: nombrePorId.get(d.con) || "",
+          soyAncla:  d.soyAncla,
+          rol:       d.rol,
+          vin:       d.vin,
+          zonaId:    d.zonaId,
+        } : null;
+      }
     }
 
     // Ordenar: TRABAJANDO → PAUSADO → SIN_INICIAR → FINALIZADO → otros; luego por nombre

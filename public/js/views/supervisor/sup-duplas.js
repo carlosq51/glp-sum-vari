@@ -1,12 +1,21 @@
 // =========================
 // public/js/views/supervisor/sup-duplas.js
-// Cierre por duplas: identifica a los técnicos de conversión que ya cerraron
-// su meta de carros COMPLETOS del día y sugiere juntarlos de a dos para
-// avanzar un carro entero más hasta la salida.
+// Cierre por duplas: qué pasa con los técnicos de conversión que ya cerraron su
+// meta de carros COMPLETOS del día.
 //
-// Regla del negocio: medio carro no es medible. Un técnico que llegó a la meta
-// (2 carros) queda "libre"; dos libres del mismo rol se emparejan y sacan
-// 1 carro entero juntos → 0.5 para cada uno (ej. 2 + 2 + 1 = 5, 2.5 c/u).
+// Hay DOS cosas distintas en este panel y conviene no confundirlas:
+//
+//   EN CURSO  — duplas reales, que el módulo de despacho armó solo cuando
+//               alguien cerró su meta y un compañero de su rol ya estaba en su
+//               carro extra. No son propuestas: están pasando ahora, el carro
+//               va a nombre del que lo abrió y al cerrarlo se deshacen.
+//   SUGERIDAS — el emparejamiento a ojo de siempre, para cuando el despacho
+//               automático no está encendido. Nadie las ejecuta por sí solas.
+//
+// Y una tercera lista que existe solo para responder una pregunta que el
+// supervisor se hace mirando la pantalla: "¿por qué no vuelven a juntar a
+// ese?". Porque la regla es de UNA vez por jornada — quien ya hizo su dupla
+// trabaja solo el resto del día, y aquí se dice con todas sus letras.
 // =========================
 
 import { escapeHtml } from "../../core/format.js";
@@ -30,28 +39,77 @@ export function cumplioMeta_(tech, meta) {
   return carsOf_(tech) >= meta;
 }
 
+/** Nombre para pintar, venga del tech del LIVE o solo del payload de la dupla. */
+function nombreDe_(tech, fallback) {
+  return String(tech?.nombre || fallback || "Técnico");
+}
+
+/**
+ * Duplas automáticas vivas de un rol, una fila por dupla (no por técnico).
+ *
+ * Los dos miembros traen el mismo `duplaId`, así que sin deduplicar la misma
+ * dupla se pintaría dos veces. Y el compañero puede no estar en `delRol` —el
+ * LIVE agrupa por técnico + rol de sus asignaciones—, por eso el nombre cae al
+ * que viene dentro de `duplaAuto`.
+ */
+function duplasEnCurso_(delRol, lista, rol) {
+  const out = [];
+  const vistas = new Set();
+
+  for (const t of delRol) {
+    const d = t.duplaAuto;
+    if (!d || vistas.has(d.duplaId)) continue;
+    vistas.add(d.duplaId);
+
+    const otro = lista.find(x => x.userId === d.conUserId) || null;
+    const [ancla, ayudante] = d.soyAncla ? [t, otro] : [otro, t];
+    const nombreOtro = d.conNombre;
+
+    out.push({
+      rol,
+      duplaId: d.duplaId,
+      zonaId: d.zonaId ?? null,
+      anclaNombre:    nombreDe_(ancla,    d.soyAncla ? null : nombreOtro),
+      ayudanteNombre: nombreDe_(ayudante, d.soyAncla ? nombreOtro : null),
+      carrosAncla:    ancla    ? carsOf_(ancla)    : null,
+      carrosAyudante: ayudante ? carsOf_(ayudante) : null,
+    });
+  }
+  return out;
+}
+
 /**
  * clasificarDuplas_ — modelo del panel a partir de los techs del LIVE.
  *
  * Por cada rol de conversión:
+ *   enCurso  → duplas automáticas trabajando ahora (reales, no propuestas)
+ *   yaPareo  → hicieron su dupla hoy y trabajan SOLOS el resto de la jornada
  *   libres   → llegaron a la meta y NO tienen trabajo en curso ⇒ emparejables
  *   enExtra  → llegaron a la meta pero siguen con un trabajo abierto (carro extra)
  *   cerca    → les falta 1 carro para la meta
- *   duplas   → pares armados sobre `libres` (ordenados por carros desc)
+ *   duplas   → pares SUGERIDOS sobre `libres` (ordenados por carros desc)
  *   sinPareja→ el impar que quedó esperando compañero
+ *
+ * Quien está en `enCurso` o en `yaPareo` no entra a los demás grupos: el
+ * primero ya tiene con quién, y al segundo la regla no lo vuelve a emparejar.
+ * Sugerirlo igual sería mandar al supervisor a pelear contra el sistema.
  */
 export function clasificarDuplas_(techs, meta = 2) {
   const lista = Array.isArray(techs) ? techs : [];
   const porRol = [];
-  let totalMeta = 0, totalLibres = 0, totalDuplas = 0;
+  let totalMeta = 0, totalLibres = 0, totalDuplas = 0, totalEnCurso = 0;
 
   for (const rol of ROLES_DUPLA) {
     const delRol = lista.filter(t =>
       String(t.rol || "").toUpperCase() === rol && t.estadoActivo !== "DESCONECTADO"
     );
 
+    const enCurso = duplasEnCurso_(delRol, lista, rol);
+    const yaPareo = delRol.filter(t => t.duplaAutoUsada && !t.duplaAuto);
+    const pendientes = delRol.filter(t => !t.duplaAuto && !t.duplaAutoUsada);
+
     const libres = [], enExtra = [], cerca = [];
-    for (const t of delRol) {
+    for (const t of pendientes) {
       const cars = carsOf_(t);
       if (cars >= meta) {
         (activosOf_(t) > 0 ? enExtra : libres).push(t);
@@ -84,11 +142,15 @@ export function clasificarDuplas_(techs, meta = 2) {
     }
     const sinPareja = libres.length % 2 === 1 ? libres[libres.length - 1] : null;
 
-    totalMeta   += libres.length + enExtra.length;
-    totalLibres += libres.length;
-    totalDuplas += duplas.length;
+    // "En meta" se cuenta sobre TODO el rol, no sobre los emparejables: el chip
+    // del pulso filtra por cumplioMeta_, y si este número dejara fuera a los que
+    // están en dupla, el filtro mostraría más gente de la que anuncia.
+    totalMeta    += delRol.filter(t => carsOf_(t) >= meta).length;
+    totalLibres  += libres.length;
+    totalDuplas  += duplas.length;
+    totalEnCurso += enCurso.length;
 
-    porRol.push({ rol, libres, enExtra, cerca, duplas, sinPareja });
+    porRol.push({ rol, enCurso, yaPareo, libres, enExtra, cerca, duplas, sinPareja });
   }
 
   return {
@@ -97,14 +159,21 @@ export function clasificarDuplas_(techs, meta = 2) {
     totalMeta,
     totalLibres,
     totalDuplas,
-    carrosProyectados: totalDuplas, // 1 carro entero por dupla
+    totalEnCurso,
+    // Solo las sugeridas proyectan carro: el de una dupla en curso ya está
+    // abierto y contado como trabajo del taller.
+    carrosProyectados: totalDuplas,
   };
 }
 
 // ── Render ────────────────────────────────────────────────────────────
-function nombreCorto_(t, maxLen = 12) {
-  const first = String(t?.nombre || t?.email || "Técnico").trim().split(/\s+/)[0] || "Técnico";
+function cortar_(nombre, maxLen = 12) {
+  const first = String(nombre || "Técnico").trim().split(/\s+/)[0] || "Técnico";
   return first.length > maxLen ? first.slice(0, maxLen) : first;
+}
+
+function nombreCorto_(t, maxLen = 12) {
+  return cortar_(t?.nombre || t?.email, maxLen);
 }
 
 function duplaHTML_(d) {
@@ -120,6 +189,28 @@ function duplaHTML_(d) {
     <span class="dupla-goal">
       🚗 <b>${fmtCarros_(d.proyectado)}</b>
       <span class="dupla-split">(${fmtCarros_(d.finalA)} / ${fmtCarros_(d.finalB)} c/u)</span>
+    </span>
+  </div>`;
+}
+
+/**
+ * Fila de una dupla que está pasando de verdad. Se distingue a propósito de las
+ * sugeridas: dice la zona (ahí hay que ir a mirar) y a nombre de quién va el
+ * carro, que es la primera pregunta cuando dos personas trabajan en uno solo.
+ */
+function enCursoHTML_(d) {
+  const meta = rolMeta(d.rol);
+  const cars = n => (n == null ? "" : ` <b>${fmtCarros_(n)}</b>`);
+  return `
+  <div class="dupla-card dupla-card--live" data-rol="${escapeHtml(d.rol)}" style="border-left:3px solid ${meta.color};">
+    <span class="dupla-rol" style="color:${meta.color};">${meta.icon} ${escapeHtml(meta.label)}</span>
+    <span class="dupla-names">
+      ${escapeHtml(cortar_(d.anclaNombre))}${cars(d.carrosAncla)}
+      <span class="dupla-plus">+</span>
+      ${escapeHtml(cortar_(d.ayudanteNombre))}${cars(d.carrosAyudante)}
+    </span>
+    <span class="dupla-goal dupla-goal--live" title="El carro va a nombre de ${escapeHtml(d.anclaNombre)}; al cerrarlo cada uno sigue solo">
+      ${d.zonaId != null ? `🅿️ zona <b>${escapeHtml(String(d.zonaId))}</b> · ` : ""}EN CURSO
     </span>
   </div>`;
 }
@@ -140,12 +231,13 @@ function esperaHTML_(t, rol) {
  */
 export function renderDuplasPanel_(model) {
   if (!model) return "";
-  const { meta, porRol, totalMeta, totalDuplas, carrosProyectados } = model;
+  const { meta, porRol, totalMeta, totalDuplas, totalEnCurso = 0, carrosProyectados } = model;
   const hayCerca = porRol.some(r => r.cerca.length > 0);
   if (!totalMeta && !hayCerca) return "";
 
-  // Primero las duplas armadas, después los que esperan pareja
+  // Primero lo que está pasando, después lo que se sugiere, al final el impar.
   const filas = [
+    ...porRol.flatMap(r => r.enCurso.map(enCursoHTML_)),
     ...porRol.flatMap(r => r.duplas.map(duplaHTML_)),
     ...porRol.filter(r => r.sinPareja).map(r => esperaHTML_(r.sinPareja, r.rol)),
   ];
@@ -153,20 +245,35 @@ export function renderDuplasPanel_(model) {
   // "En carro extra": ya cerraron meta y siguen trabajando (probable dupla en curso)
   const enExtra = porRol.flatMap(r => r.enExtra.map(t => ({ t, rol: r.rol })));
   const cerca   = porRol.flatMap(r => r.cerca.map(t => ({ t, rol: r.rol })));
+  const yaPareo = porRol.flatMap(r => r.yaPareo.map(t => ({ t, rol: r.rol })));
+
+  const cuenta = [
+    totalEnCurso > 0 ? `${totalEnCurso} en curso` : "",
+    totalDuplas  > 0 ? `${totalDuplas} sugerida${totalDuplas !== 1 ? "s" : ""}` : "",
+  ].filter(Boolean).join(" · ");
 
   return `
   <div class="live-duplas" id="liveDuplas">
     <div class="live-duplas-head">
       <span class="live-duplas-title">🤝 CIERRE POR DUPLAS</span>
       <span class="live-duplas-sub">meta ${meta} carros completos / técnico</span>
-      <span class="live-duplas-count" title="Duplas sugeridas y carros enteros que se pueden sumar">
-        ${totalDuplas} dupla${totalDuplas !== 1 ? "s" : ""}${carrosProyectados > 0 ? ` · +${carrosProyectados} 🚗` : ""}
+      <span class="live-duplas-count" title="Duplas trabajando ahora y pares que se podrían armar">
+        ${cuenta || "sin duplas"}${carrosProyectados > 0 ? ` · +${carrosProyectados} 🚗` : ""}
       </span>
     </div>
 
     ${filas.length
       ? `<div class="live-duplas-list">${filas.join("")}</div>`
       : `<div class="live-duplas-empty small">Nadie libre todavía para emparejar.</div>`}
+
+    ${yaPareo.length ? `
+    <div class="live-duplas-foot small">
+      <span class="live-duplas-foot-label" title="La dupla del carro extra es de una vez por jornada: ya la hicieron y siguen solos">
+        ✅ Ya hicieron su dupla (trabajan solos):</span>
+      ${yaPareo.map(({ t, rol }) =>
+        `<span class="dupla-chip dupla-chip--done" title="${escapeHtml(rolMeta(rol).label)} — no se vuelve a emparejar hoy">${escapeHtml(nombreCorto_(t))} ${fmtCarros_(carsOf_(t))}</span>`
+      ).join("")}
+    </div>` : ""}
 
     ${enExtra.length ? `
     <div class="live-duplas-foot small">
