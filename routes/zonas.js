@@ -29,8 +29,32 @@ router.get("/api/zonas", async (req, res) => {
 
     // Build VIN → work_order estado map (latest OT wins)
     const woEstadoMap = new Map();
-    for (const wo of [...convRows, ...finRows]) {
+    const woRows = [...convRows, ...finRows];
+    for (const wo of woRows) {
       if (wo.vin && !woEstadoMap.has(wo.vin)) woEstadoMap.set(wo.vin, wo.estado_general);
+    }
+
+    // Carro estacionado cuya OT no cayó en ninguna de las dos ventanas: se
+    // terminó un día anterior y sigue en su plaza. Sin esta consulta la zona lo
+    // daba por ESPERANDO y sin técnicos — el carro estaba listo pero la
+    // pantalla decía que nadie lo había tocado, que es justo lo que confunde.
+    const vinsHuerfanos = [...new Set(
+      zonaRows.map(z => z.vin).filter(v => v && !woEstadoMap.has(v))
+    )];
+    if (vinsHuerfanos.length) {
+      try {
+        const q = vinsHuerfanos.map(encodeURIComponent).join(",");
+        const r = await fetch(
+          `${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CONVERSION&vin=in.(${q})` +
+          `&select=id,vin,estado_general&order=fecha_creacion.desc&limit=100`,
+          { method: "GET", headers }
+        );
+        for (const wo of (r.ok ? await r.json() : [])) {
+          if (!wo.vin || woEstadoMap.has(wo.vin)) continue;
+          woEstadoMap.set(wo.vin, wo.estado_general);
+          woRows.push(wo);
+        }
+      } catch {}
     }
 
     // Todos los VINs activos (en zonas físicas + en zona libre)
@@ -38,18 +62,30 @@ router.get("/api/zonas", async (req, res) => {
       ...zonaRows.map(z => z.vin).filter(Boolean),
       ...[...woEstadoMap.keys()],
     ])];
-    const allWos = [...convRows, ...finRows].filter(w => w.id && w.vin);
+    // Una OT por VIN: con dos abiertas para el mismo carro las asignaciones de
+    // la vieja pisarían los nombres de la que está en curso.
+    const vistas_ = new Set();
+    const allWos = woRows.filter(w => {
+      if (!w.id || !w.vin || vistas_.has(w.vin)) return false;
+      vistas_.add(w.vin);
+      return true;
+    });
 
     // Fetch en paralelo: asignaciones activas + modelo_normalizado de VINs
     const [tecnicosMap, modeloMap] = await Promise.all([
-      // VIN → { delantero, tanquero }
+      // VIN → { delantero, tanquero, delantero_fin, tanquero_fin }
+      //
+      // `*_fin` dice si ESE puesto ya cerró su trabajo. Es lo que pinta el
+      // carro por mitades en el mapa (arriba delantero, abajo tanquero): el
+      // nombre se queda aunque haya terminado — quien hizo el carro sigue
+      // siendo el responsable — y el color es el que dice que ya acabó.
       (async () => {
         const map = new Map();
         if (!allWos.length) return map;
         try {
           const woIds = allWos.map(w => w.id).join(",");
           const asgResp = await fetch(
-            `${SUPABASE_URL}/rest/v1/asignaciones?work_order_id=in.(${encodeURIComponent(woIds)})&activo=eq.true&select=work_order_id,user_id,rol_trabajo`,
+            `${SUPABASE_URL}/rest/v1/asignaciones?work_order_id=in.(${encodeURIComponent(woIds)})&activo=eq.true&select=work_order_id,user_id,rol_trabajo,estado_actual`,
             { method: "GET", headers }
           );
           const asgs = asgResp.ok ? await asgResp.json() : [];
@@ -68,10 +104,11 @@ router.get("/api/zonas", async (req, res) => {
               if (!vin || !nombre) continue;
               const primerNombre = String(nombre).trim().split(/\s+/)[0];
               const rol = String(a.rol_trabajo || "").toUpperCase();
+              const fin = String(a.estado_actual || "").toUpperCase() === "FINALIZADO";
               if (!map.has(vin)) map.set(vin, {});
               const entry = map.get(vin);
-              if (rol === "MOTOR") entry.delantero = primerNombre;
-              else if (rol === "TANQUE") entry.tanquero = primerNombre;
+              if (rol === "MOTOR") { entry.delantero = primerNombre; entry.delantero_fin = fin; }
+              else if (rol === "TANQUE") { entry.tanquero = primerNombre; entry.tanquero_fin = fin; }
             }
           }
         } catch {}

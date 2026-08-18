@@ -26,6 +26,13 @@
   que las 6 de arriba miden igual que las de abajo y quedan alineadas a la
   izquierda — que es como está el taller.
 
+  EL COLOR DEL CARRO dice dos cosas a la vez, y se lee desde lejos sin texto:
+  cuánta gente tiene (blanco nadie · amarillo uno · azul la dupla) y qué lado
+  ya cerró (verde en la mitad de arriba el delantero, en la de abajo el
+  tanquero). Un carro entero verde está listo. El nombre del técnico NO se
+  borra al terminar: el carro sigue siendo suyo y el hueco se leía como
+  "aquí no trabajó nadie", que es lo contrario de lo que pasó.
+
   Otras restricciones que dictan el diseño:
   · Se lee a 4 metros → tipografía enorme, cero texto fino.
   · Nadie la toca → sin scroll, sin botones, sin estados que requieran acción.
@@ -66,6 +73,23 @@
     --warn: #92620a;         --warnFill: #facc15;
     --note: #0b5f92;         --noteFill: #38bdf8;
     --danger: #b3261e;
+
+    /* ── Color del carro: cuánta gente tiene y cuánto lleva hecho ──
+       Un solo idioma para toda la pantalla, leíble de un vistazo desde el
+       otro lado del taller:
+
+         BLANCO   nadie en el carro
+         AMARILLO un técnico — falta la otra mitad de la dupla
+         AZUL     delantero y tanquero, trabajando
+         VERDE    ese lado ya terminó (arriba delantero · abajo tanquero)
+
+       Los rellenos son TINTES, no colores plenos: el texto sigue siendo casi
+       negro encima (>10:1) y se lee al sol. El tono fuerte va en el borde,
+       que es lo que da el color a 4 metros. */
+    --carro0: #ffffff;       --carro0Line: #475569;
+    --carro1: #fde68a;       --carro1Line: #b45309;
+    --carro2: #bfdbfe;       --carro2Line: #1d4ed8;
+    --carroFin: #86efac;     --carroFinLine: #15803d;
 
     --font: ui-rounded, Quicksand, Nunito, system-ui, -apple-system, sans-serif;
     --sombra: 0 1px 3px rgba(11,15,20,.14);
@@ -255,10 +279,20 @@
     padding: calc(var(--u) * .55) calc(var(--u) * .9);
     box-shadow: var(--sombra);
   }
+  /* La barra de la izquierda habla el mismo idioma que el mapa: dice cuánta
+     gente tiene el carro. Verde solo cuando los DOS puestos cerraron — en
+     esta lista no hay mitades que pintar, el ✓ de cada nombre hace ese trabajo. */
+  .asig--c0 { border-left-color: var(--carro0Line); }
+  .asig--c1 { border-left-color: var(--carro1Line); }
+  .asig--c2 { border-left-color: var(--carro2Line); }
+  .asig--finArriba.asig--finAbajo { border-left-color: var(--carroFinLine); }
+
+  /* "Nueva" ya no recolorea la barra: el verde pasó a significar "terminó".
+     Lo dicen el destello y la etiqueta NUEVO, que es donde se lee de verdad. */
   .asig.nueva {
-    border-left-color: var(--okFill);
     animation: destello 1.4s ease-out 3;   /* 3 veces, no en bucle */
   }
+  .duoFin { color: var(--ok); font-weight: 800; }
   @keyframes destello {
     0%, 100% { background: var(--surface); }
     50%      { background: #d9f7e3; }
@@ -322,8 +356,10 @@
     font-weight: 800;
     letter-spacing: .05em;
   }
-  .estado.trabajando b { color: var(--ok); }
+  /* Mismos tonos que el carro: azul es trabajo en curso, verde es terminado. */
+  .estado.trabajando b { color: var(--carro2Line); }
   .estado.nueva b      { color: var(--warn); }
+  .estado.listo b      { color: var(--ok); }
   .estado small {
     font-size: calc(var(--u) * .82);
     color: var(--muted);
@@ -387,7 +423,7 @@
      espacial — sin él las dos filas parecen una lista partida al medio. */
   .pasillo {
     display: grid;
-    grid-template-columns: auto 1fr auto auto;
+    grid-template-columns: auto 1fr auto auto auto;
     align-items: center;
     gap: calc(var(--u) * .6);
     padding: 0 calc(var(--u) * .3);
@@ -424,9 +460,30 @@
     border-top-color: rgba(11,15,20,.25);
     box-shadow: none;
   }
-  .spot--esperando  { border-top-color: var(--warnFill); }
-  .spot--conversion { border-top-color: var(--okFill); }
-  .spot--finalizado { border-top-color: var(--noteFill); }
+  /* ── El carro, por dotación y avance ──
+     El relleno lo pone --carroBase; el verde se aplica ENCIMA, por mitades:
+     la de arriba es el delantero, la de abajo el tanquero — el mismo orden en
+     que van los dos nombres dentro de la tarjeta. */
+  .spot--c0, .spot--c1, .spot--c2 { background: var(--carroBase); }
+  .spot--c0 { --carroBase: var(--carro0); border-top-color: var(--carro0Line); }
+  .spot--c1 { --carroBase: var(--carro1); border-top-color: var(--carro1Line); }
+  .spot--c2 { --carroBase: var(--carro2); border-top-color: var(--carro2Line); }
+
+  .spot--finArriba {
+    background: linear-gradient(180deg, var(--carroFin) 0 50%, var(--carroBase) 50% 100%);
+  }
+  .spot--finAbajo {
+    background: linear-gradient(180deg, var(--carroBase) 0 50%, var(--carroFin) 50% 100%);
+  }
+  /* Carro entero terminado: sin línea de corte, para que se lea como uno solo. */
+  .spot--finArriba.spot--finAbajo {
+    background: var(--carroFin);
+    border-top-color: var(--carroFinLine);
+  }
+
+  /* El ✓ repite en forma lo que dice el color. Quien no distingue el verde
+     del amarillo tiene que poder leer la pantalla igual. */
+  .spotFin { flex: none; font-weight: 800; color: var(--ok); }
 
   .spotTop {
     display: flex;
@@ -462,7 +519,7 @@
     line-height: 1.15;
     min-width: 0;
   }
-  .spotTec span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .spotTecNom { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .spotTec .rol { font-size: calc(var(--u) * .62); flex: none; }
 
   .spotPie {
@@ -520,6 +577,38 @@
     white-space: nowrap;
   }
   .sinZona b { color: var(--warn); font-size: calc(var(--u) * 1.15); }
+
+  /* Leyenda del color del carro. Va en el pasillo, la única franja de la
+     escena que no compite con nada: un idioma nuevo hay que enseñarlo, y
+     nadie va a preguntar qué significa el amarillo. */
+  .leyenda {
+    display: flex;
+    align-items: center;
+    gap: calc(var(--u) * .55);
+    white-space: nowrap;
+  }
+  .leyItem {
+    display: flex;
+    align-items: center;
+    gap: calc(var(--u) * .22);
+    font-size: calc(var(--u) * .7);
+    font-weight: 800;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+  }
+  .leyItem i {
+    width: calc(var(--u) * .8);
+    height: calc(var(--u) * .8);
+    border-radius: calc(var(--u) * .16);
+    border: 2px solid var(--lineFuerte);
+    display: block;
+  }
+  .leyItem i.l0 { background: var(--carro0);   border-color: var(--carro0Line); }
+  .leyItem i.l1 { background: var(--carro1);   border-color: var(--carro1Line); }
+  .leyItem i.l2 { background: var(--carro2);   border-color: var(--carro2Line); }
+  .leyItem i.lf { background: linear-gradient(180deg, var(--carroFin) 0 50%, var(--carro2) 50% 100%);
+                  border-color: var(--carroFinLine); }
 
   /* ─── ESCENA 3 · Incidencias ───
      Pocas y grandes. Una incidencia en pantalla no es un registro: es una
@@ -760,6 +849,12 @@
         <div class="linea"></div>
         <span class="flecha">▶</span>
         <div class="sinZona" id="sinZona"></div>
+        <div class="leyenda">
+          <span class="leyItem"><i class="l0"></i>Sin nadie</span>
+          <span class="leyItem"><i class="l1"></i>1 técnico</span>
+          <span class="leyItem"><i class="l2"></i>Dupla</span>
+          <span class="leyItem"><i class="lf"></i>Terminó ✓</span>
+        </div>
       </div>
       <div class="fila" id="filaAbajo"></div>
     </div>
@@ -848,9 +943,9 @@
     asignaciones: [
       { zona: 2,  vin: "LVVDB21B8PD502944", modelo: "KYC V5",     motor: "LUIS URIBE",      tanque: "VICTOR BAILON",  estado: "NUEVA",      desde: "10:22", razon: "Ambos libres · zona más cercana" },
       { zona: 7,  vin: "LSJA24U9XPZ043117", modelo: "Jetour X70", motor: "ANA LUCIA",       tanque: "HEINER TORRES",  estado: "TRABAJANDO", desde: "09:40", razon: "Dupla con mejor ritmo compartido" },
-      { zona: 4,  vin: "LSJA24U97PZ041882", modelo: "Jetour X70", motor: "MICHAEL CAHUANA", tanque: "IVAN ABAD",      estado: "TRABAJANDO", desde: "09:12", razon: "Zona 4 · X70 es su modelo más rápido" },
-      { zona: 6,  vin: "LSJA24U96PZ042910", modelo: "Jetour X70", motor: "FRANZ COSTILLA",  tanque: "GIANFRANCO F.",  estado: "TRABAJANDO", desde: "09:04", razon: "Zona contigua · sin cruzar el taller" },
-      { zona: 11, vin: "LSJA24U91PZ040055", modelo: "Jetour X70", motor: "MEJIA MIGUEL",    tanque: "ALFREDO AYARZA", estado: "TRABAJANDO", desde: "08:55", razon: "Van 1 de 2 carros · prioridad por meta" },
+      { zona: 4,  vin: "LSJA24U97PZ041882", modelo: "Jetour X70", motor: "MICHAEL CAHUANA", tanque: "IVAN ABAD",      estado: "TRABAJANDO", desde: "09:12", razon: "Zona 4 · X70 es su modelo más rápido", motorFin: true },
+      { zona: 6,  vin: "LSJA24U96PZ042910", modelo: "Jetour X70", motor: "FRANZ COSTILLA",  tanque: "",               estado: "TRABAJANDO", desde: "09:04", razon: "Zona contigua · sin cruzar el taller" },
+      { zona: 11, vin: "LSJA24U91PZ040055", modelo: "Jetour X70", motor: "MEJIA MIGUEL",    tanque: "ALFREDO AYARZA", estado: "TRABAJANDO", desde: "08:55", razon: "Van 1 de 2 carros · prioridad por meta", motorFin: true, tanqueFin: true },
     ],
     incidencias: [
       { hora: "10:14", vin: "LSJA24U97PZ041882", tecnico: "IVAN ABAD",      tipo: "MODERADA", nota: "Fuga en conexión de tanque, falta abrazadera" },
@@ -875,18 +970,18 @@
       { zona_id: 15, vin: "LSJA24U90PZ044201", estado: "EN_CONVERSION", modelo: "Jetour X70", tecnicos: { delantero: "CARMEN SALVADOR", tanquero: "CONTRERAS B." }, registrado_at: hace(95) },
       { zona_id: 14, vin: null, estado: "LIBRE" },
       { zona_id: 13, vin: "LVVDB21B4PD503801", estado: "ESPERANDO",     modelo: "KYC V7",     tecnicos: null, registrado_at: hace(6) },
-      { zona_id: 12, vin: "LSJA24U98PZ041730", estado: "FINALIZADO",    modelo: "Jetour X70", tecnicos: { delantero: "GREYSSON A.", tanquero: "PEPE JEANS" }, registrado_at: hace(210) },
-      { zona_id: 11, vin: "LSJA24U91PZ040055", estado: "EN_CONVERSION", modelo: "Jetour X70", tecnicos: { delantero: "MEJIA MIGUEL", tanquero: "ALFREDO AYARZA" }, registrado_at: hace(145) },
+      { zona_id: 12, vin: "LSJA24U98PZ041730", estado: "FINALIZADO",    modelo: "Jetour X70", tecnicos: { delantero: "GREYSSON A.", delantero_fin: true, tanquero: "PEPE JEANS", tanquero_fin: true }, registrado_at: hace(210) },
+      { zona_id: 11, vin: "LSJA24U91PZ040055", estado: "EN_CONVERSION", modelo: "Jetour X70", tecnicos: { delantero: "MEJIA MIGUEL", delantero_fin: true, tanquero: "ALFREDO AYARZA" }, registrado_at: hace(145) },
       { zona_id: 10, vin: null, estado: "LIBRE" },
       { zona_id: 9,  vin: "LSJA24U93PZ041290", estado: "ESPERANDO",     modelo: "Jetour X70", tecnicos: null, registrado_at: hace(18) },
       { zona_id: 8,  vin: null, estado: "LIBRE" },
       { zona_id: 7,  vin: "LSJA24U9XPZ043117", estado: "EN_CONVERSION", modelo: "Jetour X70", tecnicos: { delantero: "ANA LUCIA", tanquero: "HEINER TORRES" }, registrado_at: hace(62) },
-      { zona_id: 6,  vin: "LSJA24U96PZ042910", estado: "EN_CONVERSION", modelo: "Jetour X70", tecnicos: { delantero: "FRANZ COSTILLA", tanquero: "GIANFRANCO F." }, registrado_at: hace(38) },
+      { zona_id: 6,  vin: "LSJA24U96PZ042910", estado: "EN_CONVERSION", modelo: "Jetour X70", tecnicos: { delantero: "FRANZ COSTILLA" }, registrado_at: hace(38) },
       { zona_id: 5,  vin: "LSJA24U95PZ042044", estado: "ESPERANDO",     modelo: "Jetour X70", tecnicos: null, registrado_at: hace(2) },
-      { zona_id: 4,  vin: "LSJA24U97PZ041882", estado: "EN_CONVERSION", modelo: "Jetour X70", tecnicos: { delantero: "MICHAEL CAHUANA", tanquero: "IVAN ABAD" }, registrado_at: hace(88) },
+      { zona_id: 4,  vin: "LSJA24U97PZ041882", estado: "EN_CONVERSION", modelo: "Jetour X70", tecnicos: { delantero: "MICHAEL CAHUANA", tanquero: "IVAN ABAD", tanquero_fin: true }, registrado_at: hace(88) },
       { zona_id: 3,  vin: null, estado: "LIBRE" },
       { zona_id: 2,  vin: "LVVDB21B8PD502944", estado: "EN_CONVERSION", modelo: "KYC V5",     tecnicos: { delantero: "LUIS URIBE", tanquero: "VICTOR BAILON" }, registrado_at: hace(9) },
-      { zona_id: 1,  vin: "LSJA24U92PZ043558", estado: "FINALIZADO",    modelo: "Jetour X70", tecnicos: { delantero: "JUNIOR ALVARADO", tanquero: "RONDOY L." }, registrado_at: hace(255) },
+      { zona_id: 1,  vin: "LSJA24U92PZ043558", estado: "FINALIZADO",    modelo: "Jetour X70", tecnicos: { delantero: "JUNIOR ALVARADO", delantero_fin: true, tanquero: "RONDOY L.", tanquero_fin: true }, registrado_at: hace(255) },
     ],
     sin_zona: [{ vin: "LSJA24U94PZ044880" }, { vin: "LVVDB21B2PD504112" }],
   };
@@ -1056,20 +1151,27 @@
       const nueva = !primeraCarga && !vistas.has(clave);
       if (nueva) hayNueva = true;
       const est = String(a.estado || "").toUpperCase();
+      const finM = !!(a.motor  && a.motorFin);
+      const finT = !!(a.tanque && a.tanqueFin);
+      const cls  = pintaCarro_(!!a.motor, !!a.tanque, finM, finT)
+        .map(c => "asig--" + c).join(" ");
       return `
-        <article class="asig ${nueva ? "nueva" : ""}">
+        <article class="asig ${cls} ${nueva ? "nueva" : ""}">
           <div class="zona"><b>${esc(a.zona ?? "–")}</b><small>Zona</small></div>
           <div>
             <div class="duo">
-              <span><span class="rol motor">M</span> ${esc(a.motor || "—")}</span>
+              <span><span class="rol motor">M</span> ${esc(a.motor || "—")}${
+                finM ? ' <span class="duoFin">✓</span>' : ""}</span>
               <span class="mas">+</span>
-              <span><span class="rol tanque">T</span> ${esc(a.tanque || "—")}</span>
+              <span><span class="rol tanque">T</span> ${esc(a.tanque || "—")}${
+                finT ? ' <span class="duoFin">✓</span>' : ""}</span>
             </div>
             <div class="razon"><span class="modelo">${esc(a.modelo || "")}</span>${
               a.razon ? " · " + esc(a.razon) : ""}</div>
           </div>
-          <div class="estado ${est === "NUEVA" ? "nueva" : "trabajando"}">
-            <b>${est === "NUEVA" ? "NUEVO" : "EN CURSO"}</b>
+          <div class="estado ${
+            finM && finT ? "listo" : est === "NUEVA" ? "nueva" : "trabajando"}">
+            <b>${finM && finT ? "LISTO" : est === "NUEVA" ? "NUEVO" : "EN CURSO"}</b>
             <small>desde ${esc(a.desde || "--:--")}</small>
           </div>
         </article>`;
@@ -1155,12 +1257,20 @@
     $("pProy").textContent = m.proyeccion != null ? `Proyecta ${m.proyeccion}` : "";
   }
 
-  // ─── Render · escena mapa ───
-  const VARIANTE = {
-    LIBRE: "libre", ESPERANDO: "esperando",
-    EN_CONVERSION: "conversion", FINALIZADO: "finalizado",
-  };
+  // ─── El color del carro ───
+  // Único sitio donde se decide, para que el mapa y la lista de asignaciones
+  // no puedan discrepar. Devuelve los sufijos de clase; cada escena les pone
+  // su prefijo (spot-- o asig--).
+  //
+  // El conteo es de PUESTOS CUBIERTOS, no de gente presente: el técnico que
+  // terminó su lado sigue ocupándolo. Por eso un carro con el delantero listo
+  // y sin tanquero se ve amarillo con la mitad de arriba verde — falta uno.
+  function pintaCarro_(hayD, hayT, finD, finT) {
+    return ["c" + ((hayD ? 1 : 0) + (hayT ? 1 : 0))]
+      .concat(finD ? ["finArriba"] : [], finT ? ["finAbajo"] : []);
+  }
 
+  // ─── Render · escena mapa ───
   function transcurrido(iso) {
     if (!iso) return "";
     const min = Math.max(0, Math.round((Date.now() - new Date(iso)) / 60000));
@@ -1169,9 +1279,7 @@
   }
 
   function spotHTML(z) {
-    const est = String(z.estado || "LIBRE").toUpperCase();
-    const v = VARIANTE[est] || "libre";
-
+    // Plaza sin carro: sigue siendo el asfalto vacío, no un carro blanco.
     if (!z.vin) {
       return `<div class="spot spot--libre">
         <div class="spotTop"><span class="spotZona">Z${z.zona_id}</span></div>
@@ -1180,14 +1288,29 @@
       </div>`;
     }
 
-    const del = z.tecnicos?.delantero || "";
-    const tan = z.tecnicos?.tanquero  || "";
-    const tecs = (del || tan)
-      ? `<div class="spotTec"><span class="rol motor">M</span><span>${esc(del || "—")}</span></div>
-         <div class="spotTec"><span class="rol tanque">T</span><span>${esc(tan || "—")}</span></div>`
-      : `<div class="spotTec"><span>Sin asignar</span></div>`;
+    const t    = z.tecnicos || {};
+    const del  = t.delantero || "";
+    const tan  = t.tanquero  || "";
+    const finD = !!(del && t.delantero_fin);
+    const finT = !!(tan && t.tanquero_fin);
+    const cls  = pintaCarro_(!!del, !!tan, finD, finT)
+      .map(c => "spot--" + c).join(" ");
 
-    return `<div class="spot spot--${v}">
+    // El nombre se queda aunque el puesto haya terminado: quien hizo el carro
+    // es el responsable, y un hueco donde antes había un nombre se lee como
+    // "este carro no lo tocó nadie".
+    const linea = (rol, nombre, fin) => `
+      <div class="spotTec">
+        <span class="rol ${rol === "M" ? "motor" : "tanque"}">${rol}</span>
+        <span class="spotTecNom">${esc(nombre || "—")}</span>
+        ${fin ? '<span class="spotFin">✓</span>' : ""}
+      </div>`;
+
+    const tecs = (del || tan)
+      ? linea("M", del, finD) + linea("T", tan, finT)
+      : `<div class="spotTec"><span class="spotTecNom">Sin asignar</span></div>`;
+
+    return `<div class="spot ${cls}">
       <div class="spotTop">
         <span class="spotZona">Z${z.zona_id}</span>
         <span class="spotTiempo">${transcurrido(z.registrado_at)}</span>

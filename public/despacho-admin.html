@@ -38,6 +38,11 @@
     --paint: rgba(255,255,255,.50); --paint-soft: rgba(255,255,255,.10);
     --road-bg: #2c313a; --wheel: #0b0d12; --glass-car: rgba(0,0,0,.34);
     --st-wait: #f59e0b; --st-conv: #3b82f6; --st-done: #22c55e;
+
+    /* Color del carro — el mismo idioma que la TV (public/tv.html):
+       blanco nadie · amarillo un técnico · azul la dupla · verde el lado que
+       ya cerró (arriba delantero, abajo tanquero). */
+    --car0: #e8ecf2; --car1: #f0a90c; --car2: #3b82f6; --carFin: #16a34a;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -132,21 +137,30 @@
     font-size: 9px; font-weight: 900; letter-spacing: .08em; color: var(--muted);
     align-self: flex-start; line-height: 1;
   }
+  /* La marca de la esquina es para el supervisor: dice qué plaza le pide algo.
+     Un carro sin nadie y uno a medias son trabajo suyo; una dupla completa
+     solo late, y un carro terminado ya no le pide nada. */
   .plaza::after { position: absolute; top: 6px; right: 6px; font-size: 10px; line-height: 1; z-index: 3; }
-  .plaza--esperando::after   { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--st-wait); }
-  .plaza--incompleto::after  { content: "!"; width: 15px; height: 15px; border-radius: 50%;
+  .plaza--c0::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--st-wait); }
+  .plaza--c1::after { content: "!"; width: 15px; height: 15px; border-radius: 50%;
     background: var(--st-wait); color: #241300; font-weight: 900; font-size: 10px;
     display: flex; align-items: center; justify-content: center;
     animation: falta 1.4s ease-in-out infinite; }
-  .plaza--completo::after    { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--st-conv);
+  .plaza--c2::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--st-conv);
     box-shadow: 0 0 0 0 var(--st-conv); animation: vivo 1.4s ease-in-out infinite; }
+  .plaza--finArriba.plaza--finAbajo::after {
+    content: "✓"; width: auto; height: auto; background: none; color: var(--carFin);
+    font-weight: 900; font-size: 12px; animation: none; box-shadow: none; }
   @keyframes vivo  { 0% { box-shadow: 0 0 0 0 rgba(59,130,246,.6); } 70% { box-shadow: 0 0 0 6px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
   @keyframes falta { 0%,100% { box-shadow: 0 0 0 0 rgba(245,158,11,.6); } 60% { box-shadow: 0 0 0 5px transparent; } }
 
-  .plaza--esperando  { border-left-color: var(--st-wait); border-right-color: var(--st-wait); }
-  .plaza--incompleto { border-left-color: var(--st-wait); border-right-color: var(--st-wait); }
-  .plaza--completo   { border-left-color: var(--st-conv); border-right-color: var(--st-conv);
+  .plaza--c0 { border-left-color: var(--st-wait); border-right-color: var(--st-wait); }
+  .plaza--c1 { border-left-color: var(--st-wait); border-right-color: var(--st-wait); }
+  .plaza--c2 { border-left-color: var(--st-conv); border-right-color: var(--st-conv);
     box-shadow: inset 0 0 22px rgba(59,130,246,.14); }
+  .plaza--finArriba.plaza--finAbajo {
+    border-left-color: var(--carFin); border-right-color: var(--carFin);
+    box-shadow: inset 0 0 22px rgba(22,163,74,.16); }
 
   .plazaP {
     font-size: 15px; font-weight: 900; color: var(--muted); opacity: .5; margin: auto 0;
@@ -167,9 +181,16 @@
     border-radius: 3px; background: var(--glass-car);
   }
   .carro::before { top: 3px; } .carro::after { bottom: 3px; }
-  .plaza--esperando  .carro { background: linear-gradient(180deg, #fbbf24 0%, var(--st-wait) 55%, #c2740a 100%); }
-  .plaza--incompleto .carro,
-  .plaza--completo   .carro { background: linear-gradient(180deg, #60a5fa 0%, var(--st-conv) 55%, #1e40af 100%); }
+  /* El carro se pinta por mitades: la de arriba es el delantero, la de abajo
+     el tanquero — el mismo orden en que van sus nombres dentro. Con los dos
+     lados del mismo color se lee como un carro entero de ese color. */
+  .carro { background: linear-gradient(180deg,
+    var(--arriba, var(--car0)) 0 50%, var(--abajo, var(--car0)) 50% 100%); }
+  .plaza--c0 { --arriba: var(--car0); --abajo: var(--car0); }
+  .plaza--c1 { --arriba: var(--car1); --abajo: var(--car1); }
+  .plaza--c2 { --arriba: var(--car2); --abajo: var(--car2); }
+  .plaza--finArriba { --arriba: var(--carFin); }
+  .plaza--finAbajo  { --abajo: var(--carFin); }
 
   .rueda { position: absolute; width: 17px; height: 6px; background: var(--wheel); border-radius: 3px; }
   .rFL { top: -4px; left: 13%; } .rFR { top: -4px; right: 13%; }
@@ -186,9 +207,19 @@
     color: rgba(255,255,255,.92); border: 1px dashed rgba(255,255,255,.7);
     border-radius: 4px; padding: 1px 4px; font-size: 7.5px; background: rgba(0,0,0,.18);
   }
+  /* Sobre las mitades claras —el carro blanco y el amarillo— el texto blanco
+     desaparece. Cada etiqueta se tiñe según SU mitad, no según el carro. */
+  .tecLabel--oscuro { color: #0b1220; text-shadow: 0 1px 0 rgba(255,255,255,.4); }
+  .tecLabel--oscuro.tecLabel--falta {
+    color: rgba(11,18,32,.88); border-color: rgba(11,18,32,.5); background: rgba(255,255,255,.25);
+  }
+  .tecFin { font-size: 8px; }
+  /* El modelo cae justo en la línea de corte: lleva su propio fondo para no
+     depender del color de ninguna de las dos mitades. */
   .carroModelo {
     position: relative; z-index: 1; font-size: 7px; font-weight: 800; font-style: italic;
-    line-height: 1; color: rgba(255,255,255,.92); text-shadow: 0 1px 2px rgba(0,0,0,.6);
+    line-height: 1; color: #fff; background: rgba(0,0,0,.45);
+    border-radius: 3px; padding: 1px 4px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 90%;
   }
   .plazaVin { font-size: 9.5px; font-family: var(--mono); font-weight: 800; margin-top: 5px; }
@@ -196,7 +227,8 @@
 
   .leyenda { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin-top: 10px;
     font-size: 11px; font-weight: 800; color: var(--muted); }
-  .leyenda i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 5px; }
+  .leyenda i { width: 11px; height: 11px; border-radius: 3px; display: inline-block;
+    margin-right: 5px; vertical-align: -1px; border: 1px solid var(--paint-soft); }
 
   .chip {
     font-size: 12px; font-weight: 800; padding: 3px 9px; border-radius: 99px;
@@ -278,10 +310,10 @@
 <h2>Taller</h2>
 <div id="mapa"></div>
 <div class="leyenda">
-  <span><i style="background:var(--muted)"></i>Plaza libre</span>
-  <span><i style="background:var(--st-wait)"></i>Carro sin nadie</span>
-  <span><i style="background:var(--st-wait)"></i>Falta un puesto</span>
-  <span><i style="background:var(--st-conv)"></i>Dupla completa</span>
+  <span><i style="background:var(--car0)"></i>Carro sin nadie</span>
+  <span><i style="background:var(--car1)"></i>Falta un puesto</span>
+  <span><i style="background:var(--car2)"></i>Dupla completa</span>
+  <span><i style="background:linear-gradient(180deg,var(--carFin) 0 50%,var(--car2) 50% 100%)"></i>Terminó ese lado</span>
 </div>
 
 <h2>Carros sin plaza</h2>
@@ -302,7 +334,8 @@
   const FILA_ABAJO  = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 
   const ROL_LABEL   = { MOTOR: "Delantero", TANQUE: "Tanquero" };
-  const ESTADO_LABEL = { SIN_INICIAR: "sin arrancar", TRABAJANDO: "trabajando", PAUSADO: "en pausa" };
+  const ESTADO_LABEL = { SIN_INICIAR: "sin arrancar", TRABAJANDO: "trabajando",
+                         PAUSADO: "en pausa", FINALIZADO: "terminó ✓" };
 
   // Mismo almacenamiento que la PWA: el supervisor ya inició sesión ahí.
   let email = "";
@@ -352,11 +385,28 @@
         || null;
   }
 
-  /** libre · esperando (carro solo) · incompleto (falta uno) · completo */
-  function estadoPlaza(z) {
-    if (!z.vin) return "libre";
+  /**
+   * Clases de color del carro. Mismo idioma que la TV:
+   *   c0 blanco (nadie) · c1 amarillo (un puesto) · c2 azul (la dupla)
+   *   finArriba / finAbajo: esa mitad ya cerró (delantero / tanquero).
+   *
+   * Cuenta PUESTOS CUBIERTOS, no gente trabajando: el que terminó su lado
+   * sigue ocupándolo, y su nombre se queda en el carro.
+   */
+  function pintaCarro(z) {
+    const m = z.puestos?.MOTOR, t = z.puestos?.TANQUE;
+    const cls = ["c" + ((m ? 1 : 0) + (t ? 1 : 0))];
+    if (m?.terminado) cls.push("finArriba");
+    if (t?.terminado) cls.push("finAbajo");
+    return cls;
+  }
+
+  /** ¿La mitad de este puesto es clara? Entonces su etiqueta va en oscuro. */
+  function mitadClara(z, rol) {
+    const p = z.puestos?.[rol];
+    if (p?.terminado) return false;                       // verde → texto blanco
     const n = (z.puestos?.MOTOR ? 1 : 0) + (z.puestos?.TANQUE ? 1 : 0);
-    return n === 0 ? "esperando" : n === 1 ? "incompleto" : "completo";
+    return n <= 1;                                        // blanco o amarillo
   }
 
   function soloNombre(n) { return String(n || "").trim().split(/\s+/)[0]; }
@@ -370,19 +420,21 @@
   }
 
   function plazaHTML(z) {
-    const st = estadoPlaza(z);
-    if (st === "libre") {
+    if (!z.vin) {
       return `<div class="plaza plaza--libre" data-zona="${z.zona_id}">
         <span class="plazaNum">Z${z.zona_id}</span><span class="plazaP">P</span></div>`;
     }
+    const cls = pintaCarro(z).map(c => "plaza--" + c).join(" ");
     const etiqueta = (rol) => {
       const p = z.puestos?.[rol];
+      const oscuro = mitadClara(z, rol) ? " tecLabel--oscuro" : "";
       return p
-        ? `<span class="tecLabel">${esc(soloNombre(p.nombre) || "—")}</span>`
-        : `<span class="tecLabel tecLabel--falta">+ ${esc(ROL_LABEL[rol].toLowerCase())}</span>`;
+        ? `<span class="tecLabel${oscuro}">${esc(soloNombre(p.nombre) || "—")}${
+             p.terminado ? ' <span class="tecFin">✓</span>' : ""}</span>`
+        : `<span class="tecLabel tecLabel--falta${oscuro}">+ ${esc(ROL_LABEL[rol].toLowerCase())}</span>`;
     };
     return `
-      <div class="plaza plaza--${st}" data-zona="${z.zona_id}">
+      <div class="plaza ${cls}" data-zona="${z.zona_id}">
         <span class="plazaNum">Z${z.zona_id}</span>
         <div class="carroOuter">
           <div class="carro">
@@ -547,7 +599,7 @@
           <button class="rev" data-quitar="${rol}">Quitar</button>
         </div>
         ${ayudanteHTML(p, rol)}
-        ${p.asignacionId ? `
+        ${p.asignacionId && !p.terminado ? `
           <div class="pausas">
             ${p.pausado
               ? `<button class="pri" data-reanudar="${esc(p.asignacionId)}">▶ Reanudar</button>

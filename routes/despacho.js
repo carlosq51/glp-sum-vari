@@ -1890,9 +1890,12 @@ async function zonasConPuestos_(props) {
   let asgs = [];
   if (wos.length) {
     const ids = wos.map(w => encodeURIComponent(w.id)).join(",");
+    // FINALIZADO incluido: el puesto de quien ya cerró su lado NO está vacío.
+    // Mostrarlo como libre invitaba a poner a otro sobre trabajo ya hecho, y
+    // borraba de la consola al responsable del carro.
     asgs = await fetch(
       `${SB()}/rest/v1/asignaciones?work_order_id=in.(${ids})&activo=eq.true` +
-      `&estado_actual=in.(SIN_INICIAR,TRABAJANDO,PAUSADO)` +
+      `&estado_actual=in.(SIN_INICIAR,TRABAJANDO,PAUSADO,FINALIZADO)` +
       `&select=id,work_order_id,user_id,rol_trabajo,estado_actual,pausa_hasta,updated_at` +
       `&order=updated_at.desc`,
       { headers: h },
@@ -1941,6 +1944,7 @@ async function zonasConPuestos_(props) {
       rol, user_id: a.user_id, nombre: nombres.get(a.user_id) || "",
       asignacionId: a.id, propuestaId: prop?.id || null,
       razon: prop?.razon || "", estadoOt: a.estado_actual, pausado,
+      terminado: String(a.estado_actual || "").toUpperCase() === "FINALIZADO",
       pausaTxt: pausado ? (restan !== null ? `${restan} min restantes` : "pausa indefinida") : "",
       // El ayudante solo vale si el titular del puesto sigue siendo el mismo:
       // tras un cambio de técnico la dupla ya no describe a esta pareja, y el
@@ -1966,7 +1970,7 @@ async function zonasConPuestos_(props) {
     s[rol] = {
       rol, user_id: p.user_id, nombre: nombres.get(p.user_id) || "",
       asignacionId: null, propuestaId: p.id, razon: p.razon || "",
-      estadoOt: null, pausado: false, pausaTxt: "",
+      estadoOt: null, pausado: false, pausaTxt: "", terminado: false,
     };
   }
 
@@ -2878,21 +2882,28 @@ async function varados_(cfg) {
 }
 
 /**
- * Rellena los puestos vacíos de cada carro con quien figura en la OT.
+ * Rellena los puestos vacíos de cada carro con quien figura en la OT y marca
+ * cuáles ya terminaron.
  *
- * Muta el Map que recibe: para los VINs que aún no tienen MOTOR o TANQUE, busca
- * la work_order de conversión y sus asignaciones activas sin terminar, y pone
- * el nombre del técnico que ocupa ese puesto.
+ * Muta el Map que recibe: busca la work_order de conversión de cada VIN y sus
+ * asignaciones activas, pone el nombre del técnico que ocupa cada puesto y
+ * anota en `motorFin` / `tanqueFin` si ese lado ya cerró.
+ *
+ * Las FINALIZADO cuentan. Antes se excluían —"un puesto cerrado no es quien
+ * está trabajando ahora"— y el efecto era el contrario del buscado: al terminar
+ * su lado, el nombre del técnico desaparecía de la pantalla y el carro quedaba
+ * con un guión, como si nadie lo hubiera hecho. Quien lo hizo sigue siendo el
+ * responsable; que ya acabó lo dice el color, no un hueco.
  *
  * Nunca lanza: es información de adorno para una pantalla: si Supabase no
  * responde, la TV sigue mostrando lo que ya tenía en vez de quedarse en blanco.
  */
 async function completarPuestosDeOt_(porVin, h) {
   try {
-    const faltan = [...porVin.values()].filter(c => c.vin && (!c.motor || !c.tanque));
-    if (!faltan.length) return;
+    const carros = [...porVin.values()].filter(c => c.vin);
+    if (!carros.length) return;
 
-    const vins = [...new Set(faltan.map(c => c.vin))].map(encodeURIComponent).join(",");
+    const vins = [...new Set(carros.map(c => c.vin))].map(encodeURIComponent).join(",");
     const woRes = await fetch(
       `${SB()}/rest/v1/work_orders?vin=in.(${vins})&tipo_ot=eq.CONVERSION&select=id,vin`,
       { headers: h },
@@ -2903,12 +2914,12 @@ async function completarPuestosDeOt_(porVin, h) {
 
     const woVin = new Map(wos.map(w => [w.id, w.vin]));
     const ids = wos.map(w => encodeURIComponent(w.id)).join(",");
-    // Se excluye FINALIZADO: un puesto ya cerrado no es quien está trabajando
-    // en el carro ahora. Las PAUSADO sí cuentan — el técnico sigue siendo suyo.
+    // Las PAUSADO cuentan (el técnico sigue siendo suyo) y las FINALIZADO
+    // también (el carro es suyo aunque ya lo haya cerrado).
     const asgRes = await fetch(
       `${SB()}/rest/v1/asignaciones?work_order_id=in.(${ids})&activo=eq.true` +
-      `&estado_actual=in.(SIN_INICIAR,TRABAJANDO,PAUSADO)` +
-      `&select=work_order_id,user_id,rol_trabajo,updated_at&order=updated_at.desc`,
+      `&estado_actual=in.(SIN_INICIAR,TRABAJANDO,PAUSADO,FINALIZADO)` +
+      `&select=work_order_id,user_id,rol_trabajo,estado_actual,updated_at&order=updated_at.desc`,
       { headers: h },
     );
     if (!asgRes.ok) return;
@@ -2916,13 +2927,27 @@ async function completarPuestosDeOt_(porVin, h) {
     if (!asgs.length) return;
 
     const nombres = await nombresDe_(asgs.map(a => a.user_id));
+    const puestoVisto = new Set();
     for (const a of asgs) {
       const carro = porVin.get(woVin.get(a.work_order_id));
       if (!carro) continue;
+      const rol = String(a.rol_trabajo || "").toUpperCase();
+      if (rol !== "MOTOR" && rol !== "TANQUE") continue;
+      // Viene ordenado por updated_at desc: la primera fila de cada puesto es
+      // la vigente, y es la única que puede decir si ese lado terminó.
+      const k = `${carro.vin}|${rol}`;
+      if (puestoVisto.has(k)) continue;
+      puestoVisto.add(k);
+
+      const fin = String(a.estado_actual || "").toUpperCase() === "FINALIZADO";
       const nombre = nombres.get(a.user_id) || "";
-      if (!nombre) continue;
-      if (a.rol_trabajo === "MOTOR"  && !carro.motor)  carro.motor  = nombre;
-      if (a.rol_trabajo === "TANQUE" && !carro.tanque) carro.tanque = nombre;
+      if (rol === "MOTOR") {
+        if (nombre && !carro.motor) carro.motor = nombre;
+        carro.motorFin = fin;
+      } else {
+        if (nombre && !carro.tanque) carro.tanque = nombre;
+        carro.tanqueFin = fin;
+      }
     }
   } catch { /* la TV se queda con lo que ya tenía */ }
 }
@@ -2970,7 +2995,7 @@ async function asignacionesDeTV_(fecha) {
     if (!porVin.has(p.vin)) {
       porVin.set(p.vin, {
         zona: p.zona_id, vin: p.vin, modelo: modelos.get(p.vin) || "",
-        motor: "", tanque: "", razon: p.razon,
+        motor: "", tanque: "", motorFin: false, tanqueFin: false, razon: p.razon,
         estado: "TRABAJANDO", desde: horaPeru_(new Date(p.decidida_at)),
         ts: new Date(p.decidida_at).getTime(),
       });
