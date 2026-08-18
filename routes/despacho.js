@@ -1962,12 +1962,13 @@ router.post("/api/despacho/puesto/liberar", requireModoActivo_,
 // existe para evitar. Aquí no lo decide el motor: lo piden ellos, y el crédito
 // va al que le toca por alternancia (A, B, A, B…), no al que pulsa.
 //
-// Sin dupla también se puede, según DESPACHO_AVANCE_SOLO. Empezó como permiso
-// nominal para quien trabaja con ayudantes que no marcan asistencia —una dupla
-// que el sistema no puede ver— y hoy está abierto a todo el taller: la ayuda
-// informal no es de una sola persona, y quien esté listo para abrir el
-// siguiente carro rinde igual con botón que sin él. Ahí el crédito es de quien
-// pulsa: no hay compañero registrado con quien alternarlo.
+// Sin dupla también se puede, según DESPACHO_AVANCE_SOLO: es un permiso nominal
+// para quien trabaja con ayudantes que no marcan asistencia, porque su situación
+// real es la de una dupla que el sistema no puede ver. Ahí el crédito es de
+// quien pulsa: no hay compañero registrado con quien alternarlo.
+//
+// La clave acepta "*" para abrirlo a todo el taller (se usó durante el desorden
+// de agosto 2026). Está cerrado por defecto: el reparto lo hace el motor.
 
 /**
  * ¿Puede este técnico avanzar un carro, y a quién le tocaría el crédito?

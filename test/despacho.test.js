@@ -469,8 +469,9 @@ describe("avanceSolo_", () => {
     expect([...s]).toEqual(["aaa", "bbb"]);
   });
 
-  // Sin la clave, la LISTA nominal está vacía. Quién tiene el botón cuando el
-  // permiso es de todos lo decide avanceSoloTodos_, no esta función.
+  // Sin la clave, NADIE tiene el botón fuera de las duplas — y ese es el
+  // default de producción. El default abierto sería el error caro: media
+  // plantilla sirviéndose carros a mano.
   it("sin configurar, la lista nominal está vacía", () => {
     expect(avanceSolo_({}).size).toBe(0);
     expect(avanceSolo_({ DESPACHO_AVANCE_SOLO: "" }).size).toBe(0);
@@ -482,6 +483,18 @@ describe("avanceSolo_", () => {
   it("con el comodín, la lista nominal no inventa un id llamado *", () => {
     expect(avanceSolo_({ DESPACHO_AVANCE_SOLO: "*" }).has("*")).toBe(true);
     expect(avanceSoloTodos_({ DESPACHO_AVANCE_SOLO: "*" })).toBe(true);
+  });
+});
+
+// El default que se DESPLIEGA, no solo el que la función tolera. Esta clave ya
+// se abrió y se cerró una vez (agosto 2026): si vuelve a abrirse tiene que ser
+// una decisión, no un merge distraído.
+describe("DESPACHO_AVANCE_SOLO — default de producción", () => {
+  it("viene cerrado: nadie avanza carro fuera de las duplas", async () => {
+    const { CONFIG_DEFAULTS } = await import("../lib/config.js");
+    expect(CONFIG_DEFAULTS.DESPACHO_AVANCE_SOLO).toBe("");
+    expect(avanceSoloTodos_(CONFIG_DEFAULTS)).toBe(false);
+    expect(avanceSolo_(CONFIG_DEFAULTS).size).toBe(0);
   });
 });
 
