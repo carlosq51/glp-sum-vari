@@ -292,6 +292,7 @@
   .ayudaEtq { font-size: 12px; color: var(--muted); font-weight: 800; }
   .ayudaNombre { font-size: 15px; font-weight: 800; flex: 1; }
   .ayudaNota { font-size: 11px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+  .ayuda .acciones { margin-top: 8px; }
   .sheetErr { color: #fecaca; font-size: 13px; font-weight: 700; margin-top: 10px; min-height: 16px; }
   /* Duplas: dos desplegables en columna y el botón abajo, para que en el
      celular del supervisor no queden tres controles apretados en una línea. */
@@ -303,6 +304,12 @@
   .duplaNota { font-size: 11px; color: var(--muted); font-weight: 700;
     text-transform: uppercase; letter-spacing: .06em; }
   .duplasErr { color: #fecaca; font-size: 13px; font-weight: 700; margin-top: 8px; min-height: 16px; }
+  /* Los dos tipos de dupla, uno al lado del otro: cuál está activo se ve por el
+     relleno, no por un borde fino — la consola se mira de lejos y de reojo. */
+  .duplaTabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+  .duplaTabs button.on { background: var(--surface); border-color: var(--amber); color: var(--amber); }
+  .duplaAyuda { font-size: 12px; color: var(--muted); font-weight: 700;
+    line-height: 1.45; margin-bottom: 10px; }
 </style>
 </head>
 <body>
@@ -513,12 +520,53 @@
   }
 
   // ─── Duplas ─────────────────────────────────────────────────────────────────
-  // Dos técnicos que trabajan como UNA unidad: reciben un carro entre los dos y
-  // el crédito se alterna. Es otra cosa que el ayudante del carro extra —
-  // aquella cuelga de un carro concreto, la arma y la deshace el sistema solo.
+  // Dos personas trabajando juntas. Hay DOS tipos y el taller los vive distinto,
+  // así que se arman aquí los dos, uno al lado del otro:
   //
-  // El técnico puede proponerla desde su celular y esperar que el otro acepte;
-  // aquí no se espera a nadie: el supervisor manda y la dupla nace ACTIVA.
+  //   DE TRABAJO   — no cuelga de ningún carro. Reciben carros como unidad y el
+  //                  crédito se alterna. El técnico puede proponerla desde su
+  //                  celular y esperar que el otro acepte; aquí no se espera a
+  //                  nadie: el supervisor manda y la dupla nace ACTIVA.
+  //   CARRO EXTRA  — cuelga de UN carro que ya está abierto. El carro, la OT y
+  //                  el crédito siguen siendo del titular; el otro solo entra a
+  //                  ayudarlo, y al cerrarse ese carro la dupla se deshace sola.
+  //                  Solo supervisor y admin: no es un acuerdo entre dos iguales
+  //                  como la de trabajo, es una orden sobre el carro de alguien.
+  //
+  // Por eso el formulario del carro extra no es "A + B": el primero tiene que
+  // ser alguien CON carro abierto, porque de ese carro cuelga la dupla. Los
+  // candidatos salen del mapa que la consola ya tiene, con su zona al lado.
+
+  // Qué tipo de dupla se está armando. Se conserva entre refrescos: cambiarlo
+  // cada 15 s le movería el formulario al supervisor bajo los dedos.
+  let tipoDupla = "TRABAJO";
+
+  /**
+   * Puestos con titular a los que se puede mandar apoyo: los que tienen a
+   * alguien y no cerraron su lado. El valor lleva el carro y el rol dentro
+   * ("<vin>|<rol>") porque es de ahí de donde cuelga la dupla.
+   */
+  function candidatosApoyo() {
+    const carros = [...(datos?.zonas || []), ...(datos?.sinZona || [])];
+    const out = [];
+    for (const c of carros) {
+      if (!c.vin) continue;
+      for (const rol of ["MOTOR", "TANQUE"]) {
+        const p = c.puestos?.[rol];
+        if (!p?.user_id || p.terminado) continue;
+        out.push({
+          valor: `${c.vin}|${rol}`,
+          nombre: p.nombre || "—",
+          rol,
+          zona: c.zona_id === 16 ? "sin plaza" : `zona ${c.zona_id}`,
+          // Elegir un puesto que ya tiene apoyo es válido: el servidor deshace
+          // el anterior y pone al nuevo. Es la forma de CAMBIAR de ayudante.
+          conApoyo: !!p.ayudante,
+        });
+      }
+    }
+    return out.sort((a, b) => a.nombre.localeCompare(b.nombre));
+  }
 
   function pintarDuplas() {
     // El refresco de cada 15 s no le arranca de las manos un desplegable a
@@ -535,38 +583,73 @@
 
     const filas = vivas.map(d => {
       const nombres = (d.miembrosNombres || []).filter(Boolean).join(" + ") || "—";
-      const nota = d.auto ? "carro extra · la deshace el sistema"
+      // El tipo se dice de frente en vez de explicarse con una nota al costado:
+      // la fila que no trae Deshacer es la que el sistema maneja solo.
+      const tipo = d.auto ? "carro extra" : "de trabajo";
+      const nota = d.auto ? (d.manual ? "puesta por ti" : "automática")
         : d.estado === "PENDIENTE" ? "esperando que confirme" : "";
+      // El apoyo se quita por su carro, no por el id de la dupla: es la misma
+      // operación que el botón de la hoja del carro.
+      const quitar = d.auto
+        ? (d.vin ? `<button class="rev" data-quitar-apoyo="${esc(d.vin)}"
+              data-rol="${esc(d.rol_trabajo || "")}">Quitar</button>` : "")
+        : `<button class="rev" data-deshacer="${esc(d.id)}">Deshacer</button>`;
       return `
         <div class="duplaFila">
           <span class="duplaNombres">${esc(nombres)}</span>
-          <span class="duplaNota">${esc(ROL_LABEL[d.rol_trabajo] || d.rol_trabajo || "")}${
-            nota ? " · " + esc(nota) : ""}</span>
-          ${d.auto ? "" : `<button class="rev" data-deshacer="${esc(d.id)}">Deshacer</button>`}
+          <span class="duplaNota">${esc(ROL_LABEL[d.rol_trabajo] || d.rol_trabajo || "")} · ${
+            esc(tipo)}${nota ? " · " + esc(nota) : ""}${
+            d.auto && d.zonaId != null ? " · zona " + esc(String(d.zonaId)) : ""}</span>
+          ${quitar}
         </div>`;
     }).join("");
+
+    const cand = candidatosApoyo();
+    const optApoyo = c => `<option value="${esc(c.valor)}">${esc(c.nombre)} · ${
+      esc(ROL_LABEL[c.rol])} · ${esc(c.zona)}${c.conApoyo ? " · ya tiene apoyo" : ""}</option>`;
+
+    const formTrabajo = `
+      <select id="duplaA"><option value="">Técnico…</option>${tecs.map(opt).join("")}</select>
+      <select id="duplaB"><option value="">Con…</option>${tecs.map(opt).join("")}</select>
+      <select id="duplaRol">
+        <option value="">Rol según su especialidad</option>
+        <option value="MOTOR">Delantero</option>
+        <option value="TANQUE">Tanquero</option>
+      </select>
+      <button class="pri" id="duplaCrear">Crear dupla</button>`;
+
+    const formExtra = cand.length ? `
+      <select id="apoyoPuesto"><option value="">Apoya a…</option>${cand.map(optApoyo).join("")}</select>
+      <select id="apoyoQuien"><option value="">Con…</option>${tecs.map(opt).join("")}</select>
+      <button class="pri" id="apoyoCrear">Crear dupla</button>`
+      : `<div class="vacio">Nadie tiene un carro abierto — no hay a quién apoyar.</div>`;
 
     $("duplas").innerHTML = `
       <div class="caja">
         ${filas || '<div class="vacio">Nadie trabajando en dupla</div>'}
       </div>
       <div class="caja">
-        <div class="duplaForm">
-          <select id="duplaA"><option value="">Técnico…</option>${tecs.map(opt).join("")}</select>
-          <select id="duplaB"><option value="">Con…</option>${tecs.map(opt).join("")}</select>
-          <select id="duplaRol">
-            <option value="">Rol según su especialidad</option>
-            <option value="MOTOR">Delantero</option>
-            <option value="TANQUE">Tanquero</option>
-          </select>
-          <button class="pri" id="duplaCrear">Crear dupla</button>
+        <div class="duplaTabs">
+          <button data-tipo="TRABAJO" class="${tipoDupla === "TRABAJO" ? "on" : ""}">Dupla de trabajo</button>
+          <button data-tipo="EXTRA" class="${tipoDupla === "EXTRA" ? "on" : ""}">Por carro extra</button>
         </div>
+        <div class="duplaAyuda">${tipoDupla === "TRABAJO"
+          ? "Reciben un carro entre los dos y el crédito se alterna."
+          : "Entra a un carro ya abierto. El carro y el crédito siguen siendo del titular; al cerrarlo la dupla se deshace sola."}</div>
+        <div class="duplaForm">${tipoDupla === "TRABAJO" ? formTrabajo : formExtra}</div>
         <div class="duplasErr" id="duplasErr"></div>
       </div>`;
 
-    $("duplaCrear").onclick = () => crearDupla($("duplaCrear"));
+    for (const b of $("duplas").querySelectorAll("[data-tipo]")) {
+      b.onclick = () => { tipoDupla = b.dataset.tipo; pintarDuplas(); };
+    }
+    if ($("duplaCrear")) $("duplaCrear").onclick = () => crearDupla($("duplaCrear"));
+    if ($("apoyoCrear")) $("apoyoCrear").onclick = () => crearApoyo($("apoyoCrear"));
     for (const b of $("duplas").querySelectorAll("[data-deshacer]")) {
       b.onclick = () => deshacerDupla(b.dataset.deshacer, b);
+    }
+    for (const b of $("duplas").querySelectorAll("[data-quitar-apoyo]")) {
+      b.onclick = () => quitarApoyo(b.dataset.quitarApoyo, b.dataset.rol, b);
     }
   }
 
@@ -591,6 +674,52 @@
       return;
     } finally {
       btn.disabled = false; btn.textContent = "Crear dupla";
+    }
+    await cargar();
+  }
+
+  /**
+   * Dupla por carro extra: mete a alguien al carro que otro ya tiene abierto.
+   *
+   * El puesto viaja como "<vin>|<rol>" porque de ese carro cuelga la dupla —
+   * es lo que la deshace sola al cerrarlo y lo que le dice al ayudante a qué
+   * zona ir. Si ese puesto ya tenía apoyo, el servidor deshace el anterior y
+   * pone al nuevo: elegirlo de nuevo es cómo se CAMBIA de ayudante.
+   */
+  async function crearApoyo(btn) {
+    const puesto = $("apoyoPuesto").value;
+    const userId = $("apoyoQuien").value;
+    if (!puesto || !userId) { duplasError("Elige el carro y a quién lo apoya"); return; }
+    const corte = puesto.lastIndexOf("|");
+    const vin = puesto.slice(0, corte);
+    const rol = puesto.slice(corte + 1);
+
+    duplasError("");
+    btn.disabled = true; btn.textContent = "…";
+    try {
+      const d = await postJSON("/api/despacho/ayudante", { vin, rol, userId });
+      if (!d.ok) { duplasError(d.error || "No se pudo crear"); return; }
+    } catch {
+      duplasError("Sin conexión");
+      return;
+    } finally {
+      btn.disabled = false; btn.textContent = "Crear dupla";
+    }
+    await cargar();
+  }
+
+  /** El mismo Quitar de la hoja del carro, desde la lista de duplas. */
+  async function quitarApoyo(vin, rol, btn) {
+    duplasError("");
+    btn.disabled = true; btn.textContent = "…";
+    try {
+      const d = await postJSON("/api/despacho/ayudante/quitar", { vin, rol });
+      if (!d.ok) { duplasError(d.error || "No se pudo quitar"); return; }
+    } catch {
+      duplasError("Sin conexión");
+      return;
+    } finally {
+      btn.disabled = false; btn.textContent = "Quitar";
     }
     await cargar();
   }
@@ -658,27 +787,29 @@
   }
 
   /**
-   * Quién apoya en este puesto. SOLO LECTURA: estas duplas las arma y las
-   * deshace la regla del carro extra, no la consola — nacen cuando alguien
-   * cierra su meta y el compañero va en su carro nº meta+1, y se deshacen
-   * solas al cerrarse ese carro.
+   * Quién apoya en este puesto: el segundo técnico sobre el carro de otro.
    *
-   * El carro, la OT y el crédito NO cambian de dueño; se dice en pantalla
+   * Se PONE desde la sección Duplas, no desde aquí — allá viven los dos tipos
+   * juntos y es un solo sitio donde se decide. Lo que sí queda en el carro es
+   * el cartel y el Quitar, porque sacar a alguien es un gesto que se hace
+   * mirando el carro, no buscándolo en una lista.
+   *
+   * El carro, la OT y el crédito NO cambian de dueño — se dice en pantalla
    * porque es la primera pregunta que aparece en cuanto dos personas trabajan
    * en uno solo, y sin respuesta se convierte en discusión de taller.
-   *
-   * Para juntar a dos a mano está el panel de Duplas: esa es una dupla de
-   * trabajo, recibe carros como unidad y no cuelga de este carro.
    */
-  function ayudanteHTML(p) {
-    const a = p.asignacionId ? p.ayudante : null;
+  function ayudanteHTML(p, rol) {
+    const a = p.user_id ? p.ayudante : null;
     if (!a) return "";
     return `
-      <div class="ayuda">
+      <div class="ayuda" data-rol="${rol}">
         <div class="ayudaTop">
           <span class="ayudaEtq">🤝 Ayudante</span>
           <span class="ayudaNombre">${esc(a.nombre || "—")}</span>
-          <span class="ayudaNota">carro extra</span>
+          <span class="ayudaNota">${a.manual ? "puesto por ti" : "automático"}</span>
+        </div>
+        <div class="acciones">
+          <button class="rev" data-ayuda-quitar="${rol}">Quitar apoyo</button>
         </div>
       </div>`;
   }
@@ -711,7 +842,7 @@
           <button data-cambiar="${rol}">Cambiar</button>
           <button class="rev" data-quitar="${rol}">Quitar</button>
         </div>
-        ${ayudanteHTML(p)}
+        ${ayudanteHTML(p, rol)}
         ${p.asignacionId && !p.terminado ? `
           <div class="pausas">
             ${p.pausado
@@ -791,6 +922,10 @@
     };
     for (const b of el.querySelectorAll("[data-cambiar]")) {
       b.onclick = () => abrirCambio(el, carro, b.dataset.cambiar);
+    }
+    for (const b of el.querySelectorAll("[data-ayuda-quitar]")) {
+      b.onclick = () => accion("/api/despacho/ayudante/quitar",
+        { vin, rol: b.dataset.ayudaQuitar }, b);
     }
     for (const b of el.querySelectorAll("[data-pausa]")) {
       b.onclick = () => accion("/api/despacho/pausa-ot",

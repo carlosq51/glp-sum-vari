@@ -39,8 +39,9 @@ export function companeroDe_(dupla, miUserId) {
 }
 
 /**
- * HTML de la tarjeta. Devuelve "" si esa dupla no es del carro extra o no está
- * activa.
+ * HTML de la tarjeta. Devuelve "" si esa dupla no es de apoyo sobre un carro o
+ * no está activa. Da igual quién la armó —la regla o el supervisor—: para los
+ * dos técnicos el trabajo es el mismo y el carro es del titular.
  *
  * @param {object} dupla     fila de /api/despacho/duplas (con `auto`)
  * @param {string} miUserId  para saber de qué lado del carro estoy

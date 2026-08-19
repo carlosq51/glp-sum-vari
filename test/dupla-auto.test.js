@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 
 const {
-  pareoCarroExtra_, esDuplaAuto_, motivoDuplaAuto_, vinDeDuplaAuto_,
+  pareoCarroExtra_, esDuplaAuto_, esAyudaManual_, esDuplaApoyo_,
+  motivoDuplaAuto_, motivoAyudaManual_, vinDeDuplaApoyo_, validarAyudante_,
 } = await import("../lib/despacho.js");
 
 // El caso que originó la regla: Franz va en su tercer carro, Ana acaba el
@@ -182,9 +183,17 @@ describe("marcas de la dupla automática", () => {
   it("distingue las automáticas de las de trabajo y recupera su VIN", () => {
     const d = { motivo: motivoDuplaAuto_("LSJA24U97PZ041882") };
     expect(esDuplaAuto_(d)).toBe(true);
-    expect(vinDeDuplaAuto_(d)).toBe("LSJA24U97PZ041882");
+    expect(vinDeDuplaApoyo_(d)).toBe("LSJA24U97PZ041882");
     expect(esDuplaAuto_({ motivo: "se fue a almorzar" })).toBe(false);
-    expect(vinDeDuplaAuto_({ motivo: "" })).toBe(null);
+    expect(vinDeDuplaApoyo_({ motivo: "" })).toBe(null);
+  });
+
+  it("el apoyo manual es apoyo, pero no es automático", () => {
+    const m = { motivo: motivoAyudaManual_("VIN9") };
+    expect(esAyudaManual_(m)).toBe(true);
+    expect(esDuplaAuto_(m)).toBe(false);
+    expect(esDuplaApoyo_(m)).toBe(true);
+    expect(vinDeDuplaApoyo_(m)).toBe("VIN9");
   });
 
   // La dupla que arma el supervisor NO cuelga de ningún carro: la regla no la
@@ -197,5 +206,50 @@ describe("marcas de la dupla automática", () => {
     expect(pareoCarroExtra_(base({
       duplasVivas: [suya], abiertas: new Map(),
     })).disolver).toEqual([]);
+  });
+
+  // El apoyo puesto a mano SÍ cuelga de un carro, así que la regla lo deshace
+  // igual que al suyo. Sin esto el ayudante quedaría atado a un carro cerrado
+  // hasta el fin de la jornada, fuera del reparto.
+  it("deshace el apoyo manual cuando su carro ya se cerró", () => {
+    const manual = {
+      id: "am1", lider_user_id: "franz", miembros: ["franz", "ana"],
+      motivo: motivoAyudaManual_("VIN3"),
+    };
+    const { disolver } = pareoCarroExtra_(base({
+      duplasVivas: [manual], abiertas: new Map(),
+    }));
+    expect(disolver).toHaveLength(1);
+    expect(disolver[0]).toMatchObject({ id: "am1", vin: "VIN3" });
+  });
+});
+
+describe("validarAyudante_", () => {
+  const ancla    = { user_id: "franz" };
+  const ayudante = { user_id: "ana", nombre: "ANA" };
+
+  it("deja poner a cualquiera: no pide meta, ni rol, ni turno", () => {
+    expect(validarAyudante_({ ancla, ayudante })).toEqual({ ok: true, moverDe: null });
+  });
+
+  it("pide titular en el puesto y que no se ayude a sí mismo", () => {
+    expect(validarAyudante_({ ancla: null, ayudante }).ok).toBe(false);
+    expect(validarAyudante_({ ancla, ayudante: null }).ok).toBe(false);
+    expect(validarAyudante_({ ancla, ayudante: { user_id: "franz" } }).ok).toBe(false);
+  });
+
+  // Mover a alguien de un carro a otro es el caso normal, no un error: el
+  // llamador deshace la anterior con el id que sale aquí.
+  it("mueve al que ya apoyaba otro carro y devuelve la dupla a deshacer", () => {
+    const previa = { id: "am9", motivo: motivoAyudaManual_("VIN7") };
+    expect(validarAyudante_({ ancla, ayudante, duplaDelAyudante: previa }))
+      .toEqual({ ok: true, moverDe: "am9" });
+  });
+
+  it("no toca a quien está en una dupla de trabajo", () => {
+    const trabajo = { id: "t1", motivo: "SUPERVISOR" };
+    const v = validarAyudante_({ ancla, ayudante, duplaDelAyudante: trabajo });
+    expect(v.ok).toBe(false);
+    expect(v.error).toMatch(/dupla de trabajo/);
   });
 });
