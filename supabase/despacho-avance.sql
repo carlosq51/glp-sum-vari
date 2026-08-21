@@ -35,11 +35,17 @@ ON CONFLICT (key) DO NOTHING;
 --  dupla en el sistema, aunque en el taller la tenga de hecho.
 --
 --  Sembrado con MICHAEL CAHUANA (MOTOR), que es el caso que originó la
---  excepción. Para sumar a alguien: añadir su id separado por coma.
+--  excepción, y JUNIOR ALVARADO (MOTOR), que trabaja igual (2026-08-20).
+--  Para sumar a alguien: añadir su id separado por coma.
 --  Editable también desde Admin → Configuración, sin desplegar.
+--
+--  OJO: el ON CONFLICT DO NOTHING significa que en una base ya sembrada
+--  este INSERT no actualiza nada — la lista viva es la de app_config, y
+--  esto es solo el asiento inicial para una base nueva.
 -- ────────────────────────────────────────────
 INSERT INTO app_config (key, value)
-VALUES ('DESPACHO_AVANCE_SOLO', '1cf1d0d9-fc27-4270-a077-89bc49df2f23')
+VALUES ('DESPACHO_AVANCE_SOLO',
+        '1cf1d0d9-fc27-4270-a077-89bc49df2f23,d5003e1b-98c3-4340-a788-453ed70825e0')
 ON CONFLICT (key) DO NOTHING;
 
 -- ============================================================
