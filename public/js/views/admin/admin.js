@@ -531,9 +531,13 @@ async function loadTab() {
     try {
       // /api/config = defaults + app_config ya mergeados (fuente única, lib/config.js).
       // Aquí NO hay fallbacks mágicos: lo que se muestra es lo que rige.
-      const resp = await fetch("/api/config");
+      const [resp, usrResp] = await Promise.all([
+        fetch("/api/config"),
+        fetch("/api/admin/usuarios-activos"),
+      ]);
       const j = resp.ok ? await resp.json() : { ok: false };
       const cfg = j.config || {};
+      const usuarios = (usrResp.ok ? (await usrResp.json()).usuarios : null) || [];
       const fechaCorte    = cfg.FECHA_CORTE_MOVILIZADOR || "";
       const pausaActiva   = cfg.PAUSA_GLOBAL_ACTIVA === "1";
       const comidaInicio  = cfg.HORARIO_COMIDA_INICIO;
@@ -562,6 +566,27 @@ async function loadTab() {
       const dspPesoComp   = String(cfg.DESPACHO_PESO_COMPATIBILIDAD);
       const dspPesoFam    = String(cfg.DESPACHO_PESO_FAMILIARIDAD);
       const dspPesoCerc   = String(cfg.DESPACHO_PESO_CERCANIA);
+
+      // Quién avanza carro sin dupla. "*" = todo el taller; si no, lista de ids.
+      const avanceRaw   = String(cfg.DESPACHO_AVANCE_SOLO || "").trim();
+      const avanceTodos = avanceRaw === "*";
+      const avanceIds   = avanceTodos ? [] : avanceRaw.split(",").map(s => s.trim()).filter(Boolean);
+      // Solo técnicos: el movilizador y el ramalero no reciben carros. Pero si
+      // alguien ya tiene el permiso y hoy está desactivado o cambió de rol, se
+      // lista igual — si no apareciera, el primer "Guardar despacho" le quitaría
+      // el botón sin que nadie lo haya decidido.
+      const avanceCand  = usuarios.filter(u =>
+        String(u.rol || "TECNICO").toUpperCase() === "TECNICO" || avanceIds.includes(u.id));
+      const avanceHuerf = avanceIds.filter(id => !usuarios.some(u => u.id === id));
+      const avanceItems = [
+        ...avanceCand.map(u => ({
+          id: u.id,
+          nombre: u.nombre || u.email || u.id,
+          det: [u.especialidad, String(u.rol || "").toUpperCase() === "TECNICO" ? "" : u.rol]
+            .filter(Boolean).join(" · "),
+        })),
+        ...avanceHuerf.map(id => ({ id, nombre: id, det: "usuario inactivo o borrado" })),
+      ];
 
       wrap.innerHTML = `
         <div class="adminConfigPanel">
@@ -643,6 +668,13 @@ async function loadTab() {
             <div style="margin-top:14px;display:flex;gap:10px;align-items:center;">
               <button id="btnSaveHorarios" type="button" class="adminBtnOk">Guardar horarios</button>
               <span id="cfgHorariosMsg" class="small muted"></span>
+            </div>
+
+            <!-- Diagnóstico: sin esto, "hoy no pausó" no se puede comprobar
+                 desde ninguna pantalla — la pausa masiva cambia estados pero no
+                 deja un evento por OT. -->
+            <div id="cfgPausaDiag" class="small muted" style="margin-top:12px;">
+              Comprobando el disparo automático…
             </div>
           </div>
 
@@ -788,6 +820,33 @@ async function loadTab() {
               <strong>Contrapartida:</strong> un papel se fotografía y se comparte, así que la marca
               deja de probar que estuvo en el taller. Desmarcar al montar la TV.
             </p>
+
+            <p class="small muted" style="margin:14px 0 8px;">
+              <strong>Botón de "avanzar siguiente carro"</strong> — lo tienen siempre las
+              <em>duplas activas</em>. Marca aquí a quien además pueda avanzar <b>sin dupla</b>:
+              el técnico que trabaja con ayudantes que no marcan asistencia, y que por eso no
+              puede formar dupla en el sistema aunque en el taller la tenga. El crédito del carro
+              es de quien pulsa. Cambiarlo aplica de inmediato, sin desplegar.
+            </p>
+            <label class="adminCheckLabel">
+              <input id="cfgDspAvanceTodos" type="checkbox" ${avanceTodos ? "checked" : ""}>
+              Todos los técnicos pueden avanzar carro sin dupla
+            </label>
+            <p class="small muted" style="margin:4px 0 8px;">
+              Se usó así durante el desorden de agosto. Con esto marcado el reparto deja de
+              decidirlo el motor: cualquiera se sirve el siguiente carro.
+            </p>
+            <div id="cfgAvanceLista" class="adminCheckGroup"
+              style="${avanceTodos ? "opacity:.45;pointer-events:none;" : ""}">
+              ${avanceItems.length
+                ? avanceItems.map(u => `
+                    <label class="adminCheckLabel">
+                      <input type="checkbox" class="cfgAvanceTec" value="${escHtml(u.id)}"
+                        ${avanceIds.includes(u.id) ? "checked" : ""}>
+                      ${escHtml(u.nombre)}${u.det ? ` <span class="small muted">(${escHtml(u.det)})</span>` : ""}
+                    </label>`).join("")
+                : `<span class="small muted">No se pudo cargar la lista de técnicos — recarga la página.</span>`}
+            </div>
 
             <p class="small muted" style="margin:14px 0 8px;">
               <strong>Importancia de cada criterio</strong> — <b>no</b> tienen que sumar 100:
@@ -939,6 +998,19 @@ async function loadTab() {
       $id("btnSaveHorarios")?.addEventListener("click", saveHorarios_);
       $id("btnSaveMetas")?.addEventListener("click", saveMetas_);
       $id("btnSaveDespacho")?.addEventListener("click", saveDespacho_);
+
+      // "Todos" y la lista nominal son excluyentes: con el "*" puesto, marcar
+      // nombres no significaría nada, así que la lista se apaga en vez de
+      // quedarse ahí sugiriendo que sigue mandando.
+      $id("cfgDspAvanceTodos")?.addEventListener("change", e => {
+        const lista = $id("cfgAvanceLista");
+        if (!lista) return;
+        const todos = e.target.checked;
+        lista.style.opacity = todos ? ".45" : "";
+        lista.style.pointerEvents = todos ? "none" : "";
+      });
+
+      renderPausaDiag_();
 
       $id("btnTrainVinModel")?.addEventListener("click", async () => {
         const msg = $id("mlMsg");
@@ -1180,6 +1252,51 @@ async function fetchRows_() {
   }
 }
 
+/**
+ * Pinta si el disparo automático de la comida está vivo y cuándo corrió.
+ *
+ * El dato que importa es el desfase: todo el módulo compara horas Perú, pero si
+ * el proceso corre en otra zona y en algún sitio quedó un getHours() del reloj
+ * del servidor, la comida se pausa a una hora que nadie pidió. Aquí se ve en
+ * una línea, en vez de deducirlo del reporte de fin de mes.
+ */
+async function renderPausaDiag_() {
+  const box = $id("cfgPausaDiag");
+  if (!box) return;
+  try {
+    const resp = await fetch("/api/admin/pausa-horario");
+    const d = resp.ok ? await resp.json() : null;
+    if (!d?.ok) throw new Error(d?.error || "sin respuesta");
+
+    const desfase = Number(d.desfaseMin || 0);
+    const reloj = desfase === 0
+      ? `Reloj del servidor en hora del taller (${escHtml(d.ahoraPeru)}).`
+      : `<span style="color:var(--danger);">Reloj del servidor desfasado
+         ${desfase > 0 ? "+" : ""}${desfase} min</span> — el proceso marca
+         ${escHtml(d.ahoraServidor)} (${escHtml(d.tzServidor || "zona desconocida")})
+         y en el taller son las ${escHtml(d.ahoraPeru)}.`;
+
+    const filas = (d.eventos || []).map(ev => {
+      const cuando = ev.ultimo
+        ? `último disparo: ${escHtml(ev.ultimo)}`
+        : `<span style="color:var(--tone-amber);">sin registro de disparo</span>`;
+      return `<div>· <strong>${escHtml(ev.etiqueta)}</strong> ${escHtml(ev.hora || "—")}
+        — ${cuando}</div>`;
+    }).join("");
+
+    box.innerHTML = `
+      ${d.activo ? "" : `<div style="color:var(--tone-amber);">El disparo automático está APAGADO.</div>`}
+      <div>${reloj}</div>
+      ${filas}
+      <div style="opacity:.7;margin-top:4px;">
+        Si el servidor se reinicia dentro de la ventana, la comida se recupera sola;
+        pasada la ventana ya no se dispara.
+      </div>`;
+  } catch (e) {
+    box.textContent = `No se pudo comprobar el disparo automático: ${e.message}`;
+  }
+}
+
 async function saveConfig_() {
   const btn = $id("btnSaveConfig");
   const msgEl = $id("cfgMsg");
@@ -1273,6 +1390,16 @@ async function saveDespacho_() {
     return;
   }
 
+  // Quién avanza carro sin dupla. Si la lista no llegó a pintarse (fallo al
+  // cargar usuarios) NO se manda la clave: guardar "" aquí le quitaría el botón
+  // a todo el mundo por un error de red que nadie vio.
+  const avanceBox   = $id("cfgAvanceLista");
+  const avanceTodos = !!$id("cfgDspAvanceTodos")?.checked;
+  const avanceHay   = !!avanceBox?.querySelector(".cfgAvanceTec");
+  const avanceSolo  = avanceTodos
+    ? "*"
+    : [...(avanceBox?.querySelectorAll(".cfgAvanceTec:checked") || [])].map(el => el.value).join(",");
+
   if (turnoIni === turnoFin) {
     if (msgEl) {
       msgEl.textContent = "Inicio y fin de turno no pueden ser iguales.";
@@ -1302,6 +1429,7 @@ async function saveDespacho_() {
         { key: "DESPACHO_PESO_COMPATIBILIDAD", value: pesoComp },
         { key: "DESPACHO_PESO_FAMILIARIDAD",   value: pesoFam },
         { key: "DESPACHO_PESO_CERCANIA",       value: pesoCerc },
+        ...(avanceTodos || avanceHay ? [{ key: "DESPACHO_AVANCE_SOLO", value: avanceSolo }] : []),
       ]}),
     });
     const j = await resp.json();

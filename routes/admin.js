@@ -4,7 +4,7 @@ import { normalizeModelo_ } from "../lib/utils.js";
 import { getConfig_, invalidateConfigCache_ } from "../lib/config.js";
 import { emitEvent_ } from "../lib/events.js";
 import { requireRol_ } from "../lib/authz.js";
-import { aplicarPausaMasiva_ } from "../lib/pausa-masiva.js";
+import { aplicarPausaMasiva_, estadoHorarios_ } from "../lib/pausa-masiva.js";
 
 const router = Router();
 
@@ -225,6 +225,22 @@ router.post("/api/admin/pausa-masiva", requireRol_("ADMIN", "SUPERVISOR"), async
   }
 });
 
+// GET /api/admin/pausa-horario
+// Diagnóstico del disparo automático de la comida: hora del taller, hora del
+// proceso y cuándo se disparó cada evento por última vez.
+//
+// Existe porque "la pausa de las 12:50 no funcionó" no se puede contestar desde
+// la base: la pausa masiva no escribe un evento por OT, solo cambia estado. Sin
+// esto, la única forma de saber si el servidor llegó a disparar era leer los
+// logs del despliegue.
+router.get("/api/admin/pausa-horario", async (_req, res) => {
+  try {
+    return res.json({ ok: true, ...(await estadoHorarios_()) });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
 // GET /api/admin/asignaciones?vin=XXX
 // Devuelve asignaciones activas para un VIN con nombres de técnicos
 router.get("/api/admin/asignaciones", async (req, res) => {
@@ -351,7 +367,9 @@ router.get("/api/admin/usuarios-activos", async (req, res) => {
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const headers = supabaseHeaders_();
     const resp = await fetch(
-      `${SUPABASE_URL}/rest/v1/usuarios?activo=eq.true&select=id,nombre,email,especialidad&order=nombre.asc`,
+      // `rol` lo usa el picker de "quién puede avanzar carro solo" (Admin →
+      // Configuración) para no listar al movilizador ni al ramalero.
+      `${SUPABASE_URL}/rest/v1/usuarios?activo=eq.true&select=id,nombre,email,especialidad,rol&order=nombre.asc`,
       { method: "GET", headers }
     );
     if (!resp.ok) throw new Error(`Supabase: ${resp.status}`);
