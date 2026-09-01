@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { supabaseHeaders_ } from "../lib/supabase.js";
-import { isValidOT_ } from "../lib/utils.js";
+import { isValidOT_, fechaPeruMenosDias_ } from "../lib/utils.js";
 import { emitEvent_ } from "../lib/events.js";
 import { getConfig_ } from "../lib/config.js";
 import { cachedByTopics_ } from "../lib/poll-cache.js";
@@ -12,24 +12,38 @@ const router = Router();
 // técnico, cambio de zona) tiene que verse en la pantalla del taller al toque.
 const TOPICS_MOV = ["movilizador", "asignaciones", "work_orders", "zonas"];
 
+/**
+ * Desde qué fecha mira el movilizador ("YYYY-MM-DD", o "" = sin filtro).
+ *
+ * Por defecto es una ventana MÓVIL de MOV_VENTANA_DIAS días hacia atrás. La
+ * fecha fija que había antes envejecía sola: nadie la mueve, y a los meses las
+ * listas rozaban las 1000 filas del tope de PostgREST — se descargaba el
+ * histórico entero en cada refresco y encima venía recortado sin avisar.
+ *
+ * MOV_VENTANA_DIAS = 0 devuelve el mando a FECHA_CORTE_MOVILIZADOR, para
+ * cuando alguien necesite abrir la ventana a una revisión histórica puntual.
+ */
+function fechaCorteMovilizador_(cfg) {
+  const dias = Number(cfg.MOV_VENTANA_DIAS) || 0;
+  if (dias > 0) return fechaPeruMenosDias_(dias);
+  return cfg.FECHA_CORTE_MOVILIZADOR || "";
+}
+
 // ─── MOVILIZADOR STATUS ───────────────────────────────────────────────
 // GET /api/movilizador/status
 // Devuelve las 3 listas del flujo movilizador + fecha_corte activa
 router.get("/api/movilizador/status", async (req, res) => {
   try {
-    const { SRV_CACHE_PESADO_MS } = await getConfig_();
+    const cfg = await getConfig_();
+    const fechaCorte = fechaCorteMovilizador_(cfg);
+
+    // La fecha de corte entra en la CLAVE del cache, no solo en la consulta:
+    // al cruzar la medianoche la ventana se desplaza un día y la entrada vieja
+    // dejaría de corresponder a lo que se está pidiendo.
     const payload = await cachedByTopics_(
-      "movilizador:status", TOPICS_MOV, SRV_CACHE_PESADO_MS, async () => {
+      `movilizador:status:${fechaCorte}`, TOPICS_MOV, cfg.SRV_CACHE_PESADO_MS, async () => {
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const headers = supabaseHeaders_();
-
-    // 1. Fecha de corte desde app_config
-    const cfgResp = await fetch(
-      `${SUPABASE_URL}/rest/v1/app_config?key=eq.FECHA_CORTE_MOVILIZADOR`,
-      { method: "GET", headers }
-    );
-    const cfgRows = cfgResp.ok ? await cfgResp.json() : [];
-    const fechaCorte = cfgRows[0]?.value || "";
 
     // 2. CONVERSION FINALIZADO
 

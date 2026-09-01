@@ -539,6 +539,7 @@ async function loadTab() {
       const cfg = j.config || {};
       const usuarios = (usrResp.ok ? (await usrResp.json()).usuarios : null) || [];
       const fechaCorte    = cfg.FECHA_CORTE_MOVILIZADOR || "";
+      const movVentana    = String(cfg.MOV_VENTANA_DIAS ?? 20);
       const pausaActiva   = cfg.PAUSA_GLOBAL_ACTIVA === "1";
       const comidaInicio  = cfg.HORARIO_COMIDA_INICIO;
       const comidaFin     = cfg.HORARIO_COMIDA_FIN;
@@ -886,11 +887,25 @@ async function loadTab() {
           <div class="adminConfigSection">
             <h4 class="adminConfigTitle">Configuración del Movilizador</h4>
             <p class="small muted">
-              Solo se muestran conversiones y calidades finalizadas
-              <strong>a partir de esta fecha</strong>. Vacío = sin filtro.
+              La vista muestra los <strong>últimos N días</strong> de conversiones
+              y calidades finalizadas, contados desde hoy. La ventana se mueve
+              sola: no hay que volver a tocarla nunca.
             </p>
             <label class="adminLabel">
-              Fecha de corte movilizador
+              Días hacia atrás que muestra la vista
+              <input id="cfgMovVentana" type="number" min="0" max="365" value="${escHtml(movVentana)}" style="max-width:220px;">
+            </label>
+            <p class="small muted" style="margin-top:10px;">
+              Subirla mucho encarece cada refresco: la vista vuelve a bajar el
+              histórico entero y, pasadas las 1000 filas, PostgREST lo recorta
+              sin avisar. 20 días cubre el flujo real del taller.
+            </p>
+            <p class="small muted" style="margin-top:10px;">
+              Poner <strong>0</strong> desactiva la ventana móvil y manda la
+              fecha fija de abajo (escape para una revisión histórica puntual).
+            </p>
+            <label class="adminLabel">
+              Fecha de corte fija — solo si los días están en 0
               <input id="cfgFechaCorte" type="date" value="${escHtml(fechaCorte)}" style="max-width:220px;">
             </label>
             <div style="margin-top:14px;display:flex;gap:10px;align-items:center;">
@@ -1300,17 +1315,23 @@ async function renderPausaDiag_() {
 async function saveConfig_() {
   const btn = $id("btnSaveConfig");
   const msgEl = $id("cfgMsg");
-  const value = $id("cfgFechaCorte")?.value?.trim() || "";
+  const value   = $id("cfgFechaCorte")?.value?.trim() || "";
+  const ventana = String(Math.max(0, Math.min(365, Number($id("cfgMovVentana")?.value) || 0)));
   if (btn) btn.disabled = true;
   if (msgEl) msgEl.textContent = "Guardando…";
   try {
-    const resp = await adminFetch_("/api/admin/config", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key: "FECHA_CORTE_MOVILIZADOR", value }),
-    });
-    const j = await resp.json();
-    if (!j?.ok) throw new Error(j?.error || "Error");
+    // En serie y no en paralelo: /api/admin/config escribe una clave por
+    // llamada y emite "config" en cada una. Dos a la vez dejarían a los
+    // clientes recargando entre los dos valores.
+    for (const [key, val] of [["MOV_VENTANA_DIAS", ventana], ["FECHA_CORTE_MOVILIZADOR", value]]) {
+      const resp = await adminFetch_("/api/admin/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key, value: val }),
+      });
+      const j = await resp.json();
+      if (!j?.ok) throw new Error(j?.error || "Error");
+    }
     if (msgEl) { msgEl.textContent = "✔ Guardado"; msgEl.style.color = "var(--ok)"; }
   } catch (e) {
     if (msgEl) { msgEl.textContent = `Error: ${e.message}`; msgEl.style.color = "var(--danger)"; }
