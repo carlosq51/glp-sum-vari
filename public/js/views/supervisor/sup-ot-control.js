@@ -187,7 +187,14 @@ function render_() {
 
 // ─── Carga ───────────────────────────────────────────────────────────────────
 
-async function refresh_() {
+/**
+ * refresh_ — recarga la consola.
+ * @param {object}  [opts]
+ * @param {boolean} [opts.fresh]  saltar el cache del servidor (botón manual).
+ *   El poll periódico se sirve del cache compartido entre supervisores; el
+ *   botón exige la lectura real.
+ */
+async function refresh_({ fresh = false } = {}) {
   if (!S.active) return;
   const btn = $("btnOtCtrlRefresh");
   if (btn) btn.disabled = true;
@@ -199,7 +206,7 @@ async function refresh_() {
       S.vehiculo   = j.vehiculo;
       S.registrado = !!j.registrado;
     } else {
-      const j = await getJSON("/api/ots/vivas");
+      const j = await getJSON(`/api/ots/vivas${fresh ? "?fresh=1" : ""}`);
       if (!j?.ok) throw new Error(j?.error || "Error");
       S.ots = j.ots || [];
       S.vehiculo = null;
@@ -461,7 +468,7 @@ function bindDinamico_() {
 }
 
 export function bindSupOtControl_() {
-  $("btnOtCtrlRefresh")?.addEventListener("click", () => refresh_().catch(() => {}));
+  $("btnOtCtrlRefresh")?.addEventListener("click", () => refresh_({ fresh: true }).catch(() => {}));
   $("btnOtCtrlBuscar")?.addEventListener("click", () => buscarVin_($("otCtrlVin")?.value));
   $("btnOtCtrlNueva")?.addEventListener("click", () => abrirModal_(null));
   $("btnOtCtrlPausaTodo")?.addEventListener("click", () => void pausaMasiva_());

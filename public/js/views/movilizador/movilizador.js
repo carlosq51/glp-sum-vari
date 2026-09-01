@@ -567,7 +567,16 @@ function renderList3_(rows) {
 
 // ─── Fetch ────────────────────────────────────────────────────────────
 
-async function refreshAll_() {
+/**
+ * refreshAll_ — recarga las cuatro listas.
+ *
+ * @param {object}  [opts]
+ * @param {boolean} [opts.fresh]  saltar el cache del servidor. Lo usa el botón
+ *   "↻ Actualizar": el refresco automático se sirve del cache (esta vista es la
+ *   más cara del sistema y a 30 s se comía el egress del plan), pero cuando el
+ *   movilizador duda de lo que ve tiene que poder exigir la lectura real.
+ */
+async function refreshAll_({ fresh = false } = {}) {
   const statusEl = document.getElementById("movStatus");
   const refreshBtn = document.getElementById("btnMovRefresh");
   try {
@@ -577,9 +586,10 @@ async function refreshAll_() {
     // Drain offline queue first (if online)
     await drainOfflineQueue_();
 
+    const q = fresh ? "?fresh=1" : "";
     const [j, jPend] = await Promise.all([
-      getJSON("/api/movilizador/status"),
-      getJSON("/api/movilizador/pendientes"),
+      getJSON(`/api/movilizador/status${q}`),
+      getJSON(`/api/movilizador/pendientes${q}`),
     ]);
     if (!j?.ok) throw new Error(j?.error || "Error cargando estado");
 
@@ -1017,7 +1027,7 @@ function stopPoll_() {
 
 export function init() {
   document.getElementById("btnMovRefresh")?.addEventListener("click", () => {
-    refreshAll_().catch(() => {});
+    refreshAll_({ fresh: true }).catch(() => {});
   });
 
   // VIN Autocomplete for Entrada

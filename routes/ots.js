@@ -18,6 +18,7 @@ import { supabaseHeaders_ } from "../lib/supabase.js";
 import { getConfig_ } from "../lib/config.js";
 import { emitEvent_ } from "../lib/events.js";
 import { requireRol_ } from "../lib/authz.js";
+import { cachedByTopics_ } from "../lib/poll-cache.js";
 
 const router = Router();
 
@@ -163,10 +164,24 @@ router.get("/api/ots/vivas", async (req, res) => {
     const cfg   = await getConfig_();
     const limit = Math.max(1, Math.min(Number(cfg.LIM_PAGINA_SUPABASE) || 1000, Number(req.query.limit) || 300));
 
-    const wos = await sbGet_(
-      `work_orders?estado_general=neq.FINALIZADO&select=*&order=fecha_creacion.desc&limit=${limit}`
-    );
-    return res.json({ ok: true, ots: await enriquecerOts_(wos), total: wos.length });
+    // Cacheado por topic: la consola la tienen abierta varios supervisores a la
+    // vez y cada uno repetía las mismas ~240 KB por ciclo de poll. Cualquier
+    // mutación de OT o asignación invalida la entrada (ver lib/poll-cache.js),
+    // así que el supervisor sigue viendo el cambio al instante vía SSE.
+    const payload = await cachedByTopics_(
+      `ots:vivas:${limit}`, ["work_orders", "asignaciones", "zonas"], cfg.SRV_CACHE_PESADO_MS,
+      async () => {
+        // Columnas explícitas, no `select=*`: las conf_ck* y conf_by no las
+        // pinta la consola y viajaban 300 veces en cada refresco.
+        const wos = await sbGet_(
+          `work_orders?estado_general=neq.FINALIZADO` +
+          `&select=id,vin,tipo_ot,tipo_ramal,numero_ot,estado_general,fecha_creacion,created_at,` +
+          `user_id,observaciones,tanque_registrado,reductor_registrado,fecha_sin_calidad` +
+          `&order=fecha_creacion.desc&limit=${limit}`
+        );
+        return { ok: true, ots: await enriquecerOts_(wos), total: wos.length };
+      }, { bypass: req.query.fresh === "1" });
+    return res.json(payload);
   } catch (e) {
     return res.status(500).json({ ok: false, error: String(e.message || e) });
   }

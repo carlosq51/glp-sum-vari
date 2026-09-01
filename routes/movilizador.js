@@ -2,14 +2,24 @@ import { Router } from "express";
 import { supabaseHeaders_ } from "../lib/supabase.js";
 import { isValidOT_ } from "../lib/utils.js";
 import { emitEvent_ } from "../lib/events.js";
+import { getConfig_ } from "../lib/config.js";
+import { cachedByTopics_ } from "../lib/poll-cache.js";
 
 const router = Router();
+
+// Topics que invalidan el cache de las vistas del movilizador: cualquier cosa
+// que mueva un VIN por el flujo (traslado propio, OT abierta o cerrada por un
+// técnico, cambio de zona) tiene que verse en la pantalla del taller al toque.
+const TOPICS_MOV = ["movilizador", "asignaciones", "work_orders", "zonas"];
 
 // ─── MOVILIZADOR STATUS ───────────────────────────────────────────────
 // GET /api/movilizador/status
 // Devuelve las 3 listas del flujo movilizador + fecha_corte activa
 router.get("/api/movilizador/status", async (req, res) => {
   try {
+    const { SRV_CACHE_PESADO_MS } = await getConfig_();
+    const payload = await cachedByTopics_(
+      "movilizador:status", TOPICS_MOV, SRV_CACHE_PESADO_MS, async () => {
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const headers = supabaseHeaders_();
 
@@ -23,7 +33,11 @@ router.get("/api/movilizador/status", async (req, res) => {
 
     // 2. CONVERSION FINALIZADO
 
-    let convUrl = `${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CONVERSION&estado_general=eq.FINALIZADO&select=vin,fecha_creacion,created_at,numero_ot,asignaciones(updated_at,estado_actual,rol_trabajo)`;
+    // Sin `asignaciones(...)` embebido a propósito: ese embed duplicaba el peso
+    // de la respuesta (366 KB → 189 KB al quitarlo) para calcular la fecha de
+    // fin de un puñado de VINs. Las asignaciones se piden abajo, solo para los
+    // que terminan en list1. El resto de la respuesta es idéntica.
+    let convUrl = `${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CONVERSION&estado_general=eq.FINALIZADO&select=id,vin,fecha_creacion,created_at,numero_ot`;
     if (fechaCorte) convUrl += `&created_at=gte.${fechaCorte}T00:00:00`;
     convUrl += `&order=fecha_creacion.asc`;
     const convResp = await fetch(convUrl, { method: "GET", headers });
@@ -95,14 +109,47 @@ router.get("/api/movilizador/status", async (req, res) => {
         convVinMap.set(wo.vin, wo);
       }
     }
+    // Fecha fin = max updated_at de asignaciones FINALIZADAS (MOTOR/TANQUE).
+    // Solo para las OTs que quedaron en list1: son decenas, no las 1000 que
+    // traía el embed. Si la consulta falla se cae al fecha_creacion de la OT,
+    // que es exactamente el fallback que ya tenía el cálculo anterior.
+    const finPorWo = new Map();
+    const list1WoIds = Array.from(convVinMap.values()).map(wo => wo.id).filter(Boolean);
+    if (list1WoIds.length) {
+      try {
+        // En trozos: list1 puede rondar el millar de OTs y un solo `in.(...)`
+        // con mil UUIDs produce una URL que el servidor rechaza — y el catch de
+        // abajo lo tragaría en silencio, dejando todas las fechas en el
+        // fallback sin que nada lo delate.
+        const { LIM_VINS_POR_CONSULTA } = await getConfig_();
+        const trozos = [];
+        for (let i = 0; i < list1WoIds.length; i += LIM_VINS_POR_CONSULTA) {
+          trozos.push(list1WoIds.slice(i, i + LIM_VINS_POR_CONSULTA));
+        }
+        const respuestas = await Promise.all(trozos.map(trozo =>
+          fetch(
+            `${SUPABASE_URL}/rest/v1/asignaciones?work_order_id=in.(${trozo.join(",")})` +
+            `&estado_actual=eq.FINALIZADO&select=work_order_id,updated_at`,
+            { method: "GET", headers }
+          ).then(r => (r.ok ? r.json() : [])).catch(() => [])
+        ));
+        for (const filas of respuestas) {
+          for (const a of (filas || [])) {
+            const prev = finPorWo.get(a.work_order_id);
+            if (!prev || new Date(a.updated_at) > new Date(prev)) {
+              finPorWo.set(a.work_order_id, a.updated_at);
+            }
+          }
+        }
+      } catch (_) { /* silencioso: cae al fecha_creacion de la OT */ }
+    }
+
     const list1 = Array.from(convVinMap.values())
-      .map(wo => {
-        // Fecha fin = max updated_at de asignaciones FINALIZADAS (MOTOR/TANQUE)
-        const fechaFin = (wo.asignaciones || [])
-          .filter(a => a.estado_actual === "FINALIZADO")
-          .reduce((max, a) => (!max || new Date(a.updated_at) > new Date(max)) ? a.updated_at : max, null);
-        return { vin: wo.vin, fecha: fechaFin || wo.fecha_creacion, fecha_updated: wo.created_at };
-      })
+      .map(wo => ({
+        vin: wo.vin,
+        fecha: finPorWo.get(wo.id) || wo.fecha_creacion,
+        fecha_updated: wo.created_at,
+      }))
       .sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
 
     // ─── Lista 0: en espera de conversión + en conversión activa
@@ -304,7 +351,7 @@ router.get("/api/movilizador/status", async (req, res) => {
     const flowOrder = { PENDIENTE_ENTRADA: 0, EN_ESPERA: 1, EN_CONVERSION: 2, CONVERSION_DONE: 3, EN_ZONA: 4, EN_REVISION: 5, LISTA_SALIDA: 6 };
     listDiaria.sort((a, b) => (flowOrder[a.flow_status] ?? 9) - (flowOrder[b.flow_status] ?? 9));
 
-    return res.json({
+    return {
       ok: true,
       fechaCorte,
       list0,
@@ -322,7 +369,9 @@ router.get("/api/movilizador/status", async (req, res) => {
         listDiaria: listDiaria.length,
         listDiariaPendientes: listDiaria.filter(r => r.flow_status === "PENDIENTE_ENTRADA").length,
       },
-    });
+    };
+      }, { bypass: req.query.fresh === "1" });
+    return res.json(payload);
   } catch (e) {
     console.error("[MOVILIZADOR_STATUS]", e);
     return res.status(500).json({ ok: false, error: String(e.message || e) });
@@ -395,22 +444,42 @@ router.post("/api/movilizador/traslado", async (req, res) => {
 // GET /api/movilizador/pendientes  (misma lógica, accesible al movilizador)
 router.get("/api/movilizador/pendientes", async (req, res) => {
   try {
+    const { SRV_CACHE_PESADO_MS } = await getConfig_();
+    const payload = await cachedByTopics_(
+      "movilizador:pendientes", TOPICS_MOV, SRV_CACHE_PESADO_MS, async () => {
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const headers = supabaseHeaders_();
-    const [listaResp, trasResp, vinsResp] = await Promise.all([
-      fetch(`${SUPABASE_URL}/rest/v1/lista_diaria_activa?select=vin,fecha_asignacion&order=fecha_asignacion.asc,vin.asc`, { method: "GET", headers }),
-      fetch(`${SUPABASE_URL}/rest/v1/movilizador_traslados?select=vin,estado`, { method: "GET", headers }),
-      fetch(`${SUPABASE_URL}/rest/v1/vins?ultima_ubicacion=neq.&select=vin,ultima_ubicacion`, { method: "GET", headers }),
-    ]);
+
+    // La lista diaria manda: son unas decenas de VINs. Antes se descargaban
+    // movilizador_traslados y vins ENTEROS (2000 filas, ~124 KB) para consultar
+    // esos pocos — y encima ambas chocaban con el tope de 1000 filas de
+    // PostgREST, así que un VIN viejo podía salir como "sin registrar" estando
+    // registrado. Ahora se pregunta solo por los VINs de la lista.
+    const listaResp = await fetch(
+      `${SUPABASE_URL}/rest/v1/lista_diaria_activa?select=vin,fecha_asignacion&order=fecha_asignacion.asc,vin.asc`,
+      { method: "GET", headers }
+    );
     const listaRows = listaResp.ok ? await listaResp.json() : [];
-    const trasRows  = trasResp.ok  ? await trasResp.json()  : [];
-    const vinsRows  = vinsResp.ok  ? await vinsResp.json()  : [];
+
+    const vinsLista = [...new Set((listaRows || []).map(r => r.vin).filter(Boolean))];
+    if (!vinsLista.length) return { ok: true, sin_registrar: [] };
+
+    const inList = vinsLista.map(v => `"${v}"`).join(",");
+    const [trasResp, vinsResp] = await Promise.all([
+      fetch(`${SUPABASE_URL}/rest/v1/movilizador_traslados?vin=in.(${inList})&select=vin`, { method: "GET", headers }),
+      fetch(`${SUPABASE_URL}/rest/v1/vins?vin=in.(${inList})&select=vin,ultima_ubicacion`, { method: "GET", headers }),
+    ]);
+    const trasRows = trasResp.ok ? await trasResp.json() : [];
+    const vinsRows = vinsResp.ok ? await vinsResp.json() : [];
+
     const registrado = new Set((trasRows || []).map(t => t.vin));
     const ubicMap    = new Map((vinsRows || []).map(v => [v.vin, v.ultima_ubicacion || ""]));
     const sin_registrar = (listaRows || [])
       .filter(r => !registrado.has(r.vin))
       .map(r => ({ vin: r.vin, fecha: r.fecha_asignacion, ubicacion: ubicMap.get(r.vin) || "" }));
-    return res.json({ ok: true, sin_registrar });
+    return { ok: true, sin_registrar };
+      }, { bypass: req.query.fresh === "1" });
+    return res.json(payload);
   } catch (e) {
     console.error("[MOV_PENDIENTES]", e.message);
     return res.status(500).json({ ok: false, error: String(e.message || e) });
