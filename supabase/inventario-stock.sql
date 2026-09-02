@@ -114,8 +114,16 @@ ALTER TABLE herramientas_catalogo
 --  4. Vista de consulta: libres + malogradas + asignadas + total, ya sumado.
 --     La UI calcula lo mismo en el cliente; esta vista es para
 --     revisar el inventario desde el SQL Editor o un reporte.
+--
+--     Va DROP antes del CREATE a propósito: `CREATE OR REPLACE VIEW` solo
+--     deja AÑADIR columnas al final, y aquí `malogradas` entra en medio
+--     (después de `libres`). Sin el DROP, quien ya corrió la versión
+--     anterior recibiría «cannot change name of view column "asignadas"».
+--     Borrar la vista no toca ningún dato: es solo una consulta guardada.
 -- ────────────────────────────────────────────
-CREATE OR REPLACE VIEW v_inventario_existencias AS
+DROP VIEW IF EXISTS v_inventario_existencias;
+
+CREATE VIEW v_inventario_existencias AS
 SELECT
   h.id                                   AS herramienta_id,
   h.nombre,
