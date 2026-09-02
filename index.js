@@ -2,6 +2,7 @@ import express from "express";
 import compression from "compression";
 import dotenv from "dotenv";
 import { existsSync } from "fs";
+import { resolve } from "path";
 import webpush from "web-push";
 
 import uploaderRouter from "./routes/uploader.js";
@@ -85,6 +86,17 @@ app.use(express.static(staticDir, {
     }
   },
 }));
+
+// ── Rutas de la SPA con URL propia ────────────────────────────────────────────
+// El inventario se abre en mi-dominio/inventario. Como la app es una sola
+// página, cualquier ruta suya tiene que devolver el index.html; el cliente
+// mira location.pathname y monta la vista que toca (public/app.js).
+// El botón "Volver" de esa página apunta a "/", que ya sirve express.static.
+// Express no distingue "/inventario" de "/inventario/": una sola ruta cubre
+// las dos formas.
+app.get("/inventario", (_req, res) => {
+  res.sendFile(resolve(staticDir, "index.html"));
+});
 
 // ── Eventos en vivo (SSE) ─────────────────────────────────────────────────────
 // Las vistas se suscriben aquí; cada mutación emite su topic (lib/events.js)

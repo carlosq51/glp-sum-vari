@@ -13,7 +13,7 @@ import {
   supabaseDelete,
 } from "../../core/supabase-client.js";
 import { icon } from "../../core/icons.js";
-import { CORE } from "../../core/core.js";
+import { CORE, createNameSuggest_ } from "../../core/core.js";
 import { exportXls_ } from "../../core/xls.js";
 
 // ─── Estado local del módulo ─────────────────────────────────────────
@@ -31,6 +31,16 @@ const INV = {
   hojaByUser: new Map(), // user_id → inventario_tecnico
   todosItems: [],        // inventario_tecnico_items (todos)
   busq: "",              // texto del buscador global (nombre / código / SN)
+  // Existencias: unidades LIBRES en el almacén, por herramienta del catálogo.
+  // Las ASIGNADAS no se guardan: se suman de las hojas de los técnicos.
+  stock: [],             // inventario_stock
+  stockByHerr: new Map(),// herramienta_id → fila de inventario_stock
+  stockFiltro: "",       // texto del filtro de la sub-vista Existencias
+  // Qué se está mirando del almacén:
+  //   "todo"    → todas las herramientas del catálogo
+  //   "alertas" → lo agotado, bajo mínimo o descuadrado (qué reponer)
+  //   "taller"  → lo malogrado y lo descontinuado (qué sacar de circulación)
+  stockVista: "todo",
 };
 
 const ESTADOS = ["OK", "FALTA", "MAL", "NO_STOCK"];
@@ -118,6 +128,125 @@ function codigosChips_(it) {
   if ((it?.serie || "").trim())  out.push(`<span class="invCodChip invCodChipSn" title="Número de serie">SN ${esc(it.serie.trim())}</span>`);
   return out.join(" ");
 }
+// ─── EXISTENCIAS (stock de almacén) ──────────────────────────────────
+// Fila de stock de una herramienta (o null si el catálogo la trae sin fila:
+// pasa con herramientas creadas antes de correr inventario-stock.sql).
+function stockDe_(herrId) {
+  return INV.stockByHerr.get(herrId) || null;
+}
+function libresDe_(herrId) {
+  return Number(stockDe_(herrId)?.cantidad_almacen) || 0;
+}
+// Unidades rotas que siguen en el estante: cuentan como patrimonio, pero
+// no se pueden entregar hasta que se reparen.
+function malogradasDe_(herrId) {
+  return Number(stockDe_(herrId)?.cantidad_malogrado) || 0;
+}
+// Una herramienta descontinuada no se borra (rompería el histórico de quién
+// la tuvo): se marca inactiva y deja de ofrecerse en entregas y kits.
+function descontinuada_(herr) {
+  return herr?.activo === false;
+}
+// ¿Está cargado el módulo de existencias? (sin SQL v3 no hay filas)
+function stockDisponible_() {
+  return INV.stock.length > 0;
+}
+
+// Unidades ASIGNADAS por herramienta del catálogo, calculadas del snapshot
+// de todas las hojas: herramienta_id → { unidades, tecnicos:Set }.
+// Los ítems de descripción libre no entran (no tienen fila en el catálogo).
+function asignadasPorHerr_() {
+  const userByHoja = new Map(INV.hojas.map(h => [h.id, h.user_id]));
+  const map = new Map();
+  INV.todosItems.forEach(it => {
+    if (!it.herramienta_id) return;
+    let e = map.get(it.herramienta_id);
+    if (!e) { e = { unidades: 0, tecnicos: new Set() }; map.set(it.herramienta_id, e); }
+    e.unidades += cantidadDe_(it);
+    const uid = userByHoja.get(it.inventario_id);
+    if (uid) e.tecnicos.add(uid);
+  });
+  return map;
+}
+
+// Mueve unidades entre las dos pilas del almacén y deja el movimiento en la
+// bitácora. `deltas` acepta { libres, malogradas }; positivo entra, negativo
+// sale. Una avería es { libres: -n, malogradas: +n } — no cambia el total
+// físico, solo deja de estar disponible.
+// Devuelve { libres, malogradas } o null si la herramienta no tiene fila de
+// stock (ítem de descripción libre, o SQL v3 sin correr): en ese caso no se
+// inventa nada, simplemente el almacén no participa.
+async function ajustarStock_(herrId, deltas = {}, mov = {}) {
+  if (!herrId) return null;
+  const fila = stockDe_(herrId);
+  if (!fila) return null;
+
+  const dLibres = Number(deltas.libres) || 0;
+  const dMal    = Number(deltas.malogradas) || 0;
+  if (!dLibres && !dMal) return { libres: libresDe_(herrId), malogradas: malogradasDe_(herrId) };
+
+  const data = { updated_at: new Date().toISOString() };
+  if (dLibres) data.cantidad_almacen   = (Number(fila.cantidad_almacen) || 0) + dLibres;
+  if (dMal)    data.cantidad_malogrado = (Number(fila.cantidad_malogrado) || 0) + dMal;
+
+  await supabasePatch("inventario_stock", { id: fila.id }, data);
+  Object.assign(fila, data);
+
+  if (mov.tipo) {
+    await logMov_({
+      herramienta_id: herrId,
+      descripcion: INV.catMap.get(herrId)?.nombre || "",
+      // La cantidad del movimiento es cuántas unidades se tocaron, no la suma
+      // de los dos deltas (en una avería las mismas n cambian de pila).
+      cantidad: Math.max(Math.abs(dLibres), Math.abs(dMal)),
+      ...mov,
+    });
+  }
+  return { libres: Number(fila.cantidad_almacen) || 0, malogradas: Number(fila.cantidad_malogrado) || 0 };
+}
+
+// Atajo para el caso común: solo entran o salen unidades sanas.
+// Devuelve el saldo de libres (o null si no hay ficha de almacén).
+async function moverStock_(herrId, delta, mov = {}) {
+  if (!delta) return null;
+  const r = await ajustarStock_(herrId, { libres: delta }, mov);
+  return r ? r.libres : null;
+}
+
+// Asegura que la herramienta tenga fila de stock (para catálogos viejos
+// creados antes del trigger de inventario-stock.sql).
+async function asegurarStock_(herrId) {
+  if (!herrId || stockDe_(herrId)) return stockDe_(herrId);
+  if (!stockDisponible_()) return null;
+  try {
+    const [fila] = await supabasePost("inventario_stock", { herramienta_id: herrId, cantidad_almacen: 0 });
+    if (fila) { INV.stock.push(fila); INV.stockByHerr.set(herrId, fila); }
+    return fila || null;
+  } catch { return null; }
+}
+
+// Semáforo de una herramienta según sus libres vs su mínimo.
+//   descuadre → saldo negativo (se entregó más de lo registrado)
+//   agotado   → 0 libres
+//   bajo      → por debajo del punto de pedido
+//   ok        → hay de sobra
+function nivelStock_(libres, minimo) {
+  if (libres < 0) return "descuadre";
+  if (libres === 0) return "agotado";
+  if (minimo > 0 && libres <= minimo) return "bajo";
+  return "ok";
+}
+const NIVEL_META = {
+  descuadre: { clase: "adminBadgeDanger", label: "Descuadre" },
+  agotado:   { clase: "adminBadgeDanger", label: "Agotado" },
+  bajo:      { clase: "adminBadgeWarn",   label: "Bajo mínimo" },
+  ok:        { clase: "adminBadgeOk",     label: "OK" },
+};
+function nivelBadge_(libres, minimo) {
+  const m = NIVEL_META[nivelStock_(libres, minimo)];
+  return `<span class="adminBadge ${m.clase}">${m.label}</span>`;
+}
+
 // ─── Usuarios / hojas ────────────────────────────────────────────────
 function nombreUsuario_(userId) {
   return INV.usuarios.find(u => u.id === userId)?.nombre || "—";
@@ -190,11 +319,16 @@ function errorMsg_(e) {
 
 // ─── Carga base (catálogo + kits + usuarios) ─────────────────────────
 async function cargarBase_() {
-  const [cat, kits, usuarios] = await Promise.all([
+  const [cat, kits, usuarios, stock] = await Promise.all([
     supabaseGet("herramientas_catalogo").catch(() => []),
     supabaseGet("inventario_kits").catch(() => []),
     supabaseGet("usuarios", { activo: true }).catch(() => []),
+    // Si aún no se corrió inventario-stock.sql, esto falla y el módulo de
+    // existencias se muestra apagado en vez de romper toda la vista.
+    supabaseGet("inventario_stock").catch(() => []),
   ]);
+  INV.stock = stock || [];
+  INV.stockByHerr = new Map(INV.stock.map(s => [s.herramienta_id, s]));
   INV.catalogo = (cat || []).sort((a, b) => a.nombre.localeCompare(b.nombre));
   INV.catMap = new Map(INV.catalogo.map(h => [h.id, h]));
   INV.kits = kits || [];
@@ -211,6 +345,12 @@ async function cargarSnapshot_() {
   INV.hojaByUser = new Map(INV.hojas.map(h => [h.user_id, h]));
   INV.todosItems = items || [];
   return INV.todosItems;
+}
+
+// ¿Estamos en la página propia (/inventario) o dentro del panel de Admin?
+// En la página propia sobra el enlace a "ventana completa".
+function enPaginaPropia_() {
+  return /^\/inventario\/?$/i.test(location.pathname);
 }
 
 // ─── Punto de entrada (llamado desde admin.js loadTab) ───────────────
@@ -230,9 +370,11 @@ export async function renderInventarioTab(wrap) {
     <div class="adminConfigPanel">
       <div class="invSubtabs" role="tablist">
         <button class="invSubtab" data-sub="tecnico">${icon("users", 15)} Inventario por técnico</button>
+        <button class="invSubtab" data-sub="stock">${icon("trayIn", 15)} Existencias</button>
         <button class="invSubtab" data-sub="totales">${icon("chart", 15)} Totales</button>
         <button class="invSubtab" data-sub="kits">${icon("box", 15)} Kits estándar</button>
         <button class="invSubtab" data-sub="catalogo">${icon("clipboardList", 15)} Catálogo</button>
+        ${enPaginaPropia_() ? "" : `<a class="invSubtabLink" href="/inventario" title="Abrir el inventario en su propia ventana">${icon("box", 14)} Ventana completa</a>`}
       </div>
       <div id="invSubContent" style="margin-top:14px;"></div>
       <div id="invMsg" class="small muted" style="margin-top:10px;"></div>
@@ -252,6 +394,7 @@ function setSub_(sub) {
   });
   invMsg("");
   if (sub === "tecnico")  return renderTecnicoSub_();
+  if (sub === "stock")    return renderStockSub_();
   if (sub === "totales")  return renderTotalesSub_();
   if (sub === "kits")     return renderKitsSub_();
   if (sub === "catalogo") return renderCatalogoSub_();
@@ -316,6 +459,15 @@ async function renderTecnicoSub_() {
       los <strong>antiguos</strong> conservan su lista libre importada del Excel.
     </p>
     <div class="invCatToolbar">
+      <div class="adminSearchWrap invBuscador" style="flex:1;min-width:220px;">
+        <span class="adminSearchIcon" aria-hidden="true">${icon("users", 16)}</span>
+        <input id="invTecFind" type="text" autocomplete="off"
+          placeholder="Busca un técnico por su nombre y abre su hoja…">
+        <input type="hidden" id="invTecFindId">
+        <div id="invTecFindList" class="vinSuggest hidden" role="listbox"></div>
+      </div>
+    </div>
+    <div class="invCatToolbar">
       <div class="adminSearchWrap" style="flex:1;min-width:220px;">
         <span class="adminSearchIcon" aria-hidden="true">${icon("search", 16)}</span>
         <input id="invBusqGlobal" type="text" autocomplete="off" value="${esc(INV.busq)}"
@@ -344,6 +496,13 @@ async function renderTecnicoSub_() {
   });
   $id("invBtnAsignarMulti")?.addEventListener("click", abrirAsignarMultiple_);
   $id("invBtnExcelGen")?.addEventListener("click", exportarGeneralXls_);
+
+  // Encuentra al técnico escribiendo su nombre y le abre la hoja directo:
+  // con 40+ técnicos es más rápido que buscarlo en la tabla.
+  wireTecnicoSuggest_("invTecFind", "invTecFindList", "invTecFindId", (item) => {
+    const uid = item.userId;
+    if (uid) abrirInventarioTec_(uid, INV.hojaByUser.get(uid) || null);
+  });
 
   const busqEl = $id("invBusqGlobal");
   busqEl?.addEventListener("input", () => { INV.busq = busqEl.value; pintarBusqueda_(); });
@@ -510,6 +669,7 @@ function pintarInventarioTec_(user, inv) {
   const accionesItem = it => `
     <button class="adminBtnEdit adminRowBtn invItemEdit" data-itid="${esc(it.id)}" title="Editar">${icon("pencil", 14)}</button>
     <button class="adminBtnEdit adminRowBtn invItemMover" data-itid="${esc(it.id)}" title="Traspasar a otro técnico">${icon("swap", 14)}</button>
+    ${stockDisponible_() && it.herramienta_id ? `<button class="adminBtnEdit adminRowBtn invItemDevolver" data-itid="${esc(it.id)}" title="Devolver al almacén">${icon("trayIn", 14)}</button>` : ""}
     <button class="adminBtnDel adminRowBtn adminRowBtn--danger invItemDel" data-itid="${esc(it.id)}" title="Quitar">${icon("trash", 14)}</button>`;
 
   const filas = grupos.map(g => {
@@ -586,6 +746,7 @@ function pintarInventarioTec_(user, inv) {
   det.querySelectorAll(".invItemEdit").forEach(b => b.addEventListener("click", () => editarItem_(b.dataset.itid)));
   det.querySelectorAll(".invItemDel").forEach(b => b.addEventListener("click", () => quitarItem_(b.dataset.itid)));
   det.querySelectorAll(".invItemMover").forEach(b => b.addEventListener("click", () => abrirTraspaso_(user, [b.dataset.itid])));
+  det.querySelectorAll(".invItemDevolver").forEach(b => b.addEventListener("click", () => devolverAlAlmacen_(b.dataset.itid)));
   // Desplegar/plegar los registros individuales de un grupo repetido.
   det.querySelectorAll(".invGrupoToggle").forEach(b => b.addEventListener("click", () => {
     const abierto = b.classList.toggle("invGrupoToggleOpen");
@@ -748,6 +909,10 @@ function editarItem_(itemId) {
 
       <label class="adminLabel">Cantidad<input id="invItCant" type="number" min="0" value="${it?.cantidad ?? 1}"></label>
       <label class="adminLabel">Estado<select id="invItEstado" class="adminInput">${opts(ESTADOS, it?.estado || "OK")}</select></label>
+      ${stockDisponible_() ? `<label class="adminLabel adminLabelRow invStockCheck">
+        <input id="invItDescontar" type="checkbox"> Descontar del almacén
+        <span class="adminLabelHint">Márcalo si la herramienta sale del estante ahora. Déjalo sin marcar si solo estás registrando lo que el técnico <em>ya tenía</em>.</span>
+      </label>` : ""}
       <label class="adminLabel">Nota<input id="invItNota" type="text" value="${esc(it?.nota || "")}"></label>
     </div>
   `;
@@ -793,8 +958,12 @@ function editarItem_(itemId) {
           marca: data.marca, serie: data.serie, codigo: data.codigo,
           cantidad: data.cantidad,
           destino_user_id: INV.selTecId,
+          destino_nombre: nombreUsuario_(INV.selTecId),
           nota: data.nota,
         });
+        // El saldo del almacén solo se toca si la herramienta salió del
+        // estante ahora (el movimiento ya quedó arriba como ASIGNACION).
+        if ($id("invItDescontar")?.checked) await moverStock_(data.herramienta_id, -data.cantidad);
       }
       await abrirInventarioTec_(INV.selTecId, INV.invActual);
       return true;
@@ -1229,6 +1398,10 @@ function abrirAsignarMultiple_() {
         </label>
       </div>
       <label class="adminLabel">Nota<input id="invAsigNota" type="text" placeholder="Ej: entrega de ampliación"></label>
+      ${stockDisponible_() ? `<label class="adminLabel adminLabelRow invStockCheck">
+        <input id="invAsigDescontar" type="checkbox"> Descontar del almacén
+        <span class="adminLabelHint">Márcalo si las herramientas salen del estante ahora. Déjalo sin marcar si solo estás registrando lo que los técnicos <em>ya tenían</em>.</span>
+      </label>` : ""}
 
       <div class="invTrasHead" style="margin-top:6px;">
         <span class="small muted">¿Quiénes la reciben?</span>
@@ -1271,6 +1444,7 @@ function abrirAsignarMultiple_() {
       nota: $id("invAsigNota")?.value?.trim() || "",
     };
 
+    const descontar = !!$id("invAsigDescontar")?.checked;
     invMsg(`Asignando a ${ids.length} técnico(s)…`);
     try {
       let sumados = 0, nuevos = 0;
@@ -1286,9 +1460,11 @@ function abrirAsignarMultiple_() {
           marca: base.marca, serie: base.serie, codigo: base.codigo,
           cantidad: base.cantidad,
           destino_user_id: uid,
+          destino_nombre: nombreUsuario_(uid),
           nota: base.nota,
         });
       }
+      if (descontar) await moverStock_(base.herramienta_id, -base.cantidad * ids.length);
       invMsg(`Asignada a ${ids.length} técnico(s): ${nuevos} nueva(s), ${sumados} sumada(s) a lo que ya tenían.`);
       await renderTecnicoSub_();
       return true;
@@ -1318,6 +1494,810 @@ function abrirAsignarMultiple_() {
     });
   });
   cuenta();
+}
+
+// =====================================================================
+//  SUB-VISTA · EXISTENCIAS (el almacén)
+//  ─────────────────────────────────────
+//  LIBRES    = lo que queda en el estante  (inventario_stock)
+//  ASIGNADAS = lo que ya tiene un técnico  (suma de las hojas)
+//  TOTAL     = libres + asignadas          (el inventario físico real)
+//  Ver supabase/inventario-stock.sql.
+// =====================================================================
+async function renderStockSub_(recargar = true) {
+  const box = $id("invSubContent");
+  if (!box) return;
+  if (recargar) {
+    box.innerHTML = `<div class="small muted" style="padding:12px;">Contando existencias…</div>`;
+    await cargarSnapshot_();
+  }
+
+  if (!stockDisponible_()) {
+    box.innerHTML = `
+      <div class="invStockOff">
+        <div class="invStockOffTitle">${icon("box", 18)} Existencias todavía no está activo</div>
+        <p class="small muted">
+          Falta crear la tabla del almacén. Abre el <strong>SQL Editor de Supabase</strong> y ejecuta
+          <code>supabase/inventario-stock.sql</code>. Se crea una fila por cada herramienta del catálogo
+          con <strong>0 unidades libres</strong>; lo que ya tienen los técnicos se sigue contando desde sus hojas,
+          así que no se pierde nada.
+        </p>
+      </div>`;
+    return;
+  }
+
+  const asig = asignadasPorHerr_();
+  const libresTotal = INV.stock.reduce((n, s) => n + (Number(s.cantidad_almacen) || 0), 0);
+  const malogradasTotal = INV.stock.reduce((n, s) => n + (Number(s.cantidad_malogrado) || 0), 0);
+  const asignadasTotal = [...asig.values()].reduce((n, e) => n + e.unidades, 0);
+  // Ítems de las hojas que son texto libre: no están en el catálogo, así que
+  // no pueden inventariarse. Se avisa para que los pasen al catálogo.
+  const sueltos = INV.todosItems.filter(it => !it.herramienta_id);
+  const sueltosUds = totalUnidades_(sueltos);
+
+  // Una fila por herramienta del catálogo.
+  const filasBase = INV.catalogo.map(h => {
+    const st = stockDe_(h.id);
+    const libres = Number(st?.cantidad_almacen) || 0;
+    const malogradas = Number(st?.cantidad_malogrado) || 0;
+    const a = asig.get(h.id);
+    const asignadas = a?.unidades || 0;
+    const minimo = Number(st?.stock_minimo) || 0;
+    return {
+      h, st, libres, malogradas, asignadas, minimo,
+      // El total físico incluye lo roto: sigue siendo patrimonio, solo que
+      // no está disponible para entregar.
+      total: libres + malogradas + asignadas,
+      tecnicos: a?.tecnicos.size || 0,
+      ubicacion: st?.ubicacion || "",
+      nivel: nivelStock_(libres, minimo),
+      baja: descontinuada_(h),
+    };
+  });
+
+  const bajoMinimo = filasBase.filter(f => f.nivel === "bajo" && !f.baja).length;
+  const agotados   = filasBase.filter(f => f.nivel === "agotado" && f.total > 0 && !f.baja).length;
+  const descuadres = filasBase.filter(f => f.nivel === "descuadre").length;
+  const conMalogradas = filasBase.filter(f => f.malogradas > 0).length;
+  const descontinuadas = filasBase.filter(f => f.baja).length;
+  // Descontinuadas que aún tienen unidades por recuperar: lo que hay que
+  // ir a buscar antes de cerrar la herramienta del todo.
+  const bajasPendientes = filasBase.filter(f => f.baja && f.total > 0).length;
+
+  const q = (INV.stockFiltro || "").trim().toLowerCase();
+  const enVista_ = f =>
+      INV.stockVista === "alertas" ? (f.nivel !== "ok" && !f.baja)
+    : INV.stockVista === "taller"  ? (f.malogradas > 0 || f.baja)
+    : true;
+  const lista = filasBase
+    .filter(f => !q || `${f.h.categoria || ""} ${f.h.nombre} ${f.ubicacion}`.toLowerCase().includes(q))
+    .filter(enVista_)
+    .sort((a, b) =>
+      (a.h.categoria || "ZZZ").localeCompare(b.h.categoria || "ZZZ") ||
+      a.h.nombre.localeCompare(b.h.nombre));
+
+  const filas = lista.map(f => `
+    <tr class="invStockRow invStockRow--${f.nivel}${f.baja ? " invStockRow--descont" : ""}">
+      <td>
+        ${f.h.categoria ? `<span class="invSearchCat">${esc(f.h.categoria)}</span>` : ""}
+        ${esc(detalleDe_(f.h))}
+        ${f.baja ? `<span class="adminBadgeMuted invDescontChip" title="${esc(f.h.descontinuada_motivo || "Ya no se usa")}">Descontinuada</span>` : ""}
+      </td>
+      <td style="text-align:center;"><strong class="invStockLibres">${f.libres}</strong></td>
+      <td style="text-align:center;">
+        ${f.malogradas
+          ? `<strong class="invStockMal">${f.malogradas}</strong>`
+          : `<span class="small muted">—</span>`}
+      </td>
+      <td style="text-align:center;">
+        ${f.asignadas || `<span class="small muted">—</span>`}
+        ${f.tecnicos ? `<span class="invContadorSub"> · ${f.tecnicos} téc.</span>` : ""}
+      </td>
+      <td style="text-align:center;"><strong>${f.total}</strong></td>
+      <td style="text-align:center;" class="small muted">${f.minimo || "—"}</td>
+      <td class="small muted">${esc(f.ubicacion || "—")}</td>
+      <td>${f.baja
+        ? `<span class="adminBadge adminBadgeMuted">Descontinuada</span>`
+        : nivelBadge_(f.libres, f.minimo)}</td>
+      <td class="adminActionsCell">
+        ${f.baja ? "" : `
+        <button class="adminBtnEdit adminRowBtn invStEntrada" data-hid="${esc(f.h.id)}" title="Ingresar unidades al almacén">${icon("trayIn", 14)}</button>
+        <button class="adminBtnEdit adminRowBtn invStEntregar" data-hid="${esc(f.h.id)}" title="Entregar a un técnico">${icon("trayOut", 14)}</button>`}
+        <button class="adminBtnEdit adminRowBtn invStAveria" data-hid="${esc(f.h.id)}" title="Reportar avería: pasa de libres a malogradas">${icon("alertTriangle", 14)}</button>
+        ${f.malogradas ? `
+        <button class="adminBtnEdit adminRowBtn invStReparar" data-hid="${esc(f.h.id)}" title="Reparada: vuelve a libres">${icon("wrench", 14)}</button>
+        <button class="adminBtnDel adminRowBtn adminRowBtn--danger invStDesechar" data-hid="${esc(f.h.id)}" title="Desechar unidad malograda">${icon("trash", 14)}</button>` : ""}
+        <button class="adminBtnEdit adminRowBtn invStFicha" data-hid="${esc(f.h.id)}" title="Ficha, mínimo y conteo físico">${icon("settings", 14)}</button>
+        <button class="adminBtnEdit adminRowBtn invStDescont" data-hid="${esc(f.h.id)}" title="${f.baja ? "Reactivar la herramienta" : "Descontinuar: dejar de usarla"}">${icon(f.baja ? "refresh" : "inbox", 14)}</button>
+        ${f.baja ? "" : `<button class="adminBtnDel adminRowBtn adminRowBtn--danger invStBaja" data-hid="${esc(f.h.id)}" title="Dar de baja unidades sanas del almacén">${icon("trayOut", 14)}</button>`}
+      </td>
+    </tr>`).join("");
+
+  box.innerHTML = `
+    <p class="small muted">
+      El almacén guarda lo <strong>libre</strong> y lo <strong>malogrado</strong>; lo que ya tiene un técnico
+      se cuenta desde su hoja. <strong>Total = libres + malogradas + asignadas</strong>, o sea todo lo que la
+      empresa posee. Entregar solo se puede de las libres.
+    </p>
+
+    <div class="invStockKpis">
+      <div class="invStockKpi invStockKpi--total">
+        <span class="invStockKpiN">${libresTotal + malogradasTotal + asignadasTotal}</span>
+        <span class="invStockKpiL">Total físico</span>
+      </div>
+      <div class="invStockKpi invStockKpi--libre">
+        <span class="invStockKpiN">${libresTotal}</span>
+        <span class="invStockKpiL">Libres en almacén</span>
+      </div>
+      <div class="invStockKpi invStockKpi--asig">
+        <span class="invStockKpiN">${asignadasTotal}</span>
+        <span class="invStockKpiL">Asignadas a técnicos</span>
+      </div>
+      <div class="invStockKpi${malogradasTotal ? " invStockKpi--mal" : ""}">
+        <span class="invStockKpiN">${malogradasTotal}</span>
+        <span class="invStockKpiL">Malogradas</span>
+      </div>
+      <div class="invStockKpi${bajoMinimo || agotados ? " invStockKpi--warn" : ""}">
+        <span class="invStockKpiN">${bajoMinimo + agotados}</span>
+        <span class="invStockKpiL">Por reponer</span>
+      </div>
+      <div class="invStockKpi${descuadres ? " invStockKpi--danger" : ""}">
+        <span class="invStockKpiN">${descuadres}</span>
+        <span class="invStockKpiL">Descuadres</span>
+      </div>
+    </div>
+
+    ${sueltos.length ? `<div class="invStockAviso">
+      ${icon("alertTriangle", 14)} Hay <strong>${sueltosUds}</strong> unidad(es) en hojas de técnicos cargadas como
+      texto libre: no están en el catálogo, así que no entran en existencias. Pásalas al catálogo para contarlas.
+    </div>` : ""}
+
+    <div class="invStockVistas" role="tablist">
+      <button class="invStockVista${INV.stockVista === "todo" ? " invStockVistaOn" : ""}" data-vista="todo">
+        ${icon("box", 14)} Todo <span class="invCatCount">${filasBase.length}</span>
+      </button>
+      <button class="invStockVista${INV.stockVista === "alertas" ? " invStockVistaOn" : ""}" data-vista="alertas"
+        title="Agotado, bajo mínimo o descuadrado">
+        ${icon("alertTriangle", 14)} Por reponer <span class="invCatCount">${bajoMinimo + agotados + descuadres}</span>
+      </button>
+      <button class="invStockVista${INV.stockVista === "taller" ? " invStockVistaOn" : ""}" data-vista="taller"
+        title="Unidades rotas esperando reparación y herramientas que ya no se usan">
+        ${icon("wrench", 14)} Malogradas y descontinuadas <span class="invCatCount">${conMalogradas + descontinuadas}</span>
+      </button>
+    </div>
+
+    ${INV.stockVista === "taller" ? `<div class="invStockAviso invStockAviso--info">
+      ${icon("wrench", 14)}
+      <span><strong>Malograda</strong> es una unidad rota que sigue en el estante: cuenta como patrimonio pero no se puede
+      entregar. Se repara y vuelve a libres, o se desecha.
+      <strong>Descontinuada</strong> es la herramienta entera: deja de ofrecerse en entregas y kits, pero no se borra
+      — el histórico de quién la tuvo se conserva.
+      ${bajasPendientes ? `<br>Hay <strong>${bajasPendientes}</strong> descontinuada(s) con unidades todavía sin recuperar.` : ""}</span>
+    </div>` : ""}
+
+    <div class="invCatToolbar" style="margin-top:12px;">
+      <div class="adminSearchWrap" style="flex:1;min-width:200px;">
+        <span class="adminSearchIcon" aria-hidden="true">${icon("search", 16)}</span>
+        <input id="invStFiltro" type="text" placeholder="Buscar herramienta o ubicación…" autocomplete="off" value="${esc(INV.stockFiltro)}">
+      </div>
+      <button id="invStNuevaEntrada" class="adminBtnOk">${icon("trayIn", 14)} Ingresar al almacén</button>
+      <button id="invStExcel" class="adminBtnGhost">${icon("download", 14)} Excel existencias</button>
+      <button id="invStRefresh" class="adminBtnGhost">${icon("refresh", 14)} Actualizar</button>
+    </div>
+
+    <div class="adminTableScroll">
+      <table class="adminTable invStockTabla">
+        <thead><tr>
+          <th>Herramienta</th>
+          <th style="text-align:center;" title="Sanas en el estante, listas para entregar">Libres</th>
+          <th style="text-align:center;" title="Rotas: en el estante pero fuera de servicio">Malogradas</th>
+          <th style="text-align:center;" title="Unidades en manos de técnicos">Asignadas</th>
+          <th style="text-align:center;" title="Todo lo que la empresa posee">Total</th>
+          <th style="text-align:center;" title="Punto de pedido">Mín.</th>
+          <th>Ubicación</th>
+          <th>Estado</th>
+          <th></th>
+        </tr></thead>
+        <tbody>${filas || `<tr><td colspan="9" class="small muted" style="padding:12px;">Sin resultados.</td></tr>`}</tbody>
+      </table>
+    </div>
+    <div id="invMovBox" style="margin-top:18px;"></div>
+  `;
+
+  const filtroEl = $id("invStFiltro");
+  filtroEl?.addEventListener("input", e => {
+    INV.stockFiltro = e.target.value;
+    renderStockSub_(false);
+    const nuevo = $id("invStFiltro");
+    if (nuevo) { nuevo.focus(); nuevo.setSelectionRange(nuevo.value.length, nuevo.value.length); }
+  });
+  box.querySelectorAll(".invStockVista").forEach(b => b.addEventListener("click", () => {
+    INV.stockVista = b.dataset.vista;
+    renderStockSub_(false);
+  }));
+  $id("invStNuevaEntrada")?.addEventListener("click", () => abrirEntradaStock_(null));
+  $id("invStExcel")?.addEventListener("click", exportarStockXls_);
+  $id("invStRefresh")?.addEventListener("click", () => renderStockSub_());
+  box.querySelectorAll(".invStEntrada").forEach(b => b.addEventListener("click", () => abrirEntradaStock_(b.dataset.hid)));
+  box.querySelectorAll(".invStEntregar").forEach(b => b.addEventListener("click", () => abrirEntregarStock_(b.dataset.hid)));
+  box.querySelectorAll(".invStFicha").forEach(b => b.addEventListener("click", () => abrirFichaStock_(b.dataset.hid)));
+  box.querySelectorAll(".invStBaja").forEach(b => b.addEventListener("click", () => abrirBajaStock_(b.dataset.hid)));
+  box.querySelectorAll(".invStAveria").forEach(b => b.addEventListener("click", () => abrirAveriaStock_(b.dataset.hid)));
+  box.querySelectorAll(".invStReparar").forEach(b => b.addEventListener("click", () => abrirReparacionStock_(b.dataset.hid)));
+  box.querySelectorAll(".invStDesechar").forEach(b => b.addEventListener("click", () => abrirDesecharStock_(b.dataset.hid)));
+  box.querySelectorAll(".invStDescont").forEach(b => b.addEventListener("click", () => abrirDescontinuar_(b.dataset.hid)));
+  pintarMovimientos_();
+}
+
+// Bloque reutilizable: selector de herramienta del catálogo (o fijo si ya
+// viene elegida desde la fila de la tabla).
+function selectorHerrHtml_(herr, idSearch, idHidden, idList) {
+  if (herr) {
+    return `<div class="invStockPick">
+        <span class="invSearchCat">${esc(herr.categoria || "")}</span>
+        <strong>${esc(detalleDe_(herr))}</strong>
+        <input type="hidden" id="${idHidden}" value="${esc(herr.id)}">
+      </div>`;
+  }
+  return `<label class="adminLabel">Herramienta (del catálogo)
+      <div class="invBuscador">
+        <input id="${idSearch}" type="text" autocomplete="off" placeholder="Escribe para buscar… (ej: tala → taladro)">
+        <input type="hidden" id="${idHidden}">
+        <div id="${idList}" class="invSearchList" style="display:none;"></div>
+      </div>
+    </label>`;
+}
+
+// Resumen "así queda el saldo" para los modales de almacén.
+function saldoHtml_(herrId) {
+  const libres = libresDe_(herrId);
+  const mal = malogradasDe_(herrId);
+  const asig = asignadasPorHerr_().get(herrId)?.unidades || 0;
+  return `<div class="invStockSaldo">
+      <span>Libres ahora <strong>${libres}</strong></span>
+      ${mal ? `<span>Malogradas <strong class="invStockMal">${mal}</strong></span>` : ""}
+      <span>Asignadas <strong>${asig}</strong></span>
+      <span>Total <strong>${libres + mal + asig}</strong></span>
+    </div>`;
+}
+
+// ── ENTRADA · compra o ingreso de unidades al almacén ──
+function abrirEntradaStock_(herrId) {
+  const herr = herrId ? INV.catMap.get(herrId) : null;
+  const body = `
+    <div class="adminForm">
+      ${selectorHerrHtml_(herr, "invEntSearch", "invEntHerr", "invEntList")}
+      ${herr ? saldoHtml_(herr.id) : ""}
+      <div class="invCodGrid">
+        <label class="adminLabel">Cantidad que entra<input id="invEntCant" type="number" min="1" value="1"></label>
+        <label class="adminLabel">Ubicación <span class="adminLabelHint">(estante, caja…)</span>
+          <input id="invEntUbic" type="text" value="${esc(herr ? (stockDe_(herr.id)?.ubicacion || "") : "")}" placeholder="Ej: Estante B-2">
+        </label>
+      </div>
+      <label class="adminLabel">Motivo / documento <span class="adminLabelHint">(guía, factura, quién trajo)</span>
+        <input id="invEntNota" type="text" placeholder="Ej: compra guía 0042">
+      </label>
+    </div>`;
+
+  abrirModal_(herr ? `Ingresar al almacén · ${esc(detalleDe_(herr))}` : "Ingresar herramientas al almacén", body, async () => {
+    const hid = $id("invEntHerr")?.value || "";
+    if (!hid) { invMsg("Elige una herramienta del catálogo.", true); return false; }
+    const cant = Math.max(1, Number($id("invEntCant")?.value) || 0);
+    if (!cant) { invMsg("La cantidad debe ser al menos 1.", true); return false; }
+    const ubic = $id("invEntUbic")?.value?.trim() || "";
+    const nota = $id("invEntNota")?.value?.trim() || "";
+    try {
+      await asegurarStock_(hid);
+      const saldo = await moverStock_(hid, cant, { tipo: "ENTRADA", nota, hecho_por: operador_() });
+      if (saldo == null) { invMsg("Esa herramienta no tiene ficha de almacén.", true); return false; }
+      if (ubic) {
+        const fila = stockDe_(hid);
+        await supabasePatch("inventario_stock", { id: fila.id }, { ubicacion: ubic });
+        fila.ubicacion = ubic;
+      }
+      invMsg(`Entraron ${cant} unidad(es). Libres ahora: ${saldo}.`);
+      await renderStockSub_();
+      return true;
+    } catch (e) { invMsg(errorMsg_(e), true); return false; }
+  });
+
+  if (!herr) wireBuscador_($id("invEntSearch"), $id("invEntList"), $id("invEntHerr"), (h) => {
+    const u = $id("invEntUbic");
+    if (u && !u.value) u.value = stockDe_(h.id)?.ubicacion || "";
+  });
+}
+
+// ── SALIDA · baja del almacén (rota, perdida, devuelta al proveedor) ──
+function abrirBajaStock_(herrId) {
+  const herr = INV.catMap.get(herrId);
+  if (!herr) return;
+  const libres = libresDe_(herrId);
+  const body = `
+    <div class="adminForm">
+      <div class="invStockPick">
+        <span class="invSearchCat">${esc(herr.categoria || "")}</span><strong>${esc(detalleDe_(herr))}</strong>
+      </div>
+      ${saldoHtml_(herrId)}
+      <p class="small muted">Sale del almacén y no vuelve: rota, perdida o devuelta al proveedor.
+      Si en cambio se la llevó un técnico, usa <strong>Entregar</strong>, no la baja.</p>
+      <label class="adminLabel">Cantidad que sale
+        <input id="invBajaCant" type="number" min="1" max="${Math.max(1, libres)}" value="1">
+      </label>
+      <label class="adminLabel">Motivo <span class="adminLabelHint">(obligatorio: queda en la bitácora)</span>
+        <input id="invBajaNota" type="text" placeholder="Ej: se quemó el motor del taladro">
+      </label>
+    </div>`;
+  abrirModal_(`Dar de baja · ${esc(detalleDe_(herr))}`, body, async () => {
+    const cant = Math.max(1, Number($id("invBajaCant")?.value) || 0);
+    const nota = $id("invBajaNota")?.value?.trim() || "";
+    if (!nota) { invMsg("Escribe el motivo de la baja.", true); return false; }
+    if (cant > libres && !confirm(`Solo hay ${libres} libre(s). ¿Dar de baja ${cant} igual? El saldo quedará negativo.`)) return false;
+    try {
+      const saldo = await moverStock_(herrId, -cant, { tipo: "SALIDA", nota, hecho_por: operador_() });
+      invMsg(`Baja registrada. Libres ahora: ${saldo}.`);
+      await renderStockSub_();
+      return true;
+    } catch (e) { invMsg(errorMsg_(e), true); return false; }
+  });
+}
+
+// =====================================================================
+//  MALOGRADAS Y DESCONTINUADAS
+//  Una unidad malograda NO sale del inventario: cambia de pila (libres →
+//  malogradas). El total físico no se mueve, porque la herramienta sigue
+//  siendo de la empresa; lo que baja es lo disponible para entregar.
+//  Solo el desecho la saca de verdad.
+// =====================================================================
+
+// ── AVERÍA · libres → malogradas ──
+function abrirAveriaStock_(herrId) {
+  const herr = INV.catMap.get(herrId);
+  if (!herr) return;
+  const libres = libresDe_(herrId);
+  const body = `
+    <div class="adminForm">
+      <div class="invStockPick">
+        <span class="invSearchCat">${esc(herr.categoria || "")}</span><strong>${esc(detalleDe_(herr))}</strong>
+      </div>
+      ${saldoHtml_(herrId)}
+      <p class="small muted">La unidad se queda en el almacén pero deja de estar disponible.
+      El total físico no cambia: sigue siendo de la empresa hasta que se deseche.</p>
+      <label class="adminLabel">¿Cuántas se malograron? <span class="adminLabelHint">(hay ${libres} libre(s))</span>
+        <input id="invAvCant" type="number" min="1" max="${Math.max(1, libres)}" value="1">
+      </label>
+      <label class="adminLabel">¿Qué le pasó? <span class="adminLabelHint">(obligatorio: queda en la bitácora)</span>
+        <input id="invAvNota" type="text" placeholder="Ej: se le partió el mango">
+      </label>
+    </div>`;
+  abrirModal_(`Reportar avería · ${esc(detalleDe_(herr))}`, body, async () => {
+    const cant = Math.max(1, Number($id("invAvCant")?.value) || 0);
+    const nota = $id("invAvNota")?.value?.trim() || "";
+    if (!nota) { invMsg("Escribe qué le pasó a la herramienta.", true); return false; }
+    if (cant > libres && !confirm(`Solo hay ${libres} libre(s). ¿Marcar ${cant} como malograda(s) igual? El saldo de libres quedará negativo.`)) return false;
+    try {
+      const r = await ajustarStock_(herrId, { libres: -cant, malogradas: cant },
+        { tipo: "AVERIA", nota, hecho_por: operador_() });
+      invMsg(`${cant} unidad(es) pasaron a malogradas. Libres: ${r?.libres ?? "—"} · malogradas: ${r?.malogradas ?? "—"}.`);
+      await renderStockSub_();
+      return true;
+    } catch (e) { invMsg(errorMsg_(e), true); return false; }
+  });
+}
+
+// ── REPARACIÓN · malogradas → libres ──
+function abrirReparacionStock_(herrId) {
+  const herr = INV.catMap.get(herrId);
+  if (!herr) return;
+  const mal = malogradasDe_(herrId);
+  if (!mal) { invMsg("Esa herramienta no tiene unidades malogradas.", true); return; }
+  const body = `
+    <div class="adminForm">
+      <div class="invStockPick">
+        <span class="invSearchCat">${esc(herr.categoria || "")}</span><strong>${esc(detalleDe_(herr))}</strong>
+      </div>
+      ${saldoHtml_(herrId)}
+      <p class="small muted">Vuelve al estante como unidad sana y ya se puede entregar.</p>
+      <label class="adminLabel">¿Cuántas se repararon? <span class="adminLabelHint">(hay ${mal} malograda(s))</span>
+        <input id="invRepCant" type="number" min="1" max="${mal}" value="${mal}">
+      </label>
+      <label class="adminLabel">Nota <span class="adminLabelHint">(taller, costo, quién la reparó)</span>
+        <input id="invRepNota" type="text" placeholder="Ej: cambio de carbones, S/ 45">
+      </label>
+    </div>`;
+  abrirModal_(`Reparada · ${esc(detalleDe_(herr))}`, body, async () => {
+    const cant = Math.min(mal, Math.max(1, Number($id("invRepCant")?.value) || 0));
+    const nota = $id("invRepNota")?.value?.trim() || "";
+    try {
+      const r = await ajustarStock_(herrId, { libres: cant, malogradas: -cant },
+        { tipo: "REPARACION", nota, hecho_por: operador_() });
+      invMsg(`${cant} unidad(es) volvieron a estar disponibles. Libres: ${r?.libres ?? "—"}.`);
+      await renderStockSub_();
+      return true;
+    } catch (e) { invMsg(errorMsg_(e), true); return false; }
+  });
+}
+
+// ── DESECHO · la unidad malograda sale del inventario para siempre ──
+function abrirDesecharStock_(herrId) {
+  const herr = INV.catMap.get(herrId);
+  if (!herr) return;
+  const mal = malogradasDe_(herrId);
+  if (!mal) { invMsg("Esa herramienta no tiene unidades malogradas.", true); return; }
+  const body = `
+    <div class="adminForm">
+      <div class="invStockPick">
+        <span class="invSearchCat">${esc(herr.categoria || "")}</span><strong>${esc(detalleDe_(herr))}</strong>
+      </div>
+      ${saldoHtml_(herrId)}
+      <p class="small muted">Se bota: deja de contar como patrimonio y el total físico baja.
+      Esto no se puede deshacer — si todavía puede repararse, usa <strong>Reparada</strong>.</p>
+      <label class="adminLabel">¿Cuántas se desechan? <span class="adminLabelHint">(hay ${mal} malograda(s))</span>
+        <input id="invDesCant" type="number" min="1" max="${mal}" value="1">
+      </label>
+      <label class="adminLabel">Motivo <span class="adminLabelHint">(obligatorio: queda en la bitácora)</span>
+        <input id="invDesNota" type="text" placeholder="Ej: no tiene repuesto, se botó">
+      </label>
+    </div>`;
+  abrirModal_(`Desechar · ${esc(detalleDe_(herr))}`, body, async () => {
+    const cant = Math.min(mal, Math.max(1, Number($id("invDesCant")?.value) || 0));
+    const nota = $id("invDesNota")?.value?.trim() || "";
+    if (!nota) { invMsg("Escribe el motivo del desecho.", true); return false; }
+    try {
+      const r = await ajustarStock_(herrId, { malogradas: -cant },
+        { tipo: "DESECHO", nota, hecho_por: operador_() });
+      invMsg(`${cant} unidad(es) desechadas. Malogradas: ${r?.malogradas ?? "—"}.`);
+      await renderStockSub_();
+      return true;
+    } catch (e) { invMsg(errorMsg_(e), true); return false; }
+  });
+}
+
+// ── DESCONTINUAR / REACTIVAR · la herramienta entera ──
+// No se borra del catálogo: se marca inactiva. Así deja de ofrecerse en
+// entregas y kits nuevos (wireBuscador_ filtra por activo), pero el
+// histórico de quién la tuvo sigue en pie.
+function abrirDescontinuar_(herrId) {
+  const herr = INV.catMap.get(herrId);
+  if (!herr) return;
+  const baja = descontinuada_(herr);
+  const libres = libresDe_(herrId);
+  const mal = malogradasDe_(herrId);
+  const asig = asignadasPorHerr_().get(herrId)?.unidades || 0;
+  const pendientes = libres + mal + asig;
+
+  const body = baja
+    ? `<div class="adminForm">
+        <div class="invStockPick">
+          <span class="invSearchCat">${esc(herr.categoria || "")}</span><strong>${esc(detalleDe_(herr))}</strong>
+        </div>
+        <p class="small muted">Está descontinuada desde
+          ${herr.descontinuada_at ? esc(new Date(herr.descontinuada_at).toLocaleDateString("es-PE")) : "hace un tiempo"}.
+          ${herr.descontinuada_motivo ? `Motivo: <em>${esc(herr.descontinuada_motivo)}</em>.` : ""}
+        </p>
+        <p class="small muted">Al reactivarla vuelve a aparecer en entregas, kits y buscadores.</p>
+      </div>`
+    : `<div class="adminForm">
+        <div class="invStockPick">
+          <span class="invSearchCat">${esc(herr.categoria || "")}</span><strong>${esc(detalleDe_(herr))}</strong>
+        </div>
+        ${saldoHtml_(herrId)}
+        <p class="small muted">Deja de ofrecerse en entregas, kits y buscadores.
+        <strong>No se borra</strong>: el histórico de quién la tuvo se conserva y las unidades
+        que sigan por ahí se pueden seguir devolviendo y desechando.</p>
+        ${pendientes ? `<div class="invStockAviso">${icon("alertTriangle", 14)}
+          <span>Todavía hay <strong>${pendientes}</strong> unidad(es) sin recuperar
+          (${libres} libre(s), ${mal} malograda(s), ${asig} con técnicos). Puedes descontinuarla igual;
+          quedarán listadas en «Malogradas y descontinuadas» hasta que las recojas.</span>
+        </div>` : ""}
+        <label class="adminLabel">¿Por qué se descontinúa? <span class="adminLabelHint">(obligatorio)</span>
+          <input id="invDcNota" type="text" placeholder="Ej: se cambió por el modelo inalámbrico">
+        </label>
+      </div>`;
+
+  abrirModal_(baja ? `Reactivar · ${esc(detalleDe_(herr))}` : `Descontinuar · ${esc(detalleDe_(herr))}`, body, async () => {
+    try {
+      if (baja) {
+        await supabasePatch("herramientas_catalogo", { id: herrId },
+          { activo: true, descontinuada_motivo: "", descontinuada_at: null });
+        await logMov_({
+          tipo: "REACTIVAR", herramienta_id: herrId, descripcion: herr.nombre,
+          cantidad: 0, nota: "Vuelve al catálogo activo", hecho_por: operador_(),
+        });
+        invMsg("Herramienta reactivada.");
+      } else {
+        const nota = $id("invDcNota")?.value?.trim() || "";
+        if (!nota) { invMsg("Escribe por qué se descontinúa.", true); return false; }
+        await supabasePatch("herramientas_catalogo", { id: herrId },
+          { activo: false, descontinuada_motivo: nota, descontinuada_at: new Date().toISOString() });
+        await logMov_({
+          tipo: "DESCONTINUAR", herramienta_id: herrId, descripcion: herr.nombre,
+          cantidad: pendientes, nota, hecho_por: operador_(),
+        });
+        invMsg("Herramienta descontinuada. Ya no se ofrecerá en entregas ni kits.");
+      }
+      await cargarBase_();
+      await renderStockSub_();
+      return true;
+    } catch (e) { invMsg(errorMsg_(e), true); return false; }
+  });
+}
+
+// ── FICHA · mínimo, ubicación, nota y conteo físico ──
+// El conteo físico es el "ajuste de inventario": se escribe lo que realmente
+// hay en el estante y el sistema registra la diferencia en la bitácora.
+function abrirFichaStock_(herrId) {
+  const herr = INV.catMap.get(herrId);
+  const fila = stockDe_(herrId);
+  if (!herr || !fila) return;
+  const libres = Number(fila.cantidad_almacen) || 0;
+  const malActual = Number(fila.cantidad_malogrado) || 0;
+  const body = `
+    <div class="adminForm">
+      <div class="invStockPick">
+        <span class="invSearchCat">${esc(herr.categoria || "")}</span><strong>${esc(detalleDe_(herr))}</strong>
+      </div>
+      ${saldoHtml_(herrId)}
+      <div class="invCodGrid">
+        <label class="adminLabel">Conteo físico · sanas <span class="adminLabelHint">(lo que hay de verdad y sirve)</span>
+          <input id="invFiCont" type="number" value="${libres}">
+        </label>
+        <label class="adminLabel">Conteo físico · malogradas <span class="adminLabelHint">(rotas en el estante)</span>
+          <input id="invFiContMal" type="number" value="${malActual}">
+        </label>
+      </div>
+      <div class="invCodGrid">
+        <label class="adminLabel">Stock mínimo <span class="adminLabelHint">(avisa para reponer)</span>
+          <input id="invFiMin" type="number" min="0" value="${Number(fila.stock_minimo) || 0}">
+        </label>
+        <label class="adminLabel">Ubicación<input id="invFiUbic" type="text" value="${esc(fila.ubicacion || "")}" placeholder="Ej: Estante B-2"></label>
+      </div>
+      <label class="adminLabel">Nota interna<input id="invFiNota" type="text" value="${esc(fila.nota || "")}" placeholder="Ej: las 2 nuevas siguen en caja"></label>
+    </div>`;
+  abrirModal_(`Ficha de almacén · ${esc(detalleDe_(herr))}`, body, async () => {
+    const contado = Number($id("invFiCont")?.value);
+    const contadoMal = Number($id("invFiContMal")?.value);
+    if (!Number.isFinite(contado) || !Number.isFinite(contadoMal)) {
+      invMsg("Los conteos físicos deben ser números.", true); return false;
+    }
+    const data = {
+      stock_minimo: Math.max(0, Number($id("invFiMin")?.value) || 0),
+      ubicacion: $id("invFiUbic")?.value?.trim() || "",
+      nota: $id("invFiNota")?.value?.trim() || "",
+      cantidad_almacen: contado,
+      cantidad_malogrado: contadoMal,
+      updated_at: new Date().toISOString(),
+    };
+    try {
+      await supabasePatch("inventario_stock", { id: fila.id }, data);
+      Object.assign(fila, data);
+      const delta = contado - libres;
+      const deltaMal = contadoMal - malActual;
+      if (delta !== 0 || deltaMal !== 0) {
+        const partes = [];
+        if (delta !== 0)    partes.push(`sanas ${libres} → ${contado} (${delta > 0 ? "+" : ""}${delta})`);
+        if (deltaMal !== 0) partes.push(`malogradas ${malActual} → ${contadoMal} (${deltaMal > 0 ? "+" : ""}${deltaMal})`);
+        await logMov_({
+          tipo: "AJUSTE",
+          herramienta_id: herrId,
+          descripcion: herr.nombre,
+          cantidad: Math.abs(delta) + Math.abs(deltaMal),
+          nota: `Conteo físico: ${partes.join(" · ")}`,
+          hecho_por: operador_(),
+        });
+        invMsg(`Ajustado por conteo físico: ${partes.join(" · ")}.`);
+      } else {
+        invMsg("Ficha guardada.");
+      }
+      await renderStockSub_();
+      return true;
+    } catch (e) { invMsg(errorMsg_(e), true); return false; }
+  });
+}
+
+// ── ENTREGA · almacén → técnico (sale del estante, entra a su hoja) ──
+function abrirEntregarStock_(herrId) {
+  const herr = INV.catMap.get(herrId);
+  if (!herr) return;
+  const libres = libresDe_(herrId);
+  const body = `
+    <div class="adminForm">
+      <div class="invStockPick">
+        <span class="invSearchCat">${esc(herr.categoria || "")}</span><strong>${esc(detalleDe_(herr))}</strong>
+      </div>
+      ${saldoHtml_(herrId)}
+      <label class="adminLabel">¿A qué técnico?
+        <div class="invBuscador">
+          <input id="invEgTec" type="text" autocomplete="off" placeholder="Escribe su nombre…">
+          <input type="hidden" id="invEgTecId">
+          <div id="invEgTecList" class="vinSuggest hidden" role="listbox"></div>
+        </div>
+        <span class="adminLabelHint">Si aún no tiene hoja de inventario, se le crea sola.</span>
+      </label>
+      <div class="invCodGrid">
+        <label class="adminLabel">Cantidad<input id="invEgCant" type="number" min="1" value="1"></label>
+        <label class="adminLabel">Marca<input id="invEgMarca" type="text" placeholder="Ej: Stanley"></label>
+      </div>
+      <div class="invCodGrid">
+        <label class="adminLabel">Código de la empresa <span class="adminLabelHint">(opcional)</span>
+          <input id="invEgCodigo" type="text" placeholder="Ej: GLP-0142" autocomplete="off">
+        </label>
+        <label class="adminLabel">N° de serie (SN) <span class="adminLabelHint">(opcional)</span>
+          <input id="invEgSerie" type="text" placeholder="Ej: 12A4-889231" autocomplete="off">
+        </label>
+      </div>
+      <label class="adminLabel">Nota de la entrega<input id="invEgNota" type="text" placeholder="Ej: reemplazo del que se rompió"></label>
+    </div>`;
+
+  abrirModal_(`Entregar a un técnico · ${esc(detalleDe_(herr))}`, body, async () => {
+    const uid = $id("invEgTecId")?.value || "";
+    if (!uid) { invMsg("Elige al técnico de la lista de sugerencias.", true); return false; }
+    const cant = Math.max(1, Number($id("invEgCant")?.value) || 0);
+    const codigo = $id("invEgCodigo")?.value?.trim() || "";
+    const serie  = $id("invEgSerie")?.value?.trim() || "";
+    if ((codigo || serie) && cant !== 1) { invMsg("Con código o SN la cantidad debe ser 1 (es una unidad concreta).", true); return false; }
+    if (cant > libres && !confirm(`Solo hay ${libres} libre(s) en el almacén. ¿Entregar ${cant} igual? El saldo quedará negativo.`)) return false;
+    const nota = $id("invEgNota")?.value?.trim() || "";
+    const data = {
+      herramienta_id: herrId,
+      descripcion_libre: "",
+      marca: $id("invEgMarca")?.value?.trim() || "",
+      codigo, serie,
+      cantidad: cant,
+      estado: "OK",
+      nota,
+    };
+    try {
+      const hoja = await asegurarHoja_(uid);
+      const itemsDestino = await supabaseGet("inventario_tecnico_items", { inventario_id: hoja.id });
+      await insertarOSumar_(hoja.id, data, itemsDestino);
+      const saldo = await moverStock_(herrId, -cant, {
+        tipo: "ENTREGA",
+        marca: data.marca, codigo, serie,
+        destino_user_id: uid,
+        destino_nombre: nombreUsuario_(uid),
+        nota, hecho_por: operador_(),
+      });
+      invMsg(`Entregadas ${cant} unidad(es) a ${nombreUsuario_(uid)}. Libres ahora: ${saldo ?? "—"}.`);
+      await renderStockSub_();
+      return true;
+    } catch (e) { invMsg(errorMsg_(e), true); return false; }
+  });
+
+  wireTecnicoSuggest_("invEgTec", "invEgTecList", "invEgTecId");
+}
+
+// ── DEVOLUCIÓN · técnico → almacén (vuelve al estante) ──
+async function devolverAlAlmacen_(itemId) {
+  const it = INV.invItems.find(x => x.id === itemId);
+  if (!it) return;
+  if (!it.herramienta_id) {
+    invMsg("Ese ítem es texto libre: pásalo primero al catálogo para poder devolverlo al almacén.", true);
+    return;
+  }
+  const total = cantidadDe_(it);
+  // Si en su hoja estaba marcada como mala, la devolución se propone rota.
+  const rota = it.estado === "MAL";
+  const body = `
+    <div class="adminForm">
+      <div class="invStockPick"><strong>${esc(nombreItem(it))}</strong> ${codigosChips_(it)}</div>
+      <p class="small muted">Sale de la hoja del técnico y vuelve al estante del almacén.</p>
+      ${saldoHtml_(it.herramienta_id)}
+      <label class="adminLabel">Cantidad que devuelve <span class="adminLabelHint">(tiene ${total})</span>
+        <input id="invDevCant" type="number" min="1" max="${total}" value="${total}">
+      </label>
+      <label class="adminLabel">¿En qué estado vuelve?
+        <select id="invDevEstado" class="adminInput">
+          <option value="OK"${rota ? "" : " selected"}>Buena — vuelve al estante lista para entregar</option>
+          <option value="MAL"${rota ? " selected" : ""}>Malograda — entra a la pila de rotas</option>
+        </select>
+        <span class="adminLabelHint">Se propone según cómo estaba marcada en su hoja (${esc(ESTADO_LABEL[it.estado] || it.estado)}).</span>
+      </label>
+      <label class="adminLabel">Nota<input id="invDevNota" type="text" placeholder="Ej: cambio de área"></label>
+    </div>`;
+  abrirModal_("Devolver al almacén", body, async () => {
+    const cant = Math.min(total, Math.max(1, Number($id("invDevCant")?.value) || 0));
+    const nota = $id("invDevNota")?.value?.trim() || "";
+    const mala = $id("invDevEstado")?.value === "MAL";
+    try {
+      if (cant >= total) await supabaseDelete("inventario_tecnico_items", { id: it.id });
+      else await supabasePatch("inventario_tecnico_items", { id: it.id }, { cantidad: total - cant });
+      await asegurarStock_(it.herramienta_id);
+      // Si vuelve rota entra directo a malogradas: si entrara como libre, el
+      // almacén ofrecería para entregar algo que no sirve.
+      await ajustarStock_(it.herramienta_id, mala ? { malogradas: cant } : { libres: cant }, {
+        tipo: "DEVOLUCION",
+        marca: it.marca || "", codigo: it.codigo || "", serie: it.serie || "",
+        origen_user_id: INV.selTecId,
+        origen_nombre: nombreUsuario_(INV.selTecId),
+        nota: mala ? `Vuelve malograda${nota ? ` · ${nota}` : ""}` : nota,
+        hecho_por: operador_(),
+      });
+      invMsg(`Devueltas ${cant} unidad(es) al almacén${mala ? " como malogradas" : ""}.`);
+      await abrirInventarioTec_(INV.selTecId, INV.invActual);
+      return true;
+    } catch (e) { invMsg(errorMsg_(e), true); return false; }
+  });
+}
+
+// ── Autocompletado de técnicos (name suggest) ──
+// Usa /api/name-suggest, igual que el resto de la app. El hidden se limpia
+// si el usuario sigue escribiendo, para no entregarle nada al técnico
+// equivocado por una selección vieja.
+function wireTecnicoSuggest_(inputId, boxId, hiddenId, onPick) {
+  const inp = $id(inputId);
+  if (!inp) return null;
+  const w = createNameSuggest_({
+    input: inputId,
+    box: boxId,
+    onPick(item) {
+      const h = $id(hiddenId);
+      if (h) h.value = item.userId || "";
+      inp.value = item.name || item.email || "";
+      onPick?.(item);
+    },
+  });
+  w.bind();
+  inp.addEventListener("input", () => { const h = $id(hiddenId); if (h) h.value = ""; });
+  return w;
+}
+
+// ── Excel de existencias ──
+const HEADERS_STOCK = [
+  "Categoría", "Herramienta", "Especialidad",
+  "Libres", "Malogradas", "Asignadas", "Total",
+  "Mínimo", "Ubicación", "Estado", "Motivo de baja", "Nota",
+];
+
+async function exportarStockXls_() {
+  if (!stockDisponible_()) { invMsg("Existencias no está activo todavía.", true); return; }
+  invMsg("Generando Excel de existencias…");
+  try {
+    await cargarSnapshot_();
+    const asig = asignadasPorHerr_();
+    const filas = INV.catalogo.map(h => {
+      const st = stockDe_(h.id);
+      const libres = Number(st?.cantidad_almacen) || 0;
+      const malogradas = Number(st?.cantidad_malogrado) || 0;
+      const asignadas = asig.get(h.id)?.unidades || 0;
+      const minimo = Number(st?.stock_minimo) || 0;
+      const baja = descontinuada_(h);
+      return [
+        h.categoria || "",
+        h.nombre,
+        h.especialidad || "",
+        libres,
+        malogradas,
+        asignadas,
+        libres + malogradas + asignadas,
+        minimo,
+        st?.ubicacion || "",
+        baja ? "Descontinuada" : NIVEL_META[nivelStock_(libres, minimo)].label,
+        baja ? (h.descontinuada_motivo || "") : "",
+        st?.nota || "",
+      ];
+    }).sort((a, b) => String(a[0]).localeCompare(String(b[0])) || String(a[1]).localeCompare(String(b[1])));
+
+    // Hoja aparte con lo que hay que atender: roto o fuera de uso.
+    const taller = filas.filter(r => Number(r[4]) > 0 || r[9] === "Descontinuada");
+
+    exportXls_({
+      filename: `EXISTENCIAS_${fechaArchivo_()}.xls`,
+      sheets: [
+        {
+          nombre: "Existencias",
+          headers: HEADERS_STOCK,
+          rows: filas,
+        },
+        {
+          nombre: "Malogradas y descontinuadas",
+          titulo: "Unidades rotas esperando reparación y herramientas fuera de uso",
+          headers: HEADERS_STOCK,
+          rows: taller,
+        },
+      ],
+    });
+    invMsg("Excel de existencias generado.");
+  } catch (e) { invMsg(errorMsg_(e), true); }
 }
 
 // =====================================================================
@@ -1439,10 +2419,35 @@ async function pintarMovimientos_() {
   }
   const filas = movs.map(m => {
     const fecha = m.created_at ? new Date(m.created_at).toLocaleString("es-PE", { dateStyle: "short", timeStyle: "short" }) : "";
-    const ruta = m.tipo === "TRASPASO"
-      ? `${esc(m.origen_nombre || "—")} → <strong>${esc(m.destino_nombre || "—")}</strong>`
-      : `<strong>${esc(m.destino_nombre || "—")}</strong>`;
-    const claseTipo = { TRASPASO: "adminBadgeWarn", ASIGNACION: "adminBadgeOk", AUDITORIA: "" }[m.tipo] ?? "";
+    const ALMACEN = `<span class="invMovAlmacen">Almacén</span>`;
+    const ruta =
+      m.tipo === "TRASPASO"   ? `${esc(m.origen_nombre || "—")} → <strong>${esc(m.destino_nombre || "—")}</strong>`
+    : m.tipo === "ENTREGA"    ? `${ALMACEN} → <strong>${esc(m.destino_nombre || "—")}</strong>`
+    : m.tipo === "DEVOLUCION" ? `${esc(m.origen_nombre || "—")} → ${ALMACEN}`
+    : m.tipo === "ENTRADA"    ? `→ ${ALMACEN}`
+    : m.tipo === "SALIDA"     ? `${ALMACEN} → baja`
+    : m.tipo === "AJUSTE"     ? `${ALMACEN} · conteo físico`
+    : m.tipo === "AVERIA"     ? `${ALMACEN} · libres → malogradas`
+    : m.tipo === "REPARACION" ? `${ALMACEN} · malogradas → libres`
+    : m.tipo === "DESECHO"    ? `${ALMACEN} → desechada`
+    : m.tipo === "DESCONTINUAR" ? `Catálogo · fuera de uso`
+    : m.tipo === "REACTIVAR"  ? `Catálogo · vuelve al uso`
+    : `<strong>${esc(m.destino_nombre || "—")}</strong>`;
+    const claseTipo = {
+      TRASPASO:     "adminBadgeWarn",
+      ASIGNACION:   "adminBadgeOk",
+      ENTRADA:      "adminBadgeOk",
+      DEVOLUCION:   "adminBadgeOk",
+      REPARACION:   "adminBadgeOk",
+      REACTIVAR:    "adminBadgeOk",
+      ENTREGA:      "adminBadgeWarn",
+      AVERIA:       "adminBadgeWarn",
+      AJUSTE:       "adminBadgeWarn",
+      SALIDA:       "adminBadgeDanger",
+      DESECHO:      "adminBadgeDanger",
+      DESCONTINUAR: "adminBadgeDanger",
+      AUDITORIA:    "",
+    }[m.tipo] ?? "";
     return `
       <tr>
         <td class="small muted">${esc(fecha)}</td>

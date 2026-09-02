@@ -30,6 +30,7 @@ import { openSettingsSheet } from "./js/core/settings-sheet.js";
 import { loadConfig } from "./js/core/config.js";
 import { initLive } from "./js/core/live.js";
 import { initAvatarUpload } from "./js/views/avatar-upload.js";
+import { renderInventarioTab } from "./js/views/admin/inventario.js";
 
 // Aplicar ajustes guardados (fuente, acento) antes de cualquier render
 initAppSettings();
@@ -41,6 +42,12 @@ loadConfig();
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") loadConfig();
 });
+
+// ---------- RUTA /inventario ----------
+// El inventario tiene su propia URL para que el encargado del almacén entre
+// directo (mi-dominio/inventario) sin pasar por el panel de Admin. Es la
+// misma vista; solo cambia el marco. "Volver" regresa al dominio a secas.
+const EN_RUTA_INVENTARIO = /^\/inventario\/?$/i.test(location.pathname);
 
 const root = document.getElementById("appRoot");
 if (root) root.innerHTML = appShell();
@@ -103,7 +110,9 @@ async function doLogin(email) {
     // Inicializar avatar upload (disponible en Hub y en módulos)
     initAvatarUpload();
 
-    if (mods.length > 1) {
+    if (EN_RUTA_INVENTARIO) {
+      openInventarioPage_();
+    } else if (mods.length > 1) {
       hideAllModulesUI();
       showHubUI(mods, (m) => openModule(m));
       CORE.state.currentModule = null;
@@ -130,10 +139,45 @@ function applyToroForUser_(email, profile) {
   else delete document.body.dataset.toro;
 }
 
+// ---------- PÁGINA DE INVENTARIO (/inventario) ----------
+function hideInventarioPage_() {
+  const v = document.getElementById("viewInventario");
+  if (v) v.style.display = "none";
+}
+
+function openInventarioPage_() {
+  hideUploaderView();
+  hideAllModulesUI();
+  const hub = $("viewHub");
+  if (hub) hub.style.display = "none";
+
+  const v = document.getElementById("viewInventario");
+  const body = document.getElementById("invPageBody");
+  if (!v || !body) return;
+  v.style.display = "block";
+  // El inventario se escribió dentro del panel de Admin y su CSS cuelga de
+  // ahí; marcamos el módulo para que se vea igual fuera del panel.
+  document.body.dataset.appModule = "ADMIN";
+  CORE.state.currentModule = null;
+
+  // Es información sensible del almacén: solo quien tiene el módulo ADMIN.
+  if (!effectiveModulos(CORE.state.currentProfile).includes("ADMIN")) {
+    body.innerHTML = `<div class="invPageDenied">
+      <h3>Sin acceso</h3>
+      <p class="small muted">El inventario es del área de almacén. Pide al administrador que te habilite el módulo ADMIN.</p>
+    </div>`;
+    return;
+  }
+  renderInventarioTab(body);
+}
+
+$("invPageBack")?.addEventListener("click", () => { window.location.href = "/"; });
+
 // ---------- OPEN MODULE ----------
 function openModule(m) {
   // ✅ oculta uploader por si estaba abierto
   hideUploaderView();
+  hideInventarioPage_();
 
   // exit view actual
   openView(m);
@@ -173,6 +217,7 @@ $("btnAppSettings")?.addEventListener("click", openSettingsSheet);
 
 $("btnRegistroFallas")?.addEventListener("click", () => {
   // Oculta vistas actuales
+  hideInventarioPage_();
   hideAllModulesUI();
   $("viewHub") && ($("viewHub").style.display = "none");
 
@@ -191,6 +236,7 @@ $("btnGoHome")?.addEventListener("click", () => {
   const mods = effectiveModulos(CORE.state.currentProfile);
 
   hideUploaderView();
+  hideInventarioPage_();
   hideAllModulesUI();
 
   showHubUI(mods, (m) => openModule(m));
@@ -215,6 +261,7 @@ $("btnLogout")?.addEventListener("click", () => {
   VConversion.exit("CALIDAD");
   VRamalero.exit();
   VMovilizador.exit();
+  hideInventarioPage_();
   hideAllModulesUI();
   $("viewHub").style.display = "none";
   $("btnGoHome")?.classList.add("hidden");
