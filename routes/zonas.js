@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { supabaseHeaders_ } from "../lib/supabase.js";
 import { emitEvent_ } from "../lib/events.js";
+import { dispararMotor_, despachoReparteAhora_ } from "./despacho.js";
 
 const router = Router();
 
@@ -214,6 +215,23 @@ router.post("/api/zonas/asignar", async (req, res) => {
     // zona_id=16 = sin ubicación → ya se limpió en paso 1, no hay más acción
 
     emitEvent_("zonas", { accion: "ASIGNADA" });
+
+    // Un carro que entra a una zona física es trabajo nuevo, y el motor solo
+    // ve los carros que están en conversion_zonas: hasta que este VIN no cae
+    // ahí, para el reparto no existe. Se dispara YA en vez de esperar al
+    // intervalo, que es el mismo atajo que ya toma el FIN de un técnico.
+    //
+    // Zona 16 no dispara: ahí el carro SALE del mapa, no aparece trabajo.
+    //
+    // Fire-and-forget a propósito: la respuesta del registro no puede quedar
+    // colgada de una corrida del motor, que consulta media base. Si falla, el
+    // intervalo lo recoge igual — el disparo es un atajo, nunca el único camino.
+    if (zonaNum >= 1 && zonaNum <= 15) {
+      despachoReparteAhora_()
+        .then(puede => { if (puede) return dispararMotor_(`registro de ${vinNorm} en Z${zonaNum}`); })
+        .catch(err => console.warn("[Zonas] Disparo del motor falló:", err.message));
+    }
+
     return res.json({ ok: true, zona_id: zonaNum >= 1 && zonaNum <= 15 ? zonaNum : 16 });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e.message) });
