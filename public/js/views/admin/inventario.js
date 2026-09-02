@@ -362,8 +362,12 @@ async function logMov_(mov) {
 // Mensaje de error legible para choques de código/SN duplicado.
 function errorMsg_(e) {
   const m = e?.message || String(e);
-  if (/idx_inv_items_codigo_uniq/.test(m)) return "Ese código de empresa ya está registrado en otra herramienta.";
-  if (/idx_inv_items_serie_uniq/.test(m))  return "Ese número de serie ya está registrado en otra herramienta.";
+  if (/idx_inv_items_codigo_uniq|idx_inv_stku_codigo_uniq/.test(m))
+    return "Ese código de empresa ya está registrado en otra unidad.";
+  if (/idx_inv_items_serie_uniq|idx_inv_stku_serie_uniq/.test(m))
+    return "Ese número de serie ya está registrado en otra unidad.";
+  if (/inventario_stock_unidades.*does not exist|relation .*stock_unidades/i.test(m))
+    return "Falta la tabla de unidades. Ejecuta supabase/inventario-stock.sql en Supabase.";
   return m;
 }
 
@@ -1876,25 +1880,108 @@ function saldoHtml_(herrId) {
     </div>`;
 }
 
-// Campos de identificación, los mismos que al asignar a un técnico.
-function camposIdentidadHtml_(pref, { marca = "", codigo = "", serie = "" } = {}) {
+// =====================================================================
+//  IDENTIFICAR UNIDADES · una fila por objeto físico
+//  La herramienta del catálogo es la "clase" (kit taladro Makita 18V) y
+//  cada unidad es un objeto con su propio código y su propio SN. Por eso
+//  al ingresar 3 taladros salen 3 renglones que llenar, no uno solo.
+//  La marca y la ubicación se piden una vez: suelen ser la misma compra.
+// =====================================================================
+
+// Renglones de identificación para `n` unidades. `base` rellena valores.
+function filasUnidadHtml_(n, pref, base = []) {
+  const filas = [];
+  for (let i = 0; i < n; i++) {
+    const b = base[i] || {};
+    filas.push(`
+      <div class="invUnitFormRow" data-i="${i}">
+        <span class="invUnitFormN">${i + 1}</span>
+        <input class="${pref}Cod" type="text" value="${esc(b.codigo || "")}"
+          placeholder="Código de empresa" autocomplete="off" spellcheck="false">
+        <input class="${pref}Ser" type="text" value="${esc(b.serie || "")}"
+          placeholder="N° de serie (SN)" autocomplete="off" spellcheck="false">
+      </div>`);
+  }
+  return filas.join("");
+}
+
+// Lee los renglones y devuelve { unidades, error }.
+// Cada unidad necesita al menos código o SN — si no, no está identificada.
+function leerUnidadesForm_(pref, { marca = "", ubicacion = "", nota = "" } = {}) {
+  const cods = [...document.querySelectorAll(`.${pref}Cod`)];
+  const sers = [...document.querySelectorAll(`.${pref}Ser`)];
+  if (!cods.length) return { error: "No hay unidades que registrar." };
+  const unidades = [];
+  const vistos = new Set();
+
+  for (let i = 0; i < cods.length; i++) {
+    const codigo = (cods[i].value || "").trim();
+    const serie  = (sers[i]?.value || "").trim();
+    if (!codigo && !serie) return { error: `A la unidad #${i + 1} le falta el código o el número de serie.` };
+    // Duplicados dentro del mismo formulario: la base los rechazaría, pero
+    // mejor avisar antes de haber grabado la mitad.
+    for (const v of [codigo && `c:${codigo.toLowerCase()}`, serie && `s:${serie.toLowerCase()}`]) {
+      if (!v) continue;
+      if (vistos.has(v)) return { error: `“${codigo || serie}” está repetido en la lista.` };
+      vistos.add(v);
+    }
+    unidades.push({ marca, codigo, serie, estado: "OK", ubicacion, nota });
+  }
+  return { unidades };
+}
+
+// Bloque completo: cuántas, marca/ubicación comunes y los renglones.
+// `idCant` es el input de cantidad que manda cuántos renglones se pintan.
+function bloqueIdentidadHtml_(pref, { marca = "" } = {}) {
   return `
     <label class="invField">
-      <span class="invFieldLabel">Marca</span>
-      <input id="${pref}Marca" type="text" value="${esc(marca)}" placeholder="Ej: Stanley" autocomplete="off">
+      <span class="invFieldLabel">Marca <span class="invFieldHint">(la misma para todas las de esta entrada)</span></span>
+      <input id="${pref}Marca" type="text" value="${esc(marca)}" placeholder="Ej: Makita" autocomplete="off">
     </label>
-    <div class="invFieldRow">
-      <label class="invField">
-        <span class="invFieldLabel">Código de la empresa</span>
-        <input id="${pref}Codigo" type="text" value="${esc(codigo)}" placeholder="Ej: GLP-0142" autocomplete="off">
-      </label>
-      <label class="invField">
-        <span class="invFieldLabel">N° de serie (SN)</span>
-        <input id="${pref}Serie" type="text" value="${esc(serie)}" placeholder="Ej: 12A4-889231" autocomplete="off">
+
+    <div class="invSwitchRow">
+      <label class="invSwitch">
+        <input id="${pref}Ident" type="checkbox">
+        <span>Identificar cada unidad con su código y su SN</span>
       </label>
     </div>
-    <p class="invHint">${icon("tag", 12)} Si pones código o SN, la unidad queda <strong>identificada</strong>:
-    se registra una por una y se puede rastrear. Sin ellos entra a granel, como cantidad.</p>`;
+    <p class="invHint">${icon("tag", 12)}
+      <strong>Identificadas:</strong> cada unidad es un objeto rastreable — sabes cuál taladro tiene quién.
+      <strong>A granel:</strong> solo cuentas cuántas hay, como con los alicates.</p>
+
+    <div id="${pref}IdentBox" class="invUnitForm" hidden>
+      <div class="invUnitFormHead">
+        <span class="invUnitFormN">#</span><span>Código de la empresa</span><span>N° de serie (SN)</span>
+      </div>
+      <div id="${pref}Rows"></div>
+    </div>`;
+}
+
+// Enlaza cantidad ↔ renglones. Al subir la cantidad aparecen más filas,
+// conservando lo ya escrito.
+function wireIdentidad_(pref, idCant) {
+  const chk = $id(`${pref}Ident`);
+  const box = $id(`${pref}IdentBox`);
+  const rows = $id(`${pref}Rows`);
+  const cant = $id(idCant);
+  if (!chk || !box || !rows) return;
+
+  const pintar = () => {
+    if (!chk.checked) { box.hidden = true; return; }
+    box.hidden = false;
+    const n = Math.max(1, Math.min(50, Number(cant?.value) || 1));
+    const previo = leerCrudo_(pref);
+    rows.innerHTML = filasUnidadHtml_(n, pref, previo);
+  };
+  // Lectura tolerante: solo para no perder lo tecleado al repintar.
+  const leerCrudo_ = (p) => [...document.querySelectorAll(`.${p}Cod`)].map((c, i) => ({
+    codigo: c.value || "",
+    serie: document.querySelectorAll(`.${p}Ser`)[i]?.value || "",
+  }));
+
+  chk.addEventListener("change", pintar);
+  cant?.addEventListener("input", pintar);
+  pintar();
 }
 
 // ── ENTRADA · compra o ingreso de unidades al almacén ──
@@ -1914,7 +2001,7 @@ function abrirEntradaStock_(herrId) {
           <input id="invEntUbic" type="text" value="${esc(herr ? (stockDe_(herr.id)?.ubicacion || "") : "")}" placeholder="Ej: Estante B-2">
         </label>
       </div>
-      ${camposIdentidadHtml_("invEnt")}
+      ${bloqueIdentidadHtml_("invEnt")}
       <label class="invField">
         <span class="invFieldLabel">Motivo / documento <span class="invFieldHint">(guía, factura, quién trajo)</span></span>
         <input id="invEntNota" type="text" placeholder="Ej: compra guía 0042">
@@ -1928,31 +2015,32 @@ function abrirEntradaStock_(herrId) {
     const ubic = $id("invEntUbic")?.value?.trim() || "";
     const nota = $id("invEntNota")?.value?.trim() || "";
     const marca = $id("invEntMarca")?.value?.trim() || "";
-    const codigo = $id("invEntCodigo")?.value?.trim() || "";
-    const serie = $id("invEntSerie")?.value?.trim() || "";
-    // Código y SN identifican UNA unidad concreta: no admiten cantidad > 1.
-    if ((codigo || serie) && cant !== 1) {
-      invMsg("Con código o número de serie la cantidad debe ser 1: identifican una sola unidad.", true);
-      return false;
-    }
+    const identificar = !!$id("invEntIdent")?.checked;
+
     try {
       await asegurarStock_(hid);
-      if (codigo || serie) {
-        await supabasePost("inventario_stock_unidades", {
-          herramienta_id: hid, marca, codigo, serie,
-          estado: "OK", ubicacion: ubic, nota,
-        });
-        await logMov_({
-          tipo: "ENTRADA", herramienta_id: hid,
-          descripcion: INV.catMap.get(hid)?.nombre || "",
-          marca, codigo, serie, cantidad: 1, nota, hecho_por: operador_(),
-        });
-        invMsg(`Ingresada 1 unidad identificada (${[codigo, serie && `SN ${serie}`].filter(Boolean).join(" · ")}).`);
+
+      if (identificar) {
+        // Una fila por unidad física: cada taladro con su código y su SN.
+        const { unidades, error } = leerUnidadesForm_("invEnt", { marca, ubicacion: ubic, nota });
+        if (error) { invMsg(error, true); return false; }
+        await supabasePost("inventario_stock_unidades",
+          unidades.map(u => ({ ...u, herramienta_id: hid })));
+        for (const u of unidades) {
+          await logMov_({
+            tipo: "ENTRADA", herramienta_id: hid,
+            descripcion: INV.catMap.get(hid)?.nombre || "",
+            marca: u.marca, codigo: u.codigo, serie: u.serie,
+            cantidad: 1, nota, hecho_por: operador_(),
+          });
+        }
+        invMsg(`Ingresadas ${unidades.length} unidad(es) identificada(s).`);
       } else {
         const saldo = await moverStock_(hid, cant, { tipo: "ENTRADA", marca, nota, hecho_por: operador_() });
         if (saldo == null) { invMsg("Esa herramienta no tiene ficha de almacén.", true); return false; }
-        invMsg(`Entraron ${cant} unidad(es) a granel. Libres ahora: ${libresDe_(hid)}.`);
+        invMsg(`Entraron ${cant} unidad(es) a granel.`);
       }
+
       if (ubic) {
         const fila = stockDe_(hid);
         if (fila) { await supabasePatch("inventario_stock", { id: fila.id }, { ubicacion: ubic }); fila.ubicacion = ubic; }
@@ -1962,10 +2050,88 @@ function abrirEntradaStock_(herrId) {
     } catch (e) { invMsg(errorMsg_(e), true); return false; }
   });
 
+  wireIdentidad_("invEnt", "invEntCant");
+
   if (!herr) wireBuscador_($id("invEntSearch"), $id("invEntList"), $id("invEntHerr"), (h) => {
     const u = $id("invEntUbic");
     if (u && !u.value) u.value = stockDe_(h.id)?.ubicacion || "";
   });
+}
+
+// ── IDENTIFICAR · convierte unidades sueltas en objetos rastreables ──
+// Para lo que ya se cargó a granel: “tengo 3 taladros contados, ahora quiero
+// saber cuál es cuál”. Baja el contador y crea una fila por unidad.
+function abrirIdentificarStock_(herrId) {
+  const herr = INV.catMap.get(herrId);
+  if (!herr) return;
+  const granel = granelLibresDe_(herrId);
+  if (granel < 1) {
+    invMsg("No hay unidades sueltas que identificar. Si son nuevas, usa «Ingresar al almacén».", true);
+    return;
+  }
+
+  const body = `
+    <div class="invForm">
+      <div class="invPickShow">
+        ${herr.categoria ? `<span class="invCatTag">${esc(herr.categoria)}</span>` : ""}
+        <strong>${esc(detalleDe_(herr))}</strong>
+      </div>
+      ${saldoHtml_(herrId)}
+      <p class="invHint">Tienes <strong>${granel}</strong> unidad(es) contadas a granel. Al identificarlas,
+      cada una pasa a ser un objeto propio con su código y su número de serie — el total no cambia,
+      solo dejas de contarlas en montón.</p>
+      <div class="invFieldRow">
+        <label class="invField">
+          <span class="invFieldLabel">¿Cuántas vas a identificar? <span class="invFieldHint">(de ${granel})</span></span>
+          <input id="invIdCant" type="number" min="1" max="${granel}" value="${Math.min(granel, 10)}">
+        </label>
+        <label class="invField">
+          <span class="invFieldLabel">Marca <span class="invFieldHint">(la misma para todas)</span></span>
+          <input id="invIdMarca" type="text" placeholder="Ej: Makita" autocomplete="off">
+        </label>
+      </div>
+      <div class="invUnitForm">
+        <div class="invUnitFormHead">
+          <span class="invUnitFormN">#</span><span>Código de la empresa</span><span>N° de serie (SN)</span>
+        </div>
+        <div id="invIdRows"></div>
+      </div>
+    </div>`;
+
+  abrirModal_(`Identificar unidades · ${esc(detalleDe_(herr))}`, body, async () => {
+    const marca = $id("invIdMarca")?.value?.trim() || "";
+    const { unidades, error } = leerUnidadesForm_("invId", {
+      marca, ubicacion: stockDe_(herrId)?.ubicacion || "",
+    });
+    if (error) { invMsg(error, true); return false; }
+    if (unidades.length > granel) { invMsg(`Solo hay ${granel} suelta(s) para identificar.`, true); return false; }
+    try {
+      await supabasePost("inventario_stock_unidades",
+        unidades.map(u => ({ ...u, herramienta_id: herrId })));
+      // Salen del contador: ahora se cuentan una por una. El total no cambia.
+      await ajustarStock_(herrId, { libres: -unidades.length }, {
+        tipo: "AJUSTE", marca,
+        nota: `Identificadas ${unidades.length} unidad(es) que estaban a granel`,
+        hecho_por: operador_(),
+      });
+      invMsg(`${unidades.length} unidad(es) ahora tienen código propio.`);
+      await renderStockSub_();
+      return true;
+    } catch (e) { invMsg(errorMsg_(e), true); return false; }
+  }, { ancho: true });
+
+  // Renglones: uno por unidad, y se ajustan al cambiar la cantidad.
+  const cant = $id("invIdCant"), rows = $id("invIdRows");
+  const pintar = () => {
+    const n = Math.max(1, Math.min(granel, Number(cant?.value) || 1));
+    const previo = [...document.querySelectorAll(".invIdCod")].map((c, i) => ({
+      codigo: c.value || "",
+      serie: document.querySelectorAll(".invIdSer")[i]?.value || "",
+    }));
+    if (rows) rows.innerHTML = filasUnidadHtml_(n, "invId", previo);
+  };
+  cant?.addEventListener("input", pintar);
+  pintar();
 }
 
 // ── ENTREGA · almacén → técnico ──
@@ -2136,8 +2302,17 @@ function abrirDetalleStock_(herrId) {
             <button class="invRowBtn invRowBtn--danger invUdDel" data-uid="${esc(u.id)}" title="Desechar esta unidad">${icon("trash", 14)}</button>
           </div>
         </div>`).join("")}</div>`
-    : `<p class="invHint">Ninguna unidad con código o SN todavía. Al ingresar al almacén, llena
-       “Código de la empresa” o “N° de serie” para registrarlas una por una.</p>`;
+    : `<p class="invHint">Ninguna unidad con código o SN todavía.</p>`;
+
+  // Lo suelto se puede convertir en objetos rastreables cuando haga falta.
+  const identificarHtml = granel > 0
+    ? `<div class="invNota">
+        ${icon("tag", 15)}
+        <span>Hay <strong>${granel}</strong> unidad(es) contadas a granel: sabes cuántas tienes,
+        pero no cuál es cuál. Si son equipos con número de serie, dales su código.</span>
+        <button type="button" class="invBtn invDtIdentificar">${icon("tag", 14)} Identificar</button>
+      </div>`
+    : "";
 
   const body = `
     <div class="invForm">
@@ -2154,6 +2329,7 @@ function abrirDetalleStock_(herrId) {
       <div class="invSection">
         <div class="invSectionHead">${icon("tag", 15)} Unidades identificadas <span class="invSegN">${uds.length}</span></div>
         ${udsHtml}
+        ${identificarHtml}
       </div>
 
       <div class="invSection">
@@ -2261,6 +2437,7 @@ function abrirDetalleStock_(herrId) {
   }));
 
   // ── Acciones a granel (abren su propio modal encima) ──
+  document.querySelector(".invDtIdentificar")?.addEventListener("click", () => abrirIdentificarStock_(herrId));
   document.querySelector(".invDtAveria")?.addEventListener("click", () => abrirAveriaStock_(herrId));
   document.querySelector(".invDtReparar")?.addEventListener("click", () => abrirReparacionStock_(herrId));
   document.querySelector(".invDtDesechar")?.addEventListener("click", () => abrirDesecharStock_(herrId));

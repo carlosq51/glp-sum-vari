@@ -530,6 +530,78 @@
 /* Modal ancho para el panel de detalle. */
 .invModalBox--ancho { max-width: 760px; width: min(760px, 94vw); }
 
+/* ── Identificar unidades: un renglón por objeto físico ───────────── */
+.invSwitchRow { display: flex; align-items: center; }
+.invSwitch {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 12px;
+  border: var(--border-w) solid var(--surfaceLine);
+  border-radius: var(--radiusSm, 12px);
+  background: var(--glass);
+  font-size: var(--fs-sm, 13px);
+  font-weight: var(--fw-bold, 600);
+  color: var(--text);
+  cursor: pointer;
+  width: 100%;
+}
+.invSwitch:hover { border-color: var(--accent); }
+.invSwitch input { width: 17px; height: 17px; accent-color: var(--accent); cursor: pointer; flex-shrink: 0; }
+
+.invUnitForm {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border: var(--border-w) solid var(--surfaceLine);
+  border-radius: var(--radiusSm, 12px);
+  background: var(--glass);
+  max-height: 320px;
+  overflow-y: auto;
+}
+.invUnitFormHead,
+.invUnitFormRow {
+  display: grid;
+  grid-template-columns: 26px 1fr 1fr;
+  gap: 8px;
+  align-items: center;
+}
+.invUnitFormHead {
+  font-size: var(--fs-2xs, 11px);
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  color: var(--muted);
+  padding-bottom: 2px;
+}
+.invUnitFormN {
+  font-size: var(--fs-2xs, 11px);
+  font-weight: var(--fw-bold, 700);
+  color: var(--muted);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.invUnitFormRow input {
+  width: 100%;
+  height: 34px;
+  padding: 0 10px;
+  border: var(--border-w) solid var(--surfaceLine);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--fs-xs, 12px);
+  font-family: inherit;
+}
+.invUnitFormRow input:focus { outline: none; border-color: var(--accent); }
+@media (max-width: 520px) {
+  .invUnitFormHead { display: none; }
+  .invUnitFormRow { grid-template-columns: 26px 1fr; }
+  .invUnitFormRow .invUnitFormN { grid-row: span 2; }
+}
+
+/* El aviso de "hay sueltas sin identificar" lleva su acción al lado. */
+.invNota .invBtn { margin-left: auto; flex-shrink: 0; }
+
 /* ── Enlace a la ventana completa, junto a las sub-pestañas ───────── */
 .invSubtabLink {
   display: inline-flex;
