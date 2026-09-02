@@ -168,7 +168,19 @@ function openInventarioPage_() {
     </div>`;
     return;
   }
-  renderInventarioTab(body);
+
+  // Sin este catch, un fallo al cargar dejaba la página en blanco y sin
+  // pista de qué pasó — que es peor que un error a la vista.
+  Promise.resolve()
+    .then(() => renderInventarioTab(body))
+    .catch((err) => {
+      console.error("[inventario] no se pudo abrir:", err);
+      body.innerHTML = `<div class="invPageDenied">
+        <h3>No se pudo cargar el inventario</h3>
+        <p class="small muted">${String(err?.message || err)}</p>
+        <p class="small muted">Si dice que falta una tabla, ejecuta <code>supabase/inventario-stock.sql</code> en Supabase.</p>
+      </div>`;
+    });
 }
 
 $("invPageBack")?.addEventListener("click", () => { window.location.href = "/"; });

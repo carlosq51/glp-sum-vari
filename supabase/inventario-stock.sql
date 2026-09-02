@@ -9,11 +9,14 @@
 --  El stock de cada herramienta del catálogo se parte en tres:
 --
 --    LIBRES     → unidades físicas en el almacén, sanas y listas para entregar.
---                 Se guardan aquí, en `inventario_stock.cantidad_almacen`.
 --    MALOGRADAS → unidades que siguen en el almacén pero NO se pueden usar
 --                 (rotas, esperando reparación). Están en el estante, así que
 --                 cuentan como patrimonio, pero no como disponibles.
---                 Se guardan aquí, en `inventario_stock.cantidad_malogrado`.
+--
+--                 Las dos se llevan en dos sitios que NO se solapan: los
+--                 contadores de `inventario_stock` para lo suelto, y una
+--                 fila por unidad en `inventario_stock_unidades` para lo
+--                 que tiene código de empresa o número de serie (bloque 4).
 --    ASIGNADAS  → unidades que ya tiene un técnico.
 --                 NO se guardan aquí: se calculan sumando
 --                 `inventario_tecnico_items.cantidad` (única fuente de verdad).
@@ -111,7 +114,56 @@ ALTER TABLE herramientas_catalogo
   ADD COLUMN IF NOT EXISTS descontinuada_at TIMESTAMPTZ;
 
 -- ────────────────────────────────────────────
---  4. Vista de consulta: libres + malogradas + asignadas + total, ya sumado.
+--  4. UNIDADES IDENTIFICADAS EN EL ALMACÉN
+--
+--  Un taladro tiene número de serie; un alicate no. Los inventarios reales
+--  manejan esas dos naturalezas por separado y aquí igual:
+--
+--    A GRANEL      herramientas intercambiables entre sí. No importa cuál
+--                  te llevas, solo cuántas quedan. Son los contadores
+--                  `cantidad_almacen` y `cantidad_malogrado` de arriba.
+--    IDENTIFICADAS equipos con código de empresa o número de serie: cada
+--                  unidad es una cosa concreta y rastreable. Viven aquí,
+--                  una fila por unidad física.
+--
+--  Por eso NO hay doble contabilidad: los contadores llevan solo lo suelto
+--  y esta tabla lo identificado. La UI suma las dos cosas:
+--    LIBRES     = cantidad_almacen   + unidades con estado OK
+--    MALOGRADAS = cantidad_malogrado + unidades con estado MAL
+--
+--  Cuando una unidad identificada se entrega, su fila se mueve a
+--  `inventario_tecnico_items` (y al devolverse, vuelve aquí): así el
+--  código/SN nunca queda duplicado en los dos sitios a la vez.
+-- ────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS inventario_stock_unidades (
+  id             UUID                PRIMARY KEY DEFAULT gen_random_uuid(),
+  herramienta_id UUID                NOT NULL REFERENCES herramientas_catalogo(id) ON DELETE CASCADE,
+  marca          TEXT                NOT NULL DEFAULT '',
+  codigo         TEXT                NOT NULL DEFAULT '',
+  serie          TEXT                NOT NULL DEFAULT '',
+  -- Solo OK (lista para entregar) o MAL (rota, esperando reparación).
+  estado         estado_herramienta  NOT NULL DEFAULT 'OK',
+  ubicacion      TEXT                NOT NULL DEFAULT '',
+  nota           TEXT                NOT NULL DEFAULT '',
+  created_at     TIMESTAMPTZ         NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_inv_stku_herr   ON inventario_stock_unidades (herramienta_id);
+CREATE INDEX IF NOT EXISTS idx_inv_stku_estado ON inventario_stock_unidades (estado);
+
+-- El código de empresa y el SN identifican una unidad concreta: no se
+-- repiten. Índices parciales para no chocar con las filas que no lo tienen.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_inv_stku_codigo_uniq
+  ON inventario_stock_unidades (lower(codigo)) WHERE codigo <> '';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_inv_stku_serie_uniq
+  ON inventario_stock_unidades (lower(serie))  WHERE serie  <> '';
+
+ALTER TABLE inventario_stock_unidades ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  CREATE POLICY "service_full_access" ON inventario_stock_unidades FOR ALL USING (true) WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- ────────────────────────────────────────────
+--  5. Vista de consulta: libres + malogradas + asignadas + total, ya sumado.
 --     La UI calcula lo mismo en el cliente; esta vista es para
 --     revisar el inventario desde el SQL Editor o un reporte.
 --
@@ -130,18 +182,28 @@ SELECT
   h.categoria,
   h.especialidad,
   h.activo,
-  COALESCE(s.cantidad_almacen, 0)        AS libres,
-  COALESCE(s.cantidad_malogrado, 0)      AS malogradas,
-  COALESCE(a.asignadas, 0)               AS asignadas,
-  COALESCE(s.cantidad_almacen, 0)
-    + COALESCE(s.cantidad_malogrado, 0)
-    + COALESCE(a.asignadas, 0)           AS total,
+  -- Libres y malogradas suman lo suelto (contadores) más lo identificado
+  -- (una fila por unidad). Ver el bloque 4.
+  COALESCE(s.cantidad_almacen, 0)   + COALESCE(u.ok, 0)   AS libres,
+  COALESCE(s.cantidad_malogrado, 0) + COALESCE(u.mal, 0)  AS malogradas,
+  COALESCE(a.asignadas, 0)                                AS asignadas,
+  COALESCE(s.cantidad_almacen, 0) + COALESCE(u.ok, 0)
+    + COALESCE(s.cantidad_malogrado, 0) + COALESCE(u.mal, 0)
+    + COALESCE(a.asignadas, 0)                            AS total,
+  COALESCE(u.ok, 0) + COALESCE(u.mal, 0)                  AS identificadas,
   COALESCE(s.stock_minimo, 0)            AS stock_minimo,
   COALESCE(s.ubicacion, '')              AS ubicacion,
   COALESCE(h.descontinuada_motivo, '')   AS descontinuada_motivo,
   COALESCE(a.tecnicos, 0)                AS tecnicos
 FROM herramientas_catalogo h
 LEFT JOIN inventario_stock s ON s.herramienta_id = h.id
+LEFT JOIN (
+  SELECT herramienta_id,
+         COUNT(*) FILTER (WHERE estado <> 'MAL') AS ok,
+         COUNT(*) FILTER (WHERE estado  = 'MAL') AS mal
+  FROM inventario_stock_unidades
+  GROUP BY herramienta_id
+) u ON u.herramienta_id = h.id
 LEFT JOIN (
   SELECT i.herramienta_id,
          SUM(i.cantidad)              AS asignadas,

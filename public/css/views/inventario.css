@@ -1,0 +1,577 @@
+/* =====================================================================
+   INVENTARIO · sistema visual propio del módulo
+   ---------------------------------------------------------------------
+   El inventario vive dentro del panel de Admin y en su página propia
+   (/inventario). Para que se vea igual en los dos sitios no hereda de
+   `.adminTable` y compañía: define aquí sus propias piezas.
+
+   Todo cuelga de tokens (00-token.css), así que día y noche salen solos.
+   ===================================================================== */
+
+/* ── Superficies ──────────────────────────────────────────────────── */
+.invPanel {
+  background: var(--surface);
+  border: var(--border-w) solid var(--surfaceLine);
+  border-radius: var(--radius, 16px);
+  padding: 18px;
+  margin-bottom: 16px;
+}
+.invPanel--flush { padding-top: 14px; }
+
+.invPanelHead {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.invPanelTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 4px;
+  font-size: var(--fs-xl, 17px);
+  font-weight: var(--fw-bold, 700);
+  color: var(--text);
+}
+.invPanelTitle .icn { color: var(--accent); flex-shrink: 0; }
+.invPanelSub {
+  margin: 0;
+  max-width: 74ch;
+  font-size: var(--fs-xs, 12px);
+  line-height: 1.55;
+  color: var(--muted);
+}
+.invPanelSub strong { color: var(--text); font-weight: var(--fw-bold, 600); }
+.invPanelActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+/* ── Botones ──────────────────────────────────────────────────────── */
+.invBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 14px;
+  min-height: 36px;
+  border: var(--border-w) solid var(--surfaceLine);
+  border-radius: var(--radiusSm, 12px);
+  background: var(--glass);
+  color: var(--text);
+  font-size: var(--fs-sm, 13px);
+  font-weight: var(--fw-bold, 600);
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--dur-fast), border-color var(--dur-fast), transform var(--dur-fast) var(--ease-out);
+}
+.invBtn:hover { border-color: var(--accent); }
+.invBtn:active { transform: scale(.97); }
+.invBtn .icn { flex-shrink: 0; }
+.invBtn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #12161c;
+}
+.invBtn--primary:hover { filter: brightness(1.08); }
+.invBtn--danger { color: var(--danger); }
+.invBtn--danger:hover { border-color: var(--danger); background: var(--dangerBg); }
+.invBtn--icon { padding: 8px; width: 36px; }
+
+/* Botón compacto de fila: solo icono, se pinta al pasar por encima. */
+.invRowBtn {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: var(--border-w) solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background var(--dur-fast), color var(--dur-fast), border-color var(--dur-fast);
+}
+.invRowBtn:hover { background: var(--glass); color: var(--text); border-color: var(--surfaceLine); }
+.invRowBtn:active { transform: scale(.94); }
+.invRowBtn--danger:hover { color: var(--danger); border-color: var(--danger); background: var(--dangerBg); }
+.invRowBtn--go:hover { color: var(--accent); border-color: var(--accent); }
+
+/* ── Tarjetas de resumen ──────────────────────────────────────────── */
+.invKpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  gap: 8px;
+}
+.invKpi {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 12px 14px;
+  border-radius: var(--radiusSm, 12px);
+  border: var(--border-w) solid var(--surfaceLine);
+  background: var(--glass);
+}
+.invKpiN {
+  font-size: 22px;
+  font-weight: var(--fw-bold, 700);
+  line-height: 1.05;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.invKpiL {
+  font-size: var(--fs-2xs, 11px);
+  letter-spacing: .4px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.invKpi--total  { border-color: var(--accent); }
+.invKpi--total  .invKpiN { color: var(--accent); }
+.invKpi--libre  .invKpiN { color: var(--ok); }
+.invKpi--mal    { border-color: var(--warn);   background: var(--warnBg); }
+.invKpi--mal    .invKpiN { color: var(--warn); }
+.invKpi--warn   { border-color: var(--warn);   background: var(--warnBg); }
+.invKpi--warn   .invKpiN { color: var(--warn); }
+.invKpi--danger { border-color: var(--danger); background: var(--dangerBg); }
+.invKpi--danger .invKpiN { color: var(--danger); }
+
+/* ── Barra de herramientas: segmentos + búsqueda ──────────────────── */
+.invToolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 16px 0 12px;
+}
+.invSegmented {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  border: var(--border-w) solid var(--surfaceLine);
+  border-radius: var(--radius-full, 999px);
+  background: var(--glass);
+}
+.invSeg {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: none;
+  border-radius: var(--radius-full, 999px);
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--fs-xs, 12px);
+  font-weight: var(--fw-bold, 600);
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--dur-fast), color var(--dur-fast);
+}
+.invSeg:hover { color: var(--text); }
+.invSegOn { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.25); }
+.invSegN {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: var(--radius-full, 999px);
+  background: var(--glass);
+  font-size: var(--fs-2xs, 11px);
+  font-variant-numeric: tabular-nums;
+}
+.invSegOn .invSegN { background: var(--accent); color: #12161c; }
+
+.invSearch {
+  position: relative;
+  flex: 1;
+  min-width: 220px;
+}
+.invSearchIcon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  pointer-events: none;
+}
+.invSearch input {
+  width: 100%;
+  height: 38px;
+  padding: 0 12px 0 38px;
+  border: var(--border-w) solid var(--surfaceLine);
+  border-radius: var(--radiusSm, 12px);
+  background: var(--glass);
+  color: var(--text);
+  font-size: var(--fs-sm, 13px);
+  font-family: inherit;
+}
+.invSearch input:focus { outline: none; border-color: var(--accent); }
+
+/* ── Avisos ───────────────────────────────────────────────────────── */
+.invNota {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: 12px 0;
+  padding: 10px 13px;
+  border: var(--border-w) solid var(--surfaceLine);
+  border-radius: var(--radiusSm, 12px);
+  background: var(--glass);
+  color: var(--muted);
+  font-size: var(--fs-xs, 12px);
+  line-height: 1.55;
+}
+.invNota .icn { flex-shrink: 0; margin-top: 1px; color: var(--muted); }
+.invNota strong { color: var(--text); }
+.invNota--warn { border-color: var(--warn); background: var(--warnBg); }
+.invNota--warn .icn { color: var(--warn); }
+
+/* ── Tabla ────────────────────────────────────────────────────────── */
+.invTableWrap {
+  border: var(--border-w) solid var(--surfaceLine);
+  border-radius: var(--radiusSm, 12px);
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  max-height: 62vh;
+}
+.invTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm, 13px);
+}
+.invTable thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 10px 12px;
+  background: var(--surface2);
+  border-bottom: var(--border-w) solid var(--surfaceLine);
+  text-align: left;
+  font-size: var(--fs-2xs, 11px);
+  font-weight: var(--fw-bold, 700);
+  letter-spacing: .4px;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.invTable td {
+  padding: 10px 12px;
+  border-bottom: var(--border-w) solid var(--surfaceLine);
+  vertical-align: middle;
+  color: var(--text);
+}
+.invTable tbody tr:last-child td { border-bottom: none; }
+.invRow { transition: background var(--dur-fast); }
+.invRow:hover td { background: var(--glass); }
+.invThNum, .invTdNum { text-align: center; font-variant-numeric: tabular-nums; }
+.invThActions { width: 1%; }
+.invTdActions { white-space: nowrap; text-align: right; }
+.invTdMuted { color: var(--muted); }
+.invTdZero { color: var(--muted); opacity: .5; }
+.invTdSub { display: block; font-size: var(--fs-2xs, 11px); color: var(--muted); }
+.invThMain { min-width: 240px; }
+.invTdMain { min-width: 240px; }
+.invTableEmpty { padding: 28px 12px !important; text-align: center; color: var(--muted); }
+.invTableFoot {
+  margin: 10px 2px 0;
+  font-size: var(--fs-xs, 12px);
+  color: var(--muted);
+}
+.invTableFoot strong { color: var(--text); }
+
+/* Semáforo: un filete de color al borde izquierdo, nada de filas rojas. */
+.invRow--agotado   td:first-child,
+.invRow--descuadre td:first-child { box-shadow: inset 3px 0 0 var(--danger); }
+.invRow--bajo      td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
+.invNumOk  { color: var(--ok); font-weight: var(--fw-bold, 700); }
+.invNumMal { color: var(--warn); font-weight: var(--fw-bold, 700); }
+/* Descontinuada: se apaga pero sigue legible — puede quedar por recuperar. */
+.invRow--baja td { opacity: .6; }
+
+.invItemName { display: flex; align-items: flex-start; gap: 6px; }
+.invCatTag {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 7px;
+  border-radius: var(--radius-full, 999px);
+  background: var(--glass);
+  border: var(--border-w) solid var(--surfaceLine);
+  font-size: var(--fs-2xs, 11px);
+  font-weight: var(--fw-bold, 600);
+  color: var(--muted);
+  vertical-align: 1px;
+}
+
+/* ── Unidades identificadas (código de empresa / SN) ──────────────── */
+.invUdsToggle {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  margin-top: 1px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: transform var(--dur-fast) var(--ease-out), color var(--dur-fast);
+}
+.invUdsToggle:hover { color: var(--text); background: var(--glass); }
+.invUdsToggleOpen { transform: rotate(90deg); color: var(--accent); }
+.invUdsSpacer { display: inline-block; width: 20px; flex-shrink: 0; }
+.invUdsChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: var(--radius-full, 999px);
+  background: var(--glass);
+  border: var(--border-w) solid var(--surfaceLine);
+  font-size: var(--fs-2xs, 11px);
+  color: var(--muted);
+}
+.invUdsRow td { background: var(--glass); font-size: var(--fs-xs, 12px); }
+.invUdsArrow { color: var(--muted); margin-right: 6px; }
+.invTdUnit { padding-left: 34px !important; }
+.invCodChip {
+  display: inline-block;
+  margin-right: 5px;
+  padding: 1px 8px;
+  border-radius: var(--radius-full, 999px);
+  border: var(--border-w) solid var(--surfaceLine);
+  background: var(--glass);
+  font-size: var(--fs-2xs, 11px);
+  font-weight: var(--fw-bold, 600);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.invCodChipSn { color: var(--muted); font-weight: var(--fw-normal, 500); }
+
+/* ── Insignias de estado ──────────────────────────────────────────── */
+.invBadge {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: var(--radius-full, 999px);
+  border: var(--border-w) solid var(--surfaceLine);
+  background: var(--glass);
+  font-size: var(--fs-2xs, 11px);
+  font-weight: var(--fw-bold, 600);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.invBadge--ok     { color: var(--ok);     border-color: var(--ok);     background: var(--okBg); }
+.invBadge--warn   { color: var(--warn);   border-color: var(--warn);   background: var(--warnBg); }
+.invBadge--danger { color: var(--danger); border-color: var(--danger); background: var(--dangerBg); }
+.invBadge--muted  { color: var(--muted); }
+
+/* ── Estados de carga y vacío ─────────────────────────────────────── */
+.invLoading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 40px 16px;
+  color: var(--muted);
+  font-size: var(--fs-sm, 13px);
+}
+.invLoading .icn { opacity: .6; }
+.invEmpty {
+  max-width: 520px;
+  margin: 24px auto;
+  padding: 28px 24px;
+  text-align: center;
+  border: var(--border-w) dashed var(--surfaceLine);
+  border-radius: var(--radius, 16px);
+  background: var(--glass);
+}
+.invEmptyIcon { color: var(--muted); opacity: .55; margin-bottom: 8px; }
+.invEmptyTitle {
+  font-size: var(--fs-lg, 16px);
+  font-weight: var(--fw-bold, 700);
+  color: var(--text);
+  margin-bottom: 6px;
+}
+.invEmptyText {
+  margin: 0;
+  font-size: var(--fs-xs, 12px);
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+/* ── Formularios de los modales ───────────────────────────────────── */
+.invForm { display: flex; flex-direction: column; gap: 14px; }
+.invField { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.invFieldLabel {
+  font-size: var(--fs-xs, 12px);
+  font-weight: var(--fw-bold, 600);
+  color: var(--text);
+}
+.invFieldHint { font-weight: var(--fw-normal, 500); color: var(--muted); }
+.invField input,
+.invField select {
+  width: 100%;
+  height: 38px;
+  padding: 0 12px;
+  border: var(--border-w) solid var(--surfaceLine);
+  border-radius: var(--radiusSm, 12px);
+  background: var(--glass);
+  color: var(--text);
+  font-size: var(--fs-sm, 13px);
+  font-family: inherit;
+}
+.invField input:focus,
+.invField select:focus { outline: none; border-color: var(--accent); }
+.invFieldRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+@media (max-width: 520px) {
+  .invFieldRow { grid-template-columns: 1fr; }
+}
+.invHint {
+  margin: 0;
+  font-size: var(--fs-xs, 12px);
+  line-height: 1.55;
+  color: var(--muted);
+}
+.invHint .icn { vertical-align: -2px; margin-right: 3px; }
+.invHint strong { color: var(--text); }
+
+.invPickShow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 13px;
+  border: var(--border-w) solid var(--surfaceLine);
+  border-radius: var(--radiusSm, 12px);
+  background: var(--glass);
+  font-size: var(--fs-sm, 13px);
+}
+
+/* Saldo actual: el contexto antes de mover unidades. */
+.invSaldo {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  padding: 12px;
+  border: var(--border-w) solid var(--surfaceLine);
+  border-radius: var(--radiusSm, 12px);
+  background: var(--glass);
+}
+.invSaldoItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font-size: var(--fs-2xs, 11px);
+  color: var(--muted);
+  text-align: center;
+}
+.invSaldoN {
+  font-size: var(--fs-2xl, 18px);
+  font-weight: var(--fw-bold, 700);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.invSaldoItem--total { border-left: var(--border-w) solid var(--surfaceLine); }
+.invSaldoItem--total .invSaldoN { color: var(--accent); }
+
+/* ── Secciones del panel de detalle ───────────────────────────────── */
+.invSection {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 14px;
+  border-top: var(--border-w) solid var(--surfaceLine);
+}
+.invSectionHead {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--fs-sm, 13px);
+  font-weight: var(--fw-bold, 700);
+  color: var(--text);
+}
+.invSectionHead .icn { color: var(--muted); flex-shrink: 0; }
+.invActionGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 8px;
+}
+.invActionGrid .invBtn { justify-content: flex-start; }
+
+/* Lista de unidades identificadas dentro del detalle. */
+.invUnitList { display: flex; flex-direction: column; gap: 6px; }
+.invUnit {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  border: var(--border-w) solid var(--surfaceLine);
+  border-radius: var(--radiusSm, 12px);
+  background: var(--glass);
+}
+.invUnit--mal { border-color: var(--warn); }
+.invUnitId { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; font-size: var(--fs-xs, 12px); }
+.invUnitMeta { display: flex; align-items: center; gap: 8px; margin-left: auto; font-size: var(--fs-xs, 12px); }
+.invUnitActions { display: flex; gap: 2px; }
+
+/* Modal ancho para el panel de detalle. */
+.invModalBox--ancho { max-width: 760px; width: min(760px, 94vw); }
+
+/* ── Enlace a la ventana completa, junto a las sub-pestañas ───────── */
+.invSubtabLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding: 7px 14px;
+  border: var(--border-w) dashed var(--surfaceLine);
+  border-radius: var(--radiusSm);
+  color: var(--muted);
+  font-size: var(--fs-sm, 13px);
+  font-weight: var(--fw-bold, 600);
+  text-decoration: none;
+}
+.invSubtabLink:hover { color: var(--text); border-color: var(--accent); }
+.invSubtabLink .icn { flex-shrink: 0; }
+
+/* El autocompletado de técnicos vive dentro de modales: que no lo tape nada
+   y que su caja se ancle al campo, no al modal. */
+.modal .invBuscador { position: relative; }
+.modal .invBuscador .vinSuggest { z-index: 20; max-height: 210px; }
+
+/* ── Página propia · /inventario ──────────────────────────────────── */
+.invPageHead {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 16px 18px;
+  border-bottom: var(--border-w) solid var(--surfaceLine);
+}
+.invPageTitle { display: flex; flex-direction: column; gap: 2px; margin-right: auto; }
+.invPageTitle h2 { margin: 0; font-size: var(--fs-3xl, 20px); }
+.invPageTitle span { font-size: var(--fs-xs, 12px); color: var(--muted); }
+.invPageBody { padding: 16px 14px 48px; max-width: 1400px; margin: 0 auto; }
+.invPageDenied {
+  margin: 48px auto;
+  max-width: 420px;
+  text-align: center;
+  padding: 28px;
+  border-radius: var(--radius, 16px);
+  border: var(--border-w) solid var(--surfaceLine);
+  background: var(--glass);
+}
+.invPageDenied h3 { margin: 0 0 8px; }
