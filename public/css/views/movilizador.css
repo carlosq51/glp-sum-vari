@@ -834,7 +834,54 @@
   cursor: not-allowed;
 }
 
+/* Sí / No de la redirección al GPS (Entrada y Salida) */
+.movRedirRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.movRedirLabel {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.movRedirSeg {
+  display: flex;
+  flex-shrink: 0;
+  border-radius: var(--radiusSm);
+  border: 1px solid rgba(255,255,255,.18);
+  background: rgba(255,255,255,.06);
+  overflow: hidden;
+}
+
+.movRedirOpt {
+  min-width: 46px;
+  padding: 5px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-bold);
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease;
+}
+
+.movRedirOpt:hover { color: var(--text); }
+
+.movRedirOptOn {
+  background: var(--btnBg);
+  color: var(--btnText);
+}
+
 /* Day theme overrides for registration section */
+
+:root[data-theme="day"] .movRedirSeg {
+  background: rgba(255,255,255,.75);
+  border-color: var(--surfaceLine);
+}
+
 :root[data-theme="day"] .movRegBox {
   background: var(--pillBg);
   border-color: var(--surfaceLine);

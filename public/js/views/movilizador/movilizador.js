@@ -20,6 +20,9 @@ let _vinsSinOT_ = new Set();
 const GPS_URL = "https://gps-ubicaciones-app.vercel.app/";
 const OFFLINE_KEY = "glp_mov_offline_q";
 const LISTA_CACHE_KEY = "glp_mov_lista_cache";
+// ¿Abrir la app GPS al registrar? Una sola preferencia para Entrada y Salida:
+// los dos segmentados escriben y leen esta clave, así que mover uno mueve el otro.
+const REDIR_KEY = "glp_mov_redir";
 
 let _pendientesRows = [];
 let _pendientesFiltro = "";
@@ -138,6 +141,32 @@ function updateGuardarBtn_(savedAt) {
     btn.title = "Guardar lista en el celular";
     btn.classList.remove("movDownloadBtnSaved");
   }
+}
+
+// ─── Preferencia de redirección al GPS ─────────────────────────────
+//
+// Vive en localStorage: es del dispositivo, no de la cuenta. El movilizador
+// usa siempre el mismo celular y la elección tiene que sobrevivir al cierre de
+// la app — se guarda hasta que él mismo la cambie.
+
+/** Default true: hasta ahora SIEMPRE redirigía, y nadie debe perder el GPS por actualizar. */
+function getRedir_() {
+  try { return localStorage.getItem(REDIR_KEY) !== "0"; } catch { return true; }
+}
+
+function setRedir_(on) {
+  try { localStorage.setItem(REDIR_KEY, on ? "1" : "0"); } catch {}
+  paintRedir_();
+}
+
+/** Deja los DOS segmentados mostrando lo que está guardado. */
+function paintRedir_() {
+  const on = getRedir_();
+  document.querySelectorAll(".movRedirOpt").forEach(b => {
+    const activo = (b.dataset.val === "1") === on;
+    b.classList.toggle("movRedirOptOn", activo);
+    b.setAttribute("aria-pressed", activo ? "true" : "false");
+  });
 }
 
 // ─── Offline queue ─────────────────────────────────────
@@ -912,9 +941,12 @@ async function handleConfirmarSalida_(vin, btn) {
   const vinClean = String(vin || "").trim().toUpperCase();
   if (!vinClean) return;
 
-  const popup = prepareGpsWindow_(vinClean);
+  // El popup se abre ANTES del await a propósito (ver prepareGpsWindow_). Si
+  // el movilizador apagó la redirección no se abre nada: ni ventana en blanco.
+  const redir = getRedir_();
+  const popup = redir ? prepareGpsWindow_(vinClean) : null;
   const ok = await handleAction_(vinClean, "ENTREGAR_FINAL", btn, () => {
-    openGpsWithVin_(vinClean, popup);
+    if (redir) openGpsWithVin_(vinClean, popup);
   });
 
   if (!ok && popup && !popup.closed) {
@@ -970,11 +1002,16 @@ async function handleRegistro_(vin, accion, btnId) {
     });
     if (!j?.ok) throw new Error(j?.error || "Error al guardar");
 
-    // Open GPS app in new tab with VIN as query param + copy to clipboard
-    openGpsWithVin_(vinClean);
+    // La app GPS solo si esta pantalla la tiene encendida. El aviso cambia con
+    // ella: prometer "VIN copiado" sin haber copiado nada manda al movilizador
+    // a pegar en una app que ni llegó a abrirse.
+    const redir = getRedir_();
+    if (redir) openGpsWithVin_(vinClean);
 
     const statusEl = document.getElementById("movStatus");
-    if (statusEl) statusEl.textContent = `✓ ${vinClean} registrado. VIN copiado — pégalo en la app GPS.`;
+    if (statusEl) statusEl.textContent = redir
+      ? `✓ ${vinClean} registrado. VIN copiado — pégalo en la app GPS.`
+      : `✓ ${vinClean} registrado.`;
 
     // Clear input and disable button
     const inputEl = document.getElementById(inputId);
@@ -1067,6 +1104,14 @@ export function init() {
       const v = this.value.trim().toUpperCase();
       if (v.length >= 7) showSalidaQrResult_(v);
     }
+  });
+
+  // Sí / No de la app GPS. Delegado en document: el mismo handler sirve a los
+  // dos segmentados y setRedir_ repinta ambos, así que tocar el de Entrada
+  // deja el de Salida ya movido cuando el movilizador llegue a esa pantalla.
+  document.addEventListener("click", e => {
+    const opt = e.target.closest?.(".movRedirOpt");
+    if (opt) setRedir_(opt.dataset.val === "1");
   });
 
   // QR scanner buttons
@@ -1185,6 +1230,9 @@ export function init() {
 }
 
 export function enter() {
+  // Al entrar y no en init(): init() corre en el bootstrap, cuando la pantalla
+  // del movilizador todavía puede no estar en el DOM.
+  paintRedir_();
   refreshAll_().catch(() => {});
   startPoll_();
   // Inicializar (o re-inicializar) el mapa de zonas con el nombre actualizado del usuario

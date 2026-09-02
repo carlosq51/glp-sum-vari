@@ -94,6 +94,13 @@ export function movilizadorView() {
             </div>
             <button id="btnMovQrEntrada" type="button" class="movQrBtn" title="Escanear QR">📷</button>
           </div>
+          <div class="movRedirRow">
+            <span class="movRedirLabel">Abrir app GPS</span>
+            <div class="movRedirSeg" role="group" aria-label="Abrir la app GPS al registrar">
+              <button type="button" class="movRedirOpt" data-val="1" aria-pressed="true">Sí</button>
+              <button type="button" class="movRedirOpt" data-val="0" aria-pressed="false">No</button>
+            </div>
+          </div>
           <button id="btnMovRegistrarEntrada" class="movBtnFull movBtnEntrada" type="button" disabled>
             Registrar Ingreso ▶
           </button>
@@ -162,6 +169,13 @@ export function movilizadorView() {
               <div id="movSalidaVinSuggest" class="vinSuggest hidden" role="listbox"></div>
             </div>
             <button id="btnMovQrSalida" type="button" class="movQrBtn" title="Escanear QR">📷</button>
+          </div>
+          <div class="movRedirRow">
+            <span class="movRedirLabel">Abrir app GPS</span>
+            <div class="movRedirSeg" role="group" aria-label="Abrir la app GPS al registrar">
+              <button type="button" class="movRedirOpt" data-val="1" aria-pressed="true">Sí</button>
+              <button type="button" class="movRedirOpt" data-val="0" aria-pressed="false">No</button>
+            </div>
           </div>
         </div>
 
