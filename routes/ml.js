@@ -3,6 +3,16 @@ import { existsSync, readFileSync, writeFileSync } from "fs";
 import { supabaseHeaders_ } from "../lib/supabase.js";
 import { normalizeModelo_ } from "../lib/utils.js";
 import { pendingSuggestions_ } from "../lib/ml-state.js";
+import {
+  computeFeatures as computeFeatures_,
+  normalizarFeatures,
+  distancia_,
+  validarPorCortes_,
+  W_SIM,
+  KEYS,
+  MIN_FILAS,
+  DECAY_HALFLIFE_D,
+} from "../lib/ml-pairing.js";
 
 const router = Router();
 
@@ -68,47 +78,129 @@ function writeOmisiones_(data) {
   writeFileSync(OMISIONES_PATH, JSON.stringify(data, null, 2));
 }
 
-// Distancia circular entre horas del día (0-23): normalizada a [0,1], máximo a 12h de diferencia.
-const circHourDist_ = (ha, hb) => Math.min(Math.abs(ha - hb), 24 - Math.abs(ha - hb)) / 12;
 
 // Próximo re-entrenamiento automático (ISO string, se actualiza al programar).
 let nextAutoRetrainAt_ = null;
 
 // ── Auto re-entrenamiento de emparejamiento cada 3 días ──────────────────────
-// El scheduler se re-programa a sí mismo tras cada ejecución para mantenerse
-// alineado con el intervalo real (no con el uptime del servidor).
+//
+// Por qué esto no era suficiente con un `setTimeout` y ya:
+//
+// El temporizador vive en la memoria del proceso. Render duerme o reinicia el
+// dyno y el temporizador muere con él; al arrancar de nuevo se programaba otro,
+// y si el dyno vuelve a reiniciarse antes de que venza, nunca vence. El modelo
+// en producción llegó a estar 51 días sin reentrenar con un intervalo de 3, y
+// no había ninguna señal de que eso estuviera pasando.
+//
+// Ahora hay tres defensas, en orden de cuándo actúan:
+//   1. Al arrancar se comprueba la EDAD del modelo. Si ya está vencido se
+//      reentrena de inmediato en vez de esperar otro ciclo completo.
+//   2. Un latido cada hora comprueba la edad otra vez. Aunque el temporizador
+//      largo se pierda, el modelo nunca se aleja más de una hora de su plazo.
+//   3. `/api/ml/pairing-status` publica la edad y si está vencido, para que se
+//      pueda vigilar desde fuera sin leer los logs del dyno.
 const RETRAIN_INTERVAL_MS = 3 * 24 * 60 * 60 * 1000; // 72 horas
+const LATIDO_MS           = 60 * 60 * 1000;          // 1 hora
+const ARRANQUE_GRACIA_MS  = 60_000;                  // no entrenar en el arranque en frío
+
+/** Edad del modelo en ms, o null si no hay modelo legible. */
+function edadModeloMs_() {
+  if (!existsSync(PAIRING_MODEL_PATH)) return null;
+  try {
+    const { trained_at } = JSON.parse(readFileSync(PAIRING_MODEL_PATH, "utf8"));
+    const t = new Date(trained_at).getTime();
+    return Number.isFinite(t) ? Date.now() - t : null;
+  } catch { return null; }
+}
+
+let entrenando_ = false;
+
+/** Dispara un entrenamiento. Nunca dos a la vez: son ~80 consultas a Supabase. */
+async function entrenarAhora_(motivo) {
+  if (entrenando_) {
+    console.log(`[ML-AUTO] Ya hay un entrenamiento en curso, se omite (${motivo}).`);
+    return;
+  }
+  entrenando_ = true;
+  try {
+    console.log(`[ML-AUTO] Entrenando emparejamiento — ${motivo}`);
+    const PORT = process.env.PORT || 3000;
+    const r = await fetch(`http://localhost:${PORT}/api/ml/train-pairing`, { method: "POST" });
+    const j = await r.json();
+    if (j.ok) {
+      const v = j.validacion ? ` · rho ${j.validacion.rho_mediano}` : "";
+      console.log(`[ML-AUTO] OK · ${j.total_techs} técnicos (motor:${j.motor} tanque:${j.tanque}) · ${j.filas_usadas} carros${v}`);
+    } else {
+      console.warn(`[ML-AUTO] Falla: ${j.error}`);
+    }
+  } catch (e) {
+    console.error("[ML-AUTO] Error en re-entrenamiento:", e.message);
+  } finally {
+    entrenando_ = false;
+  }
+}
 
 export function scheduleAutoRetrain_() {
-  let delayMs = RETRAIN_INTERVAL_MS;
-  if (existsSync(PAIRING_MODEL_PATH)) {
-    try {
-      const { trained_at } = JSON.parse(readFileSync(PAIRING_MODEL_PATH, "utf8"));
-      const elapsed = Date.now() - new Date(trained_at).getTime();
-      delayMs = Math.max(60_000, RETRAIN_INTERVAL_MS - elapsed); // mínimo 1 min
-    } catch {}
-  }
-  nextAutoRetrainAt_ = new Date(Date.now() + delayMs).toISOString();
-  const h = Math.round(delayMs / 3600000);
-  console.log(`[ML-AUTO] Próximo re-entrenamiento en ${h}h (${new Date(nextAutoRetrainAt_).toLocaleString("es-PE")})`);
+  const edad = edadModeloMs_();
+  const restante = edad == null ? 0 : Math.max(0, RETRAIN_INTERVAL_MS - edad);
 
-  setTimeout(async () => {
-    try {
-      console.log("[ML-AUTO] Iniciando re-entrenamiento automático de emparejamiento…");
-      const PORT = process.env.PORT || 3000;
-      const r = await fetch(`http://localhost:${PORT}/api/ml/train-pairing`, { method: "POST" });
-      const j = await r.json();
-      if (j.ok) {
-        console.log(`[ML-AUTO] OK · ${j.total_techs} técnicos (motor:${j.motor} tanque:${j.tanque}) · tendencias up:${j.trends?.up} down:${j.trends?.down}`);
-      } else {
-        console.warn(`[ML-AUTO] Falla: ${j.error}`);
-      }
-    } catch (e) {
-      console.error("[ML-AUTO] Error en re-entrenamiento:", e.message);
-    }
-    scheduleAutoRetrain_(); // re-programar para dentro de 3 días
+  // Defensa 1: si al arrancar el modelo ya está vencido (o no existe), se
+  // entrena tras un margen corto — el tiempo de que el servidor acepte
+  // peticiones, ya que el entrenamiento se llama a sí mismo por HTTP.
+  const delayMs = restante > 0 ? restante : ARRANQUE_GRACIA_MS;
+  nextAutoRetrainAt_ = new Date(Date.now() + delayMs).toISOString();
+
+  if (edad == null) {
+    console.log(`[ML-AUTO] Sin modelo en disco. Entrenando en ${Math.round(delayMs / 1000)}s.`);
+  } else if (restante === 0) {
+    console.log(`[ML-AUTO] Modelo vencido (${Math.round(edad / 3600000)}h de antigüedad). Entrenando en ${Math.round(delayMs / 1000)}s.`);
+  } else {
+    console.log(`[ML-AUTO] Próximo re-entrenamiento en ${Math.round(delayMs / 3600000)}h (${new Date(nextAutoRetrainAt_).toLocaleString("es-PE")})`);
+  }
+
+  const t = setTimeout(async () => {
+    await entrenarAhora_(restante > 0 ? "vencimiento del ciclo de 3 días" : "modelo ausente o vencido al arrancar");
+    scheduleAutoRetrain_();
   }, delayMs);
+  if (t.unref) t.unref();   // no mantener vivo el proceso solo por esto
+
+  // Defensa 2: latido horario. Si el temporizador largo se pierde en un
+  // reinicio, este lo recoge dentro de la hora siguiente.
+  if (!scheduleAutoRetrain_._latido) {
+    scheduleAutoRetrain_._latido = setInterval(async () => {
+      const e = edadModeloMs_();
+      if (e != null && e >= RETRAIN_INTERVAL_MS && !entrenando_) {
+        await entrenarAhora_(`latido: ${Math.round(e / 3600000)}h sin reentrenar`);
+      }
+    }, LATIDO_MS);
+    if (scheduleAutoRetrain_._latido.unref) scheduleAutoRetrain_._latido.unref();
+  }
 }
+
+// ── GET /api/ml/pairing-status ────────────────────────────────────────────────
+// Defensa 3: la edad del modelo, visible desde fuera. Sin esto, "el modelo está
+// viejo" solo se descubre revisando los logs del dyno o notando que la TV
+// sugiere duplas raras.
+router.get("/api/ml/pairing-status", (req, res) => {
+  const edad = edadModeloMs_();
+  let modelo = null;
+  try {
+    if (existsSync(PAIRING_MODEL_PATH)) modelo = JSON.parse(readFileSync(PAIRING_MODEL_PATH, "utf8"));
+  } catch {}
+  res.json({
+    ok: true,
+    entrenado: !!modelo,
+    trained_at: modelo?.trained_at ?? null,
+    edad_horas: edad == null ? null : Math.round(edad / 3600000),
+    vencido: edad != null && edad >= RETRAIN_INTERVAL_MS,
+    intervalo_horas: RETRAIN_INTERVAL_MS / 3600000,
+    proximo_reentrenamiento: nextAutoRetrainAt_,
+    entrenando: entrenando_,
+    total_techs: modelo?.total_techs ?? null,
+    filas_usadas: modelo?.filas_usadas ?? null,
+    validacion: modelo?.validacion ?? null,
+  });
+});
 
 router.post("/api/ml/train-vin-model", async (req, res) => {
   try {
@@ -198,46 +290,107 @@ router.get("/api/ml/infer-vin-model", (req, res) => {
   }
 });
 
+/**
+ * Técnicos activos y TODO el histórico de asignaciones FINALIZADO.
+ *
+ * Sin corte por fecha. Antes se cortaba en 90 días: la idea era "que el modelo
+ * refleje al técnico de ahora", pero el corte no lo conseguía y sí costaba caro
+ * — en el entrenamiento del 13-jul había 5386 filas dentro de esos 90 días y el
+ * modelo guardó 605; el resto se perdía en el `limit` sin paginar de entonces,
+ * y nadie lo notó porque no había con qué comparar.
+ *
+ * La recencia la da ahora el decaimiento exponencial (DECAY_HALFLIFE_D), que es
+ * la herramienta correcta: un carro de hace cuatro meses pesa poco, pero pesa
+ * — no desaparece de golpe al cruzar una frontera arbitraria.
+ */
+async function cargarHistorico_() {
+  const SUPABASE_URL = process.env.SUPABASE_URL;
+
+  const rUsers = await fetch(
+    `${SUPABASE_URL}/rest/v1/usuarios?rol=eq.TECNICO&activo=eq.true&select=id,nombre,email,especialidad`,
+    { method: "GET", headers: supabaseHeaders_() }
+  );
+  const users = rUsers.ok ? await rUsers.json() : [];
+
+  const PAGINA = 1000;
+  const MAX_FILAS = 100000;     // freno de seguridad, no un objetivo
+  const finRows = [];
+  let truncado = false;
+  for (let offset = 0; offset < MAX_FILAS; offset += PAGINA) {
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/asignaciones?estado_actual=eq.FINALIZADO` +
+      `&select=user_id,updated_at,tiempo_trab_ms,work_order_id,rol_trabajo` +
+      `&order=updated_at.desc&limit=${PAGINA}&offset=${offset}`,
+      { method: "GET", headers: supabaseHeaders_() }
+    );
+    if (!r.ok) break;
+    const lote = await r.json();
+    finRows.push(...lote);
+    if (lote.length < PAGINA) break;
+    if (offset + PAGINA >= MAX_FILAS) truncado = true;
+  }
+  return { users, finRows, truncado };
+}
+
+/** { user_id: "MOTOR" | "TANQUE" } — lo que necesita ml-pairing para los pares. */
+const espPorId_ = users =>
+  Object.fromEntries(users.map(u => [u.id, String(u.especialidad || "").toUpperCase()]));
+
+// ── POST /api/ml/validate-pairing ─────────────────────────────────────────────
+//
+// ¿El criterio de emparejamiento sirve para algo? Hasta ahora no había forma de
+// responder: no hay etiqueta que diga si una dupla salió bien. La que faltaba
+// estaba en la base desde el principio — el DESFASE entre el cierre del MOTOR y
+// el del TANQUE del mismo carro, que es literalmente el objetivo declarado del
+// emparejamiento ("que acaben a la vez", PESOS.compatibilidad).
+//
+// Mide con origen rodante: perfila con lo anterior a cada corte y comprueba
+// contra los 30 días siguientes. Nunca con separación aleatoria — carros del
+// mismo día caerían a ambos lados y el perfil llevaría dentro el periodo que
+// dice predecir.
+//
+// Lectura de los números, con los datos de sep-2026:
+//   rho ≈ 0.25 sobre siete cortes, p = 0.03 por permutación → hay señal, y es
+//   modesta. Las duplas que el modelo llama parecidas cierran con una mediana
+//   de ~54 min de desfase; las que llama dispares, ~71 min.
+router.post("/api/ml/validate-pairing", async (req, res) => {
+  try {
+    const { users, finRows } = await cargarHistorico_();
+    if (!users.length) return res.json({ ok: false, error: "Sin técnicos activos" });
+
+    const ventanaDias = Number(req.query.ventana_dias) || 30;
+    const minCarros   = Number(req.query.min_carros)   || 3;
+
+    const r = validarPorCortes_({
+      asignaciones: finRows,
+      espPorId: espPorId_(users),
+      ventanaDias, minCarros,
+    });
+
+    return res.json({
+      ...r,
+      filas_analizadas: finRows.length,
+      pesos: W_SIM,
+      semivida_dias: DECAY_HALFLIFE_D,
+      // Sin esto el rho es un número sin escala. El lector necesita saber que
+      // 0 es "el criterio no sirve" y que aquí nunca se ha visto pasar de 0.45.
+      interpretacion: r.ok
+        ? `rho ${r.rhoMediano} sobre ${r.cortes} cortes. 0 = el criterio no predice nada; ` +
+          `positivo = las duplas que el modelo llama parecidas cierran más juntas. ` +
+          `Duplas más parecidas: ${Math.round(r.desfaseCercaMediano)} min de desfase mediano; ` +
+          `menos parecidas: ${Math.round(r.desfaseLejosMediano)} min.`
+        : undefined,
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e.message) });
+  }
+});
+
 router.post("/api/ml/train-pairing", async (req, res) => {
   try {
     const SUPABASE_URL = process.env.SUPABASE_URL;
-
-    const rUsers = await fetch(
-      `${SUPABASE_URL}/rest/v1/usuarios?rol=eq.TECNICO&activo=eq.true&select=id,nombre,email,especialidad`,
-      { method: "GET", headers: supabaseHeaders_() }
-    );
-    const users = rUsers.ok ? await rUsers.json() : [];
+    const { users, finRows, truncado } = await cargarHistorico_();
     if (!users.length) return res.json({ ok: false, error: "Sin técnicos activos" });
-
-    const since90 = new Date(Date.now() - 90 * 86400000).toISOString();
-
-    // Paginado y ORDENADO por fecha descendente. Antes era un `limit=5000` a
-    // secas y sin ORDER BY, el mismo patrón contra el que avisa
-    // contextoDelTaller_: sin orden, el subconjunto que devuelve Postgres es
-    // arbitrario y tiende al orden físico de la tabla — o sea, a lo más
-    // antiguo. Lo que se caía del corte era justo lo más reciente: los carros
-    // de los técnicos recién incorporados, que son pocos y nuevos.
-    //
-    // Con 25 carros/día × 2 roles esto son ~4000 filas en 90 días: ya rozaba
-    // el techo antes de sumar gente.
-    const PAGINA = 1000;
-    const MAX_FILAS = 50000;      // freno de seguridad, no un objetivo
-    const finRows = [];
-    let truncado = false;
-    for (let offset = 0; offset < MAX_FILAS; offset += PAGINA) {
-      const r = await fetch(
-        `${SUPABASE_URL}/rest/v1/asignaciones?estado_actual=eq.FINALIZADO` +
-        `&updated_at=gte.${encodeURIComponent(since90)}` +
-        `&select=user_id,updated_at,tiempo_trab_ms,work_order_id` +
-        `&order=updated_at.desc&limit=${PAGINA}&offset=${offset}`,
-        { method: "GET", headers: supabaseHeaders_() }
-      );
-      if (!r.ok) break;
-      const lote = await r.json();
-      finRows.push(...lote);
-      if (lote.length < PAGINA) break;
-      if (offset + PAGINA >= MAX_FILAS) truncado = true;
-    }
 
     // Enriquecer con modelo del carro: asignaciones → work_orders → vins
     const woIds = [...new Set(finRows.map(r => r.work_order_id).filter(Boolean))];
@@ -290,9 +443,22 @@ router.post("/api/ml/train-pairing", async (req, res) => {
       row.modelo = woVin ? (vinModelMap[woVin] || null) : null;
     }
 
+    // Solo cuentan las filas del rol que la persona ejerce en la dupla.
+    //
+    // El modelo empareja un MOTOR con un TANQUE, así que su perfil tiene que
+    // medir cómo trabaja EN ESE PUESTO. Sin este filtro se colaban las filas
+    // de CALIDAD y RAMALERO: Luis Uribe (MOTOR) tenía 186 de 347 en CALIDAD,
+    // que son mucho más rápidas, y salía con 4.4 carros/día y 37 min/carro.
+    // Como la normalización divide por el máximo, ese perfil inflado aplastaba
+    // la escala de los otros 19 técnicos contra su propio artefacto.
+    const espDe = espPorId_(users);
+
     const byUser     = {};
     const byUserModel = {};   // { userId: { modelo: [rows] } }
     for (const row of finRows) {
+      const esp = espDe[row.user_id];
+      if (!esp) continue;                                          // no es técnico activo
+      if (String(row.rol_trabajo || "").toUpperCase() !== esp) continue;
       if (!byUser[row.user_id]) byUser[row.user_id] = [];
       byUser[row.user_id].push(row);
       if (row.modelo) {
@@ -301,129 +467,89 @@ router.post("/api/ml/train-pairing", async (req, res) => {
         byUserModel[row.user_id][row.modelo].push(row);
       }
     }
+    const filasUsadas = Object.values(byUser).reduce((s, rs) => s + rs.length, 0);
 
-    // ── Feature extraction (reutilizable para base y reciente) ──────────────
-    function computeFeatures(rows) {
-      if (rows.length < 3) return null;
-      const byDay = {};
-      rows.forEach(r => { const d = r.updated_at?.split("T")[0]; if (d) byDay[d] = (byDay[d] || 0) + 1; });
-      const dayCounts = Object.values(byDay);
-      if (!dayCounts.length) return null;
-      const dailyRate = dayCounts.reduce((s, c) => s + c, 0) / dayCounts.length;
-      const dayStd = Math.sqrt(dayCounts.reduce((s, c) => s + (c - dailyRate) ** 2, 0) / dayCounts.length);
-      const consistency = dailyRate > 0 ? dayStd / dailyRate : 1;
-      const times = rows.map(r => Number(r.tiempo_trab_ms)).filter(t => t > 0 && t < 28800000);
-      const avgMs = times.length ? times.reduce((s, t) => s + t, 0) / times.length : 0;
-      const hours = rows.map(r => r.updated_at ? new Date(r.updated_at).getHours() : -1).filter(h => h >= 0);
-      const sortedHours = [...hours].sort((a, b) => a - b);
-      const peakHour = sortedHours[Math.floor(sortedHours.length / 2)] ?? 12;
-      const hourMean = hours.reduce((s, h) => s + h, 0) / (hours.length || 1);
-      const hourStd = Math.sqrt(hours.reduce((s, h) => s + (h - hourMean) ** 2, 0) / (hours.length || 1));
-      return { dailyRate, consistency, avgMs, peakHour, hourStd, totalRows: rows.length, workingDays: dayCounts.length };
-    }
+    // El decaimiento por recencia, los features y la distancia viven en
+    // lib/ml-pairing.js. Estaban aquí duplicados frente a despacho-motor.js y
+    // las dos copias se habían separado. Ahora hay una sola definición, y es
+    // la misma que mide `/api/ml/validate-pairing`.
+    const ahoraMs = Date.now();
+    const computeFeatures = rows => computeFeatures_(rows, ahoraMs);
 
-    // ── Recency blending: mezcla modelo base (90d) con últimos 7 días ────────
-    // Idea: los últimos 7 días tienen mayor peso (α=0.65) porque reflejan
-    // la forma actual del técnico. El modelo base (0.35) aporta estabilidad
-    // ante semanas atípicas. Si no hay datos recientes suficientes, usa base.
-    const BLEND_ALPHA   = 0.65;   // peso de los últimos 7 días
-    const MIN_RECENT    = 5;      // mínimo de asignaciones recientes para blend
-    const TREND_UP_THR  = 1.10;   // +10% respecto a base → tendencia ascendente
-    const TREND_DN_THR  = 0.90;   // −10% → tendencia descendente
-    const since7ms      = Date.now() - 7 * 86400000;
+    // Ventana de referencia SOLO para reportar tendencia. No entra en el
+    // cálculo de features — de eso se encarga el decaimiento. Son 30 días
+    // porque es el horizonte que el supervisor reconoce ("cómo viene el mes").
+    const TREND_DIAS    = 30;
+    const TREND_UP_THR  = 1.10;   // +10% respecto al histórico → ascendente
+    const TREND_DN_THR  = 0.90;   // −10% → descendente
+    const sinceTrendMs  = ahoraMs - TREND_DIAS * 86400000;
+    const MIN_TREND     = 5;      // mínimo de carros en la ventana para opinar
 
-    // Quién NO entró y por qué. computeFeatures exige al menos MIN_FILAS carros
-    // terminados: con menos no hay ritmo que medir, solo ruido. Es correcto,
-    // pero antes no se decía en ninguna parte — se reentrenaba, el técnico
-    // nuevo no aparecía y no había forma de saber si era falta de datos o un
-    // fallo. Para esos el motor devuelve compatibilidad neutra (0.5): ni los
-    // premia ni los castiga, simplemente no los puede emparejar por ritmo.
-    const MIN_FILAS = 3;
     const excluidos = [];
 
     const techFeatures = [];
     for (const user of users) {
-      const allRows    = byUser[user.id] || [];
-      const baseFeats  = computeFeatures(allRows);
-      if (!baseFeats) {
+      const allRows = byUser[user.id] || [];
+
+      // `features` es lo que usa el emparejamiento: todo el histórico, con
+      // decaimiento de 30 días de semivida aplicado dentro de computeFeatures.
+      const features = computeFeatures(allRows);
+      if (!features) {
         excluidos.push({
           user_id: user.id, nombre: user.nombre, especialidad: user.especialidad,
-          carros_90d: allRows.length,
+          carros_historicos: allRows.length,
           motivo: allRows.length < MIN_FILAS
-            ? `Necesita ${MIN_FILAS} carros terminados en 90 días, lleva ${allRows.length}`
+            ? `Necesita ${MIN_FILAS} carros terminados en su rol, lleva ${allRows.length}`
             : "Sin fechas utilizables en sus carros terminados",
         });
         continue;
       }
 
-      const recentRows  = allRows.filter(r => new Date(r.updated_at).getTime() >= since7ms);
-      const recentFeats = recentRows.length >= MIN_RECENT ? computeFeatures(recentRows) : null;
+      const recentRows  = allRows.filter(r => new Date(r.updated_at).getTime() >= sinceTrendMs);
+      const recentFeats = recentRows.length >= MIN_TREND ? computeFeatures(recentRows) : null;
+      features.recentRows = recentRows.length;
 
-      // Blend adaptivo: más datos recientes → más peso reciente (escala MIN_RECENT→0.35 hasta 30→BLEND_ALPHA)
-      const adaptiveAlpha = recentFeats
-        ? Math.min(BLEND_ALPHA, 0.35 + (recentRows.length - MIN_RECENT) / Math.max(30 - MIN_RECENT, 1) * (BLEND_ALPHA - 0.35))
-        : 0;
-      const features = recentFeats
-        ? Object.fromEntries(
-            ["dailyRate", "consistency", "avgMs", "peakHour", "hourStd"].map(k => [
-              k, adaptiveAlpha * (recentFeats[k] ?? baseFeats[k]) + (1 - adaptiveAlpha) * baseFeats[k],
-            ])
-          )
-        : { ...baseFeats };
-      features.workingDays  = baseFeats.workingDays;
-      features.totalRows    = baseFeats.totalRows;
-      features.recentRows   = recentRows.length;
-
-      // Tendencia: compara tasa diaria reciente vs histórica
+      // Tendencia: ritmo de los últimos 30 días contra el del histórico
+      // ponderado. Es informativa (la TV la muestra), no altera el ranking.
       const trend = recentFeats
-        ? (recentFeats.dailyRate > baseFeats.dailyRate * TREND_UP_THR ? "up"
-          : recentFeats.dailyRate < baseFeats.dailyRate * TREND_DN_THR ? "down"
+        ? (recentFeats.dailyRate > features.dailyRate * TREND_UP_THR ? "up"
+          : recentFeats.dailyRate < features.dailyRate * TREND_DN_THR ? "down"
           : "stable")
         : "unknown";
 
       const trendPct = recentFeats
-        ? Math.round(((recentFeats.dailyRate - baseFeats.dailyRate) / Math.max(baseFeats.dailyRate, 0.1)) * 100)
+        ? Math.round(((recentFeats.dailyRate - features.dailyRate) / Math.max(features.dailyRate, 0.1)) * 100)
         : 0;
 
-      // Features por modelo: mismo blend pero segmentado por tipo de carro
+      // Features por modelo de carro: mismo decaimiento, segmentado por tipo.
       const modelFeatsMap = {};
       for (const [modelo, rows] of Object.entries(byUserModel[user.id] || {})) {
         if (rows.length < 8) continue;   // mínimo 8 asignaciones para features confiables por modelo
-        const mBase   = computeFeatures(rows);
-        const mRecent = rows.filter(r => new Date(r.updated_at).getTime() >= since7ms);
-        const mRF     = mRecent.length >= MIN_RECENT ? computeFeatures(mRecent) : null;
-        if (!mBase) continue;
-        const mAlpha = mRF
-          ? Math.min(BLEND_ALPHA, 0.35 + (mRecent.length - MIN_RECENT) / Math.max(30 - MIN_RECENT, 1) * (BLEND_ALPHA - 0.35))
-          : 0;
-        modelFeatsMap[modelo] = mRF
-          ? Object.fromEntries(
-              ["dailyRate","consistency","avgMs","peakHour","hourStd"].map(k => [
-                k, mAlpha * (mRF[k] ?? mBase[k]) + (1 - mAlpha) * mBase[k],
-              ])
-            )
-          : { ...mBase };
+        const mf = computeFeatures(rows);
+        if (!mf) continue;
+        modelFeatsMap[modelo] = mf;
         modelFeatsMap[modelo].sampleCount = rows.length;
       }
 
       techFeatures.push({
         id: user.id, nombre: user.nombre, email: user.email, especialidad: user.especialidad,
         features, trend, trendPct,
-        baseFeatures: baseFeats, recentFeatures: recentFeats,
+        recentFeatures: recentFeats,
         modelFeatures: modelFeatsMap,
       });
     }
     if (!techFeatures.length) return res.json({ ok: false, error: "Sin datos suficientes para entrenar" });
 
-    // Normalizar features globales a [0,1] usando maxes entre todos los técnicos
-    const KEYS = ["dailyRate", "avgMs", "peakHour", "hourStd", "consistency"];
-    const maxes = {};
-    for (const k of KEYS) maxes[k] = Math.max(...techFeatures.map(t => t.features[k] || 0), 1e-9);
+    // Normalizar a [0,1] con los máximos entre todos los técnicos.
+    const { maxes } = normalizarFeatures(
+      Object.fromEntries(techFeatures.map(t => [t.id, t.features]))
+    );
     for (const tech of techFeatures) {
       tech.normalized = {};
       for (const k of KEYS) tech.normalized[k] = (tech.features[k] || 0) / maxes[k];
 
-      // Normalizar features por modelo usando los MISMOS maxes globales → comparables
+      // Los features por modelo de carro se normalizan con los MISMOS máximos
+      // globales; si cada modelo tuviera su escala no serían comparables entre sí.
       tech.modelNormalized = {};
       for (const [modelo, mf] of Object.entries(tech.modelFeatures || {})) {
         tech.modelNormalized[modelo] = {};
@@ -440,18 +566,44 @@ router.post("/api/ml/train-pairing", async (req, res) => {
       }
     }
 
+    // Cada entrenamiento se mide a sí mismo y guarda su nota junto al modelo.
+    // Sin esto, "el modelo empeoró" sería una impresión; con esto es un número
+    // comparable entre corridas. Si falla no aborta el entrenamiento: un
+    // modelo sin nota sigue sirviendo, y no tenerlo por no poder medirlo sería
+    // peor que tenerlo a ciegas.
+    let validacion = null;
+    try {
+      validacion = validarPorCortes_({ asignaciones: finRows, espPorId: espDe });
+    } catch (e) {
+      console.warn("[ML] No se pudo validar el modelo:", e.message);
+    }
+
     const modelPayload = {
       trained_at: new Date().toISOString(),
-      blend_alpha: BLEND_ALPHA,
-      recent_days: 7,
+      decay_halflife_days: DECAY_HALFLIFE_D,
+      trend_days: TREND_DIAS,
+      ventana: "historico-completo",
       total_techs: techFeatures.length,
+      filas_usadas: filasUsadas,
+      pesos: W_SIM,
+      validacion: validacion?.ok
+        ? {
+            rho_mediano: validacion.rhoMediano,
+            rho_min: validacion.rhoMin,
+            rho_max: validacion.rhoMax,
+            cortes: validacion.cortes,
+            pares: validacion.pares,
+            desfase_cerca_min: validacion.desfaseCercaMediano,
+            desfase_lejos_min: validacion.desfaseLejosMediano,
+          }
+        : null,
       maxes,
       modelFeaturesIndex,
       techs: techFeatures.map(t => ({
         user_id: t.id, nombre: t.nombre, email: t.email, especialidad: t.especialidad,
         features: t.features, normalized: t.normalized,
         trend: t.trend, trendPct: t.trendPct,
-        baseFeatures: t.baseFeatures, recentFeatures: t.recentFeatures,
+        recentFeatures: t.recentFeatures,
         modelFeatures: t.modelFeatures, modelNormalized: t.modelNormalized,
       })),
     };
@@ -467,11 +619,14 @@ router.post("/api/ml/train-pairing", async (req, res) => {
       total_techs: techFeatures.length,
       motor:  techFeatures.filter(t => t.especialidad === "MOTOR").length,
       tanque: techFeatures.filter(t => t.especialidad === "TANQUE").length,
-      blend_alpha: BLEND_ALPHA,
+      decay_halflife_days: DECAY_HALFLIFE_D,
       trends,
+      validacion: modelPayload.validacion,
       // Lo que faltaba para poder responder "¿por qué no salió Fulano?"
       tecnicos_activos: users.length,
-      filas_analizadas: finRows.length,
+      filas_descargadas: finRows.length,
+      filas_usadas: filasUsadas,
+      filas_descartadas_por_rol: finRows.length - filasUsadas,
       filas_truncadas: truncado,
       excluidos,
     });
@@ -504,15 +659,10 @@ router.get("/api/ml/suggest-pair", async (req, res) => {
     const candidates = techs.filter(t => t.especialidad?.toUpperCase() === pairEsp);
     if (!candidates.length) return res.json({ ok: true, suggestion: null, ranked: [] });
 
-    const W = { dailyRate: 0.40, peakHour: 0.30, avgMs: 0.15, hourStd: 0.10, consistency: 0.05 };
-    const calcDist = (a, b) => Math.sqrt(
-      Object.entries(W).reduce((s, [k, w]) => {
-        const d = k === 'peakHour'
-          ? circHourDist_(a.features?.peakHour || 0, b.features?.peakHour || 0)
-          : (a.normalized[k]||0) - (b.normalized[k]||0);
-        return s + w * d * d;
-      }, 0)
-    );
+    // Mismo criterio que aplica el motor de despacho en el taller. Antes esta
+    // ruta tenía su propia tabla de pesos (dailyRate 0.40) y discrepaba con él
+    // en la "mejor pareja" de 5 de cada 10 técnicos de MOTOR.
+    const calcDist = (a, b) => distancia_(a, b, W_SIM) ?? 1;
 
     const ranked = candidates
       .map(c => {
@@ -656,15 +806,11 @@ router.get("/api/ml/suggest-next", async (req, res) => {
     }
 
     // ── Paso 2: ML con features por modelo ────────────────────────────────────
-    const W = { dailyRate: 0.40, peakHour: 0.30, avgMs: 0.15, hourStd: 0.10, consistency: 0.05 };
-    const calcDist = (aNorm, bNorm, aPeakH, bPeakH) => Math.sqrt(
-      Object.entries(W).reduce((s, [k, w]) => {
-        const d = k === 'peakHour'
-          ? circHourDist_(aPeakH || 0, bPeakH || 0)
-          : (aNorm[k]||0) - (bNorm[k]||0);
-        return s + w * d * d;
-      }, 0)
-    );
+    const calcDist = (aNorm, bNorm, aPeakH, bPeakH) => distancia_(
+      { normalized: aNorm, features: { peakHour: aPeakH } },
+      { normalized: bNorm, features: { peakHour: bPeakH } },
+      W_SIM
+    ) ?? 1;
 
     // Devuelve features normalizadas para un técnico, prefiriendo las del modelo si existen
     const mfi = model?.modelFeaturesIndex || {};
@@ -794,15 +940,11 @@ router.get("/api/ml/pairing-overview", async (req, res) => {
     const motors  = techs.filter(t => t.especialidad?.toUpperCase() === "MOTOR");
     const tanques = techs.filter(t => t.especialidad?.toUpperCase() === "TANQUE");
 
-    const W = { dailyRate: 0.40, peakHour: 0.30, avgMs: 0.15, hourStd: 0.10, consistency: 0.05 };
-    const calcDistNorm = (na, nb, aPeakH, bPeakH) => Math.sqrt(
-      Object.entries(W).reduce((s, [k, w]) => {
-        const d = k === 'peakHour'
-          ? circHourDist_(aPeakH || 0, bPeakH || 0)
-          : (na[k]||0) - (nb[k]||0);
-        return s + w * d * d;
-      }, 0)
-    );
+    const calcDistNorm = (na, nb, aPeakH, bPeakH) => distancia_(
+      { normalized: na, features: { peakHour: aPeakH } },
+      { normalized: nb, features: { peakHour: bPeakH } },
+      W_SIM
+    ) ?? 1;
 
     // Similarity matrix global [motorIdx][tanqueIdx]
     const matrix = motors.map(m =>

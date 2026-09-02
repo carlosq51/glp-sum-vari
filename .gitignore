@@ -19,3 +19,10 @@ yarn-error.log*
 .DS_Store
 Thumbs.db
 
+
+# Modelos entrenados: se regeneran en cada entrenamiento y se respaldan en
+# Supabase (tabla ml_models). Llevan datos de rendimiento por persona, así que
+# tampoco tienen por qué vivir en el repo.
+pairing-model.json
+vin-model.json
+omisiones.json
