@@ -1059,9 +1059,13 @@
 .invStockRow--descuadre td:first-child { box-shadow: inset 3px 0 0 var(--danger); }
 .invStockRow--bajo      td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
 .invStockRow--descuadre .invStockLibres { color: var(--danger); }
-.invStockRow--agotado   .invStockLibres { color: var(--muted); }
+.invStockRow--agotado   .invStockLibres { color: var(--danger); }
 .invStockRow--bajo      .invStockLibres { color: var(--warn); }
 .invStockRow--ok        .invStockLibres { color: var(--ok); }
+/* "Todo en uso" y "sin registrar" no son alarmas: 0 libres con las unidades
+   repartidas entre técnicos es un estado sano. Sin tinte ni rojo. */
+.invStockRow--asignado  .invStockLibres { color: var(--muted); }
+.invStockRow--vacio     .invStockLibres { color: var(--muted); }
 
 /* Malogradas: presentes pero fuera de servicio. */
 .invStockMal { color: var(--warn); }

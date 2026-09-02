@@ -225,26 +225,45 @@ async function asegurarStock_(herrId) {
   } catch { return null; }
 }
 
-// Semáforo de una herramienta según sus libres vs su mínimo.
+// Semáforo de una herramienta.
+//
+// Ojo con el caso que parece un problema y no lo es: 0 libres pero varias
+// repartidas entre técnicos NO es "agotado", es que está toda en uso. La
+// herramienta existe físicamente, solo que no queda repuesto en el estante.
+// Solo hay alarma si se pidió expresamente tener repuesto (stock mínimo > 0).
+//
 //   descuadre → saldo negativo (se entregó más de lo registrado)
-//   agotado   → 0 libres
+//   agotado   → se quería repuesto (mínimo > 0) y no queda ninguno
 //   bajo      → por debajo del punto de pedido
-//   ok        → hay de sobra
-function nivelStock_(libres, minimo) {
+//   asignado  → 0 libres, pero todas las unidades están con los técnicos
+//   vacio     → está en el catálogo y no hay ninguna en ningún lado
+//   ok        → hay libres para entregar
+function nivelStock_(libres, minimo, total = libres) {
   if (libres < 0) return "descuadre";
-  if (libres === 0) return "agotado";
+  if (minimo > 0 && libres === 0) return "agotado";
   if (minimo > 0 && libres <= minimo) return "bajo";
+  if (libres === 0) return total > 0 ? "asignado" : "vacio";
   return "ok";
 }
 const NIVEL_META = {
   descuadre: { clase: "adminBadgeDanger", label: "Descuadre" },
   agotado:   { clase: "adminBadgeDanger", label: "Agotado" },
   bajo:      { clase: "adminBadgeWarn",   label: "Bajo mínimo" },
-  ok:        { clase: "adminBadgeOk",     label: "OK" },
+  asignado:  { clase: "adminBadgeOk",     label: "Todo en uso" },
+  vacio:     { clase: "adminBadgeMuted",  label: "Sin registrar" },
+  ok:        { clase: "adminBadgeOk",     label: "Disponible" },
 };
-function nivelBadge_(libres, minimo) {
-  const m = NIVEL_META[nivelStock_(libres, minimo)];
-  return `<span class="adminBadge ${m.clase}">${m.label}</span>`;
+// Los tres que piden acción del encargado del almacén.
+const NIVELES_ALERTA = ["descuadre", "agotado", "bajo"];
+
+function nivelBadge_(libres, minimo, total) {
+  const m = NIVEL_META[nivelStock_(libres, minimo, total)];
+  const titulo = {
+    asignado: "No queda repuesto en el estante, pero todas las unidades están con los técnicos",
+    vacio:    "Está en el catálogo pero no hay ninguna unidad registrada todavía",
+    agotado:  "Se pidió tener repuesto (stock mínimo) y no queda ninguno libre",
+  }[nivelStock_(libres, minimo, total)] || "";
+  return `<span class="adminBadge ${m.clase}"${titulo ? ` title="${esc(titulo)}"` : ""}>${m.label}</span>`;
 }
 
 // ─── Usuarios / hojas ────────────────────────────────────────────────
@@ -1543,21 +1562,22 @@ async function renderStockSub_(recargar = true) {
     const a = asig.get(h.id);
     const asignadas = a?.unidades || 0;
     const minimo = Number(st?.stock_minimo) || 0;
+    // El total físico incluye lo roto: sigue siendo patrimonio, solo que
+    // no está disponible para entregar.
+    const total = libres + malogradas + asignadas;
     return {
-      h, st, libres, malogradas, asignadas, minimo,
-      // El total físico incluye lo roto: sigue siendo patrimonio, solo que
-      // no está disponible para entregar.
-      total: libres + malogradas + asignadas,
+      h, st, libres, malogradas, asignadas, minimo, total,
       tecnicos: a?.tecnicos.size || 0,
       ubicacion: st?.ubicacion || "",
-      nivel: nivelStock_(libres, minimo),
+      nivel: nivelStock_(libres, minimo, total),
       baja: descontinuada_(h),
     };
   });
 
   const bajoMinimo = filasBase.filter(f => f.nivel === "bajo" && !f.baja).length;
-  const agotados   = filasBase.filter(f => f.nivel === "agotado" && f.total > 0 && !f.baja).length;
+  const agotados   = filasBase.filter(f => f.nivel === "agotado" && !f.baja).length;
   const descuadres = filasBase.filter(f => f.nivel === "descuadre").length;
+  const enUso      = filasBase.filter(f => f.nivel === "asignado").length;
   const conMalogradas = filasBase.filter(f => f.malogradas > 0).length;
   const descontinuadas = filasBase.filter(f => f.baja).length;
   // Descontinuadas que aún tienen unidades por recuperar: lo que hay que
@@ -1566,7 +1586,7 @@ async function renderStockSub_(recargar = true) {
 
   const q = (INV.stockFiltro || "").trim().toLowerCase();
   const enVista_ = f =>
-      INV.stockVista === "alertas" ? (f.nivel !== "ok" && !f.baja)
+      INV.stockVista === "alertas" ? (NIVELES_ALERTA.includes(f.nivel) && !f.baja)
     : INV.stockVista === "taller"  ? (f.malogradas > 0 || f.baja)
     : true;
   const lista = filasBase
@@ -1598,7 +1618,7 @@ async function renderStockSub_(recargar = true) {
       <td class="small muted">${esc(f.ubicacion || "—")}</td>
       <td>${f.baja
         ? `<span class="adminBadge adminBadgeMuted">Descontinuada</span>`
-        : nivelBadge_(f.libres, f.minimo)}</td>
+        : nivelBadge_(f.libres, f.minimo, f.total)}</td>
       <td class="adminActionsCell">
         ${f.baja ? "" : `
         <button class="adminBtnEdit adminRowBtn invStEntrada" data-hid="${esc(f.h.id)}" title="Ingresar unidades al almacén">${icon("trayIn", 14)}</button>
@@ -1618,6 +1638,9 @@ async function renderStockSub_(recargar = true) {
       El almacén guarda lo <strong>libre</strong> y lo <strong>malogrado</strong>; lo que ya tiene un técnico
       se cuenta desde su hoja. <strong>Total = libres + malogradas + asignadas</strong>, o sea todo lo que la
       empresa posee. Entregar solo se puede de las libres.
+      Que no queden libres no es un problema si están todas repartidas: eso sale como
+      <span class="adminBadge adminBadgeOk">Todo en uso</span>. Para que además te avise cuando conviene
+      comprar repuesto, ponle un <strong>stock mínimo</strong> en su ficha ${icon("settings", 12)}.
     </p>
 
     <div class="invStockKpis">
@@ -1637,7 +1660,8 @@ async function renderStockSub_(recargar = true) {
         <span class="invStockKpiN">${malogradasTotal}</span>
         <span class="invStockKpiL">Malogradas</span>
       </div>
-      <div class="invStockKpi${bajoMinimo || agotados ? " invStockKpi--warn" : ""}">
+      <div class="invStockKpi${bajoMinimo || agotados ? " invStockKpi--warn" : ""}"
+        title="Solo cuenta las herramientas con stock mínimo definido que se quedaron cortas">
         <span class="invStockKpiN">${bajoMinimo + agotados}</span>
         <span class="invStockKpiL">Por reponer</span>
       </div>
@@ -1657,7 +1681,7 @@ async function renderStockSub_(recargar = true) {
         ${icon("box", 14)} Todo <span class="invCatCount">${filasBase.length}</span>
       </button>
       <button class="invStockVista${INV.stockVista === "alertas" ? " invStockVistaOn" : ""}" data-vista="alertas"
-        title="Agotado, bajo mínimo o descuadrado">
+        title="Bajo mínimo, agotado o descuadrado. Que no queden libres NO es alarma si están todas con los técnicos.">
         ${icon("alertTriangle", 14)} Por reponer <span class="invCatCount">${bajoMinimo + agotados + descuadres}</span>
       </button>
       <button class="invStockVista${INV.stockVista === "taller" ? " invStockVistaOn" : ""}" data-vista="taller"
@@ -2271,7 +2295,7 @@ async function exportarStockXls_() {
         libres + malogradas + asignadas,
         minimo,
         st?.ubicacion || "",
-        baja ? "Descontinuada" : NIVEL_META[nivelStock_(libres, minimo)].label,
+        baja ? "Descontinuada" : NIVEL_META[nivelStock_(libres, minimo, libres + malogradas + asignadas)].label,
         baja ? (h.descontinuada_motivo || "") : "",
         st?.nota || "",
       ];
