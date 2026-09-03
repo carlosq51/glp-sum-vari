@@ -8,6 +8,244 @@
    Todo cuelga de tokens (00-token.css), así que día y noche salen solos.
    ===================================================================== */
 
+/* =====================================================================
+   0. ÁMBITO DEL MÓDULO
+   ---------------------------------------------------------------------
+   Todo el inventario se pinta dentro de `.invRoot` (y sus modales). Ahí
+   se reestilan de una vez las clases heredadas del panel de Admin
+   (adminTable, adminBtn*, adminBadge*, adminLabel…), para que las cinco
+   pestañas se vean iguales sin tocar los cientos de sitios que las usan.
+   ===================================================================== */
+.invRoot { color: var(--text); }
+
+/* Marco de la aplicación */
+.invApp {
+  background: var(--surface);
+  border: var(--border-w) solid var(--surfaceLine);
+  border-radius: var(--radius, 16px);
+  overflow: hidden;
+}
+.invAppBar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px;
+  background: var(--surface2);
+  border-bottom: var(--border-w) solid var(--surfaceLine);
+}
+.invAppIcon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border: var(--border-w) solid color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.invAppTitle { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.invAppTitle h2 {
+  margin: 0;
+  font-size: var(--fs-2xl, 18px);
+  font-weight: var(--fw-black, 800);
+  letter-spacing: -.3px;
+  line-height: 1.2;
+}
+.invAppTitle span { font-size: var(--fs-xs, 12px); color: var(--muted); }
+.invAppLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding: 8px 13px;
+  border: var(--border-w) solid var(--surfaceLine);
+  border-radius: var(--radiusSm, 12px);
+  background: var(--glass);
+  color: var(--muted);
+  font-size: var(--fs-xs, 12px);
+  font-weight: var(--fw-bold, 600);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.invAppLink:hover { color: var(--text); border-color: var(--accent); }
+
+/* Pestañas subrayadas — el patrón de Odoo/Zoho: la sección activa se
+   marca con una línea, no con una pastilla que compite con los botones. */
+.invTabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 10px;
+  background: var(--surface2);
+  border-bottom: var(--border-w) solid var(--surfaceLine);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.invTabs::-webkit-scrollbar { display: none; }
+.invTab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 12px 14px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--fs-sm, 13px);
+  font-weight: var(--fw-bold, 600);
+  font-family: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--dur-fast), border-color var(--dur-fast);
+}
+.invTab:hover { color: var(--text); }
+.invTab .icn { flex-shrink: 0; opacity: .8; }
+.invTabOn { color: var(--accent); border-bottom-color: var(--accent); }
+.invTabOn .icn { opacity: 1; }
+
+.invContent { padding: 18px; }
+@media (max-width: 560px) {
+  .invContent { padding: 14px 12px; }
+  .invTab span { display: none; }
+  .invTab { padding: 12px; }
+}
+
+/* Aviso flotante: se ve aunque haya un modal encima. */
+.invToast {
+  position: fixed;
+  left: 50%;
+  bottom: 22px;
+  z-index: 3000;
+  transform: translate(-50%, 16px);
+  max-width: min(560px, 92vw);
+  padding: 11px 18px;
+  border-radius: var(--radius-full, 999px);
+  border: var(--border-w) solid var(--surfaceLine);
+  background: var(--surface2);
+  box-shadow: 0 12px 34px rgba(0,0,0,.42);
+  color: var(--text);
+  font-size: var(--fs-sm, 13px);
+  font-weight: var(--fw-bold, 600);
+  text-align: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-base), transform var(--dur-base) var(--ease-out);
+}
+.invToastOn { opacity: 1; transform: translate(-50%, 0); }
+.invToastErr { border-color: var(--danger); color: var(--danger); }
+
+/* ── Herencia: lo que aún usa las clases del panel de Admin ───────── */
+.invRoot .adminConfigPanel { background: none; border: none; padding: 0; box-shadow: none; }
+.invRoot .adminTableScroll {
+  border: var(--border-w) solid var(--surfaceLine);
+  border-radius: var(--radiusSm, 12px);
+  background: transparent;
+  box-shadow: none;
+  animation: none;
+}
+.invRoot .adminTable { font-size: var(--fs-sm, 13px); }
+.invRoot .adminTable th {
+  padding: 10px 12px;
+  background: var(--surface2);
+  border-bottom: var(--border-w) solid var(--surfaceLine);
+  font-size: var(--fs-2xs, 11px);
+  letter-spacing: .4px;
+  color: var(--muted);
+}
+.invRoot .adminTable td {
+  padding: 11px 12px;
+  border-bottom: var(--border-w) solid var(--surfaceLine);
+}
+/* Sin zebra: con filas altas y bien separadas estorba más que ayuda. */
+.invRoot .adminTable tbody tr:nth-child(even) td { background: transparent; }
+.invRoot .adminTable tbody tr:hover td { background: var(--glass); }
+.invRoot .adminTable tr:last-child td { border-bottom: none; }
+
+.invRoot .adminBtnOk,
+.invRoot .adminBtnGhost,
+#invModal .adminBtnOk,
+#invModal .adminBtnGhost,
+#invTecModal .adminBtnOk,
+#invTecModal .adminBtnGhost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: var(--radiusSm, 12px);
+  border: var(--border-w) solid var(--surfaceLine);
+  background: var(--glass);
+  color: var(--text);
+  font-size: var(--fs-sm, 13px);
+  font-weight: var(--fw-bold, 600);
+}
+.invRoot .adminBtnOk,
+#invModal .adminBtnOk,
+#invTecModal .adminBtnOk {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #12161c;
+}
+.invRoot .adminBtnGhost:hover,
+#invModal .adminBtnGhost:hover { border-color: var(--accent); }
+
+.invRoot .adminRowBtn,
+#invTecModal .adminRowBtn {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+}
+.invRoot .adminRowBtn:hover,
+#invTecModal .adminRowBtn:hover {
+  background: var(--glass);
+  border-color: var(--surfaceLine);
+  color: var(--text);
+}
+.invRoot .adminRowBtn--wide,
+#invTecModal .adminRowBtn--wide { width: auto; padding: 0 11px; }
+
+.invRoot .adminBadge,
+#invTecModal .adminBadge,
+#invModal .adminBadge {
+  padding: 2px 9px;
+  border-radius: var(--radius-full, 999px);
+  border: var(--border-w) solid var(--surfaceLine);
+  background: var(--glass);
+  font-size: var(--fs-2xs, 11px);
+  font-weight: var(--fw-bold, 600);
+  color: var(--muted);
+}
+
+/* Campos de formulario dentro de los modales del inventario. */
+#invModal .adminLabel,
+#invTecModal .adminLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: var(--fs-xs, 12px);
+  font-weight: var(--fw-bold, 600);
+}
+#invModal .adminLabel input:not([type="checkbox"]),
+#invModal .adminLabel select,
+#invTecModal .adminLabel input:not([type="checkbox"]),
+#invTecModal .adminLabel select,
+.invRoot .adminSearchWrap input {
+  height: 38px;
+  border-radius: var(--radiusSm, 12px);
+  border: var(--border-w) solid var(--surfaceLine);
+  background: var(--glass);
+  color: var(--text);
+  font-family: inherit;
+}
+#invModal .adminLabelHint,
+#invTecModal .adminLabelHint { font-weight: var(--fw-normal, 500); color: var(--muted); }
+#invModal .adminForm,
+#invTecModal .adminForm { display: flex; flex-direction: column; gap: 14px; }
+
 /* ── Superficies ──────────────────────────────────────────────────── */
 .invPanel {
   background: var(--surface);
@@ -82,6 +320,7 @@
 .invBtn--danger { color: var(--danger); }
 .invBtn--danger:hover { border-color: var(--danger); background: var(--dangerBg); }
 .invBtn--icon { padding: 8px; width: 36px; }
+.invBtn--sm { height: 32px; padding: 0 11px; font-size: var(--fs-xs, 12px); }
 
 /* Botón compacto de fila: solo icono, se pinta al pasar por encima. */
 .invRowBtn {
@@ -294,7 +533,90 @@
 /* Descontinuada: se apaga pero sigue legible — puede quedar por recuperar. */
 .invRow--baja td { opacity: .6; }
 
-.invItemName { display: flex; align-items: flex-start; gap: 6px; }
+/* ── Celda de producto: tile + dos líneas ─────────────────────────────
+   El patrón de Zoho/Sortly: un cuadro que ancla la vista, el nombre en
+   negrita y los datos secundarios debajo en gris. Con cincuenta filas
+   parecidas, es la diferencia entre buscar y encontrar. */
+.invItemName { display: flex; align-items: center; gap: 10px; }
+.invItemText { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.invItemTop { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.invItemLabel {
+  font-weight: var(--fw-bold, 600);
+  color: var(--text);
+  line-height: 1.25;
+}
+.invItemMeta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: var(--fs-2xs, 11px);
+  color: var(--muted);
+}
+.invItemMeta span { display: inline-flex; align-items: center; gap: 3px; }
+.invItemMeta .icn { opacity: .8; }
+
+.invTile {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  font-size: var(--fs-2xs, 11px);
+  font-weight: var(--fw-black, 800);
+  letter-spacing: .3px;
+  color: var(--tileFg, var(--muted));
+  background: var(--tileBg, var(--glass));
+  border: var(--border-w) solid var(--tileFg, var(--surfaceLine));
+}
+/* Tonos estables por categoría (el JS reparte con un hash del nombre). */
+.invTile[data-tono="0"] { --tileFg: #60a5fa; --tileBg: rgba(96,165,250,.14); }
+.invTile[data-tono="1"] { --tileFg: #34d399; --tileBg: rgba(52,211,153,.14); }
+.invTile[data-tono="2"] { --tileFg: #f472b6; --tileBg: rgba(244,114,182,.14); }
+.invTile[data-tono="3"] { --tileFg: #fbbf24; --tileBg: rgba(251,191,36,.14); }
+.invTile[data-tono="4"] { --tileFg: #a78bfa; --tileBg: rgba(167,139,250,.14); }
+.invTile[data-tono="5"] { --tileFg: #22d3ee; --tileBg: rgba(34,211,238,.14); }
+.invTile[data-tono="6"] { --tileFg: #fb923c; --tileBg: rgba(251,146,60,.14); }
+.invTile[data-tono="7"] { --tileFg: #94a3b8; --tileBg: rgba(148,163,184,.16); }
+/* Las personas se distinguen de las herramientas por la forma. */
+.invTile--persona { border-radius: 50%; }
+
+/* Número grande de una celda (el dato que se viene a ver). */
+.invNumBig {
+  display: block;
+  font-size: var(--fs-2xl, 18px);
+  font-weight: var(--fw-bold, 700);
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Medidor de existencias ──────────────────────────────────────────
+   Cuánto de lo que hay está disponible, de un vistazo. */
+.invThStock { width: 190px; }
+.invTdStock { width: 190px; }
+.invMeter { display: flex; flex-direction: column; gap: 5px; align-items: flex-start; }
+.invMeterBar {
+  width: 100%;
+  min-width: 110px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--surfaceLine);
+  overflow: hidden;
+}
+.invMeterFill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--ok);
+  transition: width var(--dur-base) var(--ease-out);
+}
+.invMeterFill--bajo      { background: var(--warn); }
+.invMeterFill--agotado,
+.invMeterFill--descuadre { background: var(--danger); }
+.invMeterFill--asignado,
+.invMeterFill--vacio     { background: var(--muted); opacity: .5; }
+
 .invCatTag {
   display: inline-block;
   margin-right: 6px;

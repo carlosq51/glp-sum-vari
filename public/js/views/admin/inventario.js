@@ -67,11 +67,19 @@ function esc(s) {
 function opts(arr, sel = "") {
   return arr.map(v => `<option value="${esc(v)}"${v === sel ? " selected" : ""}>${esc(v)}</option>`).join("");
 }
+// Aviso flotante. Antes era una línea gris al pie del panel que nadie veía
+// (y menos con un modal abierto encima). Ahora se asoma, y se va solo salvo
+// que sea un error, que se queda hasta el siguiente mensaje.
+let invMsgTimer_ = null;
 function invMsg(text, isErr = false) {
   const el = $id("invMsg");
   if (!el) return;
-  el.textContent = text || "";
-  el.style.color = isErr ? "var(--danger)" : "var(--muted)";
+  clearTimeout(invMsgTimer_);
+  if (!text) { el.classList.remove("invToastOn", "invToastErr"); el.textContent = ""; return; }
+  el.textContent = text;
+  el.classList.add("invToastOn");
+  el.classList.toggle("invToastErr", !!isErr);
+  if (!isErr) invMsgTimer_ = setTimeout(() => el.classList.remove("invToastOn"), 4200);
 }
 function estadoBadge(estado) {
   const map = {
@@ -508,31 +516,53 @@ export async function renderInventarioTab(wrap) {
     return;
   }
 
+  // `invRoot` es el ámbito visual del módulo: todo el CSS del inventario
+  // cuelga de aquí, así no hereda el look del panel de Admin ni se lo pisa.
+  wrap.classList.add("invRoot");
   wrap.innerHTML = `
-    <div class="adminConfigPanel">
-      <div class="invSubtabs" role="tablist">
-        <button class="invSubtab" data-sub="tecnico">${icon("users", 15)} Inventario por técnico</button>
-        <button class="invSubtab" data-sub="stock">${icon("trayIn", 15)} Existencias</button>
-        <button class="invSubtab" data-sub="totales">${icon("chart", 15)} Totales</button>
-        <button class="invSubtab" data-sub="kits">${icon("box", 15)} Kits estándar</button>
-        <button class="invSubtab" data-sub="catalogo">${icon("clipboardList", 15)} Catálogo</button>
-        ${enPaginaPropia_() ? "" : `<a class="invSubtabLink" href="/inventario" title="Abrir el inventario en su propia ventana">${icon("box", 14)} Ventana completa</a>`}
-      </div>
-      <div id="invSubContent" style="margin-top:14px;"></div>
-      <div id="invMsg" class="small muted" style="margin-top:10px;"></div>
+    <div class="invApp">
+      <header class="invAppBar">
+        <span class="invAppIcon" aria-hidden="true">${icon("box", 20)}</span>
+        <div class="invAppTitle">
+          <h2>Inventario</h2>
+          <span>Almacén de herramientas · ${INV.catalogo.length} en catálogo</span>
+        </div>
+        ${enPaginaPropia_() ? "" : `<a class="invAppLink" href="/inventario"
+          title="Abrir el inventario en su propia ventana">${icon("box", 14)} Ventana completa</a>`}
+      </header>
+
+      <nav class="invTabs" role="tablist">
+        ${SUBS_.map(s => `<button class="invTab" data-sub="${s.id}" role="tab">
+          ${icon(s.icon, 15)} <span>${esc(s.label)}</span>
+        </button>`).join("")}
+      </nav>
+
+      <div id="invSubContent" class="invContent"></div>
     </div>
+    <div id="invMsg" class="invToast" role="status" aria-live="polite"></div>
   `;
 
-  wrap.querySelectorAll(".invSubtab").forEach(btn => {
+  wrap.querySelectorAll(".invTab").forEach(btn => {
     btn.addEventListener("click", () => setSub_(btn.dataset.sub));
   });
   setSub_(INV.sub);
 }
 
+// Las cinco secciones del módulo, en el orden en que se usan.
+const SUBS_ = [
+  { id: "tecnico",  icon: "users",         label: "Por técnico" },
+  { id: "stock",    icon: "trayIn",        label: "Existencias" },
+  { id: "totales",  icon: "chart",         label: "Totales" },
+  { id: "kits",     icon: "box",           label: "Kits" },
+  { id: "catalogo", icon: "clipboardList", label: "Catálogo" },
+];
+
 function setSub_(sub) {
   INV.sub = sub;
-  document.querySelectorAll(".invSubtab").forEach(b => {
-    b.classList.toggle("invSubtabActive", b.dataset.sub === sub);
+  document.querySelectorAll(".invTab").forEach(b => {
+    const on = b.dataset.sub === sub;
+    b.classList.toggle("invTabOn", on);
+    b.setAttribute("aria-selected", on ? "true" : "false");
   });
   invMsg("");
   if (sub === "tecnico")  return renderTecnicoSub_();
@@ -568,8 +598,8 @@ async function renderTecnicoSub_() {
   const filasTec = INV.usuarios.map(u => {
     const iv = invByUser.get(u.id);
     const chip = iv
-      ? `<span class="adminBadge ${iv.formato === "ANTIGUO" ? "adminBadgeWarn" : "adminBadgeOk"}">${iv.formato === "ANTIGUO" ? "Antiguo" : "Nuevo"}</span>`
-      : `<span class="adminBadgeMuted">Sin inventario</span>`;
+      ? `<span class="invBadge ${iv.formato === "ANTIGUO" ? "invBadge--warn" : "invBadge--ok"}">${iv.formato === "ANTIGUO" ? "Antiguo" : "Nuevo"}</span>`
+      : `<span class="invBadge invBadge--muted">Sin inventario</span>`;
     const st = iv ? statsByInv.get(iv.id) : null;
     if (iv) { tecnicosConHoja++; totalUnidades += st?.unidades || 0; }
     const contador = iv
@@ -578,15 +608,28 @@ async function renderTecnicoSub_() {
            <span class="invContadorSub">· ${st?.claves.size || 0} tipos</span>
          </span>`
       : `<span class="small muted">—</span>`;
+    const uds = st?.unidades || 0;
     return `
-      <tr>
-        <td>${esc(u.nombre)}</td>
-        <td><span class="adminBadge">${esc(u.especialidad)}</span></td>
+      <tr class="invRow">
+        <td class="invTdMain">
+          <div class="invItemName">
+            ${tilePersonaHtml_(u.nombre)}
+            <div class="invItemText">
+              <div class="invItemTop"><span class="invItemLabel">${esc(u.nombre)}</span></div>
+              <div class="invItemMeta">
+                <span>${esc(u.especialidad || "—")}</span>
+                ${iv ? `<span>${st?.claves.size || 0} tipos distintos</span>` : ""}
+              </div>
+            </div>
+          </div>
+        </td>
         <td>${chip}</td>
-        <td style="text-align:center;">${contador}</td>
-        <td class="adminActionsCell">
-          <button class="adminBtnEdit adminRowBtn adminRowBtn--wide invVerTec" data-uid="${esc(u.id)}">
-            ${icon("chevronRight", 14)} ${iv ? "Ver / editar" : "Crear"}
+        <td class="invTdNum">${iv
+          ? `<strong class="invNumBig">${uds}</strong><span class="invTdSub">herramientas</span>`
+          : `<span class="invTdZero">—</span>`}</td>
+        <td class="invTdActions">
+          <button class="invBtn invBtn--sm invVerTec" data-uid="${esc(u.id)}">
+            ${iv ? "Ver hoja" : "Crear hoja"} ${icon("chevronRight", 14)}
           </button>
         </td>
       </tr>`;
@@ -596,41 +639,57 @@ async function renderTecnicoSub_() {
   const identificadas = todosItems.filter(tieneCodigo_).length;
 
   box.innerHTML = `
-    <p class="small muted">
-      Cada técnico tiene su hoja. Los <strong>nuevos</strong> se generan desde un kit estándar (MOTOR/TANQUE);
-      los <strong>antiguos</strong> conservan su lista libre importada del Excel.
-    </p>
-    <div class="invCatToolbar">
-      <div class="adminSearchWrap invBuscador" style="flex:1;min-width:220px;">
-        <span class="adminSearchIcon" aria-hidden="true">${icon("users", 16)}</span>
-        <input id="invTecFind" type="text" autocomplete="off"
-          placeholder="Busca un técnico por su nombre y abre su hoja…">
-        <input type="hidden" id="invTecFindId">
-        <div id="invTecFindList" class="vinSuggest hidden" role="listbox"></div>
+    <section class="invPanel">
+      <header class="invPanelHead">
+        <div>
+          <h3 class="invPanelTitle">${icon("users", 18)} Inventario por técnico</h3>
+          <p class="invPanelSub">
+            Cada técnico tiene su hoja. Los <strong>nuevos</strong> se generan desde un kit estándar
+            (MOTOR/TANQUE); los <strong>antiguos</strong> conservan su lista libre importada del Excel.
+          </p>
+        </div>
+        <div class="invPanelActions">
+          <button id="invBtnAsignarMulti" class="invBtn invBtn--primary">${icon("users", 15)} Asignar a varios</button>
+          <button id="invBtnExcelGen" class="invBtn" title="Descargar todo el inventario en Excel">${icon("download", 15)} Excel</button>
+        </div>
+      </header>
+
+      <div class="invKpis">
+        ${kpiHtml_(tecnicosConHoja, "Técnicos con hoja", "total")}
+        ${kpiHtml_(totalUnidades, "Herramientas entregadas", "libre")}
+        ${kpiHtml_(promedio, "Promedio por técnico")}
+        ${kpiHtml_(identificadas, "Con código o SN")}
       </div>
-    </div>
-    <div class="invCatToolbar">
-      <div class="adminSearchWrap" style="flex:1;min-width:220px;">
-        <span class="adminSearchIcon" aria-hidden="true">${icon("search", 16)}</span>
-        <input id="invBusqGlobal" type="text" autocomplete="off" value="${esc(INV.busq)}"
-          placeholder="Buscar por código, SN o herramienta… (¿quién la tiene?)">
+
+      <div class="invToolbar">
+        <div class="invSearch invBuscador">
+          <span class="invSearchIcon" aria-hidden="true">${icon("users", 16)}</span>
+          <input id="invTecFind" type="text" autocomplete="off"
+            placeholder="Busca un técnico por su nombre y abre su hoja…">
+          <input type="hidden" id="invTecFindId">
+          <div id="invTecFindList" class="vinSuggest hidden" role="listbox"></div>
+        </div>
+        <div class="invSearch">
+          <span class="invSearchIcon" aria-hidden="true">${icon("search", 16)}</span>
+          <input id="invBusqGlobal" type="text" autocomplete="off" value="${esc(INV.busq)}"
+            placeholder="¿Quién tiene esta herramienta? Busca por código, SN o nombre…">
+        </div>
       </div>
-      <button id="invBtnAsignarMulti" class="adminBtnOk">${icon("users", 14)} Asignar a varios</button>
-      <button id="invBtnExcelGen" class="adminBtnGhost" title="Descargar todo el inventario en Excel">${icon("download", 14)} Excel general</button>
-    </div>
-    <div id="invBusqResult"></div>
-    <div class="invResumen">
-      <span class="invResumenChip">Técnicos con hoja <strong>${tecnicosConHoja}</strong></span>
-      <span class="invResumenChip">Herramientas entregadas <strong>${totalUnidades}</strong></span>
-      <span class="invResumenChip">Promedio por técnico <strong>${promedio}</strong></span>
-      <span class="invResumenChip">Con código/SN <strong>${identificadas}</strong></span>
-    </div>
-    <div class="adminTableScroll" style="margin-top:10px;">
-      <table class="adminTable">
-        <thead><tr><th>Técnico</th><th>Especialidad</th><th>Inventario</th><th style="text-align:center;">Herramientas</th><th></th></tr></thead>
-        <tbody>${filasTec || `<tr><td colspan="5" class="small muted" style="padding:12px;">Sin técnicos activos.</td></tr>`}</tbody>
-      </table>
-    </div>
+
+      <div id="invBusqResult"></div>
+
+      <div class="invTableWrap">
+        <table class="invTable">
+          <thead><tr>
+            <th class="invThMain">Técnico</th>
+            <th>Formato</th>
+            <th class="invThNum">Herramientas</th>
+            <th class="invThActions"></th>
+          </tr></thead>
+          <tbody>${filasTec || filaVaciaHtml_(4, "Sin técnicos activos.")}</tbody>
+        </table>
+      </div>
+    </section>
   `;
 
   box.querySelectorAll(".invVerTec").forEach(btn => {
@@ -1668,9 +1727,18 @@ function filaStock_(h, asig) {
   const asignadas = a?.unidades || 0;
   const minimo = Number(st?.stock_minimo) || 0;
   const total = libres + malogradas + asignadas;
+  // Dónde está: un sitio se nombra, varios se cuentan.
+  const sitios = [...new Set([
+    ...lotesDe_(h.id).map(l => (l.ubicacion || "").trim()),
+    ...uds.map(u => (u.ubicacion || "").trim()),
+  ].filter(Boolean))];
+  const ubicacionResumen = sitios.length === 1 ? sitios[0]
+    : sitios.length > 1 ? `${sitios.length} ubicaciones`
+    : (st?.ubicacion || "");
+
   return {
     h, st, uds, libres, malogradas, asignadas, minimo, total,
-    lotes: lotesDe_(h.id),
+    lotes: lotesDe_(h.id), sitios, ubicacionResumen,
     tecnicos: a?.tecnicos.size || 0,
     ubicacion: st?.ubicacion || "",
     nivel: nivelStock_(libres, minimo, total),
@@ -1800,16 +1868,14 @@ async function renderStockSub_(recargar = true) {
         <table class="invTable">
           <thead><tr>
             <th class="invThMain">Herramienta</th>
-            <th class="invThNum" title="Sanas en el estante">Libres</th>
+            <th class="invThNum" title="Sanas en el estante, listas para entregar">Libres</th>
             <th class="invThNum" title="Rotas: en el estante pero fuera de servicio">Malog.</th>
             <th class="invThNum" title="En manos de técnicos">Asign.</th>
             <th class="invThNum" title="Todo lo que la empresa posee">Total</th>
-            <th class="invThNum" title="Punto de pedido">Mín.</th>
-            <th>Ubicación</th>
-            <th>Estado</th>
+            <th class="invThStock">Existencias</th>
             <th class="invThActions"></th>
           </tr></thead>
-          <tbody>${lista.map(filaStockHtml_).join("") || filaVaciaHtml_(9, q
+          <tbody>${lista.map(filaStockHtml_).join("") || filaVaciaHtml_(7, q
             ? `Ninguna herramienta coincide con “${esc(INV.stockFiltro)}”.`
             : "No hay herramientas en esta vista.")}</tbody>
         </table>
@@ -1863,6 +1929,42 @@ function filaVaciaHtml_(cols, texto) {
   return `<tr><td colspan="${cols}" class="invTableEmpty">${texto}</td></tr>`;
 }
 
+// Ficha visual de la herramienta: cuadro con las iniciales de su categoría,
+// coloreado de forma estable a partir del nombre. Da un ancla para el ojo
+// cuando la tabla tiene cincuenta filas parecidas.
+const TILE_TONOS_ = 8;
+
+// Igual, pero con las iniciales de una persona.
+function tilePersonaHtml_(nombre) {
+  const n = (nombre || "?").trim();
+  const iniciales = n.split(/\s+/).slice(0, 2).map(p => p[0] || "").join("").toUpperCase() || "?";
+  let hash = 0;
+  for (const ch of n.toUpperCase()) hash = (hash * 31 + ch.charCodeAt(0)) % 9973;
+  return `<span class="invTile invTile--persona" data-tono="${hash % TILE_TONOS_}" aria-hidden="true">${esc(iniciales)}</span>`;
+}
+
+function tileHtml_(h) {
+  const cat = (h.categoria || h.nombre || "?").trim();
+  const iniciales = cat.split(/\s+/).slice(0, 2).map(p => p[0] || "").join("").toUpperCase() || "?";
+  let hash = 0;
+  for (const ch of cat.toUpperCase()) hash = (hash * 31 + ch.charCodeAt(0)) % 9973;
+  return `<span class="invTile" data-tono="${hash % TILE_TONOS_}" aria-hidden="true">${esc(iniciales)}</span>`;
+}
+
+// Medidor de existencias: barra + etiqueta. Se lee de un vistazo cuánto
+// queda disponible respecto de todo lo que hay de esa herramienta.
+function medidorHtml_(f) {
+  if (f.baja) return `<span class="invBadge invBadge--muted">Descontinuada</span>`;
+  const total = Math.max(1, f.total);
+  const pct = Math.max(0, Math.min(100, Math.round((f.libres / total) * 100)));
+  const nivel = f.nivel;
+  return `
+    <div class="invMeter" title="${f.libres} libre(s) de ${f.total}">
+      <div class="invMeterBar"><span class="invMeterFill invMeterFill--${nivel}" style="width:${pct}%"></span></div>
+      ${nivelBadge_(f.libres, f.minimo, f.total)}
+    </div>`;
+}
+
 function numCell_(n, clase = "") {
   return n
     ? `<td class="invTdNum"><span class="${clase}">${n}</span></td>`
@@ -1883,13 +1985,18 @@ function filaStockHtml_(f) {
           ${desplegable
             ? `<button class="invUdsToggle" data-hid="${esc(f.h.id)}" title="Ver dónde está guardada">${icon("chevronRight", 13)}</button>`
             : `<span class="invUdsSpacer"></span>`}
-          <span>
-            ${f.h.categoria ? `<span class="invCatTag">${esc(f.h.categoria)}</span>` : ""}
-            ${esc(detalleDe_(f.h))}
-            ${f.baja ? `<span class="invBadge invBadge--muted" title="${esc(f.h.descontinuada_motivo || "Ya no se usa")}">Descontinuada</span>` : ""}
-            ${lotes.length > 1 ? `<span class="invUdsChip" title="Está repartida en ${lotes.length} sitios">${icon("mapPin", 11)} ${lotes.length}</span>` : ""}
-            ${uds.length ? `<span class="invUdsChip" title="Unidades con código de empresa o número de serie">${icon("tag", 11)} ${uds.length}</span>` : ""}
-          </span>
+          ${tileHtml_(f.h)}
+          <div class="invItemText">
+            <div class="invItemTop">
+              <span class="invItemLabel">${esc(detalleDe_(f.h))}</span>
+              ${f.baja ? `<span class="invBadge invBadge--muted" title="${esc(f.h.descontinuada_motivo || "Ya no se usa")}">Descontinuada</span>` : ""}
+            </div>
+            <div class="invItemMeta">
+              ${f.h.categoria ? `<span>${esc(f.h.categoria)}</span>` : ""}
+              ${f.ubicacionResumen ? `<span>${icon("mapPin", 11)} ${esc(f.ubicacionResumen)}</span>` : ""}
+              ${uds.length ? `<span title="Unidades con código de empresa o número de serie">${icon("tag", 11)} ${uds.length} con código</span>` : ""}
+            </div>
+          </div>
         </div>
       </td>
       ${numCell_(f.libres, "invNumOk")}
@@ -1898,11 +2005,7 @@ function filaStockHtml_(f) {
         ${f.asignadas ? `<span>${f.asignadas}</span>${f.tecnicos ? `<span class="invTdSub">${f.tecnicos} téc.</span>` : ""}` : `<span class="invTdZero">—</span>`}
       </td>
       <td class="invTdNum"><strong>${f.total}</strong></td>
-      <td class="invTdNum invTdMuted">${f.minimo || "—"}</td>
-      <td class="invTdMuted">${esc(f.ubicacion || "—")}</td>
-      <td>${f.baja
-        ? `<span class="invBadge invBadge--muted">Descontinuada</span>`
-        : nivelBadge_(f.libres, f.minimo, f.total)}</td>
+      <td class="invTdStock">${medidorHtml_(f)}</td>
       <td class="invTdActions">
         ${f.baja ? "" : `
         <button class="invRowBtn invStEntrada" data-hid="${esc(f.h.id)}" title="Ingresar unidades al almacén">${icon("trayIn", 15)}</button>
@@ -1920,7 +2023,7 @@ function filaStockHtml_(f) {
         <span class="invUdsArrow">↳</span>
         ${icon("mapPin", 12)} <strong>${esc((l.ubicacion || "").trim() || "sin ubicación")}</strong>
       </td>
-      <td colspan="5" class="invTdMuted">${esc(l.marca || "")}${l.nota ? ` · ${esc(l.nota)}` : ""}</td>
+      <td colspan="3" class="invTdMuted">${esc(l.marca || "")}${l.nota ? ` · ${esc(l.nota)}` : ""}</td>
       <td>
         <span class="invBadge ${l.estado === "MAL" ? "invBadge--warn" : "invBadge--ok"}">
           ${Number(l.cantidad) || 0} ${l.estado === "MAL" ? "malograda(s)" : "buena(s)"}</span>
@@ -1938,7 +2041,7 @@ function filaStockHtml_(f) {
         ${(u.serie || "").trim() ? `<span class="invCodChip invCodChipSn">SN ${esc(u.serie.trim())}</span>` : ""}
         ${(u.marca || "").trim() ? `<span class="invTdMuted">${esc(u.marca.trim())}</span>` : ""}
       </td>
-      <td colspan="5" class="invTdMuted">${esc(u.ubicacion || "")}${u.nota ? ` · ${esc(u.nota)}` : ""}</td>
+      <td colspan="3" class="invTdMuted">${esc(u.ubicacion || "")}${u.nota ? ` · ${esc(u.nota)}` : ""}</td>
       <td>${u.estado === "MAL"
         ? `<span class="invBadge invBadge--warn">Malograda</span>`
         : `<span class="invBadge invBadge--ok">Disponible</span>`}</td>
