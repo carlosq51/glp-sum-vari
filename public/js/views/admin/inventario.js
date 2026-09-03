@@ -39,6 +39,12 @@ const INV = {
   // Lo suelto va en los contadores; lo identificado, aquí. No se solapan.
   unidades: [],          // inventario_stock_unidades
   unidadesByHerr: new Map(), // herramienta_id → unidades[]
+  // Lotes: lo suelto, pero separado por estado y ubicación. Cada ingreso
+  // es su propio lote, así 5 buenos en el estante 1 y 5 rotos en el 2 son
+  // dos realidades distintas de la misma herramienta.
+  lotes: [],             // inventario_stock_lotes
+  lotesByHerr: new Map(),// herramienta_id → lotes[]
+  lotesOk: false,        // ¿existe la tabla? (sin ella no se puede escribir)
   stockFiltro: "",       // texto del filtro de la sub-vista Existencias
   // Qué se está mirando del almacén:
   //   "todo"    → todas las herramientas del catálogo
@@ -138,12 +144,29 @@ function codigosChips_(it) {
 function stockDe_(herrId) {
   return INV.stockByHerr.get(herrId) || null;
 }
-// Contadores "a granel": herramientas intercambiables, sin código ni SN.
+// ── Lotes: lo suelto, separado por estado y ubicación ──
+function lotesDe_(herrId, estado = null) {
+  const arr = INV.lotesByHerr.get(herrId) || [];
+  if (!estado) return arr;
+  return estado === "MAL" ? arr.filter(l => l.estado === "MAL") : arr.filter(l => l.estado !== "MAL");
+}
+function sumaLotes_(herrId, estado) {
+  return lotesDe_(herrId, estado).reduce((n, l) => n + (Number(l.cantidad) || 0), 0);
+}
+// Etiqueta de un lote para los selectores: dónde está y cuánto queda.
+function etiquetaLote_(l) {
+  const donde = (l.ubicacion || "").trim() || "sin ubicación";
+  return `${donde} — ${Number(l.cantidad) || 0} ${l.estado === "MAL" ? "malograda(s)" : "buena(s)"}`;
+}
+
+// Contadores "a granel": lotes + lo que quede en los contadores heredados
+// (la migración del SQL los deja en 0, pero se siguen sumando para que
+// nada parezca perdido si el script todavía no se corrió).
 function granelLibresDe_(herrId) {
-  return Number(stockDe_(herrId)?.cantidad_almacen) || 0;
+  return (Number(stockDe_(herrId)?.cantidad_almacen) || 0) + sumaLotes_(herrId, "OK");
 }
 function granelMalDe_(herrId) {
-  return Number(stockDe_(herrId)?.cantidad_malogrado) || 0;
+  return (Number(stockDe_(herrId)?.cantidad_malogrado) || 0) + sumaLotes_(herrId, "MAL");
 }
 
 // Unidades identificadas (con código de empresa o número de serie): cada
@@ -198,50 +221,80 @@ function asignadasPorHerr_() {
   return map;
 }
 
-// Mueve unidades A GRANEL entre las dos pilas del almacén y deja el
-// movimiento en la bitácora. Las unidades identificadas no pasan por aquí:
-// esas cambian de estado o de tabla, una por una.
-// `deltas` acepta { libres, malogradas }; positivo entra, negativo sale.
-// Una avería es { libres: -n, malogradas: +n } — no cambia el total físico,
-// solo deja de estar disponible.
-// Devuelve { libres, malogradas } o null si la herramienta no tiene fila de
-// stock (ítem de descripción libre, o SQL v3 sin correr): en ese caso no se
-// inventa nada, simplemente el almacén no participa.
-async function ajustarStock_(herrId, deltas = {}, mov = {}) {
-  if (!herrId) return null;
-  const fila = stockDe_(herrId);
-  if (!fila) return null;
+// =====================================================================
+//  OPERACIONES SOBRE LOTES
+//  Un lote es "tantas unidades, en tal estado, en tal sitio". Todo lo que
+//  entra o sale del almacén a granel pasa por aquí.
+// =====================================================================
 
-  const dLibres = Number(deltas.libres) || 0;
-  const dMal    = Number(deltas.malogradas) || 0;
-  if (!dLibres && !dMal) return { libres: granelLibresDe_(herrId), malogradas: granelMalDe_(herrId) };
-
-  const data = { updated_at: new Date().toISOString() };
-  if (dLibres) data.cantidad_almacen   = (Number(fila.cantidad_almacen) || 0) + dLibres;
-  if (dMal)    data.cantidad_malogrado = (Number(fila.cantidad_malogrado) || 0) + dMal;
-
-  await supabasePatch("inventario_stock", { id: fila.id }, data);
-  Object.assign(fila, data);
-
-  if (mov.tipo) {
-    await logMov_({
-      herramienta_id: herrId,
-      descripcion: INV.catMap.get(herrId)?.nombre || "",
-      // La cantidad del movimiento es cuántas unidades se tocaron, no la suma
-      // de los dos deltas (en una avería las mismas n cambian de pila).
-      cantidad: Math.max(Math.abs(dLibres), Math.abs(dMal)),
-      ...mov,
-    });
-  }
-  return { libres: Number(fila.cantidad_almacen) || 0, malogradas: Number(fila.cantidad_malogrado) || 0 };
+// El almacén no acepta escrituras sin la tabla de lotes: es preferible
+// avisar a escribir en los contadores viejos y dejar el dato a medias.
+function exigirLotes_() {
+  if (INV.lotesOk) return true;
+  invMsg("Falta la tabla de lotes. Ejecuta supabase/inventario-stock.sql en Supabase.", true);
+  return false;
 }
 
-// Atajo para el caso común: solo entran o salen unidades sanas.
-// Devuelve el saldo de libres (o null si no hay ficha de almacén).
-async function moverStock_(herrId, delta, mov = {}) {
-  if (!delta) return null;
-  const r = await ajustarStock_(herrId, { libres: delta }, mov);
-  return r ? r.libres : null;
+// Crea un lote nuevo (un ingreso = un lote) y lo deja en memoria.
+async function crearLote_(herrId, { cantidad, estado = "OK", ubicacion = "", marca = "", nota = "" }) {
+  const [lote] = await supabasePost("inventario_stock_lotes", {
+    herramienta_id: herrId, cantidad, estado, ubicacion, marca, nota,
+  });
+  if (lote) {
+    INV.lotes.push(lote);
+    indexarLotes_(INV.lotes);
+  }
+  return lote;
+}
+
+// Suma o resta unidades de un lote. Si queda en 0 el lote se borra: un
+// lote vacío no dice nada y solo ensucia los selectores.
+async function moverLote_(loteId, delta) {
+  const lote = INV.lotes.find(l => l.id === loteId);
+  if (!lote || !delta) return lote || null;
+  const nueva = (Number(lote.cantidad) || 0) + delta;
+  if (nueva === 0) {
+    await supabaseDelete("inventario_stock_lotes", { id: loteId });
+    INV.lotes = INV.lotes.filter(l => l.id !== loteId);
+  } else {
+    await supabasePatch("inventario_stock_lotes", { id: loteId }, { cantidad: nueva });
+    lote.cantidad = nueva;
+  }
+  indexarLotes_(INV.lotes);
+  return nueva === 0 ? null : lote;
+}
+
+// Saca unidades sanas del almacén repartiendo entre lotes, del más viejo al
+// más nuevo. Lo usan las altas directas a un técnico, donde no se elige de
+// qué estante sale. Devuelve cuántas pudo sacar de verdad.
+async function descontarDeLotes_(herrId, cantidad) {
+  let queda = Math.max(0, cantidad);
+  for (const l of [...lotesDe_(herrId, "OK")]) {
+    if (queda <= 0) break;
+    const hay = Number(l.cantidad) || 0;
+    if (hay <= 0) continue;
+    const toma = Math.min(hay, queda);
+    await moverLote_(l.id, -toma);
+    queda -= toma;
+  }
+  return cantidad - queda;
+}
+
+// Mueve unidades entre estados conservando la ubicación: una avería no
+// cambia de sitio la herramienta, solo deja de servir. Si no existe el
+// lote destino en esa ubicación, se crea.
+async function cambiarEstadoLote_(loteId, cantidad, estadoDestino) {
+  const origen = INV.lotes.find(l => l.id === loteId);
+  if (!origen) return null;
+  const destino = lotesDe_(origen.herramienta_id, estadoDestino)
+    .find(l => (l.ubicacion || "") === (origen.ubicacion || "") && l.id !== origen.id);
+  if (destino) await moverLote_(destino.id, cantidad);
+  else await crearLote_(origen.herramienta_id, {
+    cantidad, estado: estadoDestino,
+    ubicacion: origen.ubicacion || "", marca: origen.marca || "",
+  });
+  await moverLote_(loteId, -cantidad);
+  return true;
 }
 
 // Asegura que la herramienta tenga fila de stock (para catálogos viejos
@@ -391,18 +444,36 @@ async function cargarBase_() {
 
 // Snapshot de TODAS las hojas + ítems (buscador global, totales, traspaso).
 async function cargarSnapshot_() {
-  const [hojas, items, unidades] = await Promise.all([
+  // Las tablas del almacén pueden no existir todavía (SQL sin correr): se
+  // capturan por separado para saber cuál falta y avisar en concreto.
+  const [hojas, items, unidades, lotes] = await Promise.all([
     supabaseGet("inventario_tecnico").catch(() => []),
     supabaseGet("inventario_tecnico_items").catch(() => []),
-    // Sin la v3 del SQL esta tabla no existe: el almacén sigue funcionando
-    // solo con contadores a granel.
     supabaseGet("inventario_stock_unidades").catch(() => []),
+    supabaseGet("inventario_stock_lotes").catch(() => null),
   ]);
   INV.hojas = hojas || [];
   INV.hojaByUser = new Map(INV.hojas.map(h => [h.user_id, h]));
   INV.todosItems = items || [];
   indexarUnidades_(unidades || []);
+  INV.lotesOk = Array.isArray(lotes);
+  indexarLotes_(lotes || []);
   return INV.todosItems;
+}
+
+function indexarLotes_(lista) {
+  INV.lotes = lista;
+  const map = new Map();
+  lista.forEach(l => {
+    if (!map.has(l.herramienta_id)) map.set(l.herramienta_id, []);
+    map.get(l.herramienta_id).push(l);
+  });
+  // Primero lo bueno, y dentro de cada estado por ubicación: así el
+  // selector de "¿de dónde sale?" siempre ofrece lo usable arriba.
+  map.forEach(arr => arr.sort((a, b) =>
+    (a.estado === "MAL") - (b.estado === "MAL") ||
+    (a.ubicacion || "").localeCompare(b.ubicacion || "")));
+  INV.lotesByHerr = map;
 }
 
 // Reagrupa las unidades identificadas por herramienta. Se llama tras cada
@@ -1034,7 +1105,7 @@ function editarItem_(itemId) {
         });
         // El saldo del almacén solo se toca si la herramienta salió del
         // estante ahora (el movimiento ya quedó arriba como ASIGNACION).
-        if ($id("invItDescontar")?.checked) await moverStock_(data.herramienta_id, -data.cantidad);
+        if ($id("invItDescontar")?.checked) await descontarDeLotes_(data.herramienta_id, data.cantidad);
       }
       await abrirInventarioTec_(INV.selTecId, INV.invActual);
       return true;
@@ -1535,7 +1606,13 @@ function abrirAsignarMultiple_() {
           nota: base.nota,
         });
       }
-      if (descontar) await moverStock_(base.herramienta_id, -base.cantidad * ids.length);
+      if (descontar) {
+        const pedidas = base.cantidad * ids.length;
+        const sacadas = await descontarDeLotes_(base.herramienta_id, pedidas);
+        if (sacadas < pedidas) {
+          invMsg(`Asignadas ${ids.length}, pero el almacén solo tenía ${sacadas} de ${pedidas}: revisa las existencias.`, true);
+        }
+      }
       invMsg(`Asignada a ${ids.length} técnico(s): ${nuevos} nueva(s), ${sumados} sumada(s) a lo que ya tenían.`);
       await renderTecnicoSub_();
       return true;
@@ -1593,6 +1670,7 @@ function filaStock_(h, asig) {
   const total = libres + malogradas + asignadas;
   return {
     h, st, uds, libres, malogradas, asignadas, minimo, total,
+    lotes: lotesDe_(h.id),
     tecnicos: a?.tecnicos.size || 0,
     ubicacion: st?.ubicacion || "",
     nivel: nivelStock_(libres, minimo, total),
@@ -1793,17 +1871,23 @@ function numCell_(n, clase = "") {
 
 function filaStockHtml_(f) {
   const uds = f.uds;
+  const lotes = f.lotes;
+  // Se despliega si hay algo que mirar por dentro: lotes en varios sitios
+  // o unidades con código. Un solo lote sin ubicación no aporta nada.
+  const desplegable = uds.length > 0 || lotes.length > 1 ||
+    (lotes.length === 1 && (lotes[0].ubicacion || "").trim());
   const fila = `
     <tr class="invRow invRow--${f.nivel}${f.baja ? " invRow--baja" : ""}">
       <td class="invTdMain">
         <div class="invItemName">
-          ${uds.length
-            ? `<button class="invUdsToggle" data-hid="${esc(f.h.id)}" title="Ver las ${uds.length} unidades con código/SN">${icon("chevronRight", 13)}</button>`
+          ${desplegable
+            ? `<button class="invUdsToggle" data-hid="${esc(f.h.id)}" title="Ver dónde está guardada">${icon("chevronRight", 13)}</button>`
             : `<span class="invUdsSpacer"></span>`}
           <span>
             ${f.h.categoria ? `<span class="invCatTag">${esc(f.h.categoria)}</span>` : ""}
             ${esc(detalleDe_(f.h))}
             ${f.baja ? `<span class="invBadge invBadge--muted" title="${esc(f.h.descontinuada_motivo || "Ya no se usa")}">Descontinuada</span>` : ""}
+            ${lotes.length > 1 ? `<span class="invUdsChip" title="Está repartida en ${lotes.length} sitios">${icon("mapPin", 11)} ${lotes.length}</span>` : ""}
             ${uds.length ? `<span class="invUdsChip" title="Unidades con código de empresa o número de serie">${icon("tag", 11)} ${uds.length}</span>` : ""}
           </span>
         </div>
@@ -1827,8 +1911,26 @@ function filaStockHtml_(f) {
       </td>
     </tr>`;
 
-  if (!uds.length) return fila;
-  const subs = uds.map(u => `
+  if (!desplegable) return fila;
+
+  // Primero dónde está lo suelto, después los equipos identificados.
+  const subLotes = lotes.map(l => `
+    <tr class="invUdsRow" data-hid="${esc(f.h.id)}" hidden>
+      <td class="invTdMain invTdUnit" colspan="2">
+        <span class="invUdsArrow">↳</span>
+        ${icon("mapPin", 12)} <strong>${esc((l.ubicacion || "").trim() || "sin ubicación")}</strong>
+      </td>
+      <td colspan="5" class="invTdMuted">${esc(l.marca || "")}${l.nota ? ` · ${esc(l.nota)}` : ""}</td>
+      <td>
+        <span class="invBadge ${l.estado === "MAL" ? "invBadge--warn" : "invBadge--ok"}">
+          ${Number(l.cantidad) || 0} ${l.estado === "MAL" ? "malograda(s)" : "buena(s)"}</span>
+      </td>
+      <td class="invTdActions">
+        <button class="invRowBtn invRowBtn--go invStDetalle" data-hid="${esc(f.h.id)}" title="Ver detalle">${icon("chevronRight", 15)}</button>
+      </td>
+    </tr>`).join("");
+
+  const subs = subLotes + uds.map(u => `
     <tr class="invUdsRow" data-hid="${esc(f.h.id)}" hidden>
       <td class="invTdMain invTdUnit" colspan="2">
         <span class="invUdsArrow">↳</span>
@@ -1997,10 +2099,21 @@ function abrirEntradaStock_(herrId) {
           <input id="invEntCant" type="number" min="1" value="1">
         </label>
         <label class="invField">
-          <span class="invFieldLabel">Ubicación <span class="invFieldHint">(estante, caja…)</span></span>
-          <input id="invEntUbic" type="text" value="${esc(herr ? (stockDe_(herr.id)?.ubicacion || "") : "")}" placeholder="Ej: Estante B-2">
+          <span class="invFieldLabel">¿En qué estado entran?</span>
+          <select id="invEntEstado">
+            <option value="OK" selected>Buenas — listas para entregar</option>
+            <option value="MAL">Malogradas — entran rotas al almacén</option>
+          </select>
         </label>
       </div>
+      <label class="invField">
+        <span class="invFieldLabel">Ubicación de este lote <span class="invFieldHint">(estante, caja…)</span></span>
+        <input id="invEntUbic" type="text" list="invEntUbicList" autocomplete="off"
+          value="${esc(herr ? (stockDe_(herr.id)?.ubicacion || "") : "")}" placeholder="Ej: Estante 1">
+        <datalist id="invEntUbicList">${ubicacionesConocidas_().map(u => `<option value="${esc(u)}">`).join("")}</datalist>
+        <span class="invFieldHint">Cada ingreso queda como un lote aparte, así puedes tener
+        5 en el estante 1 y otras 5 en el estante 2 sin mezclarlas.</span>
+      </label>
       ${bloqueIdentidadHtml_("invEnt")}
       <label class="invField">
         <span class="invFieldLabel">Motivo / documento <span class="invFieldHint">(guía, factura, quién trajo)</span></span>
@@ -2015,8 +2128,11 @@ function abrirEntradaStock_(herrId) {
     const ubic = $id("invEntUbic")?.value?.trim() || "";
     const nota = $id("invEntNota")?.value?.trim() || "";
     const marca = $id("invEntMarca")?.value?.trim() || "";
+    const estado = $id("invEntEstado")?.value === "MAL" ? "MAL" : "OK";
     const identificar = !!$id("invEntIdent")?.checked;
+    if (!exigirLotes_()) return false;
 
+    const comoEntran = estado === "MAL" ? "malograda(s)" : "buena(s)";
     try {
       await asegurarStock_(hid);
 
@@ -2025,25 +2141,28 @@ function abrirEntradaStock_(herrId) {
         const { unidades, error } = leerUnidadesForm_("invEnt", { marca, ubicacion: ubic, nota });
         if (error) { invMsg(error, true); return false; }
         await supabasePost("inventario_stock_unidades",
-          unidades.map(u => ({ ...u, herramienta_id: hid })));
+          unidades.map(u => ({ ...u, estado, herramienta_id: hid })));
         for (const u of unidades) {
           await logMov_({
             tipo: "ENTRADA", herramienta_id: hid,
             descripcion: INV.catMap.get(hid)?.nombre || "",
             marca: u.marca, codigo: u.codigo, serie: u.serie,
-            cantidad: 1, nota, hecho_por: operador_(),
+            cantidad: 1, nota: [nota, ubic && `en ${ubic}`].filter(Boolean).join(" · "),
+            hecho_por: operador_(),
           });
         }
-        invMsg(`Ingresadas ${unidades.length} unidad(es) identificada(s).`);
+        invMsg(`Ingresadas ${unidades.length} unidad(es) identificada(s) ${comoEntran}${ubic ? ` en ${ubic}` : ""}.`);
       } else {
-        const saldo = await moverStock_(hid, cant, { tipo: "ENTRADA", marca, nota, hecho_por: operador_() });
-        if (saldo == null) { invMsg("Esa herramienta no tiene ficha de almacén.", true); return false; }
-        invMsg(`Entraron ${cant} unidad(es) a granel.`);
-      }
-
-      if (ubic) {
-        const fila = stockDe_(hid);
-        if (fila) { await supabasePatch("inventario_stock", { id: fila.id }, { ubicacion: ubic }); fila.ubicacion = ubic; }
+        // Un ingreso = un lote, con su estado y su sitio.
+        await crearLote_(hid, { cantidad: cant, estado, ubicacion: ubic, marca, nota });
+        await logMov_({
+          tipo: "ENTRADA", herramienta_id: hid,
+          descripcion: INV.catMap.get(hid)?.nombre || "",
+          marca, cantidad: cant,
+          nota: [nota, ubic && `en ${ubic}`, estado === "MAL" && "entran malogradas"].filter(Boolean).join(" · "),
+          hecho_por: operador_(),
+        });
+        invMsg(`Lote de ${cant} unidad(es) ${comoEntran}${ubic ? ` en ${ubic}` : ""}.`);
       }
       await renderStockSub_();
       return true;
@@ -2064,11 +2183,12 @@ function abrirEntradaStock_(herrId) {
 function abrirIdentificarStock_(herrId) {
   const herr = INV.catMap.get(herrId);
   if (!herr) return;
-  const granel = granelLibresDe_(herrId);
-  if (granel < 1) {
-    invMsg("No hay unidades sueltas que identificar. Si son nuevas, usa «Ingresar al almacén».", true);
+  const lotes = lotesDe_(herrId).filter(l => (Number(l.cantidad) || 0) > 0);
+  if (!lotes.length) {
+    invMsg("No hay lotes que identificar. Si son nuevas, usa «Ingresar al almacén».", true);
     return;
   }
+  const granel = lotes.reduce((n, l) => n + (Number(l.cantidad) || 0), 0);
 
   const body = `
     <div class="invForm">
@@ -2077,17 +2197,22 @@ function abrirIdentificarStock_(herrId) {
         <strong>${esc(detalleDe_(herr))}</strong>
       </div>
       ${saldoHtml_(herrId)}
-      <p class="invHint">Tienes <strong>${granel}</strong> unidad(es) contadas a granel. Al identificarlas,
+      <p class="invHint">Tienes <strong>${granel}</strong> unidad(es) contadas en lote. Al identificarlas,
       cada una pasa a ser un objeto propio con su código y su número de serie — el total no cambia,
-      solo dejas de contarlas en montón.</p>
+      solo dejas de contarlas en montón. Conservan el estado y la ubicación de su lote.</p>
+      ${lotes.length > 1 ? `<label class="invField">
+        <span class="invFieldLabel">¿De qué lote?</span>
+        <select id="invIdLote">${lotes.map(l =>
+          `<option value="${esc(l.id)}" data-max="${Number(l.cantidad) || 0}">${esc(etiquetaLote_(l))}</option>`).join("")}</select>
+      </label>` : `<input type="hidden" id="invIdLote" value="${esc(lotes[0].id)}" data-max="${Number(lotes[0].cantidad) || 0}">`}
       <div class="invFieldRow">
         <label class="invField">
-          <span class="invFieldLabel">¿Cuántas vas a identificar? <span class="invFieldHint">(de ${granel})</span></span>
-          <input id="invIdCant" type="number" min="1" max="${granel}" value="${Math.min(granel, 10)}">
+          <span class="invFieldLabel">¿Cuántas vas a identificar? <span class="invFieldHint" id="invIdMaxHint">(de ${Number(lotes[0].cantidad) || 0})</span></span>
+          <input id="invIdCant" type="number" min="1" value="${Math.min(Number(lotes[0].cantidad) || 1, 10)}">
         </label>
         <label class="invField">
           <span class="invFieldLabel">Marca <span class="invFieldHint">(la misma para todas)</span></span>
-          <input id="invIdMarca" type="text" placeholder="Ej: Makita" autocomplete="off">
+          <input id="invIdMarca" type="text" value="${esc(lotes[0].marca || "")}" placeholder="Ej: Makita" autocomplete="off">
         </label>
       </div>
       <div class="invUnitForm">
@@ -2099,37 +2224,53 @@ function abrirIdentificarStock_(herrId) {
     </div>`;
 
   abrirModal_(`Identificar unidades · ${esc(detalleDe_(herr))}`, body, async () => {
+    if (!exigirLotes_()) return false;
+    const lote = INV.lotes.find(l => l.id === ($id("invIdLote")?.value || ""));
+    if (!lote) { invMsg("Elige un lote.", true); return false; }
     const marca = $id("invIdMarca")?.value?.trim() || "";
     const { unidades, error } = leerUnidadesForm_("invId", {
-      marca, ubicacion: stockDe_(herrId)?.ubicacion || "",
+      marca, ubicacion: lote.ubicacion || "",
     });
     if (error) { invMsg(error, true); return false; }
-    if (unidades.length > granel) { invMsg(`Solo hay ${granel} suelta(s) para identificar.`, true); return false; }
+    const disponible = Number(lote.cantidad) || 0;
+    if (unidades.length > disponible) { invMsg(`Ese lote solo tiene ${disponible} unidad(es).`, true); return false; }
     try {
+      // Heredan el estado del lote: si el lote estaba roto, siguen rotas.
       await supabasePost("inventario_stock_unidades",
-        unidades.map(u => ({ ...u, herramienta_id: herrId })));
-      // Salen del contador: ahora se cuentan una por una. El total no cambia.
-      await ajustarStock_(herrId, { libres: -unidades.length }, {
-        tipo: "AJUSTE", marca,
-        nota: `Identificadas ${unidades.length} unidad(es) que estaban a granel`,
+        unidades.map(u => ({ ...u, estado: lote.estado, herramienta_id: herrId })));
+      // Salen del lote: ahora se cuentan una por una. El total no cambia.
+      await moverLote_(lote.id, -unidades.length);
+      await logMov_({
+        tipo: "AJUSTE", herramienta_id: herrId, descripcion: herr.nombre,
+        marca, cantidad: unidades.length,
+        nota: notaLote_(lote, `Identificadas ${unidades.length} unidad(es) que estaban en lote`),
         hecho_por: operador_(),
       });
       invMsg(`${unidades.length} unidad(es) ahora tienen código propio.`);
+      await cargarSnapshot_();
       await renderStockSub_();
       return true;
     } catch (e) { invMsg(errorMsg_(e), true); return false; }
   }, { ancho: true });
 
-  // Renglones: uno por unidad, y se ajustan al cambiar la cantidad.
-  const cant = $id("invIdCant"), rows = $id("invIdRows");
+  // Renglones: uno por unidad, y se ajustan al cambiar la cantidad o el lote.
+  const cant = $id("invIdCant"), rows = $id("invIdRows"), selLote = $id("invIdLote");
+  const maxLote = () => Number(selLote?.selectedOptions?.[0]?.dataset.max ?? selLote?.dataset.max) || granel;
   const pintar = () => {
-    const n = Math.max(1, Math.min(granel, Number(cant?.value) || 1));
+    const n = Math.max(1, Math.min(maxLote(), Number(cant?.value) || 1));
     const previo = [...document.querySelectorAll(".invIdCod")].map((c, i) => ({
       codigo: c.value || "",
       serie: document.querySelectorAll(".invIdSer")[i]?.value || "",
     }));
     if (rows) rows.innerHTML = filasUnidadHtml_(n, "invId", previo);
   };
+  selLote?.addEventListener("change", () => {
+    const max = maxLote();
+    const hint = $id("invIdMaxHint");
+    if (hint) hint.textContent = `(de ${max})`;
+    if (cant && Number(cant.value) > max) cant.value = max;
+    pintar();
+  });
   cant?.addEventListener("input", pintar);
   pintar();
 }
@@ -2140,13 +2281,18 @@ function abrirIdentificarStock_(herrId) {
 function abrirEntregarStock_(herrId) {
   const herr = INV.catMap.get(herrId);
   if (!herr) return;
-  const granel = granelLibresDe_(herrId);
+  const lotesOk = lotesDe_(herrId, "OK").filter(l => (Number(l.cantidad) || 0) > 0);
   const udsOk = unidadesDe_(herrId, "OK");
 
+  // Un solo selector con todo lo que se puede entregar: los lotes por
+  // ubicación y, debajo, cada equipo identificado por su código.
   const opcionesUnidad = [
-    `<option value="">A granel (sin código ni SN) — quedan ${granel}</option>`,
-    ...udsOk.map(u => `<option value="${esc(u.id)}">${esc(etiquetaUnidad_(u))}</option>`),
+    lotesOk.length ? `<optgroup label="Lotes (sin código)">${lotesOk.map(l =>
+      `<option value="lote:${esc(l.id)}" data-max="${Number(l.cantidad) || 0}">${esc(etiquetaLote_(l))}</option>`).join("")}</optgroup>` : "",
+    udsOk.length ? `<optgroup label="Unidades identificadas">${udsOk.map(u =>
+      `<option value="ud:${esc(u.id)}" data-max="1">${esc(etiquetaUnidad_(u))}${u.ubicacion ? ` — ${esc(u.ubicacion)}` : ""}</option>`).join("")}</optgroup>` : "",
   ].join("");
+  const hayAlgo = lotesOk.length || udsOk.length;
 
   const body = `
     <div class="invForm">
@@ -2166,16 +2312,18 @@ function abrirEntregarStock_(herrId) {
         <span class="invFieldHint">Si aún no tiene hoja de inventario, se le crea sola.</span>
       </label>
 
-      ${udsOk.length ? `<label class="invField">
-        <span class="invFieldLabel">¿Qué unidad se lleva?</span>
+      ${hayAlgo ? `<label class="invField">
+        <span class="invFieldLabel">¿Qué se lleva?</span>
         <select id="invEgUnidad">${opcionesUnidad}</select>
         <span class="invFieldHint">Al elegir una unidad identificada se lleva su código y su SN a la hoja del técnico.</span>
-      </label>` : `<input type="hidden" id="invEgUnidad" value="">`}
+      </label>` : `<div class="invNota invNota--warn">${icon("alertTriangle", 15)}
+        <span>No queda nada disponible de esta herramienta. Ingresa unidades al almacén primero.</span></div>
+        <input type="hidden" id="invEgUnidad" value="">`}
 
       <div id="invEgGranel">
         <div class="invFieldRow">
           <label class="invField">
-            <span class="invFieldLabel">Cantidad</span>
+            <span class="invFieldLabel">Cantidad <span class="invFieldHint" id="invEgMaxHint"></span></span>
             <input id="invEgCant" type="number" min="1" value="1">
           </label>
           <label class="invField">
@@ -2205,16 +2353,20 @@ function abrirEntregarStock_(herrId) {
     const uid = $id("invEgTecId")?.value || "";
     if (!uid) { invMsg("Elige al técnico de la lista de sugerencias.", true); return false; }
     const nota = $id("invEgNota")?.value?.trim() || "";
-    const unidadId = $id("invEgUnidad")?.value || "";
+    const sel = $id("invEgUnidad")?.value || "";
+    if (!sel) { invMsg("Elige qué unidad o lote se lleva.", true); return false; }
+    if (!exigirLotes_()) return false;
+    const esUnidad = sel.startsWith("ud:");
+    const selId = sel.slice(sel.indexOf(":") + 1);
 
     try {
       const hoja = await asegurarHoja_(uid);
       const itemsDestino = await supabaseGet("inventario_tecnico_items", { inventario_id: hoja.id });
 
-      if (unidadId) {
+      if (esUnidad) {
         // Unidad identificada: se MUEVE de tabla, no se copia. Así el código
         // y el SN nunca están en el almacén y con el técnico a la vez.
-        const u = INV.unidades.find(x => x.id === unidadId);
+        const u = INV.unidades.find(x => x.id === selId);
         if (!u) { invMsg("Esa unidad ya no está disponible.", true); return false; }
         await supabaseDelete("inventario_stock_unidades", { id: u.id });
         await supabasePost("inventario_tecnico_items", {
@@ -2231,23 +2383,29 @@ function abrirEntregarStock_(herrId) {
         });
         invMsg(`${etiquetaUnidad_(u)} entregada a ${nombreUsuario_(uid)}.`);
       } else {
+        const lote = INV.lotes.find(l => l.id === selId);
+        if (!lote) { invMsg("Ese lote ya no existe.", true); return false; }
+        const disponible = Number(lote.cantidad) || 0;
         const cant = Math.max(1, Number($id("invEgCant")?.value) || 0);
         const codigo = $id("invEgCodigo")?.value?.trim() || "";
         const serie = $id("invEgSerie")?.value?.trim() || "";
         if ((codigo || serie) && cant !== 1) { invMsg("Con código o SN la cantidad debe ser 1.", true); return false; }
-        if (cant > granel && !confirm(`Solo hay ${granel} a granel en el almacén. ¿Entregar ${cant} igual? El saldo quedará negativo.`)) return false;
+        if (cant > disponible) { invMsg(`Ese lote solo tiene ${disponible} unidad(es).`, true); return false; }
         const data = {
           herramienta_id: herrId, descripcion_libre: "",
-          marca: $id("invEgMarca")?.value?.trim() || "",
+          marca: $id("invEgMarca")?.value?.trim() || lote.marca || "",
           codigo, serie, cantidad: cant, estado: "OK", nota,
         };
         await insertarOSumar_(hoja.id, data, itemsDestino);
-        await moverStock_(herrId, -cant, {
-          tipo: "ENTREGA", marca: data.marca, codigo, serie,
-          destino_user_id: uid, nota, hecho_por: operador_(),
+        await moverLote_(lote.id, -cant);
+        await logMov_({
+          tipo: "ENTREGA", herramienta_id: herrId, descripcion: herr.nombre,
+          marca: data.marca, codigo, serie, cantidad: cant,
+          destino_user_id: uid, nota: notaLote_(lote, nota), hecho_por: operador_(),
         });
-        invMsg(`Entregadas ${cant} unidad(es) a ${nombreUsuario_(uid)}.`);
+        invMsg(`Entregadas ${cant} unidad(es) a ${nombreUsuario_(uid)}${lote.ubicacion ? ` (de ${lote.ubicacion})` : ""}.`);
       }
+      await cargarSnapshot_();
       await renderStockSub_();
       return true;
     } catch (e) { invMsg(errorMsg_(e), true); return false; }
@@ -2255,11 +2413,20 @@ function abrirEntregarStock_(herrId) {
 
   wireTecnicoSuggest_("invEgTec", "invEgTecList", "invEgTecId");
 
-  // Al elegir una unidad identificada, los campos de granel sobran.
+  // Con una unidad identificada los campos de cantidad sobran (siempre es 1);
+  // con un lote, la cantidad se topa en lo que ese lote tenga.
   const selU = $id("invEgUnidad");
   const sync = () => {
     const box = $id("invEgGranel");
-    if (box && selU) box.style.display = selU.value ? "none" : "";
+    const esUd = (selU?.value || "").startsWith("ud:");
+    if (box) box.style.display = esUd ? "none" : "";
+    const max = Number(selU?.selectedOptions?.[0]?.dataset.max) || 0;
+    const inp = $id("invEgCant"), hint = $id("invEgMaxHint");
+    if (hint) hint.textContent = esUd ? "" : `(hay ${max})`;
+    if (inp && !esUd) {
+      inp.max = max;
+      if (Number(inp.value) > max) inp.value = Math.max(1, max);
+    }
   };
   selU?.addEventListener("change", sync);
   sync();
@@ -2304,6 +2471,25 @@ function abrirDetalleStock_(herrId) {
         </div>`).join("")}</div>`
     : `<p class="invHint">Ninguna unidad con código o SN todavía.</p>`;
 
+  // Lotes: cantidad editable + ubicación editable, uno por renglón.
+  const lotes = lotesDe_(herrId);
+  const lotesHtml = lotes.length
+    ? `<div class="invLoteList">
+        <div class="invLoteHead"><span>Cant.</span><span>Ubicación</span><span>Estado</span><span></span></div>
+        ${lotes.map(l => `
+        <div class="invLote${l.estado === "MAL" ? " invLote--mal" : ""}" data-lote="${esc(l.id)}">
+          <input class="invLoteCant" type="number" value="${Number(l.cantidad) || 0}" min="0">
+          <input class="invLoteUbic" type="text" value="${esc(l.ubicacion || "")}"
+            list="invDtUbicList" placeholder="sin ubicación" autocomplete="off">
+          <span class="invBadge ${l.estado === "MAL" ? "invBadge--warn" : "invBadge--ok"}">
+            ${l.estado === "MAL" ? "Malogradas" : "Buenas"}</span>
+          <button type="button" class="invRowBtn invRowBtn--danger invLoteDel" data-lote="${esc(l.id)}"
+            title="Eliminar este lote">${icon("trash", 14)}</button>
+        </div>`).join("")}
+        <datalist id="invDtUbicList">${ubicacionesConocidas_().map(u => `<option value="${esc(u)}">`).join("")}</datalist>
+      </div>`
+    : `<p class="invHint">Sin lotes. Usa «Ingresar al almacén» para registrar unidades.</p>`;
+
   // Lo suelto se puede convertir en objetos rastreables cuando haga falta.
   const identificarHtml = granel > 0
     ? `<div class="invNota">
@@ -2333,19 +2519,14 @@ function abrirDetalleStock_(herrId) {
       </div>
 
       <div class="invSection">
-        <div class="invSectionHead">${icon("settings", 15)} Ficha y conteo físico</div>
-        <div class="invFieldRow">
-          <label class="invField">
-            <span class="invFieldLabel">Sueltas sanas <span class="invFieldHint">(sin código)</span></span>
-            <input id="invFiCont" type="number" value="${granel}">
-          </label>
-          <label class="invField">
-            <span class="invFieldLabel">Sueltas malogradas</span>
-            <input id="invFiContMal" type="number" value="${granelMal}">
-          </label>
-        </div>
-        <p class="invHint">Escribe lo que hay de verdad en el estante y se registra la diferencia
-        como ajuste. Las unidades con código se cuentan arriba, una por una.</p>
+        <div class="invSectionHead">${icon("box", 15)} Lotes <span class="invSegN">${lotes.length}</span></div>
+        ${lotesHtml}
+        <p class="invHint">Cada ingreso es un lote con su sitio y su estado. Corrige aquí la cantidad
+        si el conteo físico no cuadra: la diferencia queda registrada como ajuste. Poner 0 borra el lote.</p>
+      </div>
+
+      <div class="invSection">
+        <div class="invSectionHead">${icon("settings", 15)} Ficha de la herramienta</div>
         <div class="invFieldRow">
           <label class="invField">
             <span class="invFieldLabel">Stock mínimo <span class="invFieldHint">(avisa para reponer)</span></span>
@@ -2365,50 +2546,79 @@ function abrirDetalleStock_(herrId) {
       <div class="invSection">
         <div class="invSectionHead">${icon("swap", 15)} Otras acciones</div>
         <div class="invActionGrid">
-          <button type="button" class="invBtn invDtAveria">${icon("alertTriangle", 14)} Reportar avería (sueltas)</button>
-          ${granelMal ? `<button type="button" class="invBtn invDtReparar">${icon("wrench", 14)} Marcar reparadas (sueltas)</button>` : ""}
-          ${granelMal ? `<button type="button" class="invBtn invBtn--danger invDtDesechar">${icon("trash", 14)} Desechar sueltas</button>` : ""}
-          ${baja ? "" : `<button type="button" class="invBtn invBtn--danger invDtBaja">${icon("trayOut", 14)} Dar de baja sueltas</button>`}
+          <button type="button" class="invBtn invDtAveria">${icon("alertTriangle", 14)} Reportar avería (lote)</button>
+          ${granelMal ? `<button type="button" class="invBtn invDtReparar">${icon("wrench", 14)} Marcar reparadas (lote)</button>` : ""}
+          ${granelMal ? `<button type="button" class="invBtn invBtn--danger invDtDesechar">${icon("trash", 14)} Desechar de un lote</button>` : ""}
+          ${baja ? "" : `<button type="button" class="invBtn invBtn--danger invDtBaja">${icon("trayOut", 14)} Dar de baja de un lote</button>`}
           <button type="button" class="invBtn invDtDescont">${icon(baja ? "refresh" : "inbox", 14)} ${baja ? "Reactivar herramienta" : "Descontinuar herramienta"}</button>
         </div>
       </div>
     </div>`;
 
   abrirModal_(`Detalle · ${esc(detalleDe_(herr))}`, body, async () => {
-    const contado = Number($id("invFiCont")?.value);
-    const contadoMal = Number($id("invFiContMal")?.value);
-    if (!Number.isFinite(contado) || !Number.isFinite(contadoMal)) {
-      invMsg("Los conteos físicos deben ser números.", true); return false;
-    }
     const data = {
       stock_minimo: Math.max(0, Number($id("invFiMin")?.value) || 0),
       ubicacion: $id("invFiUbic")?.value?.trim() || "",
       nota: $id("invFiNota")?.value?.trim() || "",
-      cantidad_almacen: contado,
-      cantidad_malogrado: contadoMal,
       updated_at: new Date().toISOString(),
     };
     try {
       await supabasePatch("inventario_stock", { id: fila.id }, data);
       Object.assign(fila, data);
-      const d = contado - granel, dMal = contadoMal - granelMal;
-      if (d !== 0 || dMal !== 0) {
-        const partes = [];
-        if (d !== 0)    partes.push(`sueltas sanas ${granel} → ${contado} (${d > 0 ? "+" : ""}${d})`);
-        if (dMal !== 0) partes.push(`sueltas malogradas ${granelMal} → ${contadoMal} (${dMal > 0 ? "+" : ""}${dMal})`);
+
+      // Cambios de los lotes: cantidad (conteo físico) y ubicación (se movió
+      // de estante). Solo se toca lo que de verdad cambió.
+      const cambios = [];
+      for (const el of document.querySelectorAll(".invLote")) {
+        const l = INV.lotes.find(x => x.id === el.dataset.lote);
+        if (!l) continue;
+        const nueva = Number(el.querySelector(".invLoteCant")?.value);
+        const ubic = el.querySelector(".invLoteUbic")?.value?.trim() ?? l.ubicacion;
+        if (!Number.isFinite(nueva) || nueva < 0) { invMsg("Las cantidades de los lotes deben ser números.", true); return false; }
+        const antes = Number(l.cantidad) || 0;
+        if (nueva !== antes) {
+          await moverLote_(l.id, nueva - antes);
+          cambios.push(`${(l.ubicacion || "sin ubicación")}: ${antes} → ${nueva}`);
+        }
+        if (nueva > 0 && ubic !== (l.ubicacion || "")) {
+          await supabasePatch("inventario_stock_lotes", { id: l.id }, { ubicacion: ubic });
+          l.ubicacion = ubic;
+          cambios.push(`${antes} unidad(es) movidas a ${ubic || "sin ubicación"}`);
+        }
+      }
+
+      if (cambios.length) {
         await logMov_({
           tipo: "AJUSTE", herramienta_id: herrId, descripcion: herr.nombre,
-          cantidad: Math.abs(d) + Math.abs(dMal),
-          nota: `Conteo físico: ${partes.join(" · ")}`, hecho_por: operador_(),
+          cantidad: 0, nota: `Conteo físico: ${cambios.join(" · ")}`, hecho_por: operador_(),
         });
-        invMsg(`Ajustado por conteo físico: ${partes.join(" · ")}.`);
+        invMsg(`Ajustado: ${cambios.join(" · ")}.`);
       } else {
         invMsg("Ficha guardada.");
       }
+      await cargarSnapshot_();
       await renderStockSub_();
       return true;
     } catch (e) { invMsg(errorMsg_(e), true); return false; }
   }, { ancho: true });
+
+  // Borrar un lote entero (se vació el estante).
+  document.querySelectorAll(".invLoteDel").forEach(b => b.addEventListener("click", async () => {
+    const l = INV.lotes.find(x => x.id === b.dataset.lote);
+    if (!l) return;
+    if (!confirm(`¿Eliminar el lote de ${l.cantidad} unidad(es)${l.ubicacion ? ` en ${l.ubicacion}` : ""}?`)) return;
+    try {
+      await supabaseDelete("inventario_stock_lotes", { id: l.id });
+      await logMov_({
+        tipo: "AJUSTE", herramienta_id: herrId, descripcion: herr.nombre,
+        cantidad: Number(l.cantidad) || 0,
+        nota: notaLote_(l, "Lote eliminado en el conteo"), hecho_por: operador_(),
+      });
+      await cargarSnapshot_();
+      abrirDetalleStock_(herrId);
+      renderStockSub_(false);
+    } catch (e) { invMsg(errorMsg_(e), true); }
+  }));
 
   // ── Acciones sobre una unidad identificada concreta ──
   const tocarUnidad_ = async (uid, cambio, mov) => {
@@ -2445,11 +2655,29 @@ function abrirDetalleStock_(herrId) {
   document.querySelector(".invDtDescont")?.addEventListener("click", () => abrirDescontinuar_(herrId));
 }
 
-// ── Modal corto y reutilizable para mover cantidades a granel ──
-// Todas estas acciones son la misma forma: cuántas y por qué.
-function modalCantidad_({ herrId, titulo, intro, maximo, obligarNota, etiqueta, valor = 1, onOk }) {
+// Ubicaciones ya usadas: alimentan los datalist para no reescribirlas
+// (y para que "Estante 1" no acabe siendo también "estante 1" y "Est. 1").
+function ubicacionesConocidas_() {
+  const set = new Set();
+  INV.lotes.forEach(l => (l.ubicacion || "").trim() && set.add(l.ubicacion.trim()));
+  INV.unidades.forEach(u => (u.ubicacion || "").trim() && set.add(u.ubicacion.trim()));
+  INV.stock.forEach(s => (s.ubicacion || "").trim() && set.add(s.ubicacion.trim()));
+  return [...set].sort((a, b) => a.localeCompare(b));
+}
+
+// ── Modal corto y reutilizable para mover cantidades de un lote ──
+// Todas estas acciones tienen la misma forma: de qué lote, cuántas y por qué.
+function modalCantidad_({ herrId, titulo, intro, estado = "OK", obligarNota, etiqueta, todo = false, onOk }) {
   const herr = INV.catMap.get(herrId);
   if (!herr) return;
+  const lotes = lotesDe_(herrId, estado).filter(l => (Number(l.cantidad) || 0) > 0);
+  if (!lotes.length) {
+    invMsg(estado === "MAL"
+      ? "No hay lotes con unidades malogradas."
+      : "No hay lotes con unidades disponibles.", true);
+    return;
+  }
+
   const body = `
     <div class="invForm">
       <div class="invPickShow">
@@ -2458,53 +2686,87 @@ function modalCantidad_({ herrId, titulo, intro, maximo, obligarNota, etiqueta, 
       </div>
       ${saldoHtml_(herrId)}
       <p class="invHint">${intro}</p>
+      ${lotes.length > 1 ? `<label class="invField">
+        <span class="invFieldLabel">¿De qué lote?</span>
+        <select id="invQLote">${lotes.map(l =>
+          `<option value="${esc(l.id)}" data-max="${Number(l.cantidad) || 0}">${esc(etiquetaLote_(l))}</option>`).join("")}</select>
+      </label>` : `<input type="hidden" id="invQLote" value="${esc(lotes[0].id)}" data-max="${Number(lotes[0].cantidad) || 0}">`}
       <label class="invField">
-        <span class="invFieldLabel">${esc(etiqueta)} <span class="invFieldHint">(hay ${maximo} suelta(s))</span></span>
-        <input id="invQCant" type="number" min="1" value="${Math.min(valor, Math.max(1, maximo))}">
+        <span class="invFieldLabel">${esc(etiqueta)} <span class="invFieldHint" id="invQMaxHint">(hay ${Number(lotes[0].cantidad) || 0})</span></span>
+        <input id="invQCant" type="number" min="1" value="${todo ? (Number(lotes[0].cantidad) || 1) : 1}">
       </label>
       <label class="invField">
         <span class="invFieldLabel">Motivo ${obligarNota ? `<span class="invFieldHint">(obligatorio: queda en la bitácora)</span>` : ""}</span>
         <input id="invQNota" type="text" placeholder="Ej: se le partió el mango">
       </label>
     </div>`;
+
   abrirModal_(`${titulo} · ${esc(detalleDe_(herr))}`, body, async () => {
+    if (!exigirLotes_()) return false;
+    const loteId = $id("invQLote")?.value || "";
+    const lote = INV.lotes.find(l => l.id === loteId);
+    if (!lote) { invMsg("Elige un lote.", true); return false; }
+    const disponible = Number(lote.cantidad) || 0;
     const cant = Math.max(1, Number($id("invQCant")?.value) || 0);
     const nota = $id("invQNota")?.value?.trim() || "";
     if (obligarNota && !nota) { invMsg("Escribe el motivo: queda en la bitácora.", true); return false; }
-    if (cant > maximo && !confirm(`Solo hay ${maximo} suelta(s). ¿Continuar con ${cant}? El saldo quedará negativo.`)) return false;
+    if (cant > disponible) { invMsg(`Ese lote solo tiene ${disponible} unidad(es).`, true); return false; }
     try {
-      await onOk(cant, nota);
+      await onOk(cant, nota, lote);
+      await cargarSnapshot_();
       await renderStockSub_();
       return true;
     } catch (e) { invMsg(errorMsg_(e), true); return false; }
   });
+
+  // El máximo depende del lote elegido: se refresca al cambiarlo.
+  const sel = $id("invQLote"), inp = $id("invQCant"), hint = $id("invQMaxHint");
+  sel?.addEventListener("change", () => {
+    const max = Number(sel.selectedOptions?.[0]?.dataset.max) || 0;
+    if (hint) hint.textContent = `(hay ${max})`;
+    if (inp) {
+      inp.max = max;
+      if (todo) inp.value = max;
+      else if (Number(inp.value) > max) inp.value = max;
+    }
+  });
 }
 
-// ── AVERÍA · sueltas sanas → sueltas malogradas ──
+// La bitácora de un movimiento de lote dice de dónde salió.
+function notaLote_(lote, nota) {
+  const donde = (lote?.ubicacion || "").trim();
+  return [nota, donde && `lote ${donde}`].filter(Boolean).join(" · ");
+}
+
+// ── AVERÍA · lote sano → lote malogrado, en la misma ubicación ──
 function abrirAveriaStock_(herrId) {
   modalCantidad_({
-    herrId, titulo: "Reportar avería", etiqueta: "¿Cuántas se malograron?",
-    maximo: granelLibresDe_(herrId), obligarNota: true,
-    intro: "Se quedan en el almacén pero dejan de estar disponibles. El total físico no cambia: siguen siendo de la empresa hasta que se desechen.",
-    async onOk(cant, nota) {
-      const r = await ajustarStock_(herrId, { libres: -cant, malogradas: cant },
-        { tipo: "AVERIA", nota, hecho_por: operador_() });
-      invMsg(`${cant} unidad(es) pasaron a malogradas. Sueltas sanas: ${r?.libres ?? "—"}.`);
+    herrId, titulo: "Reportar avería", etiqueta: "¿Cuántas se malograron?", estado: "OK",
+    obligarNota: true,
+    intro: "Se quedan en el almacén y en su sitio, pero dejan de estar disponibles. El total físico no cambia: siguen siendo de la empresa hasta que se desechen.",
+    async onOk(cant, nota, lote) {
+      await cambiarEstadoLote_(lote.id, cant, "MAL");
+      await logMov_({
+        tipo: "AVERIA", herramienta_id: herrId, descripcion: INV.catMap.get(herrId)?.nombre || "",
+        cantidad: cant, nota: notaLote_(lote, nota), hecho_por: operador_(),
+      });
+      invMsg(`${cant} unidad(es) pasaron a malogradas${lote.ubicacion ? ` en ${lote.ubicacion}` : ""}.`);
     },
   });
 }
 
-// ── REPARACIÓN · sueltas malogradas → sueltas sanas ──
+// ── REPARACIÓN · lote malogrado → lote sano ──
 function abrirReparacionStock_(herrId) {
-  const mal = granelMalDe_(herrId);
-  if (!mal) { invMsg("No hay unidades sueltas malogradas.", true); return; }
   modalCantidad_({
-    herrId, titulo: "Marcar reparadas", etiqueta: "¿Cuántas se repararon?",
-    maximo: mal, valor: mal, obligarNota: false,
+    herrId, titulo: "Marcar reparadas", etiqueta: "¿Cuántas se repararon?", estado: "MAL",
+    todo: true, obligarNota: false,
     intro: "Vuelven al estante como unidades sanas y ya se pueden entregar.",
-    async onOk(cant, nota) {
-      await ajustarStock_(herrId, { libres: cant, malogradas: -cant },
-        { tipo: "REPARACION", nota, hecho_por: operador_() });
+    async onOk(cant, nota, lote) {
+      await cambiarEstadoLote_(lote.id, cant, "OK");
+      await logMov_({
+        tipo: "REPARACION", herramienta_id: herrId, descripcion: INV.catMap.get(herrId)?.nombre || "",
+        cantidad: cant, nota: notaLote_(lote, nota), hecho_por: operador_(),
+      });
       invMsg(`${cant} unidad(es) volvieron a estar disponibles.`);
     },
   });
@@ -2512,14 +2774,16 @@ function abrirReparacionStock_(herrId) {
 
 // ── DESECHO · la unidad malograda sale del inventario para siempre ──
 function abrirDesecharStock_(herrId) {
-  const mal = granelMalDe_(herrId);
-  if (!mal) { invMsg("No hay unidades sueltas malogradas.", true); return; }
   modalCantidad_({
-    herrId, titulo: "Desechar", etiqueta: "¿Cuántas se desechan?",
-    maximo: mal, obligarNota: true,
+    herrId, titulo: "Desechar", etiqueta: "¿Cuántas se desechan?", estado: "MAL",
+    obligarNota: true,
     intro: "Se botan: dejan de contar como patrimonio y el total físico baja. Esto no se puede deshacer — si todavía puede repararse, usa «Marcar reparadas».",
-    async onOk(cant, nota) {
-      await ajustarStock_(herrId, { malogradas: -cant }, { tipo: "DESECHO", nota, hecho_por: operador_() });
+    async onOk(cant, nota, lote) {
+      await moverLote_(lote.id, -cant);
+      await logMov_({
+        tipo: "DESECHO", herramienta_id: herrId, descripcion: INV.catMap.get(herrId)?.nombre || "",
+        cantidad: cant, nota: notaLote_(lote, nota), hecho_por: operador_(),
+      });
       invMsg(`${cant} unidad(es) desechadas.`);
     },
   });
@@ -2528,11 +2792,15 @@ function abrirDesecharStock_(herrId) {
 // ── SALIDA · baja de unidades sanas del almacén ──
 function abrirBajaStock_(herrId) {
   modalCantidad_({
-    herrId, titulo: "Dar de baja", etiqueta: "Cantidad que sale",
-    maximo: granelLibresDe_(herrId), obligarNota: true,
+    herrId, titulo: "Dar de baja", etiqueta: "Cantidad que sale", estado: "OK",
+    obligarNota: true,
     intro: "Sale del almacén y no vuelve: perdida o devuelta al proveedor. Si en cambio se la llevó un técnico usa «Entregar», y si se rompió usa «Reportar avería».",
-    async onOk(cant, nota) {
-      await moverStock_(herrId, -cant, { tipo: "SALIDA", nota, hecho_por: operador_() });
+    async onOk(cant, nota, lote) {
+      await moverLote_(lote.id, -cant);
+      await logMov_({
+        tipo: "SALIDA", herramienta_id: herrId, descripcion: INV.catMap.get(herrId)?.nombre || "",
+        cantidad: cant, nota: notaLote_(lote, nota), hecho_por: operador_(),
+      });
       invMsg(`Baja registrada de ${cant} unidad(es).`);
     },
   });
@@ -2629,6 +2897,12 @@ async function devolverAlAlmacen_(itemId) {
         <span class="invFieldHint">Se propone según cómo estaba marcada en su hoja (${esc(ESTADO_LABEL[it.estado] || it.estado)}).</span>
       </label>
       <label class="invField">
+        <span class="invFieldLabel">¿Dónde se guarda?</span>
+        <input id="invDevUbic" type="text" list="invDevUbicList" autocomplete="off"
+          value="${esc(stockDe_(it.herramienta_id)?.ubicacion || "")}" placeholder="Ej: Estante 1">
+        <datalist id="invDevUbicList">${ubicacionesConocidas_().map(u => `<option value="${esc(u)}">`).join("")}</datalist>
+      </label>
+      <label class="invField">
         <span class="invFieldLabel">Nota</span>
         <input id="invDevNota" type="text" placeholder="Ej: cambio de área">
       </label>
@@ -2638,6 +2912,10 @@ async function devolverAlAlmacen_(itemId) {
     const cant = identificada ? 1 : Math.min(total, Math.max(1, Number($id("invDevCant")?.value) || 0));
     const nota = $id("invDevNota")?.value?.trim() || "";
     const mala = $id("invDevEstado")?.value === "MAL";
+    const estado = mala ? "MAL" : "OK";
+    const ubic = $id("invDevUbic")?.value?.trim() || "";
+    if (!exigirLotes_()) return false;
+    const notaFinal = mala ? `Vuelve malograda${nota ? ` · ${nota}` : ""}` : nota;
     try {
       if (cant >= total) await supabaseDelete("inventario_tecnico_items", { id: it.id });
       else await supabasePatch("inventario_tecnico_items", { id: it.id }, { cantidad: total - cant });
@@ -2649,28 +2927,28 @@ async function devolverAlAlmacen_(itemId) {
         await supabasePost("inventario_stock_unidades", {
           herramienta_id: it.herramienta_id,
           marca: it.marca || "", codigo: it.codigo || "", serie: it.serie || "",
-          estado: mala ? "MAL" : "OK",
-          ubicacion: stockDe_(it.herramienta_id)?.ubicacion || "",
-          nota,
-        });
-        await logMov_({
-          tipo: "DEVOLUCION", herramienta_id: it.herramienta_id, descripcion: nombreItem(it),
-          marca: it.marca || "", codigo: it.codigo || "", serie: it.serie || "",
-          cantidad: 1, origen_user_id: INV.selTecId,
-          nota: mala ? `Vuelve malograda${nota ? ` · ${nota}` : ""}` : nota,
-          hecho_por: operador_(),
+          estado, ubicacion: ubic, nota,
         });
       } else {
-        // Si vuelve rota entra directo a malogradas: si entrara como libre,
+        // Si vuelve rota entra a un lote malogrado: si entrara como buena,
         // el almacén ofrecería para entregar algo que no sirve.
-        await ajustarStock_(it.herramienta_id, mala ? { malogradas: cant } : { libres: cant }, {
-          tipo: "DEVOLUCION", marca: it.marca || "",
-          origen_user_id: INV.selTecId,
-          nota: mala ? `Vuelve malograda${nota ? ` · ${nota}` : ""}` : nota,
-          hecho_por: operador_(),
+        // Se funde con el lote que ya haya en ese sitio y ese estado, para
+        // no llenar el almacén de lotes de una unidad.
+        const destino = lotesDe_(it.herramienta_id, estado)
+          .find(l => (l.ubicacion || "") === ubic);
+        if (destino) await moverLote_(destino.id, cant);
+        else await crearLote_(it.herramienta_id, {
+          cantidad: cant, estado, ubicacion: ubic, marca: it.marca || "", nota: notaFinal,
         });
       }
-      invMsg(`Devueltas ${cant} unidad(es) al almacén${mala ? " como malogradas" : ""}.`);
+      await logMov_({
+        tipo: "DEVOLUCION", herramienta_id: it.herramienta_id, descripcion: nombreItem(it),
+        marca: it.marca || "", codigo: it.codigo || "", serie: it.serie || "",
+        cantidad: cant, origen_user_id: INV.selTecId,
+        nota: [notaFinal, ubic && `a ${ubic}`].filter(Boolean).join(" · "),
+        hecho_por: operador_(),
+      });
+      invMsg(`Devueltas ${cant} unidad(es) al almacén${mala ? " como malogradas" : ""}${ubic ? ` (${ubic})` : ""}.`);
       await abrirInventarioTec_(INV.selTecId, INV.invActual);
       return true;
     } catch (e) { invMsg(errorMsg_(e), true); return false; }
@@ -2762,10 +3040,28 @@ async function exportarStockXls_() {
       ];
     }).sort((a, b) => String(a[1]).localeCompare(String(b[1])));
 
+    // Dónde está guardada cada cosa: la hoja que se lleva al almacén a contar.
+    const lotes = INV.lotes.map(l => {
+      const h = INV.catMap.get(l.herramienta_id);
+      return [
+        (l.ubicacion || "").trim() || "sin ubicación",
+        h?.categoria || "", h?.nombre || "",
+        Number(l.cantidad) || 0,
+        l.estado === "MAL" ? "Malogradas" : "Buenas",
+        l.marca || "", l.nota || "",
+      ];
+    }).sort((a, b) => String(a[0]).localeCompare(String(b[0])) || String(a[2]).localeCompare(String(b[2])));
+
     exportXls_({
       filename: `EXISTENCIAS_${fechaArchivo_()}.xls`,
       sheets: [
         { nombre: "Existencias", headers: HEADERS_STOCK, rows: filas },
+        {
+          nombre: "Por ubicación",
+          titulo: "Dónde está guardado cada lote — para salir a contar el almacén",
+          headers: ["Ubicación", "Categoría", "Herramienta", "Cantidad", "Estado", "Marca", "Nota"],
+          rows: lotes,
+        },
         {
           nombre: "Unidades con código",
           titulo: "Equipos identificados que están en el almacén (los que tiene un técnico salen en su hoja)",

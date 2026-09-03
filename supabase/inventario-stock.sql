@@ -13,10 +13,11 @@
 --                 (rotas, esperando reparación). Están en el estante, así que
 --                 cuentan como patrimonio, pero no como disponibles.
 --
---                 Las dos se llevan en dos sitios que NO se solapan: los
---                 contadores de `inventario_stock` para lo suelto, y una
---                 fila por unidad en `inventario_stock_unidades` para lo
---                 que tiene código de empresa o número de serie (bloque 4).
+--                 Las dos se guardan de dos formas que NO se solapan:
+--                 LOTES (`inventario_stock_lotes`, bloque 5) para lo
+--                 intercambiable — cantidad + estado + ubicación — y
+--                 UNIDADES (`inventario_stock_unidades`, bloque 4) para lo
+--                 que tiene código de empresa o número de serie.
 --    ASIGNADAS  → unidades que ya tiene un técnico.
 --                 NO se guardan aquí: se calculan sumando
 --                 `inventario_tecnico_items.cantidad` (única fuente de verdad).
@@ -163,7 +164,67 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- ────────────────────────────────────────────
---  5. Vista de consulta: libres + malogradas + asignadas + total, ya sumado.
+--  5. LOTES · lo suelto, pero por ubicación y estado
+--
+--  Un contador plano por herramienta no alcanza: «5 taladros buenos en el
+--  estante 1» y «5 malogrados en el estante 2» son la misma herramienta y
+--  distinta realidad física. Cada ingreso entra como su propio LOTE, con
+--  su cantidad, su estado y dónde quedó guardado.
+--
+--  Con esto el almacén tiene dos formas de guardar, y solo dos:
+--
+--    LOTES         cantidad + estado + ubicación, para lo intercambiable.
+--    UNIDADES      una fila por objeto, para lo que tiene código o SN.
+--
+--    LIBRES     = Σ lotes OK  + unidades OK
+--    MALOGRADAS = Σ lotes MAL + unidades MAL
+--
+--  Los contadores `cantidad_almacen` / `cantidad_malogrado` quedan como
+--  herencia: la migración de más abajo los pasa a lotes y los deja en 0.
+--  La UI los sigue sumando para que nada parezca perdido si alguien no
+--  corrió este script todavía.
+-- ────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS inventario_stock_lotes (
+  id             UUID                PRIMARY KEY DEFAULT gen_random_uuid(),
+  herramienta_id UUID                NOT NULL REFERENCES herramientas_catalogo(id) ON DELETE CASCADE,
+  cantidad       INT                 NOT NULL DEFAULT 0,
+  -- OK (sirve) o MAL (rota, esperando reparación).
+  estado         estado_herramienta  NOT NULL DEFAULT 'OK',
+  ubicacion      TEXT                NOT NULL DEFAULT '',
+  marca          TEXT                NOT NULL DEFAULT '',
+  nota           TEXT                NOT NULL DEFAULT '',
+  created_at     TIMESTAMPTZ         NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_inv_lote_herr   ON inventario_stock_lotes (herramienta_id);
+CREATE INDEX IF NOT EXISTS idx_inv_lote_estado ON inventario_stock_lotes (estado);
+
+ALTER TABLE inventario_stock_lotes ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  CREATE POLICY "service_full_access" ON inventario_stock_lotes FOR ALL USING (true) WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- Migración de los contadores viejos a lotes. Se ejecuta una sola vez de
+-- hecho: al terminar deja los contadores en 0, así que volver a correr el
+-- script no duplica nada. Los saldos negativos (descuadres) también se
+-- migran tal cual, para no borrar la señal de que algo no cuadra.
+INSERT INTO inventario_stock_lotes (herramienta_id, cantidad, estado, ubicacion, nota)
+SELECT s.herramienta_id, s.cantidad_almacen, 'OK', COALESCE(s.ubicacion, ''),
+       'Migrado del contador anterior'
+FROM inventario_stock s
+WHERE s.cantidad_almacen <> 0;
+
+INSERT INTO inventario_stock_lotes (herramienta_id, cantidad, estado, ubicacion, nota)
+SELECT s.herramienta_id, s.cantidad_malogrado, 'MAL', COALESCE(s.ubicacion, ''),
+       'Migrado del contador anterior'
+FROM inventario_stock s
+WHERE s.cantidad_malogrado <> 0;
+
+UPDATE inventario_stock
+SET cantidad_almacen = 0, cantidad_malogrado = 0, updated_at = now()
+WHERE cantidad_almacen <> 0 OR cantidad_malogrado <> 0;
+
+-- ────────────────────────────────────────────
+--  6. Vista de consulta: libres + malogradas + asignadas + total, ya sumado.
 --     La UI calcula lo mismo en el cliente; esta vista es para
 --     revisar el inventario desde el SQL Editor o un reporte.
 --
@@ -182,15 +243,17 @@ SELECT
   h.categoria,
   h.especialidad,
   h.activo,
-  -- Libres y malogradas suman lo suelto (contadores) más lo identificado
-  -- (una fila por unidad). Ver el bloque 4.
-  COALESCE(s.cantidad_almacen, 0)   + COALESCE(u.ok, 0)   AS libres,
-  COALESCE(s.cantidad_malogrado, 0) + COALESCE(u.mal, 0)  AS malogradas,
-  COALESCE(a.asignadas, 0)                                AS asignadas,
-  COALESCE(s.cantidad_almacen, 0) + COALESCE(u.ok, 0)
-    + COALESCE(s.cantidad_malogrado, 0) + COALESCE(u.mal, 0)
-    + COALESCE(a.asignadas, 0)                            AS total,
+  -- Libres y malogradas suman las tres formas de guardar: lotes (bloque 5),
+  -- unidades identificadas (bloque 4) y los contadores heredados, que la
+  -- migración deja en 0 pero se siguen sumando por si acaso.
+  COALESCE(s.cantidad_almacen, 0)   + COALESCE(l.ok, 0)  + COALESCE(u.ok, 0)   AS libres,
+  COALESCE(s.cantidad_malogrado, 0) + COALESCE(l.mal, 0) + COALESCE(u.mal, 0)  AS malogradas,
+  COALESCE(a.asignadas, 0)                                                     AS asignadas,
+  COALESCE(s.cantidad_almacen, 0) + COALESCE(l.ok, 0) + COALESCE(u.ok, 0)
+    + COALESCE(s.cantidad_malogrado, 0) + COALESCE(l.mal, 0) + COALESCE(u.mal, 0)
+    + COALESCE(a.asignadas, 0)                                                 AS total,
   COALESCE(u.ok, 0) + COALESCE(u.mal, 0)                  AS identificadas,
+  COALESCE(l.lotes, 0)                                    AS lotes,
   COALESCE(s.stock_minimo, 0)            AS stock_minimo,
   COALESCE(s.ubicacion, '')              AS ubicacion,
   COALESCE(h.descontinuada_motivo, '')   AS descontinuada_motivo,
@@ -204,6 +267,14 @@ LEFT JOIN (
   FROM inventario_stock_unidades
   GROUP BY herramienta_id
 ) u ON u.herramienta_id = h.id
+LEFT JOIN (
+  SELECT herramienta_id,
+         COUNT(*)                                              AS lotes,
+         COALESCE(SUM(cantidad) FILTER (WHERE estado <> 'MAL'), 0) AS ok,
+         COALESCE(SUM(cantidad) FILTER (WHERE estado  = 'MAL'), 0) AS mal
+  FROM inventario_stock_lotes
+  GROUP BY herramienta_id
+) l ON l.herramienta_id = h.id
 LEFT JOIN (
   SELECT i.herramienta_id,
          SUM(i.cantidad)              AS asignadas,

@@ -602,6 +602,48 @@
 /* El aviso de "hay sueltas sin identificar" lleva su acción al lado. */
 .invNota .invBtn { margin-left: auto; flex-shrink: 0; }
 
+/* ── Lotes: cantidad + dónde + estado, editables en el detalle ────── */
+.invLoteList { display: flex; flex-direction: column; gap: 6px; }
+.invLoteHead,
+.invLote {
+  display: grid;
+  grid-template-columns: 84px 1fr 116px 34px;
+  gap: 8px;
+  align-items: center;
+}
+.invLoteHead {
+  font-size: var(--fs-2xs, 11px);
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  color: var(--muted);
+  padding: 0 2px;
+}
+.invLote {
+  padding: 7px 9px;
+  border: var(--border-w) solid var(--surfaceLine);
+  border-radius: var(--radiusSm, 12px);
+  background: var(--glass);
+}
+.invLote--mal { border-color: var(--warn); }
+.invLote input {
+  width: 100%;
+  height: 34px;
+  padding: 0 10px;
+  border: var(--border-w) solid var(--surfaceLine);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--fs-xs, 12px);
+  font-family: inherit;
+}
+.invLote input:focus { outline: none; border-color: var(--accent); }
+.invLoteCant { text-align: center; font-variant-numeric: tabular-nums; font-weight: var(--fw-bold, 700); }
+@media (max-width: 560px) {
+  .invLoteHead { display: none; }
+  .invLote { grid-template-columns: 76px 1fr 34px; }
+  .invLote .invBadge { grid-column: 1 / -1; justify-self: start; }
+}
+
 /* ── Enlace a la ventana completa, junto a las sub-pestañas ───────── */
 .invSubtabLink {
   display: inline-flex;
