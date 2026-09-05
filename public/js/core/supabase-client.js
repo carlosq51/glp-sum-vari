@@ -288,15 +288,53 @@ export function getRealtimeStatus() {
 // =========================
 
 /**
+ * usuarioPorEmail_ — fila de `usuarios` del técnico, cacheada en memoria.
+ *
+ * Cuatro funciones de este archivo empezaban resolviendo el MISMO usuario por
+ * email, y ninguna guardaba el resultado: getMisActivas corre cada 60 s y
+ * getEstadoTrabajo cada 8 s cuando el VIN no está en la lista. Eran cientos de
+ * viajes al día, por técnico, para releer una fila que no cambia — y el
+ * comentario de getMisActivas ya afirmaba que el userId estaba cacheado
+ * cuando no lo estaba.
+ *
+ * Lleva TTL en vez de ser eterno porque el Admin puede cambiar la especialidad
+ * de alguien en caliente, y esa fila decide qué carros se le ofrecen: con un
+ * cache de por vida, el técnico seguiría viendo la cola del rol equivocado
+ * hasta cerrar sesión.
+ */
+const _usuarioCache = new Map(); // email → { row, ts }
+
+async function usuarioPorEmail_(email) {
+  const key = String(email || "").trim().toLowerCase();
+  if (!key) return null;
+
+  const ttl = Math.max(0, Number(cfg("CACHE_USUARIO_MS")) || 0);
+  const hit = _usuarioCache.get(key);
+  if (hit && (Date.now() - hit.ts) < ttl) return hit.row;
+
+  const usuarios = await supabaseGet("usuarios", { email: key });
+  const row = (usuarios && usuarios.length) ? usuarios[0] : null;
+  // El fallo NO se cachea: si la fila no vino por un corte de red, cachear el
+  // null dejaría al técnico sin app hasta que venza el TTL.
+  if (row) _usuarioCache.set(key, { row, ts: Date.now() });
+  return row;
+}
+
+/** Olvida el usuario cacheado (logout, cambio de cuenta). */
+export function limpiarCacheUsuario_(email) {
+  if (email) _usuarioCache.delete(String(email).trim().toLowerCase());
+  else _usuarioCache.clear();
+}
+
+/**
  * GET /api/me — Obtener perfil de usuario
  */
 export async function getUsuarioPerfil(email) {
   if (!supabaseEnabled()) throw new Error("Supabase no configurado");
   
-  const usuarios = await supabaseGet("usuarios", { email });
-  if (!usuarios || !usuarios.length) return null;
-  
-  const usuario = usuarios[0];
+  const usuario = await usuarioPorEmail_(email);
+  if (!usuario) return null;
+
   const modulos = await supabaseGet("usuario_modulos", { user_id: usuario.id });
   
   return {
@@ -318,11 +356,11 @@ export async function getUsuarioPerfil(email) {
 export async function getMisActivas(email) {
   if (!supabaseEnabled()) throw new Error("Supabase no configurado");
   
-  // Obtener user_id
-  const usuarios = await supabaseGet("usuarios", { email });
-  if (!usuarios || !usuarios.length) return [];
-  
-  const userId = usuarios[0].id;
+  // Obtener user_id (cacheado: no se relee en cada ciclo del poll)
+  const usuario = await usuarioPorEmail_(email);
+  if (!usuario) return [];
+
+  const userId = usuario.id;
   
   // 🚀 Query REST con embedded resource (JOIN) a work_orders
   const select = "id,work_order_id,tipo_ot,rol_trabajo,estado_actual,running_since,tiempo_trab_ms,updated_at,last_nota,work_orders(id,vin,tipo_ramal,estado_general,tanque_registrado,reductor_registrado,fecha_creacion,vins(reductor_asignado,tanque_asignado))";
@@ -385,11 +423,11 @@ export async function getMisActivas(email) {
 export async function getMisFinalizadas(email) {
   if (!supabaseEnabled()) throw new Error("Supabase no configurado");
 
-  // Obtener user_id
-  const usuarios = await supabaseGet("usuarios", { email });
-  if (!usuarios || !usuarios.length) return [];
+  // Obtener user_id (cacheado)
+  const usuario = await usuarioPorEmail_(email);
+  if (!usuario) return [];
 
-  const userId = usuarios[0].id;
+  const userId = usuario.id;
 
   const dias  = Math.max(1, Number(cfg("LIM_FINALIZADOS_DIAS")) || 30);
   const tope  = Math.max(1, Number(cfg("LIM_FINALIZADOS")) || 100);
@@ -449,11 +487,11 @@ export async function getMisFinalizadas(email) {
 export async function getEstadoTrabajo(email, vin, rolTrabajo) {
   if (!supabaseEnabled()) throw new Error("Supabase no configurado");
   
-  // Obtener usuario
-  const usuarios = await supabaseGet("usuarios", { email });
-  if (!usuarios || !usuarios.length) return null;
-  
-  const userId = usuarios[0].id;
+  // Obtener usuario (cacheado: esto corre cada 8 s mientras hay VIN escrito)
+  const usuario = await usuarioPorEmail_(email);
+  if (!usuario) return null;
+
+  const userId = usuario.id;
   
   // Resolver work_order a partir del VIN.
   const wos = await supabaseGet("work_orders", { vin });
@@ -576,8 +614,8 @@ export async function resolverIncidencia(id, email) {
  */
 export async function getNombreByEmail(email) {
   if (!supabaseEnabled()) return null;
-  const rows = await supabaseGet("usuarios", { email: email.trim().toLowerCase() });
-  return rows?.[0]?.nombre?.trim() || null;
+  const usuario = await usuarioPorEmail_(email);
+  return usuario?.nombre?.trim() || null;
 }
 
 /**

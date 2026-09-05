@@ -1,14 +1,33 @@
 import { Router } from "express";
 import { supabaseHeaders_ } from "../lib/supabase.js";
 import { getConfig_ } from "../lib/config.js";
+import { cachedByTopics_ } from "../lib/poll-cache.js";
 
 const router = Router();
 
+// Lo que cambia la cola: quién está en un carro (asignaciones), qué OTs hay
+// abiertas (work_orders), lo que reparte el motor (despacho) y los VINs que el
+// movilizador va dejando en el taller (movilizador).
+const TOPICS_COLA = ["asignaciones", "work_orders", "despacho", "movilizador"];
+
 // ── GET /api/tecnico/cola ─────────────────────────────────────────────
 // Devuelve compañeros libres (especialidad par) + VINs disponibles para la especialidad dada
-router.get("/api/tecnico/cola", async (req, res) => {
-  try {
-    const esp = String(req.query.especialidad || "").toUpperCase().trim();
+//
+// El armado va aparte del handler porque la respuesta se sirve CACHEADA, y se
+// cachea porque depende ÚNICAMENTE de la especialidad: los 23 técnicos de un
+// mismo rol reciben bytes idénticos. Antes cada celular la calculaba entera
+// para sí solo, y eran cinco consultas a Supabase por celular.
+//
+// Lo grave no era el latido periódico sino la TORMENTA: emitEvent_
+// ("asignaciones") despierta por SSE a los 30 a la vez, y cada uno dispara DOS
+// polls contra este mismo endpoint (el badge de la cola y el aviso de VIN
+// libre). Un técnico pulsando FIN provocaba ~300 consultas simultáneas —210 KB—
+// y eso 280 veces al día: 63 MB diarios solo en tormentas.
+//
+// El coalesce de cachedByTopics_ es justamente lo que faltaba: las 60
+// peticiones que llegan en el mismo instante se enganchan a UNA sola lectura.
+async function armarColaTecnico_(esp) {
+  {
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const headers = supabaseHeaders_();
     if (!headers) throw new Error("Supabase no configurado");
@@ -86,7 +105,20 @@ router.get("/api/tecnico/cola", async (req, res) => {
       }
     }
 
-    return res.json({ ok: true, companeros, vins, vinsFallback, fallbackUsed: !vins.length, especialidad: esp, pairEsp: pairEsp || null });
+    return { ok: true, companeros, vins, vinsFallback, fallbackUsed: !vins.length, especialidad: esp, pairEsp: pairEsp || null };
+  }
+}
+
+router.get("/api/tecnico/cola", async (req, res) => {
+  try {
+    const esp = String(req.query.especialidad || "").toUpperCase().trim();
+    const cfg = await getConfig_();
+    const payload = await cachedByTopics_(
+      `tecnico:cola:${esp}`, TOPICS_COLA, cfg.SRV_CACHE_PESADO_MS,
+      () => armarColaTecnico_(esp),
+      { bypass: req.query.fresh === "1" },
+    );
+    return res.json(payload);
   } catch (e) {
     console.error("[GET /api/tecnico/cola]", e.message);
     res.status(500).json({ ok: false, error: String(e.message || e) });

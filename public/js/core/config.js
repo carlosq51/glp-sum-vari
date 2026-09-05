@@ -41,6 +41,8 @@ const DEFAULTS = {
   POLL_TV_MS:               60_000,
   POLL_DESPACHO_ADMIN_MS:   30_000,
 
+  CACHE_USUARIO_MS:        600_000,
+
   LIM_FINALIZADOS_DIAS:         30,
   LIM_FINALIZADOS:             100,
 };
