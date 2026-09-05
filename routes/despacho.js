@@ -291,6 +291,9 @@ router.post("/api/despacho/marcar", requireModoActivo_, async (req, res) => {
     }
     emitEvent_("despacho", { tipo: tipoFinal, user_id: user.id });
 
+    // El que acaba de llegar ya es repartible: sin esto esperaba al intervalo.
+    if (tipoFinal === "INGRESO") repartirTrasEvento_(`INGRESO de ${user.nombre || user.id}`);
+
     res.json({
       ok: true, tipo: tipoFinal, estado: j.estado,
       nombre: user.nombre, hora: horaPeru_(), pausados,
@@ -328,6 +331,7 @@ router.post("/api/despacho/pausa", requireModoActivo_, async (req, res) => {
 
     const j = await proyectarJornada_(fecha, user.id, [...marcas, (await insert.json())[0]]);
     emitEvent_("despacho", { tipo: tipoFinal, user_id: user.id });
+    if (tipoFinal === "PAUSA_FIN") repartirTrasEvento_(`fin de pausa de ${user.id}`);
     res.json({ ok: true, estado: j.estado });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
@@ -374,6 +378,9 @@ router.post("/api/despacho/marcar-manual", requireModoActivo_,
       pausados = await pausarTrabajoDe_(targetUserId);
     }
     emitEvent_("despacho", { tipo, user_id: targetUserId });
+    if (tipo === "INGRESO" || tipo === "PAUSA_FIN") {
+      repartirTrasEvento_(`marca ${tipo} puesta por supervisión`);
+    }
     res.json({ ok: true, estado: j.estado, pausados });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
@@ -792,6 +799,9 @@ router.post("/api/despacho/dupla/confirmar", requireModoActivo_, async (req, res
     });
 
     emitEvent_("despacho", { tipo: "DUPLA_ACTIVA", dupla_id: dupla.id });
+    // La dupla recién aceptada es una unidad asignable: repartir ya, o los dos
+    // se quedan mirando el techo hasta el siguiente intervalo.
+    repartirTrasEvento_(`dupla ${dupla.id} ACTIVA`);
     res.json({ ok: true, estado: "ACTIVA" });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
@@ -836,6 +846,8 @@ router.post("/api/despacho/dupla/disolver", requireModoActivo_, async (req, res)
     });
 
     emitEvent_("despacho", { tipo: "DUPLA_DISUELTA", dupla_id: dupla.id });
+    // Al deshacerse la dupla sus dos miembros vuelven a la cola por separado.
+    repartirTrasEvento_(`dupla ${dupla.id} disuelta`);
     res.json({ ok: true, estado: nuevoEstado });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
@@ -1899,6 +1911,29 @@ export async function dispararMotor_(motivo = "evento") {
 }
 
 /**
+ * repartirTrasEvento_ — dispara el motor cuando alguien queda DISPONIBLE.
+ *
+ * Fire-and-forget, igual que los disparos de FIN y de registro en zona: la
+ * respuesta HTTP no puede quedar colgada de una corrida que consulta media
+ * base. Si falla, el intervalo lo recoge — el disparo es un atajo, nunca el
+ * único camino.
+ *
+ * Por qué existe: hasta ahora solo dos cosas repartían por evento (el FIN de
+ * una OT y registrar un carro en zona). Marcar INGRESO, aceptar una dupla,
+ * revocar una propuesta o liberar un puesto dejaban a alguien disponible sin
+ * avisar a nadie, y quedaba esperando al intervalo. Con el intervalo en 60 s
+ * eso era un minuto y no se notaba; al subirlo a 5 minutos se convierte en
+ * cinco minutos de técnico parado justo cuando acaba de llegar al taller.
+ *
+ * @param {string} motivo  para el log: de dónde vino el disparo
+ */
+function repartirTrasEvento_(motivo) {
+  despachoReparteAhora_()
+    .then(puede => { if (puede) return dispararMotor_(motivo); })
+    .catch(err => console.warn(`[Despacho] Disparo del motor falló (${motivo}):`, err.message));
+}
+
+/**
  * ¿Se puede repartir ahora mismo? Modo activo y dentro del turno.
  * La comparten el intervalo y el disparo por evento: un FIN a las 03:00 no
  * debe repartir carros con el turno cerrado.
@@ -2266,6 +2301,7 @@ router.post("/api/despacho/propuesta/revocar", requireModoActivo_,
 
     emitEvent_("despacho", { tipo: "REVOCADA" });
     emitEvent_("asignaciones", { accion: "REVOCADA" });
+    repartirTrasEvento_("propuesta revocada");
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
@@ -2570,6 +2606,7 @@ router.post("/api/despacho/puesto/liberar", requireModoActivo_,
 
     emitEvent_("despacho", { tipo: "PUESTO_LIBERADO" });
     emitEvent_("asignaciones", { accion: "PUESTO_LIBERADO" });
+    repartirTrasEvento_("puesto liberado por supervisión");
     res.json({ ok: true, liberado: !!asg });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
@@ -2943,6 +2980,9 @@ async function expirarDuplasPendientes_(ttlMin) {
     }).catch(() => {});
 
     emitEvent_("despacho", { tipo: "DUPLA_EXPIRADA", n: vencidas.length });
+    // Al caducar, los dos técnicos que la dupla tenía bloqueados vuelven a ser
+    // repartibles. Es justo el caso que motivó el TTL (ver DESPACHO_TTL_DUPLA_MIN).
+    repartirTrasEvento_(`${vencidas.length} dupla(s) expirada(s)`);
     console.log(`[Despacho] ${vencidas.length} invitación(es) a dupla sin respuesta.`);
     return vencidas.length;
   } catch { return 0; }

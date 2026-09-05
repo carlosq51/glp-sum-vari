@@ -51,6 +51,9 @@
     max-width: 1040px; margin: 0 auto;
   }
   header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; }
+  /* Sin margin-left:auto: .hora ya empuja el bloque derecho, y ponerlo aquí
+     también abriría un hueco entre la hora y el botón. */
+  #motorCorrer { min-height: 32px; padding: 6px 10px; font-size: 12px; }
   h1 { font-size: 21px; font-weight: 800; }
   h1 span { color: var(--amber); }
   .modo {
@@ -318,6 +321,7 @@
   <h1>Despacho<span>.</span></h1>
   <span class="modo" id="modo">—</span>
   <span class="hora" id="hora">--:--</span>
+  <button class="pri" id="motorCorrer" title="Reparte ahora sin esperar al intervalo">⚡ Repartir ahora</button>
 </header>
 
 <div id="error"></div>
@@ -1037,6 +1041,29 @@
     }
     await cargar();
   }
+
+  // Disparo manual del motor.
+  //
+  // El endpoint POST /api/despacho/motor/correr existía desde siempre y NADA en
+  // el frontend lo llamaba: la única forma de forzar un reparto era esperar al
+  // intervalo. Con el intervalo en 5 minutos ese botón deja de ser un lujo — es
+  // la salida cuando el supervisor ve a alguien parado y no quiere esperar.
+  document.getElementById("motorCorrer")?.addEventListener("click", async (e) => {
+    const b = e.currentTarget;
+    const txt = b.textContent;
+    b.disabled = true; b.textContent = "Repartiendo…";
+    try {
+      const d = await postJSON("/api/despacho/motor/correr", {});
+      if (!d.ok) sheetError(d.error || "No se pudo repartir");
+      else if (d.encolado) b.textContent = "↻ Ya estaba corriendo";
+      else b.textContent = `✓ ${d.propuestas?.length ?? 0} asignada(s)`;
+      await cargar();
+    } catch (err) {
+      sheetError(err.message);
+    } finally {
+      setTimeout(() => { b.disabled = false; b.textContent = txt; }, 1500);
+    }
+  });
 
   // Latido de respaldo, no el mecanismo de frescura: el SSE de más abajo
   // recarga la consola en cuanto algo cambia de verdad. Estaba clavado en 15 s
