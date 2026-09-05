@@ -513,3 +513,278 @@
   .rmFieldRow { grid-template-columns: 1fr; }
   .rmReparto__acc { margin-left: 0; width: 100%; }
 }
+
+/* =====================================================================
+   15. STOCK POR MARCA · total = trabajando + disponible
+   ---------------------------------------------------------------------
+   Tres cifras, no una. «Jetour 30» hacía pensar que la marca entera son
+   30; en realidad son 80 con 50 en proceso. Es la diferencia entre «hay
+   que comprar» y «hay que esperar», que son decisiones opuestas.
+   ===================================================================== */
+.rmMarca {
+  border: var(--border-w) solid var(--surfaceLine);
+  border-radius: var(--radiusSm, 12px);
+  background: var(--surface);
+  padding: 13px 15px;
+}
+.rmMarca.is-bajo { border-color: var(--warn); }
+.rmMarca.is-cero { border-color: var(--bad, #ef4444); }
+
+.rmMarca__top {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  margin-bottom: 9px;
+}
+.rmMarca__nom {
+  font-size: .78rem;
+  font-weight: 900;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--muted);
+  flex: 1;
+}
+.rmMarca__tot {
+  font-size: 1.7rem;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+/* Reparto del total en dos tramos: trabajando y disponible. */
+.rmMarca__bar {
+  display: flex;
+  height: 7px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--pillBg);
+  margin-bottom: 8px;
+}
+.rmMarca__bar i { height: 100%; display: block; }
+.rmMarca__bar i + i { margin-left: 2px; }
+
+.rmMarca__cifras { display: flex; gap: 16px; }
+.rmMarca__c { display: flex; flex-direction: column; gap: 1px; }
+.rmMarca__ck {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: .64rem;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.rmMarca__ck i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+.rmMarca__cv { font-size: 1.02rem; font-weight: 900; font-variant-numeric: tabular-nums; }
+.rmMarca__foot { font-size: .7rem; color: var(--muted); margin-top: 7px; }
+
+/* =====================================================================
+   16. FIGURAS · los gráficos del panel de comportamiento
+   ---------------------------------------------------------------------
+   SVG en línea con var() de los tokens de data-viz (00-token.css), así
+   que día y noche salen solos y sin re-render.
+   ===================================================================== */
+.rmFigGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 14px;
+}
+.rmFig {
+  margin: 0;
+  padding: 15px 16px;
+  border: var(--border-w) solid var(--surfaceLine);
+  border-radius: var(--radius, 14px);
+  background: var(--dv-surface, var(--surface));
+  min-width: 0;
+}
+.rmFig__cap { display: block; margin-bottom: 12px; }
+.rmFig__title {
+  display: block;
+  font-weight: 900;
+  font-size: .95rem;
+  color: var(--dv-ink, var(--text));
+}
+.rmFig__sub {
+  display: block;
+  font-size: .76rem;
+  color: var(--dv-ink2, var(--muted));
+  margin-top: 2px;
+}
+.rmFig__plot { overflow-x: auto; }
+.rmFig__foot {
+  font-size: .74rem;
+  line-height: 1.55;
+  color: var(--dv-ink2, var(--muted));
+  margin: 11px 0 0;
+}
+.rmFig__foot strong { color: var(--dv-ink, var(--text)); }
+
+.rmSvg { width: 100%; height: auto; display: block; overflow: visible; }
+
+/* Rejilla y ejes: recesivos a propósito — son referencia, no contenido. */
+.rmGrid   { stroke: var(--dv-grid, rgba(128,128,128,.14)); stroke-width: 1; }
+.rmMedian {
+  stroke: var(--dv-axis, rgba(128,128,128,.4));
+  stroke-width: 1.5;
+  stroke-dasharray: 4 4;
+}
+.rmAxTick { fill: var(--dv-ink2, var(--muted)); font-size: 10px; }
+.rmAxLbl  { fill: var(--dv-ink, var(--text)); font-size: 11px; font-weight: 700; }
+.rmAxVal  { fill: var(--dv-ink, var(--text)); font-size: 11px; font-weight: 800; }
+.rmAxName { fill: var(--dv-ink2, var(--muted)); font-size: 10px; font-weight: 700; }
+/* El número dentro de un tramo de color: va en blanco porque los slots
+   categóricos están calibrados como marca, no como fondo de texto. */
+.rmSegVal { fill: #fff; font-size: 10px; font-weight: 800; }
+
+/* Leyenda — presente siempre que haya 2 o más series. */
+.rmLeg {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+  font-size: .74rem;
+  color: var(--dv-ink2, var(--muted));
+}
+.rmLeg__i { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; }
+.rmLeg__i i { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+
+/* Vista de tabla: obligatoria cuando el color queda por debajo de 3:1
+   contra la superficie, que es lo que pasa en tema claro. */
+.rmDetails { margin-top: 14px; }
+.rmDetails > summary {
+  cursor: pointer;
+  font-size: .8rem;
+  font-weight: 800;
+  color: var(--muted);
+  padding: 8px 0;
+}
+.rmDetails > summary:hover { color: var(--text); }
+
+@media (max-width: 620px) {
+  .rmFigGrid { grid-template-columns: 1fr; }
+  .rmMarca__cifras { gap: 12px; }
+}
+
+/* =====================================================================
+   17. VISTA DEL RAMALERO · armar, cola e historial
+   ---------------------------------------------------------------------
+   Armar un ramal es lo que hace todo el día, así que su tarjeta abre la
+   pantalla y su botón es el elemento más grande de la vista. Antes vivía
+   detrás de un desplegable al fondo.
+   ===================================================================== */
+.ramArmar__row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: stretch;
+}
+.ramArmar__tipo {
+  padding: 14px 16px;
+  border-radius: var(--radiusSm, 12px);
+  background: var(--surface2);
+  border: var(--border-w) solid var(--surfaceLine);
+  color: var(--text);
+  font: inherit;
+  font-size: 1.02rem;
+  font-weight: 900;
+  letter-spacing: .02em;
+}
+.ramArmar__tipo:focus { outline: none; border-color: var(--accent); }
+.ramArmar__btn {
+  padding: 14px 26px;
+  font-size: 1rem;
+  font-weight: 900;
+  letter-spacing: .04em;
+  white-space: nowrap;
+}
+.ramArmar__label {
+  font-size: .68rem;
+  font-weight: 800;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+/* Cola: el número de pendientes es lo único que se mira de un golpe. */
+.ramCola__head { margin-bottom: 12px; }
+.ramCola__pend { display: flex; align-items: baseline; gap: 9px; }
+.ramCola__pendN {
+  font-size: 2.1rem;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--warn);
+}
+.ramCola__pendN:not(:empty) { color: var(--warn); }
+.ramCola__pendT {
+  font-size: .8rem;
+  font-weight: 800;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Estadística del día al pie: es información de supervisión, no de
+   trabajo, así que va discreta y al final de la tarjeta. */
+.ramCola__stats {
+  display: flex;
+  gap: 22px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  padding-top: 11px;
+  border-top: 1px solid var(--surfaceLine);
+}
+.ramCola__stat { display: flex; flex-direction: column; gap: 1px; }
+.ramCola__statK {
+  font-size: .64rem;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.ramCola__statV {
+  font-size: .95rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+/* Filtro por marca del historial */
+.ramFiltro {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.ramFiltro__b {
+  padding: 6px 13px;
+  border-radius: 999px;
+  background: var(--pillBg);
+  border: 1px solid var(--pillLine);
+  color: var(--muted);
+  font: inherit;
+  font-size: .74rem;
+  font-weight: 800;
+  letter-spacing: .03em;
+  cursor: pointer;
+  transition: background var(--dur, .18s) ease, color var(--dur, .18s) ease;
+}
+.ramFiltro__b:hover { color: var(--text); }
+.ramFiltro__b.is-on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg, #0b1220);
+}
+.ramFiltro__cuenta {
+  font-size: .76rem;
+  color: var(--muted);
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+@media (max-width: 520px) {
+  .ramArmar__row { grid-template-columns: 1fr; }
+  .ramArmar__btn { width: 100%; }
+}

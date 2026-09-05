@@ -161,7 +161,7 @@ export function renderFinalizados_(avgTopHTML = "") {
         : vin || "(sin VIN)";
 
     out += `
-      <div class="card" style="margin-top:10px;" data-key="${escapeHtml(k)}">
+      <div class="card" style="margin-top:10px;" data-key="${escapeHtml(k)}" data-tipo="${tipo}">
         <div><b>${displayTitle}</b> <span class="small">(${rol})</span></div>
         <div class="row space-between" style="margin-top:6px;">
           <div class="small"><b>Estado:</b> ${estado}</div>
@@ -189,6 +189,11 @@ export function renderFinalizados_(avgTopHTML = "") {
   }
 
   box.innerHTML = avgTopHTML + out;
+
+  // Aviso de que las tarjetas se repintaron. El historial del ramalero lo
+  // escucha para volver a aplicar su filtro por marca: sin esto, un FIN
+  // que llega por sync reaparece filas que ya estaban ocultas.
+  document.dispatchEvent(new CustomEvent("glp:finalizados-render"));
 }
 
 export function patchVisibleCards_() {

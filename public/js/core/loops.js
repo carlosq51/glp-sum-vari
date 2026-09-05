@@ -38,11 +38,10 @@ export function clearModuleUI_(mod) {
 
   try {
     if (mod === "RAMALERO") {
-      const ramalIdEl = document.getElementById("ramalId");
-      if (ramalIdEl) ramalIdEl.value = "";
-
+      // Vuelve al default, no a vacío: JETOUR es la mayoría del trabajo y
+      // dejar el select en blanco obligaba a elegirlo otra vez cada día.
       const tipoEl = document.getElementById("tipoRamal");
-      if (tipoEl) tipoEl.value = "";
+      if (tipoEl) tipoEl.value = "JETOUR";
     } else {
       const vinEl = el_("vin");
       if (vinEl) vinEl.value = "";

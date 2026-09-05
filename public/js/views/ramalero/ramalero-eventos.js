@@ -28,9 +28,6 @@ function patchStoreFromResponse_(j) {
 }
 
 export async function crearNuevoRamal_() {
-  const ramalIdEl = $("ramalId");
-  if (ramalIdEl) ramalIdEl.value = "";
-
   let email;
   try { email = requireEmailOrStop(); } catch { return; }
 

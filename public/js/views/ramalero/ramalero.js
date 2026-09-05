@@ -8,6 +8,7 @@ import { patchVisibleCards_ } from "../../work/index.js";
 import { enterSolicitudes_, exitSolicitudes_ } from "./ramalero-solicitudes.js";
 import { requestNotifPermission } from "../../core/push-client.js";
 import { mountMiTurno, unmountMiTurno } from "../ramales/mi-turno.js";
+import { resetHistorial_ } from "./ramalero-historial.js";
 
 export function init() {
   initRamaleroActions_();
@@ -42,6 +43,7 @@ export function enter() {
 export function exit() {
   exitSolicitudes_();
   unmountMiTurno();
+  resetHistorial_();
   stopLoopsFor_("RAMALERO");
   clearModuleUI_("RAMALERO");
 }

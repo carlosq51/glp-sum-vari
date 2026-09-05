@@ -292,15 +292,8 @@ export function initRamaleroSolicitudes_() {
     if (chev) chev.textContent = open ? "▼" : "▶";
   });
 
-  // Toggle "Armado de ramales"
-  document.getElementById("ramalArmadoToggle")?.addEventListener("click", () => {
-    const body = document.getElementById("ramalArmadoBody");
-    const chev = document.getElementById("ramalArmadoChev");
-    if (!body) return;
-    const open = body.style.display === "none";
-    body.style.display = open ? "" : "none";
-    if (chev) chev.textContent = open ? "▼" : "▶";
-  });
+  // El armado de ramales ya no es una sección colapsable: abre la vista.
+  // Su toggle vivía aquí y se fue con él (ver ramalero-view.js).
 }
 
 export function enterSolicitudes_() {

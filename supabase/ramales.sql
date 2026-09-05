@@ -309,16 +309,37 @@ ALTER TABLE solicitudes_ramal
 --     revisar desde el SQL Editor o para un reporte.
 -- ────────────────────────────────────────────
 
--- ── 7a. Stock disponible por tipo de ramal ──
+-- ── 7a. Stock por marca · TOTAL = TRABAJANDO + DISPONIBLE ──
+--
+--  «Jetour 80: 50 trabajando, 30 disponibles». Son tres números, y solo
+--  dos son independientes:
+--
+--    TRABAJANDO  repartidos a un ramalero y todavía sin devolver a
+--                oficina. Existen, son de la empresa, pero no se le
+--                pueden dar a un técnico porque están en una mesa.
+--    DISPONIBLE  armados y en el estante: es lo único entregable, y es
+--                el saldo del libro mayor de movimientos.
+--    TOTAL       la suma. Es el patrimonio de esa marca.
+--
+--  Sin la columna TRABAJANDO el panel decía «30 Jetour» y parecía que
+--  quedaban 30 en total, cuando en realidad la marca tiene 80 y 50 están
+--  en proceso. Es la diferencia entre «hay que comprar» y «hay que
+--  esperar», que son decisiones opuestas.
+--
+--  Ojo: `trabajando` cuelga del tipo del LOTE. Una caja registrada sin
+--  tipo_ramal no suma a ninguna marca — aparece en el arqueo del lote
+--  pero no aquí. Por eso la UI empuja a elegir marca al registrar.
 DROP VIEW IF EXISTS v_ramal_stock;
 CREATE VIEW v_ramal_stock AS
 SELECT
   c.tipo_ramal,
-  COALESCE(m.saldo, 0)                    AS disponible,
-  COALESCE(m.armados, 0)                  AS armados_hist,
-  COALESCE(m.entregados, 0)               AS entregados_hist,
+  COALESCE(m.saldo, 0)                              AS disponible,
+  COALESCE(t.trabajando, 0)                         AS trabajando,
+  COALESCE(m.saldo, 0) + COALESCE(t.trabajando, 0)  AS total,
+  COALESCE(m.armados, 0)                            AS armados_hist,
+  COALESCE(m.entregados, 0)                         AS entregados_hist,
   c.stock_minimo,
-  (COALESCE(m.saldo, 0) < c.stock_minimo) AS bajo_minimo,
+  (COALESCE(m.saldo, 0) < c.stock_minimo)           AS bajo_minimo,
   c.ubicacion
 FROM ramal_stock_config c
 LEFT JOIN (
@@ -331,7 +352,16 @@ LEFT JOIN (
   FROM ramal_movimientos
   WHERE tipo_ramal IS NOT NULL
   GROUP BY tipo_ramal
-) m ON m.tipo_ramal = c.tipo_ramal;
+) m ON m.tipo_ramal = c.tipo_ramal
+LEFT JOIN (
+  -- Repartido y aún no devuelto, agrupado por la marca de su caja.
+  SELECT l.tipo_ramal,
+         SUM(r.cantidad_asignada - r.cantidad_devuelta) AS trabajando
+  FROM ramal_repartos r
+  JOIN ramal_lotes l ON l.id = r.lote_id
+  WHERE r.devuelto_at IS NULL AND l.tipo_ramal IS NOT NULL
+  GROUP BY l.tipo_ramal
+) t ON t.tipo_ramal = c.tipo_ramal;
 
 -- ── 7b. Arqueo por lote · la auditoría de verdad ──
 --  Aquí es donde «hice 5» se muere solo. `descuadre` distinto de 0

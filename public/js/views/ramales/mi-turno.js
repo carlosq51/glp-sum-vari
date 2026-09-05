@@ -92,13 +92,13 @@ function render_() {
   const pendientes = d.pendientes || [];
 
   // Si no le toca nada y no debe nada, el panel no ocupa espacio: una
-  // línea. El ramalero tiene su cola de solicitudes al frente y eso es
-  // lo que trabaja el 90% del día.
+  // línea. El ramalero tiene su trabajo de armado al frente y eso es lo
+  // que hace el 90% del día.
   if (!desembalando && !pendientes.length && !d.me_toca) {
     MT.root.innerHTML = `
       <div class="rmMio">
         <div class="rmMio__vacio">
-          Sin caja asignada. El siguiente turno de desembalaje es de
+          No tienes ninguna caja abierta. La siguiente le toca a
           <strong>${esc(d.siguiente_turno || "—")}</strong>.
         </div>
       </div>`;
@@ -109,24 +109,31 @@ function render_() {
     <div class="rmMio">
       ${d.me_toca && !desembalando ? `
         <div class="rmMio__turno is-mio">
-          <strong>📦 Te toca la próxima caja.</strong>
-          <div class="small" style="color:var(--muted);margin-top:3px;">
-            Tu tiempo arranca cuando el supervisor registre que llegó.
+          <strong>📦 Te toca la próxima caja</strong>
+          <div class="rmMio__vacio" style="margin-top:4px;">
+            Cuando llegue el camión, te toca a ti abrir la caja y sacar los
+            ramales. El tiempo empieza a correr en cuanto el supervisor la
+            registre — no tienes que apretar nada para arrancarlo.
           </div>
         </div>` : ""}
 
       ${desembalando ? `
         <div class="rmMio__turno is-mio">
-          <div class="rmTurno__label">Estás desembalando</div>
+          <div class="rmTurno__label">Estás sacando los ramales de esta caja</div>
           <div class="rmMio__head">
             <strong style="font-size:1.1rem;">${esc(desembalando.codigo)}</strong>
-            <span class="rmChip">${desembalando.cantidad_equipos} equipos</span>
+            <span class="rmChip">${desembalando.cantidad_equipos} vehículos</span>
             <span class="rmClock is-corriendo" data-mt-clock="1">—</span>
+          </div>
+          <div class="rmMio__vacio" style="margin-top:6px;">
+            Vino con material para ${desembalando.cantidad_equipos} vehículos.
+            Saca los ramales y entrégale los cables principales al supervisor.
           </div>
           ${desembalando.desembalaje_fin_at ? `
             <div class="rmAviso info" style="margin-top:10px;">
               <strong>✓ Ya avisaste</strong>
-              El supervisor cierra el tiempo cuando reciba los cables principales.
+              Tu tiempo se cierra cuando el supervisor tenga los cables
+              principales en la mano.
             </div>` : `
             <button class="btn3 rmBtn--primary" style="margin-top:11px;width:100%;"
                     data-mt="fin" data-id="${desembalando.id}">
@@ -137,9 +144,13 @@ function render_() {
       ${pendientes.length ? `
         <div>
           <div class="rmTurno__label" style="margin-bottom:6px;">
-            Ramales que te repartieron y no has devuelto
+            Ramales que te dieron para trabajar
           </div>
           <div class="rmSplit">${pendientes.map(renderPendiente_).join("")}</div>
+          <div class="rmMio__vacio" style="margin-top:6px;">
+            Cuando termines, pon cuántos traes de vuelta a oficina. Solo los
+            que devuelvas entran al stock que se le entrega a los técnicos.
+          </div>
         </div>` : ""}
     </div>`;
 

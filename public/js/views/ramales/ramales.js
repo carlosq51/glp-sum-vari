@@ -8,10 +8,17 @@
 //
 // QUÉ MUESTRA Y POR QUÉ EN ESE ORDEN
 // ──────────────────────────────────
-//   1. De quién es el turno       → es la decisión del día
-//   2. Cajas abiertas             → lo que está corriendo ahora
-//   3. Stock de ramales armados   → lo que hay para entregar
-//   4. Desempeño y rotación       → la lectura larga, al final
+//   1. De quién es el turno   → es la decisión del día
+//   2. Cajas abiertas         → lo que está corriendo ahora mismo
+//   3. Comportamiento         → cómo trabaja cada uno (ver comportamiento.js)
+//   4. Stock por marca        → qué hay para entregar y qué está en proceso
+//   5. Rotación               → la lectura larga, al final
+//
+// Comportamiento va tercero y no último a propósito: es el parámetro que
+// el taller quiere medir, y una sección al pie del panel es una sección
+// que nadie abre. Lo que sí queda antes son las cajas — quien entra a
+// registrar una que acaba de llegar no debería tener que pasar por
+// cuatro gráficos para hacerlo.
 //
 // TODO GESTO PASA POR UN FORMULARIO, NO POR UN prompt()
 // ────────────────────────────────────────────────────
@@ -30,6 +37,7 @@
 import { getJSON, postJSON, escapeHtml, CORE } from "../../core/core.js";
 import { startPoll, stopPoll } from "../../core/poll.js";
 import { icon } from "../../core/icons.js";
+import { comportamientoHTML } from "./comportamiento.js";
 
 // Espejo del enum `tipo_ramal` (supabase/schema.sql).
 const TIPOS_RAMAL = ["JETOUR", "VOLKSWAGEN", "KYC V3", "KYC V5", "KYC V7", "KYC X5"];
@@ -339,7 +347,7 @@ function renderArqueo_(l) {
       ${item("Equipos", l.cantidad_equipos)}
       ${item("Repartidos", l.repartidos)}
       ${item("Devueltos", l.devueltos, l.devueltos > 0 ? "is-bien" : "")}
-      ${item("En la calle", l.en_proceso, l.en_proceso > 0 ? "is-warn" : "")}
+      ${item("Trabajando", l.en_proceso, l.en_proceso > 0 ? "is-warn" : "")}
       ${item("Sin repartir", l.sin_repartir, l.sin_repartir < 0 ? "is-mal" : "")}
       ${l.rechazados > 0 ? item("Rechazados", l.rechazados, "is-mal") : ""}
       ${l.merma > 0 ? item("Merma", l.merma, "is-mal") : ""}
@@ -443,6 +451,14 @@ function renderLote_(l) {
 
 // ─── Render: stock ───────────────────────────────────────────────────
 
+/**
+ * Stock por marca, en tres cifras: TOTAL = TRABAJANDO + DISPONIBLE.
+ *
+ * «Jetour 30» hacía creer que de esa marca hay 30 en el mundo. En
+ * realidad puede haber 80 con 50 en la mesa de alguien. Es la diferencia
+ * entre «hay que comprar» y «hay que esperar», que llevan a decisiones
+ * opuestas — por eso las tres van juntas y no escondidas en un tooltip.
+ */
 function renderStock_() {
   const stock = RM.raw?.stock || [];
   if (!stock.length) {
@@ -451,74 +467,47 @@ function renderStock_() {
 
   return `
     <div class="rmStockGrid">
-      ${stock.map(s => `
-        <div class="rmStockCard ${s.disponible <= 0 ? "is-cero" : (s.bajo_minimo ? "is-bajo" : "")}">
-          <div class="rmStockCard__tipo">${esc(s.tipo_ramal)}</div>
-          <div class="rmStockCard__n">${s.disponible}</div>
-          <div class="rmStockCard__min">
-            mínimo ${s.stock_minimo}${s.bajo_minimo ? " · bajo mínimo" : ""}
-          </div>
-          ${RM.puedeEditar ? `
-            <button class="btn3 rmStockCard__btn" data-rm="stock"
-                    data-tipo="${esc(s.tipo_ramal)}">Ajustar</button>` : ""}
-        </div>`).join("")}
+      ${stock.map(s => {
+        const total = s.total ?? (s.disponible + (s.trabajando || 0));
+        const trab = s.trabajando || 0;
+        const disp = s.disponible || 0;
+        const pct = (n) => `${total > 0 ? (n / total) * 100 : 0}%`;
+
+        return `
+          <div class="rmMarca ${disp <= 0 ? "is-cero" : (s.bajo_minimo ? "is-bajo" : "")}">
+            <div class="rmMarca__top">
+              <span class="rmMarca__nom">${esc(s.tipo_ramal)}</span>
+              <span class="rmMarca__tot">${total}</span>
+            </div>
+
+            <div class="rmMarca__bar" aria-hidden="true">
+              ${trab > 0 ? `<i style="width:${pct(trab)};background:var(--dv-3)"></i>` : ""}
+              ${disp > 0 ? `<i style="width:${pct(disp)};background:var(--dv-1)"></i>` : ""}
+            </div>
+
+            <div class="rmMarca__cifras">
+              <span class="rmMarca__c">
+                <span class="rmMarca__ck"><i style="background:var(--dv-3)"></i>Trabajando</span>
+                <span class="rmMarca__cv">${trab}</span>
+              </span>
+              <span class="rmMarca__c">
+                <span class="rmMarca__ck"><i style="background:var(--dv-1)"></i>Disponibles</span>
+                <span class="rmMarca__cv">${disp}</span>
+              </span>
+            </div>
+
+            <div class="rmMarca__foot">
+              mínimo ${s.stock_minimo}${s.bajo_minimo ? " · bajo mínimo" : ""}
+            </div>
+
+            ${RM.puedeEditar ? `
+              <button class="btn3 rmStockCard__btn" style="width:100%;" data-rm="stock"
+                      data-tipo="${esc(s.tipo_ramal)}">Ajustar</button>` : ""}
+          </div>`;
+      }).join("")}
     </div>`;
 }
 
-// ─── Render: desempeño ───────────────────────────────────────────────
-
-function renderDesempeno_() {
-  const filas = (RM.raw?.desempeno || [])
-    .slice()
-    .sort((a, b) => (b.ramales_devueltos || 0) - (a.ramales_devueltos || 0));
-
-  if (!filas.length) {
-    return `<div class="rmEmpty">
-      <span class="rmEmpty__icon">📊</span>
-      <strong>Todavía no hay trabajo cerrado que medir</strong>
-      Los números aparecen cuando se cierre la primera caja.
-    </div>`;
-  }
-
-  return `
-    <div class="rmTableWrap">
-      <table class="rmTable">
-        <thead>
-          <tr>
-            <th>Ramalero</th>
-            <th class="num">Cajas</th>
-            <th class="num">Desembalaje</th>
-            <th class="num">Asignados</th>
-            <th class="num">Devueltos</th>
-            <th class="num">Min/ramal</th>
-            <th class="num">% rechazo</th>
-            <th class="num">Entregas</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${filas.map(d => `
-            <tr>
-              <td><div class="who">${avatar_(d.nombre, true)}${esc(d.nombre)}</div></td>
-              <td class="num">${d.lotes_desembalados}</td>
-              <td class="num">${fmtMin_(d.desembalaje_min_prom)}</td>
-              <td class="num">${d.ramales_asignados}</td>
-              <td class="num">${d.ramales_devueltos}</td>
-              <td class="num">${d.armado_min_por_ramal ?? "—"}</td>
-              <td class="num">
-                <span class="rmRechazo ${Number(d.pct_rechazo) >= 10 ? "is-alto" : ""}">
-                  ${d.pct_rechazo ?? 0}%
-                </span>
-              </td>
-              <td class="num">${d.entregas_a_tecnicos}</td>
-            </tr>`).join("")}
-        </tbody>
-      </table>
-    </div>
-    <p class="rmNota">
-      El % de rechazo va al lado de la velocidad a propósito: medir solo
-      ramales por hora consigue ramales por hora, y peores ramales.
-    </p>`;
-}
 
 // ─── Render: rotación ────────────────────────────────────────────────
 
@@ -591,7 +580,7 @@ function render_() {
           <div class="statTile__value">${abiertas.length}</div>
         </div>
         <div class="statTile">
-          <div class="statTile__label">🔩 Ramales en la calle</div>
+          <div class="statTile__label">🔩 Ramales trabajando</div>
           <div class="statTile__value" style="${enProceso > 0 ? "color:var(--warn)" : ""}">${enProceso}</div>
         </div>
         <div class="statTile">
@@ -624,19 +613,30 @@ function render_() {
           </div>` : ""}
       </div>
 
+      <!-- Comportamiento va antes que stock y rotación a propósito: es el
+           parámetro que se quiere medir, no una nota al pie del panel. -->
       <div class="card" style="margin-bottom:12px;">
-        <h3 style="margin:0 0 12px;"><span class="accentBar"></span>Stock de ramales armados</h3>
-        ${renderStock_()}
-        <p class="rmNota">
-          Estos ramales entraron al devolverse a oficina y salen cuando un
-          técnico pide uno en su cola. El saldo no se escribe a mano: es la
-          suma del historial de movimientos.
+        <h3 style="margin:0 0 4px;"><span class="accentBar"></span>Comportamiento</h3>
+        <p class="small" style="color:var(--muted);margin:0 0 14px;">
+          Cómo trabaja cada ramalero, medido con lo que el sistema ya registra.
         </p>
+        ${comportamientoHTML(RM.raw)}
       </div>
 
       <div class="card" style="margin-bottom:12px;">
-        <h3 style="margin:0 0 12px;"><span class="accentBar"></span>Desempeño</h3>
-        ${renderDesempeno_()}
+        <h3 style="margin:0 0 4px;"><span class="accentBar"></span>Stock por marca</h3>
+        <p class="small" style="color:var(--muted);margin:0 0 14px;">
+          El total de cada marca es lo que está trabajando más lo que hay listo
+          para entregar.
+        </p>
+        ${renderStock_()}
+        <p class="rmNota">
+          <strong>Disponibles</strong> son los que entraron al devolverse a
+          oficina y salen cuando un técnico pide uno en su cola; ese saldo no se
+          escribe a mano, es la suma del historial de movimientos.
+          <strong>Trabajando</strong> son los que están repartidos y todavía no
+          vuelven. Una caja registrada sin marca no suma a ninguna de las dos.
+        </p>
       </div>
 
       <div class="card">
