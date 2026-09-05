@@ -12,6 +12,7 @@ import { r2GetStatus } from "../r2-uploads.js";
 import { pendingSuggestions_ } from "../lib/ml-state.js";
 import { emitEvent_ } from "../lib/events.js";
 import { getConfig_ } from "../lib/config.js";
+import { esOtDeUnSoloRol_, estadoGeneralDeAsignacion_ } from "../lib/utils.js";
 import { dispararMotor_, despachoReparteAhora_ } from "./despacho.js";
 
 const router = Router();
@@ -603,17 +604,24 @@ router.post("/api/evento", async (req, res) => {
       }
     }
 
-    // 10b. Actualizar estado_general del work_order para OTs de CALIDAD
-    if (rolTrabajo === "CALIDAD" && tipoOt === "CALIDAD") {
+    // 10b. estado_general de las OTs de UN SOLO ROL (CALIDAD y RAMALERO).
+    //
+    // A diferencia de CONVERSION —que espera a MOTOR *y* TANQUE— aquí la OT
+    // tiene una única asignación, así que su estado ES el de esa asignación.
+    //
+    // RAMALERO faltaba en esta lista y por eso sus OTs no se cerraban NUNCA:
+    // el ramalero terminaba, su asignación pasaba a FINALIZADO, y el
+    // work_order se quedaba con el "PENDIENTE" que le puso el alta. Se
+    // acumularon 695 OTs dadas por vivas con el trabajo hecho —algunas de hace
+    // más de tres meses— ensuciando la consola del supervisor, que es
+    // justamente donde se mira qué falta por hacer.
+    if (esOtDeUnSoloRol_(tipoOt, rolTrabajo)) {
       try {
-        const estadoGeneral = nuevoEstado === "FINALIZADO" ? "FINALIZADO"
-          : nuevoEstado === "PAUSADO" ? "EN PROCESO"
-          : nuevoEstado === "EN PROCESO" ? "EN PROCESO"
-          : "PENDIENTE";
+        const estadoGeneral = estadoGeneralDeAsignacion_(nuevoEstado);
         await supabasePatch_("work_orders", { id: workOrderId }, { estado_general: estadoGeneral });
-        console.log(`[EVENTO] CALIDAD estado_general actualizado: ${estadoGeneral}`);
+        console.log(`[EVENTO] ${tipoOt} estado_general actualizado: ${estadoGeneral}`);
       } catch (err) {
-        console.warn("[EVENTO] No se pudo actualizar estado_general CALIDAD:", err.message);
+        console.warn(`[EVENTO] No se pudo actualizar estado_general ${tipoOt}:`, err.message);
       }
     }
 
