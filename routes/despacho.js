@@ -17,6 +17,7 @@ import { supabaseHeaders_ } from "../lib/supabase.js";
 import { getConfig_ } from "../lib/config.js";
 import { requireRol_ } from "../lib/authz.js";
 import { emitEvent_ } from "../lib/events.js";
+import { cachedByTopics_ } from "../lib/poll-cache.js";
 import { sendPushToEmails_ } from "../lib/push.js";
 import {
   jornadaFecha_, jornadaRango_, horaPeru_, minutosDelDia_, hhmmAMinutos_,
@@ -2101,9 +2102,13 @@ async function zonasConPuestos_(props) {
   return { zonas, sinZona };
 }
 
-router.get("/api/despacho/panel", requireModoActivo_,
-  requireRol_("SUPERVISOR", "ADMIN"), async (req, res) => {
-  try {
+// El armado va aparte del handler porque se sirve CACHEADO: la consola queda
+// abierta en el taller y se refrescaba cada 15 s con 30 consultas y ~59 KB de
+// Supabase por ciclo — ~345 MB al día por pestaña abierta. Como todo lo que
+// muestra se muta desde este mismo servidor, la invalidación por evento la
+// mantiene al día y el poll deja de ser el que paga (lib/poll-cache.js).
+async function armarPanelDespacho_() {
+  {
     const fecha = jornadaFecha_();
     const cfg   = await getConfig_();
     const [{ asignaciones, cola }, t] = await Promise.all([
@@ -2139,8 +2144,8 @@ router.get("/api/despacho/panel", requireModoActivo_,
       for (const a of rows) estados.set(a.id, a);
     }
 
-    res.json({
-      ok: true, jornada: fecha, hora: horaPeru_(), modo: req.despachoModo,
+    return {
+      ok: true, jornada: fecha,
       asignaciones, cola,
       zonas: mapa.zonas, sinZona: mapa.sinZona,
       propuestas: props.map(p => {
@@ -2160,7 +2165,22 @@ router.get("/api/despacho/panel", requireModoActivo_,
         user_id: x.user_id, nombre: x.nombre,
         especialidad: x.especialidad, estado: x.estadoEfectivo,
       })),
-    });
+    };
+  }
+}
+
+router.get("/api/despacho/panel", requireModoActivo_,
+  requireRol_("SUPERVISOR", "ADMIN"), async (req, res) => {
+  try {
+    const cfg = await getConfig_();
+    const payload = await cachedByTopics_(
+      `despacho:panel:${jornadaFecha_()}`, TOPICS_TV, cfg.SRV_CACHE_PANEL_MS,
+      armarPanelDespacho_,
+      { bypass: req.query.fresh === "1" },
+    );
+    // hora y modo NO se cachean: el reloj tiene que ir al día, y el modo lo
+    // resuelve el middleware por petición.
+    res.json({ ...payload, hora: horaPeru_(), modo: req.despachoModo });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }
@@ -3157,18 +3177,26 @@ async function asignacionesDeTV_(fecha) {
 // Payload único que alimenta la pantalla. En Fase 2 las asignaciones y la cola
 // vienen vacías (las llena el motor en Fase 3); asistencia, producción,
 // incidencias y varados ya son reales.
-router.get("/api/despacho/tv", async (req, res) => {
-  try {
-    if (req.query.demo === "1") return res.json({ ok: true, ...payloadDemo_() });
+// Qué invalida la pantalla: el reparto y la asistencia (despacho), quién está
+// en un carro (asignaciones), las OTs (work_orders), las plazas (zonas), las
+// alertas (incidencias) y el propio modo de despacho (config).
+const TOPICS_TV = ["despacho", "asignaciones", "work_orders", "zonas", "incidencias", "config"];
 
+// El payload va aparte del handler porque se sirve CACHEADO. La TV del taller
+// queda encendida y lo pedía cada 10 s sin cache: 14 consultas y ~24 KB de
+// Supabase por ciclo, ~205 MB al día de una sola pantalla. Con el cache
+// compartido, N pantallas cuestan lo mismo que una, y el SSE sigue borrando la
+// entrada ante cualquier cambio real (lib/poll-cache.js).
+async function armarPayloadTV_() {
+  {
     const cfg  = await getConfig_();
     const modo = String(cfg.DESPACHO_MODO || "OFF").toUpperCase();
     if (modo === "OFF") {
-      return res.json({
+      return {
         ok: true, modo: "OFF", jornada: jornadaFecha_(), hora: horaPeru_(),
         mensaje: "Despacho desactivado",
         asistencia: null, asignaciones: [], cola: [], libres: [],
-      });
+      };
     }
 
     const fecha = jornadaFecha_();
@@ -3215,13 +3243,28 @@ router.get("/api/despacho/tv", async (req, res) => {
 
     const { asignaciones, cola } = await asignacionesDeTV_(fecha);
 
-    res.json({
+    return {
       ok: true, modo, jornada: fecha, hora: horaPeru_(),
       asistencia: { presentes, esperados: tecnicos.length, ausentes },
       meta: produccion,
       incidencias, varados,
       asignaciones, cola, libres,
-    });
+    };
+  }
+}
+
+router.get("/api/despacho/tv", async (req, res) => {
+  try {
+    if (req.query.demo === "1") return res.json({ ok: true, ...payloadDemo_() });
+
+    const cfg = await getConfig_();
+    const payload = await cachedByTopics_(
+      `despacho:tv:${jornadaFecha_()}`, TOPICS_TV, cfg.SRV_CACHE_TV_MS, armarPayloadTV_,
+      { bypass: req.query.fresh === "1" },
+    );
+    // La hora se recalcula SIEMPRE: es un reloj, y servirlo desde el cache lo
+    // dejaría atrasado hasta un TTL entero. Todo lo demás sí puede esperar.
+    res.json({ ...payload, hora: horaPeru_() });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }

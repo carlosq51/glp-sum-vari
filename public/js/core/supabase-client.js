@@ -4,6 +4,8 @@
 // Migración paralela: AppScript + Supabase
 // =========================
 
+import { cfg } from "./config.js";
+
 const _env = (typeof window !== "undefined" && window.__ENV__) || {};
 export const SUPABASE_CONFIG = {
   URL: import.meta.env?.VITE_SUPABASE_URL || _env.VITE_SUPABASE_URL || "",
@@ -74,12 +76,27 @@ function buildQuery(filter = {}) {
 
 /**
  * GET desde Supabase
+ *
+ * @param {string} table
+ * @param {object} filter  filtros (ver buildQuery)
+ * @param {object} [opts]
+ * @param {string} [opts.order]  ej. "created_at.desc" — ordenar EN la base
+ * @param {number} [opts.limit]  tope de filas
+ *
+ * order/limit existen para no traer tablas enteras y recortarlas en el
+ * navegador: la bitácora de inventario bajaba sus 185 filas (77 KB) para
+ * pintar 40, y ese número solo sube con el tiempo.
  */
-export async function supabaseGet(table, filter = {}) {
+export async function supabaseGet(table, filter = {}, opts = {}) {
   if (!supabaseEnabled()) throw new Error("Supabase no configurado");
 
-  const url = `${SUPABASE_CONFIG.URL}/rest/v1/${table}${buildQuery(filter)}`;
-  
+  const extra = [];
+  if (opts.order) extra.push(`order=${encodeURIComponent(opts.order)}`);
+  if (opts.limit) extra.push(`limit=${Number(opts.limit)}`);
+  const qs = buildQuery(filter);
+  const url = `${SUPABASE_CONFIG.URL}/rest/v1/${table}${qs}` +
+    (extra.length ? (qs ? "&" : "?") + extra.join("&") : "");
+
   const res = await fetch(url, {
     method: "GET",
     headers: supabaseHeaders(),
@@ -355,20 +372,34 @@ export async function getMisActivas(email) {
 
 /**
  * GET /api/mis-finalizadas — Obtener trabajos finalizados del usuario
- * ⚡ OPTIMIZADO: Filtra EN SUPABASE (no trae todo)
+ *
+ * Acotado por VENTANA y TOPE, no por "todo lo del usuario". Sin ellos esta
+ * consulta bajaba el historial completo del técnico —360 filas y 219 KB para
+ * uno de los veteranos— cada vez que alguien tocaba "Ver finalizados", directo
+ * del navegador a Supabase y sin pasar por ningún cache del servidor. Y crecía
+ * sola: el mismo botón costaba más cada mes que pasaba.
+ *
+ * Ambos límites viven en config (LIM_FINALIZADOS_DIAS / LIM_FINALIZADOS), así
+ * que se pueden abrir desde Admin si alguna vez hace falta mirar más atrás.
  */
 export async function getMisFinalizadas(email) {
   if (!supabaseEnabled()) throw new Error("Supabase no configurado");
-  
+
   // Obtener user_id
   const usuarios = await supabaseGet("usuarios", { email });
   if (!usuarios || !usuarios.length) return [];
-  
+
   const userId = usuarios[0].id;
-  
+
+  const dias  = Math.max(1, Number(cfg("LIM_FINALIZADOS_DIAS")) || 30);
+  const tope  = Math.max(1, Number(cfg("LIM_FINALIZADOS")) || 100);
+  const desde = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString();
+
   // 🚀 Query REST con embedded resource (JOIN) a work_orders
   const select = "id,work_order_id,tipo_ot,rol_trabajo,estado_actual,running_since,tiempo_trab_ms,updated_at,last_nota,work_orders(id,vin,tipo_ramal,estado_general,tanque_registrado,reductor_registrado,fecha_creacion,vins(reductor_asignado,tanque_asignado))";
-  const url = `${SUPABASE_CONFIG.URL}/rest/v1/asignaciones?user_id=eq.${userId}&estado_actual=eq.FINALIZADO&select=${encodeURIComponent(select)}&order=updated_at.desc`;
+  const url = `${SUPABASE_CONFIG.URL}/rest/v1/asignaciones?user_id=eq.${userId}&estado_actual=eq.FINALIZADO` +
+    `&updated_at=gte.${encodeURIComponent(desde)}` +
+    `&select=${encodeURIComponent(select)}&order=updated_at.desc&limit=${tope}`;
 
   const res = await fetch(url, { method: "GET", headers: supabaseHeaders() });
   if (!res.ok) {

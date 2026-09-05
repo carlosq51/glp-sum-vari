@@ -38,6 +38,11 @@ const DEFAULTS = {
   POLL_ZONAS_MAPA_MS:       60_000,
   POLL_RAMALERO_SOL_MS:     60_000,
   POLL_RAMALES_MS:         120_000,
+  POLL_TV_MS:               60_000,
+  POLL_DESPACHO_ADMIN_MS:   30_000,
+
+  LIM_FINALIZADOS_DIAS:         30,
+  LIM_FINALIZADOS:             100,
 };
 
 let _config = { ...DEFAULTS };

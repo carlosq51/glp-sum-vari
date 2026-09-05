@@ -1,16 +1,30 @@
 import { Router } from "express";
 import { supabaseHeaders_ } from "../lib/supabase.js";
 import { emitEvent_ } from "../lib/events.js";
+import { cachedByTopics_ } from "../lib/poll-cache.js";
+import { getConfig_ } from "../lib/config.js";
+import { fechaPeruMenosDias_ } from "../lib/utils.js";
 import { dispararMotor_, despachoReparteAhora_ } from "./despacho.js";
 
 const router = Router();
+
+// Topics que invalidan el mapa: quién ocupa una plaza cambia al asignar o
+// liberar zona (zonas), al abrir o cerrar una OT (work_orders), al entrar o
+// salir un técnico del carro (asignaciones) y al repartir el motor (despacho).
+const TOPICS_ZONAS = ["zonas", "work_orders", "asignaciones", "despacho"];
 
 // ─── CONVERSION ZONAS ──────────────────────────────────────────────────────
 // GET /api/zonas
 // 15 zonas físicas + zona 16 virtual (VINs sin zona asignada).
 // El estado de cada zona se computa desde work_orders en tiempo real.
-router.get("/api/zonas", async (req, res) => {
-  try {
+//
+// El armado va aparte del handler porque la respuesta se sirve CACHEADA: la
+// pantalla del taller la pide cada pocos segundos y el mapa del movilizador
+// otra vez por su cuenta, y cada pase cuesta 7 consultas (~18 KB) a Supabase.
+// La invalidación es por evento, así que registrar un carro se sigue viendo al
+// instante — ver lib/poll-cache.js.
+async function armarMapaZonas_() {
+  {
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const headers = supabaseHeaders_();
 
@@ -171,7 +185,22 @@ router.get("/api/zonas", async (req, res) => {
       }
     }
 
-    return res.json({ ok: true, zonas, sin_zona });
+    return { ok: true, zonas, sin_zona };
+  }
+}
+
+router.get("/api/zonas", async (req, res) => {
+  try {
+    const cfg = await getConfig_();
+    // La fecha peruana entra en la clave: el payload separa las OTs cerradas
+    // HOY de las de ayer, y al cruzar la medianoche la entrada vieja ya no
+    // corresponde a lo que se está pidiendo.
+    const payload = await cachedByTopics_(
+      `zonas:mapa:${fechaPeruMenosDias_(0)}`, TOPICS_ZONAS, cfg.SRV_CACHE_MAPA_MS,
+      armarMapaZonas_,
+      { bypass: req.query.fresh === "1" },
+    );
+    return res.json(payload);
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e.message) });
   }

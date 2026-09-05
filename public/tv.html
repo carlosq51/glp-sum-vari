@@ -902,7 +902,18 @@
   const params = new URLSearchParams(location.search);
   const DEMO = params.get("demo") === "1";
   const FIJA = params.get("escena") || "";       // "despacho" | "mapa" | ""
-  const REFRESCO_MS = 10_000;
+
+  // Latido de respaldo. NO es lo que mantiene viva la pantalla: de eso se
+  // encarga el SSE, que la refresca en cuanto algo cambia de verdad. Esto solo
+  // cubre que el stream se haya caído sin avisar.
+  //
+  // Estuvo en 10 s y fue el mayor consumidor de egress del sistema: 8.640
+  // ciclos al día × 41.7 KB de Supabase = 360 MB diarios de esta sola pantalla,
+  // encendida de noche incluida — el plan entero cada tres días. El valor real
+  // llega de /api/config (POLL_TV_MS) y se relee en cada ciclo, así que se
+  // puede ajustar desde Admin sin volver a desplegar.
+  const REFRESCO_FALLBACK_MS = 60_000;
+  let refrescoMs = REFRESCO_FALLBACK_MS;
 
   // Duración de cada escena, en segundos. ?rot=10,10,5
   const rot = (params.get("rot") || "10,10,5").split(",").map(n => Number(n) || 0);
@@ -1416,8 +1427,21 @@
     }
   }
 
-  cargar();
-  setInterval(cargar, REFRESCO_MS);
+  // El intervalo se relee en cada vuelta (setTimeout encadenado, no
+  // setInterval): así un cambio de POLL_TV_MS en Admin aplica en la pantalla
+  // sin tener que ir al taller a recargarla.
+  (async () => {
+    try {
+      const r = await fetch("/api/config");
+      const j = await r.json();
+      const v = Number(j?.config?.POLL_TV_MS);
+      if (v > 0) refrescoMs = Math.max(10_000, v);
+    } catch { /* sin config → queda el fallback */ }
+  })();
+
+  (function ciclo_() {
+    cargar().finally(() => setTimeout(ciclo_, refrescoMs));
+  })();
 
   // SSE: refresco inmediato cuando algo cambia, sin esperar el intervalo.
   try {

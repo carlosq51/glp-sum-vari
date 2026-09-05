@@ -16,6 +16,10 @@ import { icon } from "../../core/icons.js";
 import { CORE, createNameSuggest_ } from "../../core/core.js";
 import { exportXls_ } from "../../core/xls.js";
 
+// Cuántos movimientos muestra la bitácora. Es también el tope de la consulta:
+// la tabla solo crece y no tiene sentido bajar filas que la vista no pinta.
+const MOVS_VISIBLES = 40;
+
 // ─── Estado local del módulo ─────────────────────────────────────────
 const INV = {
   sub: "tecnico",        // "tecnico" | "totales" | "kits" | "catalogo"
@@ -451,6 +455,13 @@ async function cargarBase_() {
 }
 
 // Snapshot de TODAS las hojas + ítems (buscador global, totales, traspaso).
+//
+// PENDIENTE (deliberado): hay 17 sitios que lo llaman entero tras mutar una
+// sola fila, y cada pasada son ~195 KB. Compartir la lectura en vuelo parece la
+// solución obvia, pero devolvería datos ANTERIORES a la escritura al que acaba
+// de guardar — en un almacén eso es peor que el egress. Arreglarlo bien es
+// aplicar el cambio en memoria en cada sitio, o llevar generaciones como hace
+// lib/poll-cache.js. Mientras tanto esto cuesta, pero no miente.
 async function cargarSnapshot_() {
   // Las tablas del almacén pueden no existir todavía (SQL sin correr): se
   // capturan por separado para saber cuál falta y avisar en concreto.
@@ -3285,15 +3296,17 @@ async function pintarMovimientos_() {
   if (!box) return;
   let movs = [];
   try {
-    movs = await supabaseGet("inventario_movimientos"); // se ordena en cliente
+    // Se ordena y recorta EN la base, no aquí: la bitácora solo crece, y bajarla
+    // entera para pintar las últimas MOVS_VISIBLES era pagar por filas que
+    // nadie llega a ver.
+    movs = await supabaseGet("inventario_movimientos", {},
+      { order: "created_at.desc", limit: MOVS_VISIBLES });
   } catch {
     box.innerHTML = `<div class="small muted">Historial de movimientos no disponible.
       ¿Ejecutaste <code>supabase/inventario-codigos-traspaso.sql</code>?</div>`;
     return;
   }
-  movs = (movs || [])
-    .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
-    .slice(0, 40);
+  movs = movs || [];
   if (!movs.length) {
     box.innerHTML = `<div class="invCatGroupTitle">Movimientos</div>
       <div class="small muted" style="padding:8px 0;">Aún no hay traspasos ni asignaciones registradas.</div>`;

@@ -2,9 +2,15 @@ import { Router } from "express";
 import { supabaseHeaders_, supabaseGet_, supabaseFetchAll_ } from "../lib/supabase.js";
 import { addServerTiming_ } from "../lib/timing.js";
 import { getConfig_, CONFIG_DEFAULTS } from "../lib/config.js";
+import { cachedByTopics_ } from "../lib/poll-cache.js";
 import { jornadaFecha_, esDuplaApoyo_, vinDeDuplaApoyo_ } from "../lib/despacho.js";
+import { fechaPeruMenosDias_ } from "../lib/utils.js";
 
 const router = Router();
+
+// Todo lo que mueve el LIVE del supervisor: quién trabaja en qué, las OTs, el
+// reparto y las plazas del taller.
+const TOPICS_LIVE = ["asignaciones", "work_orders", "despacho", "zonas"];
 
 /**
  * Duplas automáticas del carro extra, para pintarlas en el LIVE.
@@ -471,8 +477,13 @@ async function handleSupervisorReport_(payload, res) {
 // =========================
 // SUPERVISOR LIVE (resumen en tiempo real de técnicos del día)
 // =========================
-router.get("/api/supervisor/live", async (req, res) => {
-  try {
+// El armado va aparte del handler porque se sirve CACHEADO: son ~170 KB de
+// Supabase por pasada (la ventana de 30 días de asignaciones pesa sola 119 KB)
+// y la vista la tienen abierta varios supervisores a la vez, cada uno
+// repitiéndola entera cada ciclo. La invalidación por evento la mantiene al
+// día — ver lib/poll-cache.js.
+async function armarLiveSupervisor_() {
+  {
     const t1 = Date.now();
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const headers = supabaseHeaders_();
@@ -783,7 +794,24 @@ router.get("/api/supervisor/live", async (req, res) => {
     });
 
     const duration = Date.now() - t1;
-    return res.json({ ok: true, techs, fecha: todayStr, vinsSummary, _timing: `${duration}ms` });
+    return { ok: true, techs, fecha: todayStr, vinsSummary, _timing: `${duration}ms` };
+  }
+}
+
+router.get("/api/supervisor/live", async (req, res) => {
+  try {
+    const cfg = await getConfig_();
+    // La fecha peruana entra en la clave, y es la fecha CIVIL — la misma que
+    // usa el payload (todayStr), no la jornada de despacho con corte a las
+    // 06:00. Con la de jornada, entre medianoche y las 6 la clave diría "ayer"
+    // mientras el contenido ya sería de hoy, y el cache serviría el día
+    // equivocado.
+    const payload = await cachedByTopics_(
+      `supervisor:live:${fechaPeruMenosDias_(0)}`, TOPICS_LIVE, cfg.SRV_CACHE_PESADO_MS,
+      armarLiveSupervisor_,
+      { bypass: req.query.fresh === "1" },
+    );
+    return res.json(payload);
   } catch (e) {
     console.error("[GET /api/supervisor/live]", e.message);
     res.status(500).json({ ok: false, error: String(e.message || e) });

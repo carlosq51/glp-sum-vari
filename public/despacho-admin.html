@@ -1038,8 +1038,28 @@
     await cargar();
   }
 
-  cargar();
-  setInterval(cargar, 15_000);
+  // Latido de respaldo, no el mecanismo de frescura: el SSE de más abajo
+  // recarga la consola en cuanto algo cambia de verdad. Estaba clavado en 15 s
+  // y cada ciclo costaba 30 consultas (~59 KB) a Supabase — con la consola
+  // abierta todo el día, ~345 MB diarios por pestaña.
+  //
+  // El valor sale de /api/config (POLL_DESPACHO_ADMIN_MS) y se relee en cada
+  // vuelta, así que se ajusta desde Admin sin redesplegar.
+  const REFRESCO_FALLBACK_MS = 30_000;
+  let refrescoMs = REFRESCO_FALLBACK_MS;
+
+  (async () => {
+    try {
+      const r = await fetch("/api/config");
+      const j = await r.json();
+      const v = Number(j?.config?.POLL_DESPACHO_ADMIN_MS);
+      if (v > 0) refrescoMs = Math.max(10_000, v);
+    } catch { /* sin config → queda el fallback */ }
+  })();
+
+  (function ciclo_() {
+    cargar().finally(() => setTimeout(ciclo_, refrescoMs));
+  })();
 
   try {
     const es = new EventSource("/api/events");
