@@ -235,7 +235,29 @@ router.get("/api/mis-finalizadas", async (req, res) => {
 
     const t1 = Date.now();
     const { finalUserId, tecnicoEmail } = await resolveUserId_(email, userId);
-    const items = await fetchAsignacionesByUser_(finalUserId, tecnicoEmail, "estado_actual=eq.FINALIZADO&limit=5000");
+
+    // Acotado por VENTANA y TOPE, no "todo el histórico del técnico".
+    //
+    // Estaba en limit=5000 sin filtro de fecha, que es tanto como no tener
+    // tope: devolvía 141 KB para un ramalero y 277 KB para un técnico veterano,
+    // y crecía sola cada mes. La lista la pinta "Mi rendimiento" y los
+    // finalizados del ramalero — pantallas donde nadie revisa carros de hace
+    // cuatro meses desde el celular. Para eso está el reporte del supervisor.
+    //
+    // Mismos límites que la ruta directa a Supabase del navegador
+    // (public/js/core/supabase-client.js): si divergieran, el técnico vería una
+    // lista distinta según si Supabase está configurado o no.
+    const { LIM_FINALIZADOS_DIAS, LIM_FINALIZADOS } = await getConfig_();
+    const dias  = Math.max(1, Number(LIM_FINALIZADOS_DIAS) || 30);
+    const tope  = Math.max(1, Number(LIM_FINALIZADOS) || 100);
+    const desde = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString();
+
+    // Sin `order` aquí: fetchAsignacionesByUser_ ya lo añade (updated_at.desc),
+    // y dos parámetros `order` en la misma URL de PostgREST no son idempotentes.
+    const items = await fetchAsignacionesByUser_(
+      finalUserId, tecnicoEmail,
+      `estado_actual=eq.FINALIZADO&updated_at=gte.${encodeURIComponent(desde)}&limit=${tope}`,
+    );
     const duration = Date.now() - t1;
 
     res.set("Server-Timing", `query;dur=${duration}`);

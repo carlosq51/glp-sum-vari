@@ -29,6 +29,8 @@ import { requireRol_ } from "../lib/authz.js";
 import { emitEvent_ } from "../lib/events.js";
 import { jornadaFecha_ } from "../lib/despacho.js";
 import { sendPushToEmails_ } from "../lib/push.js";
+import { cachedByTopics_ } from "../lib/poll-cache.js";
+import { getConfig_ as getCfgPanel_ } from "../lib/config.js";
 
 const router = Router();
 
@@ -218,8 +220,16 @@ async function moverStock_(mov) {
 // GET /api/ramales/panel
 // Todo el estado del módulo en una sola respuesta: la vista se pinta de
 // un tirón en vez de encadenar seis fetches (patrón de /api/zonas).
-router.get("/api/ramales/panel", async (req, res) => {
-  try {
+// Topics que mueven el panel: todo el módulo de ramales (lotes, reparto,
+// devolución, stock) y la cola técnico→ramalero.
+const TOPICS_RAMALES = ["ramales", "ramal", "asignaciones"];
+
+// El armado va aparte porque se sirve CACHEADO: son 9 consultas por pasada y
+// los ramaleros en turno tienen el panel abierto a la vez, cada uno repitiendo
+// las mismas. El SSE "ramales" borra la entrada en cuanto algo cambia de
+// verdad, así que el reparto se sigue viendo al instante.
+async function armarPanelRamales_() {
+  {
     const [lotes, repartos, rot, stock, desempeno, ramaleros] = await Promise.all([
       sbGet_(`v_ramal_lote_arqueo?select=*&order=fecha.desc,codigo.desc&limit=${LIM_LOTES}`),
       // Los repartos de los lotes recientes. Se filtra en memoria contra
@@ -240,7 +250,7 @@ router.get("/api/ramales/panel", async (req, res) => {
       .filter(r => lotesIds.has(r.lote_id))
       .map(r => ({ ...r, nombre: nombrePorId.get(r.user_id) || "—" }));
 
-    return res.json({
+    return {
       ok: true,
       lotes,
       repartos: repartosVis,
@@ -251,7 +261,19 @@ router.get("/api/ramales/panel", async (req, res) => {
       stock,
       desempeno,
       usuarios: ramaleros,
-    });
+    };
+  }
+}
+
+router.get("/api/ramales/panel", async (req, res) => {
+  try {
+    const cfg = await getCfgPanel_();
+    const payload = await cachedByTopics_(
+      "ramales:panel", TOPICS_RAMALES, cfg.SRV_CACHE_PESADO_MS,
+      armarPanelRamales_,
+      { bypass: req.query.fresh === "1" },
+    );
+    return res.json(payload);
   } catch (e) {
     console.error("[GET /api/ramales/panel]", e.message);
     return res.status(500).json({ ok: false, error: String(e.message) });

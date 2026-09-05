@@ -1913,20 +1913,43 @@ export async function despachoReparteAhora_() {
   return enTurno_(minutosDelDia_(), iniMin, finMin);
 }
 
-/** El motor corre solo cada DESPACHO_INTERVALO_SEG. No-op si el modo es OFF. */
+// Suelo del intervalo del motor. Cada corrida son ~34 KB de lecturas a
+// Supabase, así que el intervalo es directamente una factura: a 60 s son
+// ~36 MB/día; a 15 s serían ~145 MB, casi el presupuesto diario entero del
+// plan. El suelo existe para que un dedo en app_config no pueda convertir el
+// motor en la mayor fuente de egress del sistema sin querer.
+const MOTOR_INTERVALO_MIN_SEG = 30;
+
+/**
+ * El motor corre solo cada DESPACHO_INTERVALO_SEG. No-op si el modo es OFF.
+ *
+ * El intervalo se relee EN CADA VUELTA (setTimeout encadenado, no setInterval):
+ * antes estaba clavado en 60 s y DESPACHO_INTERVALO_SEG no se leía en ningún
+ * sitio — la clave existía en app_config, decía 15, y no hacía absolutamente
+ * nada. Una config que miente es peor que no tenerla: el día que alguien
+ * "arreglara" el hardcodeo, el motor se habría cuadruplicado en silencio.
+ */
 export function scheduleMotor_() {
-  setInterval(async () => {
+  const vuelta_ = async () => {
+    let esperaMs = 60_000;
     try {
       const cfg = await getConfig_();
-      if (String(cfg.DESPACHO_MODO || "OFF").toUpperCase() === "OFF") return;
-      const finMin = hhmmAMinutos_(cfg.DESPACHO_TURNO_FIN) ?? 60;
-      const iniMin = hhmmAMinutos_(cfg.DESPACHO_TURNO_INICIO) ?? 420;
-      if (!enTurno_(minutosDelDia_(), iniMin, finMin)) return;   // fuera de turno no reparte
-      await dispararMotor_("intervalo");
+      esperaMs = Math.max(MOTOR_INTERVALO_MIN_SEG, Number(cfg.DESPACHO_INTERVALO_SEG) || 60) * 1000;
+      if (String(cfg.DESPACHO_MODO || "OFF").toUpperCase() !== "OFF") {
+        const finMin = hhmmAMinutos_(cfg.DESPACHO_TURNO_FIN) ?? 60;
+        const iniMin = hhmmAMinutos_(cfg.DESPACHO_TURNO_INICIO) ?? 420;
+        // Fuera de turno no reparte, pero sigue latiendo para recoger el
+        // cambio de modo o de horario sin reiniciar el servidor.
+        if (enTurno_(minutosDelDia_(), iniMin, finMin)) await dispararMotor_("intervalo");
+      }
     } catch (e) {
       console.warn("[Despacho] Motor falló:", e.message);
     }
-  }, 60_000).unref?.();
+    const t = setTimeout(vuelta_, esperaMs);
+    t.unref?.();
+  };
+  const t = setTimeout(vuelta_, 60_000);
+  t.unref?.();
 }
 
 // ─── CONTROL DEL SUPERVISOR ───────────────────────────────────────────────────

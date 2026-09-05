@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { supabaseHeaders_, supabaseGet_, supabasePost_, supabasePatch_ } from "../lib/supabase.js";
 import { addServerTiming_ } from "../lib/timing.js";
+import { getConfig_ } from "../lib/config.js";
 import { r2UploadIncidencia, photoUrls } from "../r2-uploads.js";
 import { emitEvent_ } from "../lib/events.js";
 import { sendPushToEmails_, getTecnicoEmailsByVin_ } from "../lib/push.js";
@@ -280,6 +281,16 @@ router.get("/api/incidencias/report", async (req, res) => {
     } else if (from || to) {
       if (from) dateFrom = `${from}T00:00:00.000Z`;
       if (to)   dateTo   = `${to}T23:59:59.999Z`;
+    } else {
+      // Sin rango pedido: ventana por defecto, no la tabla entera.
+      //
+      // La vista manda from y to vacíos hasta que el supervisor toca el
+      // selector, así que "abrir la pantalla" bajaba TODAS las incidencias que
+      // existen — 756 KB, y creciendo con cada una que se registra. El rango
+      // explícito sigue mandando: esto solo pone suelo al caso por defecto.
+      const { LIM_INCIDENCIAS_DIAS } = await getConfig_();
+      const dias = Math.max(1, Number(LIM_INCIDENCIAS_DIAS) || 90);
+      dateFrom = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString();
     }
 
     let qUrl = `${process.env.SUPABASE_URL}/rest/v1/incidencias?order=fecha_hora.desc&limit=${limit}`;

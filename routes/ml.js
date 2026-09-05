@@ -643,6 +643,16 @@ router.get("/api/ml/suggest-pair", async (req, res) => {
   try {
     const email = String(req.query.email || "").trim().toLowerCase();
     if (!email) return res.json({ ok: false, error: "Email requerido" });
+
+    // Mismo motivo que en /api/ml/suggest-next: con el despacho en REAL las
+    // duplas las gobierna el módulo de despacho (propuesta, aceptación y TTL,
+    // ver DESPACHO_TTL_DUPLA_MIN). Sugerir aquí una pareja distinta a la que el
+    // motor va a formar solo sirve para que el técnico intente emparejarse por
+    // fuera y se encuentre con que el reparto ya decidió otra cosa.
+    const { DESPACHO_MODO } = await getConfig_();
+    if (String(DESPACHO_MODO || "OFF").toUpperCase() === "REAL") {
+      return res.json({ ok: true, suggestion: null, ranked: [], reason: "despacho_real" });
+    }
     if (!existsSync(PAIRING_MODEL_PATH)) await loadPairingModelFromSupabase_();
     if (!existsSync(PAIRING_MODEL_PATH))
       return res.json({ ok: true, suggestion: null, ranked: [], reason: "model_not_trained" });

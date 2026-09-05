@@ -215,6 +215,24 @@ async function handleSupervisorReport_(payload, res) {
   // Fecha actual en hora Perú (UTC-5) para que "hoy" coincida con el horario local
   const todayStr = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Lima" }).format(new Date());
 
+  // Sin rango pedido, el reporte es el de HOY.
+  //
+  // Antes, sin from/to/month la consulta LIVE salía SIN filtro de fecha: traía
+  // todas las asignaciones de CONVERSION que existen, recortadas a 1000 por
+  // LIM_PAGINA_SUPABASE y truncadas en silencio. O sea que la pantalla por
+  // defecto del supervisor pesaba 768 KB (1.2 MB desde Supabase), decía "HOY"
+  // en el log, y encima venía INCOMPLETA — el propio log lo marcaba con
+  // "⚠ TRUNCADO" y nadie lo miraba.
+  //
+  // Poner la fecha aquí y no en la URL es a propósito: así entra por el mismo
+  // camino que un rango explícito y se activan las consultas cross-day (Q2/Q5),
+  // que son las que recogen el carro empezado ayer y terminado hoy. Sin ellas,
+  // "hoy" se dejaría fuera media producción de la mañana.
+  if (!effectiveFrom && !effectiveTo && !month) {
+    effectiveFrom = todayStr;
+    effectiveTo   = todayStr;
+  }
+
   // ¿Es un rango puramente histórico? (el día final es antes de hoy)
   // Si es histórico → usamos fecha de CIERRE (updated_at) como criterio de producción.
   // Si es hoy o el rango incluye hoy → comportamiento LIVE (fecha de inicio + cross-day).
