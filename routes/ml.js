@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { supabaseHeaders_ } from "../lib/supabase.js";
+import { getConfig_ } from "../lib/config.js";
 import { normalizeModelo_ } from "../lib/utils.js";
 import { pendingSuggestions_ } from "../lib/ml-state.js";
 import {
@@ -724,6 +725,26 @@ router.get("/api/ml/suggest-next", async (req, res) => {
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const email = String(req.query.email || "").trim().toLowerCase();
     if (!email) return res.json({ ok: false, error: "Email requerido" });
+
+    // En DESPACHO_MODO=REAL el reparto lo hace el motor, y esto sobra: la
+    // sugerencia termina en "Se creará una OT y quedarás asignado a este
+    // vehículo", o sea el técnico tomando por su cuenta un carro que el motor
+    // no le dio. Ese carro pasa a estar ocupado sin que el reparto lo sepa, la
+    // propuesta que el motor tenía para otro nace muerta, y dos técnicos pueden
+    // ir al mismo sitio — exactamente lo que el modelo de unidades existe para
+    // evitar.
+    //
+    // El corte va en el SERVIDOR y no solo en la vista porque es aquí donde es
+    // autoritativo: la respuesta vacía cuesta cero consultas a Supabase, y este
+    // endpoint eran ~32 MB de egress al día (6 consultas × 30 técnicos, cada
+    // latido y cada tormenta del SSE).
+    //
+    // No se borra: en OFF y en SOMBRA el técnico sigue eligiendo y la
+    // sugerencia es útil. Volver a MODO=SOMBRA la reactiva sin redesplegar.
+    const { DESPACHO_MODO } = await getConfig_();
+    if (String(DESPACHO_MODO || "OFF").toUpperCase() === "REAL") {
+      return res.json({ ok: true, suggestions: [], mode: "despacho_real" });
+    }
 
     // Cargar modelo (puede no existir)
     let model = null;

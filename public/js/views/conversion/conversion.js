@@ -446,6 +446,15 @@ function openPairSuggestModal_() {
 }
 
 async function checkAndShowPairSuggest_() {
+  // Con el despacho dirigido en REAL, el reparto lo hace el motor: el técnico
+  // no elige carro, así que ofrecerle uno solo sirve para que se lo salte. El
+  // servidor ya devuelve vacío en ese modo (routes/ml.js); esto evita además
+  // la petición, que se multiplicaba por 30 en cada evento del SSE.
+  if (String(cfg("DESPACHO_MODO") || "OFF").toUpperCase() === "REAL") {
+    closePairSuggestModal_();
+    return;
+  }
+
   // Solo mostrar cuando el técnico está en la vista "Mi OT", nunca en el menú general ni otros paneles
   const miOTPanel = document.getElementById("tecPanelMiOT");
   if (!miOTPanel || miOTPanel.style.display === "none") { closePairSuggestModal_(); return; }
