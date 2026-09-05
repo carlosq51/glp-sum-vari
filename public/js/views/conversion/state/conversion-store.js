@@ -75,40 +75,67 @@ export function detectIfNeedsFullRerender_(prevActiveKeys, prevFinalKeys) {
 // --------------------------
 // NOMBRES MOTOR/TANQUERO PARA CALIDAD
 // --------------------------
-let _nombresCache = null;   // { ts, byVin: Map<VIN, {motorNombre,tanqueroNombre}> }
+// Cache POR VIN, no un volcado global.
+//
+// Antes esto se resolvía pidiendo /api/supervisor/report?track=CONVERSION: el
+// reporte ENTERO del supervisor —1003 items, 768 KB al cliente y ~1.5 MB de
+// lecturas en Supabase— cada 5 minutos y por cada inspector, para sacar dos
+// nombres de los pocos VINs que tiene en pantalla. Era, con diferencia, la
+// consulta más cara del sistema, y encima invisible: vivía en el store de una
+// vista, no en la vista misma.
+//
+// Ahora se piden solo los VINs que faltan (/api/nombres-por-vin): 0.97 KB para
+// cinco VINs. Cada entrada caduca por su cuenta, así que un VIN ya resuelto no
+// vuelve a pedirse aunque aparezcan otros nuevos al lado.
+const _nombresPorVin = new Map();   // VIN → { ts, nombres:{motorNombre,tanqueroNombre} }
 const NOMBRES_TTL_MS = 5 * 60 * 1000; // 5 min
 
-export function clearNombresCache_() { _nombresCache = null; }
+export function clearNombresCache_() { _nombresPorVin.clear(); }
 
-export async function ensureNombresCache_() {
+/**
+ * Resuelve los nombres MOTOR/TANQUERO de los VINs dados.
+ * @param {string[]} vins  VINs que la vista necesita AHORA (no "todos")
+ * @returns {Promise<Map<string,{motorNombre:string,tanqueroNombre:string}>>}
+ */
+export async function ensureNombresCache_(vins = []) {
   const now = Date.now();
-  if (_nombresCache && (now - _nombresCache.ts) < NOMBRES_TTL_MS) return _nombresCache.byVin;
+  const pedidos = [...new Set(
+    (vins || []).map(v => String(v || "").toUpperCase().trim()).filter(Boolean),
+  )];
 
-  try {
-    const j = await getJSON("/api/supervisor/report?track=CONVERSION");
-    const byVin = new Map();
-    if (j?.ok && Array.isArray(j.items)) {
-      for (const it of j.items) {
-        const vin = String(it.vin || "").toUpperCase().trim();
-        if (!vin) continue;
-        const rol = String(it.rol || "").toUpperCase();
-        const entry = byVin.get(vin) || { motorNombre: "", tanqueroNombre: "" };
-        if (rol === "MOTOR") entry.motorNombre = String(it.userName || "").trim();
-        if (rol === "TANQUE" || rol === "TANQUERO") entry.tanqueroNombre = String(it.userName || "").trim();
-        byVin.set(vin, entry);
+  const faltan = pedidos.filter(v => {
+    const hit = _nombresPorVin.get(v);
+    return !hit || (now - hit.ts) >= NOMBRES_TTL_MS;
+  });
+
+  if (faltan.length) {
+    try {
+      const j = await getJSON(`/api/nombres-por-vin?vins=${encodeURIComponent(faltan.join(","))}`);
+      const byVin = (j?.ok && j.byVin) ? j.byVin : {};
+      // Se cachean TODOS los pedidos, incluidos los que no vinieron: un VIN sin
+      // técnicos asignados es una respuesta válida, y sin esto se volvería a
+      // preguntar por él en cada ciclo.
+      for (const v of faltan) {
+        _nombresPorVin.set(v, {
+          ts: now,
+          nombres: byVin[v] || { motorNombre: "", tanqueroNombre: "" },
+        });
       }
+    } catch {
+      // Sin red no se cachea nada: se reintenta en el siguiente ciclo.
     }
-    _nombresCache = { ts: now, byVin };
-    return byVin;
-  } catch {
-    const byVin = new Map();
-    _nombresCache = { ts: now, byVin };
-    return byVin;
   }
+
+  const out = new Map();
+  for (const v of pedidos) {
+    out.set(v, _nombresPorVin.get(v)?.nombres || { motorNombre: "", tanqueroNombre: "" });
+  }
+  return out;
 }
 
 export async function fetchNombresParaVin_(vin) {
   const vinUp = String(vin || "").toUpperCase().trim();
-  const byVin = await ensureNombresCache_();
+  if (!vinUp) return { motorNombre: "", tanqueroNombre: "" };
+  const byVin = await ensureNombresCache_([vinUp]);
   return byVin.get(vinUp) || { motorNombre: "", tanqueroNombre: "" };
 }

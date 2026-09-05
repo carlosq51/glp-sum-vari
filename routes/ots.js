@@ -187,6 +187,54 @@ router.get("/api/ots/vivas", async (req, res) => {
   }
 });
 
+// ─── GET /api/nombres-por-vin?vins=A,B,C ─────────────────────────────────────
+// VIN → nombre del MOTOR y del TANQUERO, solo para los VINs pedidos.
+//
+// Existe porque la vista de CALIDAD resolvía esos nombres bajándose el REPORTE
+// COMPLETO del supervisor (/api/supervisor/report?track=CONVERSION): 1003
+// items, 768 KB al cliente y ~1.5 MB de lecturas a Supabase, cada 5 minutos,
+// para sacar dos nombres por cada VIN que el inspector tiene en pantalla. Lo
+// mismo pedido por VIN son 0.97 KB.
+//
+// Todo el filtro viaja a la BD (regla de este archivo): el `!inner` sobre
+// work_orders permite filtrar por vin sin traer nada más.
+router.get("/api/nombres-por-vin", async (req, res) => {
+  try {
+    const { LIM_VINS_POR_CONSULTA } = await getConfig_();
+    const vins = [...new Set(
+      String(req.query.vins || "")
+        .split(",")
+        .map(v => v.trim().toUpperCase())
+        .filter(Boolean),
+    )].slice(0, LIM_VINS_POR_CONSULTA);
+
+    if (!vins.length) return res.json({ ok: true, byVin: {} });
+
+    const select = "rol_trabajo,usuarios(nombre),work_orders!inner(vin)";
+    const rows = await sbGet_(
+      `asignaciones?select=${encodeURIComponent(select)}` +
+      `&tipo_ot=eq.CONVERSION` +
+      `&work_orders.vin=in.(${vins.map(encodeURIComponent).join(",")})`,
+    );
+
+    const byVin = {};
+    for (const a of rows || []) {
+      const vin = String(a.work_orders?.vin || "").toUpperCase().trim();
+      if (!vin) continue;
+      const nombre = String(a.usuarios?.nombre || "").trim();
+      if (!nombre) continue;
+      const rol = String(a.rol_trabajo || "").toUpperCase();
+      byVin[vin] = byVin[vin] || { motorNombre: "", tanqueroNombre: "" };
+      if (rol === "MOTOR") byVin[vin].motorNombre = nombre;
+      else if (rol === "TANQUE" || rol === "TANQUERO") byVin[vin].tanqueroNombre = nombre;
+    }
+
+    return res.json({ ok: true, byVin });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
 // ─── GET /api/ots?vin=XXX ────────────────────────────────────────────────────
 // Todas las OTs de un VIN (abiertas y cerradas) con sus asignaciones.
 // Un VIN es único: aquí NO se filtra por fecha, tiene que aparecer esté donde esté.

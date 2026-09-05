@@ -454,7 +454,13 @@ export async function syncNow({ forceFull = false, showOut = false, _fromLock = 
 
   if (CORE.state.currentModule === "CALIDAD") {
 
-    const byVin = await ensureNombresCache_();
+    const pendientesNombres_ = [];
+    for (const [, it] of c.itemsByKey) {
+      if (it && it.vin && !it.motorNombre && !it.tanqueroNombre) pendientesNombres_.push(it.vin);
+    }
+    // Solo los VINs que AUN no tienen nombre: esta llamada bajaba antes el
+    // reporte completo del supervisor (768 KB) para resolver un punado.
+    const byVin = await ensureNombresCache_(pendientesNombres_);
 
     for (const [k, it] of c.itemsByKey) {
 
