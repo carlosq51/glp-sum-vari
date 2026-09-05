@@ -8,6 +8,7 @@ import webpush from "web-push";
 import uploaderRouter from "./routes/uploader.js";
 import pushRouter from "./routes/push.js";
 import ramalRouter from "./routes/ramal.js";
+import ramalesRouter from "./routes/ramales.js";
 import incidenciasRouter from "./routes/incidencias.js";
 import supervisorRouter from "./routes/supervisor.js";
 import trabajoRouter from "./routes/trabajo.js";
@@ -94,7 +95,7 @@ app.use(express.static(staticDir, {
 // El botón "Volver" de esa página apunta a "/", que ya sirve express.static.
 // Express no distingue "/inventario" de "/inventario/": una sola ruta cubre
 // las dos formas.
-app.get("/inventario", (_req, res) => {
+app.get(["/inventario", "/ramales"], (_req, res) => {
   res.sendFile(resolve(staticDir, "index.html"));
 });
 
@@ -106,6 +107,7 @@ app.get("/api/events", sseHandler_);
 app.use(uploaderRouter);
 app.use(pushRouter);
 app.use(ramalRouter);
+app.use(ramalesRouter);
 app.use(incidenciasRouter);
 app.use(supervisorRouter);
 app.use(trabajoRouter);

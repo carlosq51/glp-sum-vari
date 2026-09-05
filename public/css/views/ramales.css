@@ -1,0 +1,515 @@
+/* =====================================================================
+   RAMALES · turno, desembalaje, reparto y stock
+   ---------------------------------------------------------------------
+   Vive en su página propia (/ramales), en la pestaña RAMALES del
+   supervisor y embebido en la vista del ramalero. Por eso no hereda de
+   `.supRoot` ni de `.adminTable`: define sus propias piezas y se ve
+   igual en los tres sitios.
+
+   Todo cuelga de tokens (00-token.css) → día y noche salen solos.
+   ===================================================================== */
+
+.rmRoot { color: var(--text); }
+
+/* =====================================================================
+   1. CABECERA DE PÁGINA
+   ===================================================================== */
+.rmPageHead {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 4px 18px;
+}
+.rmPageTitle h2 { margin: 0; font-size: 1.15rem; }
+.rmPageTitle span { font-size: .82rem; color: var(--muted); }
+
+/* =====================================================================
+   2. BARRA DE TURNO · lo primero que se mira al entrar
+   ---------------------------------------------------------------------
+   Es la decisión del día ("¿a quién le toca?"), así que ocupa el sitio
+   de honor y se lee de un golpe: nombre grande, contexto pequeño.
+   ===================================================================== */
+.rmTurno {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 16px;
+  align-items: center;
+  padding: 16px 18px;
+  border-radius: var(--radius, 16px);
+  background: var(--grad-surface-v, var(--surface2));
+  border: var(--border-w) solid var(--surfaceLine);
+  margin-bottom: 14px;
+}
+.rmTurno__cols {
+  display: flex;
+  gap: 28px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.rmTurno__label {
+  font-size: .68rem;
+  font-weight: 800;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+.rmTurno__nombre {
+  font-size: 1.25rem;
+  font-weight: 900;
+  line-height: 1.15;
+  color: var(--text);
+}
+.rmTurno__nombre--sec { font-size: 1rem; font-weight: 800; }
+.rmTurno__meta { font-size: .76rem; color: var(--muted); margin-top: 3px; }
+.rmTurno__acciones { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Avatar-inicial: da un ancla visual al nombre del turno sin fotos. */
+.rmTurno__quien { display: flex; align-items: center; gap: 11px; }
+.rmInicial {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  border-radius: 50%;
+  font-weight: 900;
+  font-size: 1rem;
+  color: var(--bg, #0b1220);
+  background: var(--accent, #3b82f6);
+}
+.rmInicial--sm { width: 28px; height: 28px; flex-basis: 28px; font-size: .78rem; }
+
+/* =====================================================================
+   3. TARJETA DE CAJA (LOTE)
+   ===================================================================== */
+.rmLote {
+  border: var(--border-w) solid var(--surfaceLine);
+  border-radius: var(--radius, 16px);
+  background: var(--surface);
+  padding: 15px 17px;
+  margin-bottom: 11px;
+  transition: border-color var(--dur, .18s) ease;
+}
+/* La franja izquierda dice el estado sin leer nada. */
+.rmLote[data-estado="RECIBIDO"]     { border-left: 4px solid var(--muted); }
+.rmLote[data-estado="DESEMBALANDO"] { border-left: 4px solid var(--warn); }
+.rmLote[data-estado="DESEMBALADO"]  { border-left: 4px solid var(--accent, #3b82f6); }
+.rmLote[data-estado="REPARTIDO"]    { border-left: 4px solid var(--ok); }
+.rmLote[data-estado="CERRADO"]      { border-left: 4px solid var(--surfaceLine); opacity: .7; }
+/* Un descuadre gana a cualquier estado: es lo único que hay que mirar. */
+.rmLote.is-descuadre { border-left-color: var(--bad, #ef4444); }
+
+.rmLote__head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.rmLote__codigo {
+  font-weight: 900;
+  font-size: 1.02rem;
+  letter-spacing: .02em;
+  font-variant-numeric: tabular-nums;
+}
+.rmLote__sub {
+  width: 100%;
+  font-size: .76rem;
+  color: var(--muted);
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.rmLote__acciones {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 11px;
+  padding-top: 11px;
+  border-top: 1px solid var(--surfaceLine);
+}
+
+/* Cronómetro del desembalaje — corre en vivo mientras el lote está abierto.
+   El número que corre es cosmético; el oficial lo calcula el servidor. */
+.rmClock {
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  font-size: 1rem;
+  padding: 3px 11px;
+  border-radius: 999px;
+  background: var(--pillBg);
+  border: 1px solid var(--pillLine);
+  color: var(--muted);
+}
+.rmClock.is-corriendo {
+  color: var(--warn);
+  border-color: var(--warn);
+  animation: rmPulse 2.4s ease-in-out infinite;
+}
+@keyframes rmPulse { 0%,100% { opacity: 1; } 50% { opacity: .62; } }
+@media (prefers-reduced-motion: reduce) {
+  .rmClock.is-corriendo { animation: none; }
+}
+
+/* =====================================================================
+   4. BARRA DE AVANCE DE LA CAJA
+   ---------------------------------------------------------------------
+   Los tres tramos son el arqueo dibujado: devuelto (verde), en la calle
+   (ámbar) y sin repartir (gris). Si la suma no llena la barra, la caja
+   no cuadra — se ve antes de leer un número.
+   ===================================================================== */
+.rmBar {
+  display: flex;
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--pillBg);
+  border: 1px solid var(--pillLine);
+  margin: 4px 0 10px;
+}
+.rmBar__seg { height: 100%; transition: width var(--dur-slow, .3s) ease; }
+.rmBar__seg--dev  { background: var(--ok); }
+.rmBar__seg--proc { background: var(--warn); }
+.rmBar__seg--sin  { background: var(--muted); opacity: .35; }
+.rmBar__seg--mal  { background: var(--bad, #ef4444); }
+
+/* =====================================================================
+   5. ARQUEO · la fila de números que tiene que cuadrar
+   ===================================================================== */
+.rmArqueo {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  font-size: .82rem;
+}
+.rmArqueo__item { display: flex; flex-direction: column; gap: 1px; min-width: 58px; }
+.rmArqueo__k {
+  font-size: .64rem;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--muted);
+  font-weight: 700;
+}
+.rmArqueo__v {
+  font-weight: 900;
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.rmArqueo__v.is-mal  { color: var(--bad, #ef4444); }
+.rmArqueo__v.is-bien { color: var(--ok); }
+.rmArqueo__v.is-warn { color: var(--warn); }
+
+/* =====================================================================
+   6. REPARTO POR RAMALERO
+   ===================================================================== */
+.rmRepartos { margin-top: 12px; display: grid; gap: 6px; }
+.rmReparto {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 9px 12px;
+  border-radius: var(--radiusSm, 11px);
+  background: var(--surface2);
+  border: 1px solid transparent;
+  font-size: .85rem;
+}
+.rmReparto.is-pendiente { border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+.rmReparto__nombre { font-weight: 800; }
+.rmReparto__cifra { color: var(--muted); font-variant-numeric: tabular-nums; }
+.rmReparto__acc { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+
+/* =====================================================================
+   7. STOCK POR TIPO DE RAMAL
+   ===================================================================== */
+.rmStockGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: 10px;
+}
+.rmStockCard {
+  border: var(--border-w) solid var(--surfaceLine);
+  border-radius: var(--radiusSm, 12px);
+  background: var(--surface);
+  padding: 13px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.rmStockCard.is-bajo { border-color: var(--warn); }
+.rmStockCard.is-cero { border-color: var(--bad, #ef4444); }
+.rmStockCard__tipo {
+  font-size: .72rem;
+  font-weight: 800;
+  letter-spacing: .04em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+.rmStockCard__n {
+  font-size: 1.85rem;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.05;
+}
+.rmStockCard__min { font-size: .7rem; color: var(--muted); }
+.rmStockCard__btn { margin-top: 8px; }
+
+/* =====================================================================
+   8. TABLAS (desempeño, rotación)
+   ===================================================================== */
+.rmTableWrap { overflow-x: auto; }
+.rmTable { width: 100%; border-collapse: collapse; font-size: .85rem; }
+.rmTable th, .rmTable td {
+  padding: 9px 11px;
+  text-align: left;
+  border-bottom: 1px solid var(--surfaceLine);
+  white-space: nowrap;
+}
+.rmTable th {
+  font-size: .66rem;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--muted);
+  font-weight: 800;
+}
+.rmTable tbody tr:last-child td { border-bottom: none; }
+.rmTable td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.rmTable td.who { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+/* El % de rechazo va junto a la velocidad a propósito: medir solo
+   ramales/hora consigue ramales/hora, y peores ramales. */
+.rmRechazo.is-alto { color: var(--bad, #ef4444); font-weight: 900; }
+
+/* Fila del que tiene el turno ahora */
+.rmTable tr.is-turno td { background: color-mix(in srgb, var(--accent, #3b82f6) 9%, transparent); }
+
+/* =====================================================================
+   9. CHIPS DE ESTADO
+   ===================================================================== */
+.rmChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: .68rem;
+  font-weight: 800;
+  letter-spacing: .04em;
+  background: var(--pillBg);
+  border: 1px solid var(--pillLine);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.rmChip.ok   { color: var(--ok);   border-color: color-mix(in srgb, var(--ok) 60%, transparent); }
+.rmChip.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 60%, transparent); }
+.rmChip.bad  { color: var(--bad, #ef4444); border-color: color-mix(in srgb, var(--bad,#ef4444) 60%, transparent); }
+.rmChip.info { color: var(--accent, #3b82f6); border-color: color-mix(in srgb, var(--accent,#3b82f6) 60%, transparent); }
+/* El supervisor pisó el turno sugerido. No es un error — a veces hay que
+   hacerlo — pero queda a la vista para que sea decisión, no costumbre. */
+.rmChip.pisado { color: var(--warn); border-color: var(--warn); }
+
+/* =====================================================================
+   10. ESTADOS VACÍOS
+   ===================================================================== */
+.rmEmpty {
+  text-align: center;
+  padding: 28px 18px;
+  color: var(--muted);
+  font-size: .86rem;
+  line-height: 1.5;
+}
+.rmEmpty__icon { font-size: 1.9rem; display: block; margin-bottom: 8px; opacity: .55; }
+.rmEmpty strong { color: var(--text); display: block; margin-bottom: 4px; font-size: .95rem; }
+
+/* Nota al pie de una sección: el "por qué" de lo que se está mirando. */
+.rmNota {
+  font-size: .76rem;
+  color: var(--muted);
+  line-height: 1.5;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--surfaceLine);
+}
+
+/* =====================================================================
+   11. MODALES DEL MÓDULO
+   ---------------------------------------------------------------------
+   Reusan `.modal`/`.modalBox` de overlays/modal.css; aquí solo va el
+   formulario de dentro.
+   ===================================================================== */
+.rmModalBox { width: min(560px, 94vw); }
+.rmModalBox--ancho { width: min(720px, 94vw); }
+
+.rmForm { display: grid; gap: 14px; }
+.rmField { display: grid; gap: 5px; }
+.rmField > label {
+  font-size: .72rem;
+  font-weight: 800;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.rmField input,
+.rmField select,
+.rmField textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--radiusSm, 11px);
+  background: var(--surface2);
+  border: var(--border-w) solid var(--surfaceLine);
+  color: var(--text);
+  font: inherit;
+  font-weight: 700;
+}
+.rmField input:focus,
+.rmField select:focus,
+.rmField textarea:focus {
+  outline: none;
+  border-color: var(--accent, #3b82f6);
+}
+.rmField textarea { min-height: 68px; resize: vertical; font-weight: 500; }
+.rmField__hint { font-size: .74rem; color: var(--muted); line-height: 1.45; }
+.rmField__hint.is-mal { color: var(--bad, #ef4444); font-weight: 700; }
+.rmFieldRow { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+/* Casilla con explicación al lado (arrancar el tiempo, forzar cierre…) */
+.rmCheck {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 11px 13px;
+  border-radius: var(--radiusSm, 11px);
+  background: var(--surface2);
+  border: var(--border-w) solid var(--surfaceLine);
+  cursor: pointer;
+}
+.rmCheck input { margin-top: 2px; width: 17px; height: 17px; flex: 0 0 auto; }
+.rmCheck__txt { font-size: .82rem; font-weight: 700; }
+.rmCheck__txt small { display: block; font-weight: 500; color: var(--muted); margin-top: 2px; }
+
+/* Aviso dentro de un modal (arqueo que no cuadra, tope superado…) */
+.rmAviso {
+  padding: 11px 13px;
+  border-radius: var(--radiusSm, 11px);
+  font-size: .82rem;
+  line-height: 1.5;
+  border: 1px solid;
+}
+.rmAviso.warn { background: color-mix(in srgb, var(--warn) 11%, transparent); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+.rmAviso.bad  { background: color-mix(in srgb, var(--bad,#ef4444) 11%, transparent); border-color: color-mix(in srgb, var(--bad,#ef4444) 45%, transparent); }
+.rmAviso.info { background: color-mix(in srgb, var(--accent,#3b82f6) 10%, transparent); border-color: color-mix(in srgb, var(--accent,#3b82f6) 40%, transparent); }
+.rmAviso strong { display: block; margin-bottom: 3px; }
+
+/* Filas del modal de reparto: una por ramalero, con su número al lado */
+.rmSplit { display: grid; gap: 7px; }
+.rmSplit__row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 9px 12px;
+  border-radius: var(--radiusSm, 11px);
+  background: var(--surface2);
+  border: var(--border-w) solid var(--surfaceLine);
+}
+.rmSplit__row.is-turno { border-color: color-mix(in srgb, var(--accent,#3b82f6) 55%, transparent); }
+.rmSplit__nom { font-weight: 800; font-size: .88rem; flex: 1; }
+.rmSplit__sub { font-size: .7rem; color: var(--muted); font-weight: 500; display: block; }
+.rmSplit__row input[type="number"] {
+  width: 76px;
+  text-align: center;
+  padding: 8px;
+  border-radius: var(--radiusSm, 10px);
+  background: var(--surface);
+  border: var(--border-w) solid var(--surfaceLine);
+  color: var(--text);
+  font: inherit;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Contador vivo del reparto: cuánto queda por asignar */
+.rmSplit__tally {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 13px;
+  border-radius: var(--radiusSm, 11px);
+  background: var(--surface2);
+  font-weight: 800;
+  font-size: .86rem;
+}
+.rmSplit__tally b { font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+.rmSplit__tally.is-mal { color: var(--bad, #ef4444); }
+.rmSplit__tally.is-ok  { color: var(--ok); }
+
+/* Botonera del pie del modal */
+.rmModalFoot {
+  display: flex;
+  gap: 9px;
+  justify-content: flex-end;
+  padding: 14px 18px;
+  border-top: var(--border-w) solid var(--surfaceLine);
+  background: var(--surface2);
+  flex-wrap: wrap;
+}
+
+/* Botones del módulo — se apoyan en .btn3 del sistema, solo variantes. */
+.rmBtn--danger {
+  border-color: color-mix(in srgb, var(--bad,#ef4444) 65%, transparent) !important;
+  color: var(--bad, #ef4444) !important;
+}
+.rmBtn--primary {
+  background: var(--accent, #3b82f6) !important;
+  border-color: var(--accent, #3b82f6) !important;
+  color: var(--bg, #0b1220) !important;
+  font-weight: 900;
+}
+
+/* =====================================================================
+   12. PANEL COMPACTO DEL RAMALERO (dentro de su vista)
+   ===================================================================== */
+.rmMio { display: grid; gap: 10px; }
+.rmMio__turno {
+  padding: 13px 15px;
+  border-radius: var(--radius, 14px);
+  background: var(--surface2);
+  border: var(--border-w) solid var(--surfaceLine);
+}
+.rmMio__turno.is-mio { border-color: var(--warn); }
+.rmMio__vacio { color: var(--muted); font-size: .84rem; line-height: 1.5; }
+.rmMio__head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  flex-wrap: wrap;
+  margin-top: 5px;
+}
+
+/* =====================================================================
+   13. ESQUELETO DE CARGA
+   ===================================================================== */
+.rmSkel {
+  border-radius: var(--radius, 14px);
+  background: linear-gradient(90deg, var(--surface2) 25%, var(--surfaceLine) 50%, var(--surface2) 75%);
+  background-size: 200% 100%;
+  animation: rmShimmer 1.3s linear infinite;
+}
+@keyframes rmShimmer { to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .rmSkel { animation: none; } }
+
+/* =====================================================================
+   14. RESPONSIVE
+   ===================================================================== */
+@media (max-width: 620px) {
+  .rmTurno { grid-template-columns: 1fr; }
+  .rmTurno__acciones { width: 100%; }
+  .rmTurno__acciones > * { flex: 1; }
+  .rmLote__acciones > * { flex: 1 1 auto; }
+  .rmArqueo { gap: 12px; }
+  .rmArqueo__item { min-width: 48px; }
+  .rmFieldRow { grid-template-columns: 1fr; }
+  .rmReparto__acc { margin-left: 0; width: 100%; }
+}

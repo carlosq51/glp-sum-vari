@@ -23,6 +23,8 @@ import { exportCsv_ } from "../../core/csv.js";
 import { calculateKPIs_ } from "./sup-kpis.js";
 import { renderKPIsPanel_ } from "./sup-kpis-render.js";
 
+import { mountRamalesPanel, unmountRamalesPanel } from "../ramales/ramales.js";
+
 import { bindSupIncidencias_ } from "./sup-incidencias.js";
 import { bindSupQR_ } from "./sup-qr.js";
 import { bindSupNameSuggest_ } from "./sup-name-suggest.js";
@@ -479,11 +481,17 @@ export function init() {
       const panelControl     = document.getElementById("supPanelOtControl");
       const panelIncidencias = document.getElementById("supPanelIncidencias");
       const panelValidar     = document.getElementById("supPanelValidar");
+      const panelRamales     = document.getElementById("supPanelRamales");
       if (panelReporte)     panelReporte.style.display     = tab === "REPORTE"     ? "" : "none";
       if (panelLive)        panelLive.style.display        = tab === "LIVE"        ? "" : "none";
       if (panelControl)     panelControl.style.display     = tab === "CONTROL"     ? "" : "none";
       if (panelIncidencias) panelIncidencias.style.display = tab === "INCIDENCIAS" ? "" : "none";
       if (panelValidar)     panelValidar.style.display     = tab === "VALIDAR"     ? "" : "none";
+      if (panelRamales)     panelRamales.style.display     = tab === "RAMALES"     ? "" : "none";
+
+      // El panel de ramales tiene cronómetros y poll propios: se desmonta
+      // al salir de su pestaña o seguiría corriendo detrás de las demás.
+      if (tab !== "RAMALES") unmountRamalesPanel();
 
       if (tab === "LIVE") {
         exitOtControl_();
@@ -501,6 +509,11 @@ export function init() {
         exitLive_();
         exitOtControl_();
         exitIncReport_();
+      } else if (tab === "RAMALES") {
+        exitLive_();
+        exitOtControl_();
+        exitIncReport_();
+        mountRamalesPanel(document.getElementById("supRamalesBody"));
       } else {
         exitLive_();
         exitOtControl_();
@@ -680,11 +693,13 @@ export function enter() {
   const panelControl     = document.getElementById("supPanelOtControl");
   const panelIncidencias = document.getElementById("supPanelIncidencias");
   const panelValidar     = document.getElementById("supPanelValidar");
+  const panelRamales     = document.getElementById("supPanelRamales");
   if (panelReporte)     panelReporte.style.display     = "none";
   if (panelLive)        panelLive.style.display        = "";
   if (panelControl)     panelControl.style.display     = "none";
   if (panelIncidencias) panelIncidencias.style.display = "none";
   if (panelValidar)     panelValidar.style.display     = "none";
+  if (panelRamales)     panelRamales.style.display     = "none";
   enterLive_();
 }
 
@@ -695,4 +710,5 @@ export function exit() {
   exitLive_();
   exitOtControl_();
   exitIncReport_();
+  unmountRamalesPanel();
 }

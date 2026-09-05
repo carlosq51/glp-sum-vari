@@ -37,6 +37,7 @@ const DEFAULTS = {
   POLL_SUP_OT_CONTROL_MS:  180_000,
   POLL_ZONAS_MAPA_MS:       60_000,
   POLL_RAMALERO_SOL_MS:     60_000,
+  POLL_RAMALES_MS:         120_000,
 };
 
 let _config = { ...DEFAULTS };

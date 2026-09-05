@@ -21,6 +21,7 @@ import { loadConfig } from "./config.js";
 const TOPIC_TO_POLLS = {
   asignaciones: ["POLL_SUP_LIVE_MS", "POLL_SUP_OT_CONTROL_MS", "POLL_ZONAS_MAPA_MS", "POLL_MOVILIZADOR_MS", "POLL_COLA_BADGE_MS", "POLL_VIN_READY_MS", "POLL_PAIR_SUGGEST_MS"],
   ramal:        ["POLL_RAMAL_LISTO_MS", "POLL_COLA_POSICION_MS", "POLL_RAMALERO_SOL_MS"],
+  ramales:      ["POLL_RAMALES_MS"],
   zonas:        ["POLL_ZONAS_MAPA_MS"],
   movilizador:  ["POLL_MOVILIZADOR_MS", "POLL_ZONAS_MAPA_MS"],
   work_orders:  ["POLL_SUP_OT_CONTROL_MS", "POLL_SUP_LIVE_MS"],

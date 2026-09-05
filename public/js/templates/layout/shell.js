@@ -7,6 +7,7 @@ import { calidadView } from "../views/calidad-view.js";
 import { adminView, adminCrudModal } from "../views/admin-view.js";
 import { uploaderView } from "../views/uploader-view.js";
 import { inventarioView } from "../views/inventario-view.js";
+import { ramalesView } from "../views/ramales-view.js";
 import { movilizadorView } from "../views/movilizador-view.js";
 import { supervisorView, supIncModal, liveDetailModal, supValidarQrModalTemplate, supOtControlModal } from "../views/supervisor-view.js";
 
@@ -48,6 +49,9 @@ export function appShell() {
 
       <!-- Inventario como pagina propia: /inventario -->
       ${inventarioView()}
+
+      <!-- Control de ramales como pagina propia: /ramales -->
+      ${ramalesView()}
     </div>
 
     ${loadingOverlay()}

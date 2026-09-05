@@ -31,6 +31,7 @@ import { loadConfig } from "./js/core/config.js";
 import { initLive } from "./js/core/live.js";
 import { initAvatarUpload } from "./js/views/avatar-upload.js";
 import { renderInventarioTab } from "./js/views/admin/inventario.js";
+import { mountRamalesPanel, unmountRamalesPanel } from "./js/views/ramales/ramales.js";
 
 // Aplicar ajustes guardados (fuente, acento) antes de cualquier render
 initAppSettings();
@@ -48,6 +49,12 @@ document.addEventListener("visibilitychange", () => {
 // directo (mi-dominio/inventario) sin pasar por el panel de Admin. Es la
 // misma vista; solo cambia el marco. "Volver" regresa al dominio a secas.
 const EN_RUTA_INVENTARIO = /^\/inventario\/?$/i.test(location.pathname);
+
+// ---------- RUTA /ramales ----------
+// Mismo criterio que /inventario: quien maneja las cajas de ramales entra
+// directo a su tablero (mi-dominio/ramales) sin pasar por el módulo de
+// supervisión entero. Es el mismo panel que la pestaña RAMALES.
+const EN_RUTA_RAMALES = /^\/ramales\/?$/i.test(location.pathname);
 
 const root = document.getElementById("appRoot");
 if (root) root.innerHTML = appShell();
@@ -112,6 +119,8 @@ async function doLogin(email) {
 
     if (EN_RUTA_INVENTARIO) {
       openInventarioPage_();
+    } else if (EN_RUTA_RAMALES) {
+      openRamalesPage_();
     } else if (mods.length > 1) {
       hideAllModulesUI();
       showHubUI(mods, (m) => openModule(m));
@@ -185,11 +194,55 @@ function openInventarioPage_() {
 
 $("invPageBack")?.addEventListener("click", () => { window.location.href = "/"; });
 
+// ---------- PÁGINA DE RAMALES (/ramales) ----------
+function hideRamalesPage_() {
+  const v = document.getElementById("viewRamales");
+  if (!v || v.style.display === "none") return;
+  v.style.display = "none";
+  // Sin desmontar, los cronómetros y el poll del panel seguirían vivos
+  // detrás de la vista que el usuario abrió después.
+  unmountRamalesPanel();
+}
+
+function openRamalesPage_() {
+  hideUploaderView();
+  hideInventarioPage_();
+  hideAllModulesUI();
+  const hub = $("viewHub");
+  if (hub) hub.style.display = "none";
+
+  const v = document.getElementById("viewRamales");
+  const body = document.getElementById("rmPageBody");
+  if (!v || !body) return;
+  v.style.display = "block";
+  // El panel reusa piezas del marco de Admin (botón fantasma, cuerpo de
+  // página); se marca el módulo para que se vean igual fuera del panel.
+  document.body.dataset.appModule = "ADMIN";
+  CORE.state.currentModule = null;
+
+  // El control de cajas es del supervisor. Un ramalero tiene su propia
+  // sección en su vista — la de aquí incluye repartir y auditar.
+  const mods = effectiveModulos(CORE.state.currentProfile);
+  if (!mods.includes("SUPERVISOR") && !mods.includes("ADMIN")) {
+    body.innerHTML = `<div class="invPageDenied">
+      <h3>Sin acceso</h3>
+      <p class="small muted">El control de ramales es del supervisor. Si eres ramalero,
+      tu turno y tus ramales aparecen en tu propia vista.</p>
+    </div>`;
+    return;
+  }
+
+  mountRamalesPanel(body);
+}
+
+$("rmPageBack")?.addEventListener("click", () => { window.location.href = "/"; });
+
 // ---------- OPEN MODULE ----------
 function openModule(m) {
   // ✅ oculta uploader por si estaba abierto
   hideUploaderView();
   hideInventarioPage_();
+  hideRamalesPage_();
 
   // exit view actual
   openView(m);
@@ -230,6 +283,7 @@ $("btnAppSettings")?.addEventListener("click", openSettingsSheet);
 $("btnRegistroFallas")?.addEventListener("click", () => {
   // Oculta vistas actuales
   hideInventarioPage_();
+  hideRamalesPage_();
   hideAllModulesUI();
   $("viewHub") && ($("viewHub").style.display = "none");
 
@@ -249,6 +303,7 @@ $("btnGoHome")?.addEventListener("click", () => {
 
   hideUploaderView();
   hideInventarioPage_();
+  hideRamalesPage_();
   hideAllModulesUI();
 
   showHubUI(mods, (m) => openModule(m));
@@ -274,6 +329,7 @@ $("btnLogout")?.addEventListener("click", () => {
   VRamalero.exit();
   VMovilizador.exit();
   hideInventarioPage_();
+  hideRamalesPage_();
   hideAllModulesUI();
   $("viewHub").style.display = "none";
   $("btnGoHome")?.classList.add("hidden");

@@ -192,10 +192,21 @@ async function onQueueClick_(e) {
   if (!btn || btn.disabled) return;
   let email;
   try { email = requireEmailOrStop(); } catch { return; }
+
+  // Qué tipo de ramal sale. Es el único momento en que alguien lo tiene
+  // en la mano y lo sabe, y es lo que permite descontarlo del stock
+  // (ver supabase/ramales.sql). Se puede saltar: la entrega no se bloquea
+  // por esto, solo queda sin descontar. `null` = canceló la entrega.
+  const tipoRamal = await pedirTipoRamal_();
+  if (tipoRamal === null) return;
+
   btn.disabled = true;
   btn.textContent = "…";
   try {
-    const r = await postJSON(`/api/solicitud-ramal/${btn.dataset.entregar}/entregar`, { email });
+    const r = await postJSON(`/api/solicitud-ramal/${btn.dataset.entregar}/entregar`, {
+      email,
+      ...(tipoRamal ? { tipo_ramal: tipoRamal } : {}),
+    });
     if (!r?.ok) {
       btn.disabled = false;
       btn.textContent = "✅ Entregar";
@@ -207,6 +218,60 @@ async function onQueueClick_(e) {
     btn.disabled = false;
     btn.textContent = "✅ Entregar";
   }
+}
+
+// Tipos que maneja el taller (espejo del enum `tipo_ramal` en schema.sql).
+const TIPOS_RAMAL_ = ["JETOUR", "VOLKSWAGEN", "KYC V3", "KYC V5", "KYC V7", "KYC X5"];
+
+/**
+ * Pregunta qué tipo de ramal sale, para descontarlo del stock.
+ *
+ * Resuelve con "" si el ramalero lo salta, y con null si cancela.
+ * Saltarlo NO bloquea la entrega: el trabajo del taller manda sobre el
+ * inventario. Un ramal entregado sin registrar el tipo es un dato menos;
+ * un técnico esperando porque la app no le deja recibirlo es un carro
+ * parado.
+ */
+function pedirTipoRamal_() {
+  return new Promise((resolve) => {
+    const m = document.createElement("div");
+    m.className = "modal show";
+    m.innerHTML = `
+      <div class="modalBox rmModalBox" style="width:min(420px,94vw);">
+        <div class="modalHead"><span class="modalTitle">¿Qué ramal le entregas?</span></div>
+        <div class="modalBody">
+          <div class="rmForm">
+            <div class="rmField">
+              <label for="rmEntTipo">Tipo de ramal</label>
+              <select id="rmEntTipo">
+                ${TIPOS_RAMAL_.map(t => `<option value="${t}">${t}</option>`).join("")}
+              </select>
+              <span class="rmField__hint">
+                Con esto se descuenta del stock de ramales armados.
+              </span>
+            </div>
+          </div>
+        </div>
+        <div class="rmModalFoot">
+          <button type="button" class="btn3" data-ent="skip">Entregar sin registrar</button>
+          <button type="button" class="btn3 rmBtn--primary" data-ent="ok">Entregar</button>
+        </div>
+      </div>`;
+    document.body.appendChild(m);
+    document.body.classList.add("modal-open");
+
+    const cerrar = (valor) => {
+      m.remove();
+      if (!document.querySelector(".modal.show")) document.body.classList.remove("modal-open");
+      resolve(valor);
+    };
+    m.querySelector('[data-ent="ok"]').addEventListener("click",
+      () => cerrar(m.querySelector("#rmEntTipo").value));
+    m.querySelector('[data-ent="skip"]').addEventListener("click", () => cerrar(""));
+    // Clic fuera o Escape = cancelar la entrega entera, no entregar a ciegas.
+    m.addEventListener("click", (e) => { if (e.target === m) cerrar(null); });
+    setTimeout(() => m.querySelector("#rmEntTipo")?.focus(), 80);
+  });
 }
 
 // ─── ciclo de vida ───────────────────────────────────────────────────────────

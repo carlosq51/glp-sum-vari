@@ -13,6 +13,7 @@ export function supervisorView() {
         <button type="button" class="btn sup-tab" data-suptab="CONTROL">${icon("clipboardList", 14)} OTs</button>
         <button type="button" class="btn sup-tab" data-suptab="INCIDENCIAS">${icon("alertTriangle", 14)} INCID.</button>
         <button type="button" class="btn sup-tab" data-suptab="VALIDAR">${icon("scanSearch", 14)} VALIDAR</button>
+        <button type="button" class="btn sup-tab" data-suptab="RAMALES">${icon("box", 14)} RAMALES</button>
       </div>
 
       <!-- ══════════════════════════════════════════════
@@ -189,6 +190,15 @@ export function supervisorView() {
 
           <div id="supValidarResult" style="margin-top:14px;"></div>
         </div>
+      </div>
+
+      <!-- ══════════════════════════════════════════════
+           PANEL RAMALES — cajas, turno, reparto y stock
+           El panel lo pinta views/ramales/ramales.js, el mismo que sirve
+           la página /ramales: una sola implementación en dos marcos.
+      ══════════════════════════════════════════════ -->
+      <div id="supPanelRamales" style="display:none;">
+        <div id="supRamalesBody" style="margin-top:10px;"></div>
       </div>
     </div>
   `;

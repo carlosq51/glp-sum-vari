@@ -7,6 +7,7 @@ import { initRamaleroDelegation_ } from "./ramalero-delegation.js";
 import { patchVisibleCards_ } from "../../work/index.js";
 import { enterSolicitudes_, exitSolicitudes_ } from "./ramalero-solicitudes.js";
 import { requestNotifPermission } from "../../core/push-client.js";
+import { mountMiTurno, unmountMiTurno } from "../ramales/mi-turno.js";
 
 export function init() {
   initRamaleroActions_();
@@ -18,6 +19,11 @@ export function enter() {
 
   // Cola de solicitudes en vivo (SSE + poll de respaldo)
   enterSolicitudes_();
+
+  // Turno de caja y ramales por devolver (ver views/ramales/mi-turno.js).
+  // Si el módulo de ramales todavía no está instalado en Supabase, el
+  // panel se oculta solo y la vista sigue funcionando igual.
+  mountMiTurno(document.getElementById("ramalMiTurnoBody"));
 
   // Push nativo: el ramalero recibe notificación en el celular cuando
   // un técnico crea una solicitud nueva (ver routes/ramal.js)
@@ -35,6 +41,7 @@ export function enter() {
 
 export function exit() {
   exitSolicitudes_();
+  unmountMiTurno();
   stopLoopsFor_("RAMALERO");
   clearModuleUI_("RAMALERO");
 }

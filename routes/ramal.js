@@ -240,6 +240,16 @@ router.get("/api/solicitud-ramal/mi-posicion", async (req, res) => {
 });
 
 // POST /api/solicitud-ramal/:id/entregar  — el ramalero marca como entregado
+//
+// Además de cerrar la solicitud, DESCUENTA el ramal del stock. Este es el
+// eslabón que hace honesto el módulo de ramales (routes/ramales.js): un
+// ramal que alguien dijo armar tiene que aparecer después en la mano de
+// un técnico, y esa aparición es la que consume el saldo. Sin este
+// descuento la cola era una lista de avisos sin consecuencia material.
+//
+// El movimiento se anota best-effort: si `supabase/ramales.sql` todavía
+// no se corrió, la entrega al técnico NO puede fallar por eso — el
+// taller sigue operando y el stock se empieza a llevar cuando exista.
 router.post("/api/solicitud-ramal/:id/entregar", async (req, res) => {
   try {
     const id    = String(req.params.id || "").trim();
@@ -247,16 +257,46 @@ router.post("/api/solicitud-ramal/:id/entregar", async (req, res) => {
     if (!id) return res.status(400).json({ ok: false, error: "Falta id" });
 
     const usuarios = await supabaseGet_("usuarios", { email });
-    const nombre = usuarios?.[0]?.nombre || email;
+    const usuario = usuarios?.[0] || null;
+    const nombre = usuario?.nombre || email;
 
-    await supabasePatch_("solicitudes_ramal", { id }, {
+    // El tipo lo elige el ramalero al entregar: es el único momento en que
+    // alguien tiene el ramal en la mano y sabe cuál es.
+    const tipoRamal = String(req.body?.tipo_ramal || "").trim() || null;
+
+    const sol = await supabasePatch_("solicitudes_ramal", { id }, {
       estado:        "ENTREGADO",
       entregado_at:  new Date().toISOString(),
       entregado_por: nombre,
+      ...(tipoRamal ? { tipo_ramal: tipoRamal } : {}),
+      ...(usuario?.id ? { entregado_por_user_id: usuario.id } : {}),
     });
+
+    let stockDescontado = false;
+    if (tipoRamal) {
+      try {
+        await supabasePost_("ramal_movimientos", {
+          tipo:         "ENTREGA",
+          tipo_ramal:   tipoRamal,
+          cantidad:     -1,
+          solicitud_id: id,
+          user_id:      usuario?.id || null,
+          user_nombre:  nombre,
+          destino:      sol?.tecnico_nombre || "",
+          vin:          sol?.vin || null,
+          nota:         "Entrega a técnico",
+          created_by:   nombre,
+        });
+        stockDescontado = true;
+        emitEvent_("ramales", { accion: "ENTREGA_STOCK", id });
+      } catch (err) {
+        console.warn("[entregar] no se pudo descontar del stock:", err.message);
+      }
+    }
+
     invalidatePollCache_();
     emitEvent_("ramal", { accion: "ENTREGADA", id });
-    return res.json({ ok: true });
+    return res.json({ ok: true, stock_descontado: stockDescontado });
   } catch (e) {
     console.error("[PATCH /api/solicitud-ramal/:id/entregar]", e.message);
     return res.status(500).json({ ok: false, error: String(e.message) });

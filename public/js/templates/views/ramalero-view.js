@@ -11,6 +11,17 @@ export function ramaleroView() {
          ========================= -->
     <div id="viewRAMALERO" style="display:none;">
 
+      <!-- ── MI TURNO DE CAJA ────────────────────────────────────────────
+           Va arriba de la cola porque cuando hay caja abierta ESO es lo
+           urgente; cuando no hay nada se encoge a una línea y no estorba
+           el trabajo del día, que es la cola de solicitudes. -->
+      <div class="card" id="ramalMiTurnoCard" style="margin-bottom:12px;">
+        <h3 style="margin:0 0 8px;">
+          <span class="accentBar"></span>📦 Mi turno
+        </h3>
+        <div id="ramalMiTurnoBody"></div>
+      </div>
+
       <!-- ── COLA DE SOLICITUDES (trabajo principal) ─────────────────── -->
       <div class="card">
         <div class="sectionHead" style="margin-bottom:8px;">
