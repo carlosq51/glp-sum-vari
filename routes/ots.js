@@ -19,6 +19,7 @@ import { getConfig_ } from "../lib/config.js";
 import { emitEvent_ } from "../lib/events.js";
 import { requireRol_ } from "../lib/authz.js";
 import { cachedByTopics_ } from "../lib/poll-cache.js";
+import { repartirTrasEvento_ } from "./despacho.js";
 
 const router = Router();
 
@@ -371,6 +372,9 @@ router.delete("/api/ots/:id", requireMando_(), async (req, res) => {
     await sbWrite_("DELETE", `work_orders?id=eq.${woId}`);
 
     emitEvent_("work_orders", { accion: "ELIMINADA", id, vin: ot[0].vin });
+    // Borrar la OT arrastra sus asignaciones: quien estuviera en ese carro se
+    // queda sin trabajo en este mismo instante y hay que buscarle otro.
+    repartirTrasEvento_(`OT ${ot[0].vin} eliminada`);
     return res.json({
       ok: true,
       vin: ot[0].vin,

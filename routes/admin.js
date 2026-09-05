@@ -5,6 +5,7 @@ import { getConfig_, invalidateConfigCache_ } from "../lib/config.js";
 import { emitEvent_ } from "../lib/events.js";
 import { requireRol_ } from "../lib/authz.js";
 import { aplicarPausaMasiva_, estadoHorarios_ } from "../lib/pausa-masiva.js";
+import { repartirTrasEvento_ } from "./despacho.js";
 
 const router = Router();
 
@@ -309,6 +310,14 @@ router.patch("/api/admin/asignaciones/:id", requireRol_("ADMIN", "SUPERVISOR"), 
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const headers = supabaseHeaders_();
 
+    // Quién tenía el carro ANTES: el PATCH devuelve la fila ya actualizada, así
+    // que si no se lee ahora se pierde, y con ella la posibilidad de darle
+    // trabajo nuevo a quien acaba de quedarse sin él.
+    const previo = await fetch(
+      `${SUPABASE_URL}/rest/v1/asignaciones?id=eq.${encodeURIComponent(id)}&select=user_id`,
+      { method: "GET", headers },
+    ).then(r => r.ok ? r.json() : []).then(f => f[0]?.user_id || null).catch(() => null);
+
     // return=representation, no minimal: un PATCH que no encuentra la fila es
     // un 200 con lista vacía en PostgREST. Con "minimal" el servidor respondía
     // ok:true y la vista decía "técnico reasignado" sin que se hubiera tocado
@@ -354,6 +363,13 @@ router.patch("/api/admin/asignaciones/:id", requireRol_("ADMIN", "SUPERVISOR"), 
 
     emitEvent_("asignaciones", { accion: "REASIGNADA", id });
     emitEvent_("despacho",     { tipo: "REASIGNADA", asignacion_id: id });
+
+    // El técnico ANTERIOR acaba de quedarse sin carro. Es el caso de VICTOR
+    // BAILON que ya documenta el comentario de arriba, pero por el otro lado:
+    // aquel se quedó parado porque la propuesta no le siguió; este se queda
+    // parado porque nadie le busca trabajo nuevo. Sin esto espera al intervalo.
+    if (previo && previo !== user_id) repartirTrasEvento_(`reasignación de ${id}`);
+
     return res.json({ ok: true });
   } catch (e) {
     return res.status(500).json({ ok: false, error: String(e.message || e) });

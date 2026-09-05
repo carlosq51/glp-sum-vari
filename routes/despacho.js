@@ -1927,7 +1927,7 @@ export async function dispararMotor_(motivo = "evento") {
  *
  * @param {string} motivo  para el log: de dónde vino el disparo
  */
-function repartirTrasEvento_(motivo) {
+export function repartirTrasEvento_(motivo) {
   despachoReparteAhora_()
     .then(puede => { if (puede) return dispararMotor_(motivo); })
     .catch(err => console.warn(`[Despacho] Disparo del motor falló (${motivo}):`, err.message));
@@ -2510,6 +2510,9 @@ router.post("/api/despacho/ayudante/quitar", requireModoActivo_,
 
     await disolverDuplaAuto_(apoyo.duplaId);
     emitEvent_("despacho", { tipo: "AYUDANTE_FUERA", duplas: [{ dupla_id: apoyo.duplaId, vin }] });
+    // Al ayudante se le acaba de soltar del carro: vuelve a la cola y hay que
+    // darle trabajo, no dejarlo esperando al intervalo.
+    repartirTrasEvento_(`ayudante fuera de ${vin}`);
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
