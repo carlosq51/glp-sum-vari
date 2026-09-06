@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 
 const {
-  puedeColaborar_, notaApoyo_, notaCierreAjeno_, combinarNotas_, horaPeru_,
+  puedeColaborar_, notaApoyo_, notaDupla_, notaCierreAjeno_, combinarNotas_, horaPeru_,
 } = await import("../lib/colaboracion.js");
 
 // La regla por defecto del sistema es que cada OT tiene un dueño y solo él la
@@ -107,5 +107,31 @@ describe("notaCierreAjeno_ y combinarNotas_", () => {
     const r = combinarNotas_("Fuga en el reductor", "Trabajó con BAILON desde las 16:00 hasta las 19:00");
     expect(r).toContain("Fuga en el reductor");
     expect(r).toContain("BAILON");
+  });
+});
+
+describe("notaDupla_", () => {
+  it("dice DUPLA, no 'trabajó con': no son lo mismo", () => {
+    // En el apoyo el carro es del ancla; en la dupla el crédito se reparte por
+    // alternancia. Confundirlos en el reporte es confundir quién hizo qué.
+    const nota = notaDupla_({
+      companero: "BAILON",
+      desdeIso: "2026-09-05T21:00:00Z",
+      hastaIso: "2026-09-06T00:00:00Z",
+    });
+    expect(nota).toBe("Trabajo en dupla con BAILON desde las 16:00 hasta las 19:00");
+    expect(nota).not.toContain("Trabajó con");
+  });
+
+  it("sin hora SÍ escribe la nota: el hecho de la dupla vale por sí solo", () => {
+    // A diferencia de notaApoyo_, aquí el dato importante es CON QUIÉN, no
+    // cuándo. Perder la hora no debe borrar que el carro lo hicieron dos.
+    expect(notaDupla_({ companero: "BAILON", desdeIso: null }))
+      .toBe("Trabajo en dupla con BAILON");
+  });
+
+  it("sin compañero no escribe nada", () => {
+    expect(notaDupla_({ companero: "", desdeIso: "2026-09-05T21:00:00Z" })).toBe("");
+    expect(notaDupla_({})).toBe("");
   });
 });

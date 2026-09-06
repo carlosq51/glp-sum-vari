@@ -1308,6 +1308,26 @@ export async function apoyosPorPuesto_(fecha) {
   return out;
 }
 
+/**
+ * duplaDeTrabajoDe_ — la dupla ACTIVA de trabajo de un usuario, si la tiene.
+ *
+ * Excluye explícitamente las de APOYO: para el reporte no son lo mismo. En la
+ * dupla de trabajo los dos se emparejaron toda la jornada y el crédito se
+ * reparte por alternancia; en el apoyo el carro es del ancla y punto.
+ *
+ * → { id, companeroId, desde } | null
+ */
+export async function duplaDeTrabajoDe_(fecha, userId) {
+  const duplas = await duplasDeJornada_(fecha, ["ACTIVA"]);
+  const mia = duplas.find(d => !esDuplaApoyo_(d) && (d.miembros || []).includes(userId));
+  if (!mia) return null;
+  return {
+    id: mia.id,
+    companeroId: (mia.miembros || []).find(id => id !== userId) || null,
+    desde: mia.confirmada_at || mia.propuesta_at || null,
+  };
+}
+
 /** Deshace una dupla de apoyo (automática o puesta a mano). */
 async function disolverDuplaAuto_(id) {
   const h = supabaseHeaders_();

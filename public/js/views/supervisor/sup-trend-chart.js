@@ -5,6 +5,8 @@
 
 import { Chart } from "chart.js/auto";
 import { readVizColors, chartBaseOptions, verticalFill, hexA } from "../../core/viz.js";
+import { cfg } from "../../core/config.js";
+import { theilSen_, lecturaTendencia_ } from "../../../../lib/regresion.js";
 
 let chartInstance = null;
 let _last = null; // { canvasEl, items, techName } para re-render al cambiar de tema
@@ -79,11 +81,24 @@ export function renderTrendChart_(canvasEl, items, techName) {
   // Ordenar por fecha
   allPoints.sort((a, b) => new Date(a.x) - new Date(b.x));
 
-  // FILTRAR OUTLIERS: Remover puntos con más de 10 horas
-  const THRESHOLD_HOURS = 10;
-  const filteredPoints = allPoints.filter(p => p.y <= THRESHOLD_HOURS);
-  
-  console.log("📊 Total finalizados:", finalizadosCount, "| Válidos con tiempo:", allPoints.length, "| Después de filtrar (≤10h):", filteredPoints.length);
+  // Los carros disparatados YA NO SE BORRAN.
+  //
+  // Antes se descartaba todo lo que pasara de 10 h. El motivo era bueno —esos
+  // puntos son casi siempre OTs que nadie cerró, no trabajo lento— pero la
+  // solución escondía datos: el supervisor no veía que existían, y son justo la
+  // señal de que hay que enseñarle a alguien a cerrar su OT.
+  //
+  // Ahora se dibujan todos y se les quita el VOTO, no la existencia: la recta
+  // de tendencia es Theil–Sen (mediana de pendientes), que aguanta hasta ~29%
+  // de basura sin moverse. Ver lib/regresion.js.
+  const filteredPoints = allPoints;
+
+  // Umbral de "esto huele a OT sin cerrar": el doble del objetivo. Se pintan
+  // en rojo para que se distingan de un carro simplemente lento.
+  const objetivoMin  = Math.max(1, Number(cfg("TARGET_CONVERSION_MIN")) || 180);
+  const objetivoH    = objetivoMin / 60;
+  const sospechosoH  = objetivoH * 2;
+  const nSospechosos = filteredPoints.filter(p => p.y > sospechosoH).length;
 
   if (filteredPoints.length === 0) {
     canvasEl.style.display = "none";
@@ -100,6 +115,25 @@ export function renderTrendChart_(canvasEl, items, techName) {
     return `${day}/${month}`;
   };
 
+  // Tendencia robusta sobre (índice, horas). El eje X del gráfico es el índice
+  // secuencial del punto, así que la regresión se hace en ese mismo espacio
+  // para que la recta caiga donde tiene que caer.
+  const modelo = theilSen_(filteredPoints.map((p, i) => ({ x: i, y: p.y })));
+  const tendencia = modelo.ok
+    ? labels.map(i => modelo.intercepto + modelo.pendiente * i)
+    : [];
+  const lectura = lecturaTendencia_(modelo, objetivoH, Math.max(0, filteredPoints.length - 1));
+
+  // La lectura en castellano bajo el gráfico. Una recta sin interpretar obliga
+  // a cada supervisor a deducir la pendiente a ojo, y cada uno deduce otra cosa.
+  const elLectura = document.getElementById("supTrendLectura");
+  if (elLectura) {
+    const aviso = nSospechosos
+      ? ` · <span style="color:var(--danger,#f87171);">${nSospechosos} carro(s) sobre ${sospechosoH.toFixed(0)} h</span>, probablemente OTs sin cerrar: se muestran pero no inclinan la tendencia.`
+      : "";
+    elLectura.innerHTML = `📈 <b>${lectura.texto}</b>${aviso}`;
+  }
+
   // Crear gráfico
   const ctx = canvasEl.getContext("2d");
 
@@ -113,6 +147,28 @@ export function renderTrendChart_(canvasEl, items, techName) {
     data: {
       labels: labels,
       datasets: [
+        // Recta de tendencia y objetivo van PRIMERO para quedar por debajo de
+        // los puntos: la nube es el dato, las líneas son la referencia.
+        ...(tendencia.length ? [{
+          label: "Tendencia",
+          data: tendencia,
+          borderColor: c.ok || "#22c55e",
+          borderWidth: 3,
+          borderDash: [],
+          pointRadius: 0,
+          tension: 0,
+          fill: false,
+        }] : []),
+        {
+          label: `Objetivo ${Math.round(objetivoMin)} min`,
+          data: labels.map(() => objetivoH),
+          borderColor: c.warn || "#facc15",
+          borderWidth: 2,
+          borderDash: [6, 5],
+          pointRadius: 0,
+          tension: 0,
+          fill: false,
+        },
         {
           label: "Tiempo de conversión (h)",
           data: filteredPoints.map(p => p.y),
@@ -126,7 +182,8 @@ export function renderTrendChart_(canvasEl, items, techName) {
           tension: 0.35,
           pointRadius: 3,
           pointHoverRadius: 6,
-          pointBackgroundColor: line,
+          pointBackgroundColor: filteredPoints.map(
+            p => (p.y > sospechosoH ? (c.danger || "#f87171") : line)),
           pointBorderColor: c.surface,
           pointBorderWidth: 2,
           fill: true,
@@ -138,14 +195,22 @@ export function renderTrendChart_(canvasEl, items, techName) {
       plugins: {
         ...base.plugins,
         title: { display: false }, // el título vive en el marco .trendBox
-        legend: { display: false },
+        // Con tres series (nube, tendencia y objetivo) la leyenda deja de ser
+        // decoración: sin ella no se sabe cuál línea es cuál.
+        legend: { display: true, labels: { color: c.ink2, boxWidth: 12, font: { size: 10 } } },
         tooltip: {
           ...base.plugins.tooltip,
           callbacks: {
             title: (context) => formatDate(filteredPoints[context[0].dataIndex].date),
             label: (context) => {
+              // Solo la NUBE lleva VIN. Sin esta guarda, pasar por la recta de
+              // tendencia o por la línea de objetivo mostraría el VIN del
+              // carro que casualmente cae en ese índice.
+              const esNube = String(context.dataset?.label || "").startsWith("Tiempo de conversión");
+              if (!esNube) return `${context.dataset?.label}: ${Number(context.parsed?.y ?? 0).toFixed(2)} h`;
               const p = filteredPoints[context.dataIndex];
-              return [`Tiempo: ${p.y.toFixed(2)} h`, `VIN: ${p.vin}`];
+              const sosp = p && p.y > sospechosoH ? " ⚠ probable OT sin cerrar" : "";
+              return [`Tiempo: ${p.y.toFixed(2)} h${sosp}`, `VIN: ${p.vin}`];
             },
           },
         },

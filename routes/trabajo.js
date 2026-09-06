@@ -13,9 +13,9 @@ import { pendingSuggestions_ } from "../lib/ml-state.js";
 import { emitEvent_ } from "../lib/events.js";
 import { getConfig_ } from "../lib/config.js";
 import { esOtDeUnSoloRol_, estadoGeneralDeAsignacion_ } from "../lib/utils.js";
-import { dispararMotor_, despachoReparteAhora_, apoyosPorPuesto_ } from "./despacho.js";
+import { dispararMotor_, despachoReparteAhora_, apoyosPorPuesto_, duplaDeTrabajoDe_ } from "./despacho.js";
 import { jornadaFecha_ } from "../lib/despacho.js";
-import { puedeColaborar_, notaApoyo_, notaCierreAjeno_, combinarNotas_ } from "../lib/colaboracion.js";
+import { puedeColaborar_, notaApoyo_, notaDupla_, notaCierreAjeno_, combinarNotas_ } from "../lib/colaboracion.js";
 
 const router = Router();
 
@@ -657,6 +657,22 @@ router.post("/api/evento", async (req, res) => {
             }
           } catch (e) {
             console.warn("[EVENTO] No se pudo anotar el apoyo al cerrar:", e.message);
+          }
+        }
+
+        // DUPLA DE TRABAJO: distinta del apoyo y se anota distinto. En el apoyo
+        // el carro es del ancla; aquí los dos se emparejaron toda la jornada y
+        // el crédito se reparte por alternancia. Leer "trabajó con X" en los dos
+        // casos borraría esa diferencia en la pantalla donde se mide a la gente.
+        if (!apoyoDelPuesto) {
+          try {
+            const dup = await duplaDeTrabajoDe_(jornadaFecha_(), asignacion.user_id);
+            if (dup?.companeroId) {
+              const nombreCompa = await nombreDeUsuario_(dup.companeroId);
+              extras.push(notaDupla_({ companero: nombreCompa, desdeIso: dup.desde }));
+            }
+          } catch (e) {
+            console.warn("[EVENTO] No se pudo anotar la dupla al cerrar:", e.message);
           }
         }
 

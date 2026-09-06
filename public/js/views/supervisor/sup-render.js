@@ -160,9 +160,9 @@ export function renderTable_(boxEl, {
  * apoyo, y de-duplicadas: cuando ancla y ayudante cierran el mismo puesto la
  * nota puede repetirse, y verla dos veces sugiere dos cosas distintas.
  */
-function notasDelGrupo_(motor, tanque, escapeHtml) {
+function notasHtml_(valores, escapeHtml) {
   const notas = [...new Set(
-    [motor?.last_nota, tanque?.last_nota].map(n => String(n || "").trim()).filter(Boolean),
+    valores.map(n => String(n || "").trim()).filter(Boolean),
   )];
   if (!notas.length) return "";
   return `
@@ -227,7 +227,7 @@ export function renderRowGroup_(row, { escapeHtml, fmtShort_ }) {
         <button type="button" class="btn3" data-sup-fotos="1" data-vin="${escapeHtml(vin)}"
           style="padding:4px 10px; min-height:0; font-size:.78em;">📸 Fotos</button>
       </div>
-      ${notasDelGrupo_(motor, tanque, escapeHtml)}
+      ${notasHtml_([motor?.last_nota, tanque?.last_nota], escapeHtml)}
 
       <div class="card" style="margin-top:10px; border:1px solid var(--surfaceLine);">
         <div class="small" style="font-weight:900;">🔧 MOTOR: ${escapeHtml(motorWho)}</div>
@@ -341,6 +341,8 @@ export function renderRowNormal_(it, { escapeHtml, fmtShort_ }) {
               >
                 📋 Incidencias
               </button>
+              ${vinCard ? `<button type="button" class="btn3"
+                data-sup-fotos="1" data-vin="${escapeHtml(vinCard)}">📸 Fotos</button>` : ""}
               ${String(it?.estado||'').toUpperCase() === 'TRABAJANDO' ? `
               <button type="button" class="btn3"
                 data-sup-pausa="1"
@@ -367,6 +369,7 @@ export function renderRowNormal_(it, { escapeHtml, fmtShort_ }) {
             </div>
           ` : '')
       }
+      ${notasHtml_([it?.last_nota], escapeHtml)}
     </div>
   `;
 }
