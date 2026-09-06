@@ -149,6 +149,32 @@ export function renderTable_(boxEl, {
   }).join("");
 }
 
+/**
+ * Las notas del carro, si las hay.
+ *
+ * `last_nota` ya viajaba desde el backend y NADIE la pintaba. Ahí es donde
+ * queda el rastro de que el carro lo hicieron dos —"Trabajó con BAILON desde
+ * las 16:00 hasta las 19:00"— y sin mostrarla ese dato existía solo en la base.
+ *
+ * Se pintan las dos (motor y tanque) porque cada puesto pudo tener su propio
+ * apoyo, y de-duplicadas: cuando ancla y ayudante cierran el mismo puesto la
+ * nota puede repetirse, y verla dos veces sugiere dos cosas distintas.
+ */
+function notasDelGrupo_(motor, tanque, escapeHtml) {
+  const notas = [...new Set(
+    [motor?.last_nota, tanque?.last_nota].map(n => String(n || "").trim()).filter(Boolean),
+  )];
+  if (!notas.length) return "";
+  return `
+    <div style="margin-top:8px; display:flex; flex-direction:column; gap:4px;">
+      ${notas.map(n => `
+        <div class="small" style="opacity:.85; padding:6px 10px; border-radius:8px;
+             background:rgba(255,255,255,.06); border-left:3px solid var(--note);">
+          📝 ${escapeHtml(n)}
+        </div>`).join("")}
+    </div>`;
+}
+
 export function renderRowGroup_(row, { escapeHtml, fmtShort_ }) {
   const vin = row.vin || "-";
   const motor = row.motor;
@@ -201,6 +227,7 @@ export function renderRowGroup_(row, { escapeHtml, fmtShort_ }) {
         <button type="button" class="btn3" data-sup-fotos="1" data-vin="${escapeHtml(vin)}"
           style="padding:4px 10px; min-height:0; font-size:.78em;">📸 Fotos</button>
       </div>
+      ${notasDelGrupo_(motor, tanque, escapeHtml)}
 
       <div class="card" style="margin-top:10px; border:1px solid var(--surfaceLine);">
         <div class="small" style="font-weight:900;">🔧 MOTOR: ${escapeHtml(motorWho)}</div>

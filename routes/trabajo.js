@@ -13,7 +13,9 @@ import { pendingSuggestions_ } from "../lib/ml-state.js";
 import { emitEvent_ } from "../lib/events.js";
 import { getConfig_ } from "../lib/config.js";
 import { esOtDeUnSoloRol_, estadoGeneralDeAsignacion_ } from "../lib/utils.js";
-import { dispararMotor_, despachoReparteAhora_ } from "./despacho.js";
+import { dispararMotor_, despachoReparteAhora_, apoyosPorPuesto_ } from "./despacho.js";
+import { jornadaFecha_ } from "../lib/despacho.js";
+import { puedeColaborar_, notaApoyo_, notaCierreAjeno_, combinarNotas_ } from "../lib/colaboracion.js";
 
 const router = Router();
 
@@ -82,6 +84,16 @@ async function fetchAsignacionesByUser_(finalUserId, tecnicoEmail, filtro) {
       tecnico_nombre:     asg.usuarios?.[0]?.nombre  || "",
     };
   });
+}
+
+/** Nombre de un usuario por id. Devuelve "" si no se puede: una nota sin
+ *  nombre es preferible a romper el cierre de un carro. */
+async function nombreDeUsuario_(userId) {
+  if (!userId) return "";
+  try {
+    const u = await supabaseGet_("usuarios", { id: userId });
+    return String(u?.[0]?.nombre || "").trim();
+  } catch { return ""; }
 }
 
 // Registra omisión en Supabase (tabla pairing_omisiones).
@@ -413,33 +425,76 @@ router.post("/api/evento", async (req, res) => {
     const asignacionesActivas = (await res_asg.json()) || [];
     const asignacionActiva = asignacionesActivas.length > 0 ? asignacionesActivas[0] : null;
 
-    // 4?? Verificar si ya está asignada a otro usuario
-    if (asignacionActiva && asignacionActiva.user_id !== userId) {
-      // Obtener nombre del usuario que tiene asignada
-      let otroUsuario = "otro usuario";
-      let otroEmail = "";
-      try {
-        const otrosUsuarios = await supabaseGet_("usuarios", { id: asignacionActiva.user_id });
-        if (otrosUsuarios && otrosUsuarios.length) {
-          otroUsuario = `${otrosUsuarios[0].nombre || ""}`.trim() || otrosUsuarios[0].email;
-          otroEmail = otrosUsuarios[0].email || "";
-        }
-      } catch (e) { /* ignore */ }
+    // 4?? ¿Es de otro? Antes de rebotar, mirar si puede COLABORAR.
+    //
+    // La regla "cada OT tiene un dueño y solo él la mueve" sigue siendo la de
+    // por defecto — sin dueño, dos técnicos se pisan el mismo carro y el tiempo
+    // trabajado deja de significar nada. Pero tiene dos excepciones que el
+    // taller ya resolvía por fuera del sistema (ver lib/colaboracion.js):
+    // el AYUDANTE del carro extra, y el segundo inspector de CALIDAD.
+    //
+    // En ninguna de las dos se mueve el user_id: el crédito sigue siendo de
+    // quien la registró. Lo que se abre es quién la acciona, no de quién es.
+    let apoyoDelPuesto = null;   // dupla de apoyo, si quien pide es el ayudante
+    let colaborando = false;     // acciona una OT ajena con permiso
 
-      // ? Retornar más información para mejor manejo en frontend
-      return res.status(409).json({
-        ok: false,
-        error: `Esta OT ya está asignada a ${otroUsuario} en rol ${rolTrabajo}`,
-        errorType: "ALREADY_ASSIGNED",
-        assignedTo: otroUsuario,
-        assignedEmail: otroEmail,
-        assignedRol: rolTrabajo,
-        vin: vin,
+    if (asignacionActiva && asignacionActiva.user_id !== userId) {
+      try {
+        const apoyos = await apoyosPorPuesto_(jornadaFecha_());
+        const a = apoyos.get(`${vin}|${rolTrabajo}`);
+        if (a && a.ayudanteId === userId && a.anclaId === asignacionActiva.user_id) {
+          apoyoDelPuesto = a;
+        }
+      } catch (e) {
+        // Si no se puede leer el apoyo, NO se asume que lo hay: se cae al
+        // rechazo de siempre. Un fallo de lectura no debe abrir una puerta.
+        console.warn("[EVENTO] No se pudo leer el apoyo del puesto:", e.message);
+      }
+
+      const permiso = puedeColaborar_({
+        tipoOt,
+        estadoTitular: asignacionActiva.estado_actual,
+        esApoyo: !!apoyoDelPuesto,
       });
+
+      if (!permiso.permitido) {
+        // Obtener nombre del usuario que tiene asignada
+        let otroUsuario = "otro usuario";
+        let otroEmail = "";
+        try {
+          const otrosUsuarios = await supabaseGet_("usuarios", { id: asignacionActiva.user_id });
+          if (otrosUsuarios && otrosUsuarios.length) {
+            otroUsuario = `${otrosUsuarios[0].nombre || ""}`.trim() || otrosUsuarios[0].email;
+            otroEmail = otrosUsuarios[0].email || "";
+          }
+        } catch (e) { /* ignore */ }
+
+        // El motivo viaja para que la vista pueda explicar POR QUÉ no puede.
+        // "CALIDAD_SIN_INICIAR" no es lo mismo que "no es tuya": es "todavía no".
+        return res.status(409).json({
+          ok: false,
+          error: permiso.motivo === "CALIDAD_SIN_INICIAR"
+            ? `${otroUsuario} registró esta OT pero aún no la ha empezado. Podrás entrar cuando la inicie.`
+            : `Esta OT ya está asignada a ${otroUsuario} en rol ${rolTrabajo}`,
+          errorType: "ALREADY_ASSIGNED",
+          motivoColaboracion: permiso.motivo,
+          assignedTo: otroUsuario,
+          assignedEmail: otroEmail,
+          assignedRol: rolTrabajo,
+          vin: vin,
+        });
+      }
+
+      colaborando = true;
+      console.log(`[EVENTO] Colaboración permitida (${permiso.motivo}): ${email} sobre OT de ${asignacionActiva.user_id}`);
     }
 
-    // 5?? Si existe asignación del usuario actual, usarla; si no, será null (crearemos nueva)
-    let asignacion = asignacionActiva && asignacionActiva.user_id === userId ? asignacionActiva : null;
+    // 5?? Si existe asignación del usuario actual, usarla; si no, será null (crearemos nueva).
+    // Al colaborar se opera sobre la ajena SIN tocar su user_id: por eso entra
+    // aquí como si fuera propia, pero el dueño en la base no cambia.
+    let asignacion = asignacionActiva && (asignacionActiva.user_id === userId || colaborando)
+      ? asignacionActiva
+      : null;
 
     // 5b?? DESPACHO EN MODO REAL — dos restricciones sobre el técnico:
     //   · No puede ABRIR un carro nuevo de conversión: lo reparte la pantalla.
@@ -574,6 +629,49 @@ router.post("/api/evento", async (req, res) => {
       if (accion === "NOTA") {
         updateData.last_nota = nota;
         updateData.last_nota_ts = new Date().toISOString();
+      }
+
+      // Al CERRAR, el sistema deja constancia de que el carro no lo hizo uno
+      // solo. Se arma con lo que ya sabe —quién apoyó a quién y desde cuándo—
+      // en vez de pedírsela a quien cierra: una nota que hay que escribir se
+      // olvida, se escribe distinta cada vez y no sirve para sumar horas.
+      //
+      // Va en last_nota porque es el campo que el reporte del supervisor ya
+      // trae consigo; no hace falta columna nueva para que se vea.
+      if (accion === "FIN") {
+        const extras = [];
+
+        if (apoyoDelPuesto) {
+          // Cierra el AYUDANTE: la nota nombra al ancla, que es el dueño del
+          // carro y con quien estuvo trabajando.
+          const nombreAncla = await nombreDeUsuario_(apoyoDelPuesto.anclaId);
+          extras.push(notaApoyo_({ companero: nombreAncla, desdeIso: apoyoDelPuesto.desde }));
+        } else {
+          // Cierra el ANCLA: si su puesto tuvo ayudante, la nota lo nombra a él.
+          try {
+            const apoyos = await apoyosPorPuesto_(jornadaFecha_());
+            const a = apoyos.get(`${vin}|${rolTrabajo}`);
+            if (a && a.anclaId === asignacion.user_id) {
+              const nombreAyudante = await nombreDeUsuario_(a.ayudanteId);
+              extras.push(notaApoyo_({ companero: nombreAyudante, desdeIso: a.desde }));
+            }
+          } catch (e) {
+            console.warn("[EVENTO] No se pudo anotar el apoyo al cerrar:", e.message);
+          }
+        }
+
+        // Colaboración de CALIDAD: el reporte tiene que poder decir "registró
+        // Flores, cerró Wilmer". Sin esto el cierre colaborativo borra la
+        // diferencia y nadie reconstruye quién hizo qué.
+        if (colaborando && !apoyoDelPuesto) {
+          extras.push(notaCierreAjeno_({ cerradoPor: usuarios[0]?.nombre || email }));
+        }
+
+        const nueva = combinarNotas_(nota, asignacion.last_nota, ...extras);
+        if (nueva && nueva !== asignacion.last_nota) {
+          updateData.last_nota = nueva;
+          updateData.last_nota_ts = new Date().toISOString();
+        }
       }
       // Al volver al trabajo, la pausa dejó de existir: si venía con reloj
       // (pausa de supervisión de 5/10/15 min), su vencimiento ya no aplica.

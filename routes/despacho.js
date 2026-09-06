@@ -476,7 +476,7 @@ async function duplasDeJornada_(fecha, estados = ["PENDIENTE", "ACTIVA"]) {
   const filtro = `&estado=in.(${estados.join(",")})`;
   const r = await fetch(
     `${SB()}/rest/v1/despacho_duplas?jornada_fecha=eq.${fecha}${filtro}` +
-    `&select=id,rol_trabajo,lider_user_id,estado,ultimo_responsable_user_id,carros_asignados,propuesta_at,motivo`,
+    `&select=id,rol_trabajo,lider_user_id,estado,ultimo_responsable_user_id,carros_asignados,propuesta_at,confirmada_at,motivo`,
     { headers: supabaseHeaders_() },
   );
   const duplas = r.ok ? await r.json() : [];
@@ -1288,7 +1288,7 @@ async function creditosPorDupla_(duplas, fecha) {
  * encontrar el que había y deshacerlo — que es exactamente lo que hace falta
  * para reasignar sin dejar dos duplas colgando del mismo carro.
  */
-async function apoyosPorPuesto_(fecha) {
+export async function apoyosPorPuesto_(fecha) {
   const duplas = (await duplasDeJornada_(fecha, ["ACTIVA"])).filter(esDuplaApoyo_);
   const out = new Map();
   for (const d of duplas) {
@@ -1298,6 +1298,11 @@ async function apoyosPorPuesto_(fecha) {
     out.set(`${vin}|${String(d.rol_trabajo || "").toUpperCase()}`, {
       duplaId: d.id, anclaId: d.lider_user_id, ayudanteId,
       manual: esAyudaManual_(d),
+      // Desde cuándo comparten el carro: es lo que hace posible la nota
+      // "Trabajó con X desde las 16:00" al cerrarlo. Las duplas de apoyo nacen
+      // ya ACTIVAS (no hay invitación que confirmar), así que confirmada_at y
+      // propuesta_at son el mismo instante; se toma la primera que exista.
+      desde: d.confirmada_at || d.propuesta_at || null,
     });
   }
   return out;
