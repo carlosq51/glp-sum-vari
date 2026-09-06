@@ -19,6 +19,20 @@
 // no veía que existían, y son justo la señal de que hay que enseñarle a alguien
 // a cerrar su OT. Se les quita el voto sobre la recta, no la existencia.
 //
+// EL EJE Y ES LOGARÍTMICO Y GIRA ALREDEDOR DEL OBJETIVO
+// En escala lineal un carro de 14 h estira el eje hasta 14 h, y los cientos de
+// carros que están entre 2 h y 4 h —donde de verdad se decide si el taller
+// cumple— quedan aplastados en una franja de dos milímetros. Se perdía justo la
+// información que se venía a mirar.
+// Con eje log la distancia deja de medir horas y pasa a medir PROPORCIÓN: la
+// separación entre 1 h30 y 3 h es la misma que entre 3 h y 6 h. Los ticks se
+// generan anclados en el objetivo (…×¼, ×½, objetivo, ×2, ×4), así que el
+// objetivo cae siempre sobre una línea rotulada y "el doble del objetivo" es
+// una distancia constante. Los outliers siguen dibujados, pero a una casilla
+// del resto en vez de a media pantalla.
+// La escala lineal sigue disponible en el selector: es la que no exagera ni
+// disimula la pendiente cuando se quiere leer la mejora en horas reales.
+//
 // EL CANVAS NO LLEVA ALTURA
 // Con responsive + maintainAspectRatio:false, Chart.js dimensiona el canvas al
 // CONTENEDOR. Si el contenedor no tiene altura propia, la toma del canvas, que
@@ -31,17 +45,65 @@ import { Chart } from "chart.js/auto";
 import { readVizColors, chartBaseOptions, hexA } from "../../core/viz.js";
 import { cfg } from "../../core/config.js";
 import { theilSen_, lecturaTendencia_ } from "../../../../lib/regresion.js";
+import { normalizeModelo_ } from "../../../../lib/utils.js";
 
 let chartInstance = null;
 let _last = null;   // { items, techName } para re-render al cambiar de tema/filtro
 
 // Filtros de la vista. Viven aquí porque son del gráfico, no del reporte: el
 // supervisor acota lo que MIRA sin recargar ni volver a consultar la base.
-const F = { rol: "TODOS", modelo: "TODOS", visible: false };
+const F = { rol: "TODOS", modelo: "TODOS", escala: "LOG", visible: false };
 
 const ROLES_CONV = ["MOTOR", "TANQUE", "TANQUERO", "TECNICO", "CONVERSION"];
 const esDelantero_ = (r) => ["MOTOR", "TECNICO", "CONVERSION"].includes(r);
 const esTanquero_  = (r) => ["TANQUE", "TANQUERO"].includes(r);
+
+// Cada peldaño del eje log es el DOBLE del anterior. Con 2 el objetivo de 3 h
+// da 45 min · 1 h30 · 3 h · 6 h · 12 h: números que el supervisor ya usa al
+// hablar ("el doble del objetivo"). Con 10 el eje tendría tres marcas y con
+// √2 sería ilegible.
+const PASO_LOG = 2;
+
+// Los ticks se generan más allá de los datos y luego se recortan; este tope
+// evita que un dato absurdo (un tiempo de milisegundos) genere miles de vueltas.
+const MAX_PELDANOS_LOG = 24;
+
+/** Horas → texto corto: "20 s", "45 min", "3.5 h", "14 h". */
+function fmtHoras_(h) {
+  if (!Number.isFinite(h) || h <= 0) return "";
+  // Los peldaños de abajo del eje log pueden bajar del minuto; sin este caso
+  // todos se rotularían "0 min" y el eje quedaría con marcas repetidas.
+  if (h < 1 / 60) return `${Math.max(1, Math.round(h * 3600))} s`;
+  if (h < 1) return `${Math.round(h * 60)} min`;
+  if (h < 10) return `${Math.round(h * 10) / 10} h`;
+  return `${Math.round(h)} h`;
+}
+
+/**
+ * ticksLog_ — marcas del eje ancladas en el objetivo, no en potencias de 10.
+ * Devuelve objetivoH · PASO_LOG^k, el peldaño justo por debajo del mínimo y el
+ * justo por encima del máximo: los datos quedan dentro sin desperdiciar eje.
+ */
+function ticksLog_(minH, maxH, objetivoH) {
+  const lp  = Math.log(PASO_LOG);
+  const lo  = Math.max(Math.min(minH, maxH), Number.MIN_VALUE);
+  const hi  = Math.max(maxH, lo);
+  let kMin  = Math.floor(Math.log(lo / objetivoH) / lp);
+  let kMax  = Math.ceil(Math.log(hi / objetivoH) / lp);
+  // Todos los carros en el mismo peldaño (o uno solo) daría min === max y el
+  // eje se queda sin altura: se abre un peldaño a cada lado.
+  if (kMax - kMin < 1) { kMin -= 1; kMax += 1; }
+  // Un tiempo absurdo por abajo (una OT cerrada en milisegundos) pediría cien
+  // peldaños. Se recorta por ABAJO, nunca por arriba: perder el techo dejaría
+  // los outliers lentos —el motivo de mirar el gráfico— fuera del eje.
+  kMin = Math.max(kMin, kMax - MAX_PELDANOS_LOG + 1);
+
+  const out = [];
+  for (let k = kMin; k <= kMax && out.length < MAX_PELDANOS_LOG; k++) {
+    out.push(objetivoH * Math.pow(PASO_LOG, k));
+  }
+  return out;
+}
 
 window.addEventListener("glp:themechange", () => {
   if (_last && F.visible) pintar_();
@@ -73,7 +135,11 @@ function puntosDe_(items) {
       date: d,
       rol,
       vin: it?.vin || "N/A",
-      modelo: String(it?.modelo || "").trim() || "Sin modelo",
+      // El backend ya manda el canónico, pero se vuelve a normalizar aquí: es
+      // idempotente ("Jetour X70" entra y sale igual) y evita que un servidor
+      // aún sin desplegar —o una respuesta cacheada— reviente el selector en
+      // seis "Jetour" que son el mismo carro.
+      modelo: normalizeModelo_(it?.modelo) || String(it?.modelo || "").trim() || "Sin modelo",
       tecnico: it?.userName || "",
     });
   }
@@ -113,6 +179,10 @@ function pintarControles_(todos) {
         ${opt("TODOS", `Todos los modelos (${modelos.length})`, F.modelo)}
         ${modelos.map(m => opt(m, m, F.modelo)).join("")}
       </select>
+      <select id="supTrendEscala" class="small" style="padding:7px 10px; border-radius:8px;">
+        ${opt("LOG", "Detalle cerca del objetivo", F.escala)}
+        ${opt("LINEAL", "Horas a escala real", F.escala)}
+      </select>
       <span class="small" id="supTrendCount" style="opacity:.7;"></span>
     </div>`;
 
@@ -131,6 +201,7 @@ function pintarControles_(todos) {
   };
   onFiltro("#supTrendRol", "rol");
   onFiltro("#supTrendModelo", "modelo");
+  onFiltro("#supTrendEscala", "escala");
 }
 
 function pintar_() {
@@ -173,6 +244,14 @@ function pintar_() {
   const base = chartBaseOptions(c);
   const line = c.accent2;
 
+  const esLog = F.escala === "LOG";
+  const ys    = pts.map(p => p.y);
+  const marcas = ticksLog_(Math.min(...ys), Math.max(...ys), objetivoH);
+  // En log el cero no existe: un valor de la recta que caiga en negativo (la
+  // extrapolación de Theil–Sen puede hacerlo con pocos puntos) se deja sin
+  // dibujar en vez de romper el eje entero.
+  const paraEje_ = (v) => (esLog && !(v > 0) ? null : v);
+
   chartInstance = new Chart(canvasEl.getContext("2d"), {
     type: "line",
     data: {
@@ -188,7 +267,8 @@ function pintar_() {
         },
         ...(tendencia.length ? [{
           label: "Tendencia",
-          data: tendencia,
+          data: tendencia.map(paraEje_),
+          spanGaps: true,
           borderColor: c.good || "#0ca30c",
           borderWidth: 3, pointRadius: 0, fill: false, tension: 0,
         }] : []),
@@ -252,10 +332,25 @@ function pintar_() {
             },
           },
         },
-        y: {
+        y: esLog ? {
           ...base.scales.y,
-          // Arranca en cero a propósito: un eje recortado exagera la pendiente,
-          // y este gráfico se usa para decidir si alguien está mejorando.
+          type: "logarithmic",
+          // Los extremos son el primer y el último peldaño: así el eje empieza
+          // y termina en una marca rotulada y nadie queda pegado al borde.
+          min: marcas[0],
+          max: marcas[marcas.length - 1],
+          // Chart.js rellena el eje log con sus propias marcas (1, 2, 5, 10…),
+          // que no dicen nada aquí. Se reemplazan por las del objetivo.
+          afterBuildTicks: (eje) => { eje.ticks = marcas.map(value => ({ value })); },
+          ticks: {
+            ...base.scales.y.ticks,
+            autoSkip: false,
+            callback: (v) => fmtHoras_(v),
+          },
+        } : {
+          ...base.scales.y,
+          // En lineal arranca en cero a propósito: un eje recortado exagera la
+          // pendiente, y este gráfico se usa para decidir si alguien mejora.
           beginAtZero: true,
           ticks: { ...base.scales.y.ticks, callback: (v) => `${v}h` },
         },
@@ -268,7 +363,12 @@ function pintar_() {
     const aviso = n
       ? ` · <span style="color:var(--danger,#f87171);">${n} carro(s) sobre ${sospechosoH.toFixed(0)} h</span>, probablemente OTs sin cerrar: se muestran, pero no inclinan la tendencia.`
       : "";
-    lecturaEl.innerHTML = `📈 <b>${lectura.texto}</b>${aviso}`;
+    // Advertir la escala es parte del dato: en log la nube parece más apretada
+    // de lo que es y la recta se dibuja curvada. Callarlo sería engañar.
+    const nota = esLog
+      ? ` · <span style="opacity:.75;">Eje en pasos de ×${PASO_LOG} sobre el objetivo (${fmtHoras_(objetivoH)}): acerca los extremos para ver el detalle de la zona del objetivo.</span>`
+      : "";
+    lecturaEl.innerHTML = `📈 <b>${lectura.texto}</b>${aviso}${nota}`;
   }
 }
 

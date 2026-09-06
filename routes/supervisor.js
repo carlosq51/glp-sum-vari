@@ -4,7 +4,7 @@ import { addServerTiming_ } from "../lib/timing.js";
 import { getConfig_, CONFIG_DEFAULTS } from "../lib/config.js";
 import { cachedByTopics_ } from "../lib/poll-cache.js";
 import { jornadaFecha_, esDuplaApoyo_, vinDeDuplaApoyo_ } from "../lib/despacho.js";
-import { fechaPeruMenosDias_ } from "../lib/utils.js";
+import { fechaPeruMenosDias_, normalizeModelo_ } from "../lib/utils.js";
 
 const router = Router();
 
@@ -423,11 +423,19 @@ async function handleSupervisorReport_(payload, res) {
   const vinsArray = Array.from(vinsSet);
   for (let i = 0; i < vinsArray.length; i += cfg.LIM_VINS_POR_CONSULTA) {
     const trozo = vinsArray.slice(i, i + cfg.LIM_VINS_POR_CONSULTA);
-    const vinsUrl = `${SUPABASE_URL}/rest/v1/vins?select=vin,modelo&vin=in.(${trozo.join(",")})`;
+    const vinsUrl = `${SUPABASE_URL}/rest/v1/vins?select=vin,modelo,modelo_normalizado&vin=in.(${trozo.join(",")})`;
     const vinsResp = await fetch(vinsUrl, { method: "GET", headers }).catch(() => null);
     if (!vinsResp || !vinsResp.ok) continue;
     const vinsData = await vinsResp.json().catch(() => []);
-    (vinsData || []).forEach(v => { vinsMap[v.vin] = v.modelo || ""; });
+    // Se manda el modelo CANÓNICO, no el de la factura. En vins conviven ~15
+    // escrituras del mismo carro ("X70FL 1.5T 6MT 4X2 FULL", "Jetour MEC",
+    // "X70 1,5T MEC 4X2 CONFORT"…) y mandar el crudo llenaba el filtro del
+    // reporte con seis "Jetour" distintos que son el mismo modelo.
+    // modelo_normalizado ya vive en la tabla; normalizeModelo_ cubre al VIN
+    // recién dado de alta que el normalizador diario aún no tocó.
+    (vinsData || []).forEach(v => {
+      vinsMap[v.vin] = v.modelo_normalizado || normalizeModelo_(v.modelo) || v.modelo || "";
+    });
   }
 
   // Mapear a formato esperado por el frontend
