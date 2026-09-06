@@ -29,7 +29,7 @@ import {
 import { computeLiveMs_, renderFinalizados_, rebuildListsFromStore_ } from "../../work/index.js";
 import { startLoopsFor_, stopLoopsFor_, clearModuleUI_ } from "../../core/loops.js";
 
-import { syncNow, fetchFinalizados_, initializeRealtime_, destroyRealtime_ } from "./data/conversion-sync.js";
+import { syncNow, fetchFinalizados_, initAvisosLive_, stopAvisosLive_ } from "./data/conversion-sync.js";
 import {
   refreshEstadoForVinRole,
   initEstadoUI_,
@@ -1533,9 +1533,8 @@ export function init() {
 export function enter(mod) {
   CORE.state.currentModule = mod;
 
-  // 🚀 Inicializar Realtime subscriptions
-  initializeRealtime_()
-    .catch(e => console.warn("[enter] Realtime init error:", e.message));
+  // Avisos que llegan por el SSE del servidor (incidencia asignada, ramal entregado)
+  initAvisosLive_();
 
   // Verificar incidencias no vistas (offline -> online / primer login)
   if (mod === "TECNICO") {
@@ -1589,7 +1588,7 @@ export function exit(mod) {
     hideCarroAsignadoBanner_();
     stopTecAsistencia_();
   }
-  destroyRealtime_();
+  stopAvisosLive_();
 }
 
 export { syncNow } from "./data/conversion-sync.js";

@@ -88,10 +88,48 @@ async function duplasAutoDeHoy_(SUPABASE_URL, headers) {
 // =========================
 // SUPERVISOR REPORT (Supabase directo)
 // =========================
+// Lo que cambia el contenido del reporte. Mismos topics que el LIVE menos
+// despacho/zonas: el reporte mide trabajo hecho, no dónde está aparcado nadie.
+const TOPICS_REPORT = ["asignaciones", "work_orders"];
+
+/**
+ * Sirve el reporte pasando por el micro-cache compartido.
+ *
+ * El reporte no se pollea, pero sí se repite: el supervisor cambia un filtro,
+ * vuelve al anterior y lo repide entero (16,6 KB de Supabase por pasada, en
+ * cuatro páginas), y varios supervisores abren la misma vista por defecto el
+ * mismo día. La clave lleva TODOS los filtros porque dos rangos distintos son
+ * dos reportes distintos; la invalidación por evento evita que un cierre
+ * reciente quede fuera de lo que se ve.
+ */
+async function servirReporte_(payload, req, res) {
+  const cfg = await getConfig_();
+  const clave = JSON.stringify([
+    payload.q, payload.name, payload.vin, payload.from,
+    payload.to, payload.month, payload.tipoRamal, payload.track,
+  ]);
+  const out = await cachedByTopics_(
+    `supervisor:report:${clave}`, TOPICS_REPORT, cfg.SRV_CACHE_PESADO_MS,
+    () => armarReporteSupervisor_(payload),
+    { bypass: req.query.fresh === "1" },
+  );
+  return res.json(out);
+}
+
 router.post("/api/supervisor/report", async (req, res) => {
   try {
-    const payload = req.body || {};
-    return await handleSupervisorReport_(payload, res);
+    const body = req.body || {};
+    const payload = {
+      q:         String(body.q         || "").trim(),
+      name:      String(body.name      || "").trim(),
+      vin:       String(body.vin       || "").trim(),
+      from:      String(body.from      || "").trim(),
+      to:        String(body.to        || "").trim(),
+      month:     String(body.month     || "").trim(),
+      tipoRamal: String(body.tipoRamal || "").trim(),
+      track:     String(body.track     || "CONVERSION").toUpperCase(),
+    };
+    return await servirReporte_(payload, req, res);
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e.message || e) });
   }
@@ -109,7 +147,7 @@ router.get("/api/supervisor/report", async (req, res) => {
       tipoRamal: String(req.query.tipoRamal || "").trim(),
       track:     String(req.query.track     || "CONVERSION").toUpperCase(),
     };
-    return await handleSupervisorReport_(payload, res);
+    return await servirReporte_(payload, req, res);
   } catch (e) {
     return res.status(500).json({ ok: false, error: String(e.message || e) });
   }
@@ -165,7 +203,10 @@ async function resolveSearchScope_({ SUPABASE_URL, headers, nameQ, vinQ, q }) {
   return { extra: params.length ? "&" + params.join("&") : "", vacio };
 }
 
-async function handleSupervisorReport_(payload, res) {
+// Devuelve el payload en vez de escribirlo: así puede envolverse en el
+// micro-cache (servirReporte_). Si Supabase falla LANZA, porque cachedByTopics_
+// solo guarda lo que se produce bien — un error nunca debe quedarse pegado.
+async function armarReporteSupervisor_(payload) {
   const t1 = Date.now();
   const track = String(payload.track || "CONVERSION").toUpperCase();
   const q = String(payload.q || "").trim().toLowerCase();
@@ -193,7 +234,7 @@ async function handleSupervisorReport_(payload, res) {
 
   const scope = await resolveSearchScope_({ SUPABASE_URL, headers, nameQ, vinQ, q });
   if (scope.vacio) {
-    return res.json({ ok: true, items: [], count: 0, isHistorical: false, _timing: `${Date.now() - t1}ms`, _source: "supabase" });
+    return { ok: true, items: [], count: 0, isHistorical: false, _timing: `${Date.now() - t1}ms`, _source: "supabase" };
   }
 
   // Determinar tipo_ot según track
@@ -349,7 +390,7 @@ async function handleSupervisorReport_(payload, res) {
 
   if (!rMain.ok) {
     console.error("[SUPERVISOR_REPORT] Supabase error:", rMain.status, rMain.error);
-    return res.status(500).json({ ok: false, error: `Supabase: ${rMain.status}` });
+    throw new Error(`Supabase: ${rMain.status}`);
   }
 
   const truncated = rMain.truncated || rCrossFin.truncated || rCrossActive.truncated || rHistStart.truncated;
@@ -497,17 +538,16 @@ async function handleSupervisorReport_(payload, res) {
   const nSiblings = items.filter(it => it.siblingFin).length;
   console.log(`[SUPERVISOR_REPORT] ${track} ${isHistorical ? "HISTÓRICO(updated_at)" : "HOY(fecha_asignacion)"}: ${items.length - nSiblings} items (+${nSiblings} mitades hermanas) en ${duration}ms${truncated ? " ⚠ TRUNCADO" : ""}`);
 
-  return res.json({ ok: true, items, count: items.length - nSiblings, isHistorical, truncated, _timing: `${duration}ms`, _source: "supabase" });
+  return { ok: true, items, count: items.length - nSiblings, isHistorical, truncated, _timing: `${duration}ms`, _source: "supabase" };
 }
 
 // =========================
 // SUPERVISOR LIVE (resumen en tiempo real de técnicos del día)
 // =========================
-// El armado va aparte del handler porque se sirve CACHEADO: son ~170 KB de
-// Supabase por pasada (la ventana de 30 días de asignaciones pesa sola 119 KB)
-// y la vista la tienen abierta varios supervisores a la vez, cada uno
-// repitiéndola entera cada ciclo. La invalidación por evento la mantiene al
-// día — ver lib/poll-cache.js.
+// El armado va aparte del handler porque se sirve CACHEADO: son decenas de KB
+// de Supabase por pasada y la vista la tienen abierta varios supervisores a la
+// vez, cada uno repitiéndola entera cada ciclo. La invalidación por evento la
+// mantiene al día — ver lib/poll-cache.js.
 async function armarLiveSupervisor_() {
   {
     const t1 = Date.now();
@@ -546,19 +586,15 @@ async function armarLiveSupervisor_() {
     // Config central (defaults + app_config, cacheado 60s en lib/config)
     const cfg = await getConfig_();
 
-    // Q4: Última asignación reciente por usuario (para rol_trabajo de TECNICO AMBOS)
-    const url4 = `${SUPABASE_URL}/rest/v1/asignaciones?select=user_id,rol_trabajo,updated_at&fecha_asignacion=gte.${hace30d00}&order=updated_at.desc&limit=${cfg.LIM_ASG_RECIENTES}`;
-
     // Q5: Trabajos de días anteriores que siguen abiertos ("arrastre").
     // NO cuentan como producción de hoy (ni finalizados ni en proceso): solo sirven
     // para saber en qué está parado ahora mismo un técnico que no abrió nada hoy.
     const url5 = `${SUPABASE_URL}/rest/v1/asignaciones?select=${selectFields}&activo=eq.true&estado_actual=in.(TRABAJANDO,PAUSADO,SIN_INICIAR)&fecha_asignacion=lt.${hoy00}&order=updated_at.desc`;
 
-    const [resp1, resp2, resp3, resp4, resp5, duplasAuto] = await Promise.all([
+    const [resp1, resp2, resp3, resp5, duplasAuto] = await Promise.all([
       fetch(url1, { method: "GET", headers }),
       fetch(url2, { method: "GET", headers }),
       fetch(url3, { method: "GET", headers }),
-      fetch(url4, { method: "GET", headers }),
       fetch(url5, { method: "GET", headers }),
       duplasAutoDeHoy_(SUPABASE_URL, headers),
     ]);
@@ -566,13 +602,36 @@ async function armarLiveSupervisor_() {
       const text = await resp1.text().catch(() => "");
       throw new Error(`Supabase Q1: ${resp1.status} ${text.slice(0, 200)}`);
     }
-    const [raw1, raw2, allUsers, recentAsg, raw5] = await Promise.all([
+    const [raw1, raw2, allUsers, raw5] = await Promise.all([
       resp1.json(),
       resp2.json().catch(() => []),
       resp3.json().catch(() => []),
-      resp4.json().catch(() => []),
       resp5.json().catch(() => []),
     ]);
+
+    // Q4: último rol_trabajo conocido, SOLO de los técnicos con especialidad
+    // AMBOS — son los únicos para los que se consulta (ver defaultRolTrabajo_).
+    //
+    // Antes salía en paralelo con las demás y sin filtro de usuario: 1000 filas
+    // y 119 KB de los ~135 KB que costaba el endpoint entero, para deducir el
+    // rol de un puñado de personas. Hoy en el taller no hay ningún técnico
+    // AMBOS, así que esa consulta se pagaba entera para alimentar un mapa que
+    // nadie llegaba a leer.
+    //
+    // Cuesta un viaje extra porque necesita la lista de usuarios (Q3), pero solo
+    // sale cuando de verdad hay algún AMBOS, y el endpoint va cacheado.
+    const idsAmbos = (allUsers || [])
+      .filter(u => u.rol === "TECNICO" && u.especialidad === "AMBOS")
+      .map(u => u.id);
+    let recentAsg = [];
+    if (idsAmbos.length) {
+      const url4 = `${SUPABASE_URL}/rest/v1/asignaciones?select=user_id,rol_trabajo,updated_at` +
+        `&fecha_asignacion=gte.${hace30d00}&user_id=in.(${idsAmbos.join(",")})` +
+        `&order=updated_at.desc&limit=${cfg.LIM_ASG_RECIENTES}`;
+      recentAsg = await fetch(url4, { method: "GET", headers })
+        .then(r => (r.ok ? r.json() : []))
+        .catch(() => []);
+    }
     // META_DIARIA = objetivo grupal diario (Live). Fallback a META_CONVERSION por compatibilidad.
     const metaConv = Number(cfg.META_DIARIA || cfg.META_CONVERSION) || CONFIG_DEFAULTS.META_DIARIA;
     const metaCal  = Number(cfg.META_CALIDAD) || CONFIG_DEFAULTS.META_CALIDAD;

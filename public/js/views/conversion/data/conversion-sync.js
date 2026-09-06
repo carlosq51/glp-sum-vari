@@ -30,7 +30,7 @@ import {
 
 
 
-import { getMisActivas, getMisFinalizadas, supabaseEnabled, subscribeToChanges } from "../../../core/supabase-client.js";
+import { getMisActivas, getMisFinalizadas, supabaseEnabled } from "../../../core/supabase-client.js";
 
 
 
@@ -72,18 +72,31 @@ import {
 
 import { autoStartFromScan_ } from "./conversion-eventos.js";
 import { isFinalizado_ } from "../../../work/work-status.js";
-import { showIncidenciaAlert, getMyNombre_ } from "../modals/incidencia-alert.js";
+import { checkPendingAlerts_ } from "../modals/incidencia-alert.js";
 import { showRamalEntregadoAlert } from "../modals/ramal-alert.js";
 
 
 
 // --------------------------
-
-// REALTIME INITIALIZATION
-
+// AVISOS EN VIVO (SSE)
+//
+// Esto colgaba de subscribeToChanges(), cuatro WebSockets por dispositivo
+// contra Supabase Realtime. El handshake que enviaban ({type:"subscribe"}) no
+// es el de Supabase —espera un phx_join con la config de postgres_changes—, así
+// que esos sockets no recibieron nunca un solo cambio: los dos avisos que
+// cuelgan de aquí (incidencia asignada y ramal entregado) llevaban todo ese
+// tiempo sin dispararse. Encima el reintento de onclose añadía un listener en
+// vez de reabrir el socket, y con 30 técnicos eran ~120 conexiones simultáneas
+// del límite del plan, a cambio de nada.
+//
+// El canal que sí funciona es el SSE de este servidor (core/live.js): toda
+// mutación pasa por él, llega en <1s y no cuesta egress de Supabase. La lista de
+// activas la refresca el propio poll, que live.js despierta con el topic
+// "asignaciones"; aquí quedan solo los dos avisos que necesitan mirar QUIÉN es
+// el usuario logueado.
 // --------------------------
 
-let realtimeUnsubscribers = [];
+let liveHandler_ = null;
 
 
 
@@ -135,141 +148,52 @@ function scheduleSync_(opts, delay = 400) {
 
 
 
-function handleRealtimeChange_(tableName, payload) {
-
+/**
+ * Reacciona a un evento del SSE. Solo los avisos que dependen de QUIÉN mira:
+ * el refresco de la lista lo dispara live.js despertando el poll de sync.
+ *
+ * @param {{topic:string, accion?:string, vin?:string, tecnico_email?:string}} msg
+ */
+function handleLiveEvent_(msg) {
   const c = ctx_();
-
   if (!c) return;
 
-  
+  const email = String(document.getElementById("email")?.value || "").trim().toLowerCase();
+  if (!email) return;
 
-  // Solo procesar si es un cambio relevante
-
-  if (tableName === "asignaciones") {
-
-    // Cambio en asignaciones â†’ refrescar automÃ¡ticamente (con debounce)
-
-    scheduleSync_({ forceFull: false, showOut: false }, 400);
-
-  } else if (tableName === "work_orders") {
-
-    // Cambio en work_orders â†’ refrescar la lista (con debounce)
-
-    scheduleSync_({ forceFull: false, showOut: false }, 400);
-
-  } else if (tableName === "incidencias") {
-
-    // Cambio en incidencias â†’ solo si estamos en esa vista (con debounce)
-
+  if (msg.topic === "incidencias" && msg.accion === "CREADA") {
+    // El evento no trae la fila (el SSE solo manda vin y acción), así que se
+    // relee lo pendiente del técnico. Es la MISMA función que corre al entrar a
+    // la vista y descarta por id lo que ya está en pantalla, así que repetirla
+    // no duplica popups.
+    checkPendingAlerts_(email, 12).catch(() => {});
     if (CORE.state.currentModule === "INCIDENCIAS") {
-
       scheduleSync_({ forceFull: false, showOut: false }, 400);
-
     }
-    // Popup de alerta: si el INSERT es para el técnico logueado
-    const row = payload?.new;
-    if (row && row.tecnico) {
-      try {
-        const myEmail = String(
-          document.getElementById("email")?.value || ""
-        ).trim().toLowerCase();
-        if (myEmail) {
-          getMyNombre_(myEmail).then(myNombre => {
-            if (myNombre && String(row.tecnico || "").trim() === myNombre.trim()) {
-              showIncidenciaAlert(row);
-            }
-          }).catch(() => {});
-        }
-      } catch (e) {
-        console.warn("[incidencia-alert] Error al evaluar popup:", e);
-      }
-    }
-  } else if (tableName === "solicitudes_ramal") {
-    // UPDATE con estado ENTREGADO → notificar al técnico si es su solicitud
-    const row = payload?.new;
-    if (row?.estado === "ENTREGADO" && row?.tecnico_email) {
-      try {
-        const myEmail = String(
-          document.getElementById("email")?.value || ""
-        ).trim().toLowerCase();
-        if (myEmail && row.tecnico_email.trim().toLowerCase() === myEmail) {
-          showRamalEntregadoAlert({ vin: row.vin || "" });
-        }
-      } catch (e) {
-        console.warn("[ramal-alert] Error:", e);
-      }
-    }
+    return;
   }
 
+  if (msg.topic === "ramal" && msg.accion === "ENTREGADA") {
+    if (String(msg.tecnico_email || "").trim().toLowerCase() === email) {
+      showRamalEntregadoAlert({ vin: msg.vin || "" });
+    }
+  }
 }
 
-
-
-export async function initializeRealtime_() {
-
-  if (!supabaseEnabled()) return;
-
-  
-
-  // Tabla asignaciones
-
-  realtimeUnsubscribers.push(
-
-    await subscribeToChanges("asignaciones", (payload) => {
-
-      handleRealtimeChange_("asignaciones", payload);
-
-    })
-
-  );
-
-  
-
-  // Tabla work_orders
-
-  realtimeUnsubscribers.push(
-
-    await subscribeToChanges("work_orders", (payload) => {
-
-      handleRealtimeChange_("work_orders", payload);
-
-    })
-
-  );
-
-  
-
-  // Tabla incidencias
-  realtimeUnsubscribers.push(
-    await subscribeToChanges("incidencias", (payload) => {
-      handleRealtimeChange_("incidencias", payload);
-    })
-  );
-
-  // Tabla solicitudes_ramal (notificar al técnico cuando su ramal es entregado)
-  realtimeUnsubscribers.push(
-    await subscribeToChanges("solicitudes_ramal", (payload) => {
-      handleRealtimeChange_("solicitudes_ramal", payload);
-    })
-  );
-
+export function initAvisosLive_() {
+  if (liveHandler_) return;
+  liveHandler_ = (ev) => {
+    try { handleLiveEvent_(ev.detail || {}); }
+    catch (e) { console.warn("[live] Error al procesar evento:", e); }
+  };
+  window.addEventListener("glp:live", liveHandler_);
 }
 
-
-
-export function destroyRealtime_() {
-
-  realtimeUnsubscribers.forEach(unsub => {
-
-    try { unsub(); } catch (e) { console.warn("Unsub error:", e); }
-
-  });
-
-  realtimeUnsubscribers = [];
-
+export function stopAvisosLive_() {
+  if (!liveHandler_) return;
+  window.removeEventListener("glp:live", liveHandler_);
+  liveHandler_ = null;
 }
-
-
 
 // --------------------------
 

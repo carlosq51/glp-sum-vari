@@ -295,7 +295,16 @@ router.post("/api/solicitud-ramal/:id/entregar", async (req, res) => {
     }
 
     invalidatePollCache_();
-    emitEvent_("ramal", { accion: "ENTREGADA", id });
+    // vin y tecnico_email viajan en el evento porque el aviso "tu ramal está
+    // entregado" solo lo abre el dueño de la solicitud, y sin ellos el cliente
+    // tendría que volver a preguntar quién era — una consulta por técnico
+    // conectado y por entrega. El PATCH ya devolvió la fila: sale gratis.
+    emitEvent_("ramal", {
+      accion: "ENTREGADA",
+      id,
+      vin: sol?.vin || "",
+      tecnico_email: sol?.tecnico_email || "",
+    });
     return res.json({ ok: true, stock_descontado: stockDescontado });
   } catch (e) {
     console.error("[PATCH /api/solicitud-ramal/:id/entregar]", e.message);

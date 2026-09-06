@@ -10,6 +10,11 @@ const router = Router();
 // movilizador va dejando en el taller (movilizador).
 const TOPICS_COLA = ["asignaciones", "work_orders", "despacho", "movilizador"];
 
+// El ranking del equipo solo se mueve cuando alguien cierra una asignación.
+// Lista aparte y más corta que TOPICS_COLA a propósito: compartirla haría que un
+// traslado del movilizador tirase el cache de unas stats que no dependen de él.
+const TOPICS_EQUIPO = ["asignaciones"];
+
 // ── GET /api/tecnico/cola ─────────────────────────────────────────────
 // Devuelve compañeros libres (especialidad par) + VINs disponibles para la especialidad dada
 //
@@ -128,12 +133,15 @@ router.get("/api/tecnico/cola", async (req, res) => {
 // ── GET /api/tecnico/equipo-stats ────────────────────────────────────────────
 // Compara por tasa diaria (conv / días trabajados) solo entre técnicos activos
 // para una comparación justa (excluye inactivos con 0 conversiones).
-router.get("/api/tecnico/equipo-stats", async (req, res) => {
-  try {
+//
+// Va cacheado por el mismo motivo que /cola: la respuesta depende ÚNICAMENTE de
+// la especialidad, así que en todo el sistema existen dos respuestas posibles y
+// los 30 técnicos recibían bytes idénticos calculados uno a uno. Son 17 KB por
+// apertura de la tarjeta "Rendimiento", y la semana de asignaciones que la
+// alimenta es la parte cara (16,6 KB de los 17,1).
+async function armarEquipoStats_(esp) {
+  {
     const SUPABASE_URL = process.env.SUPABASE_URL;
-    const esp = String(req.query.especialidad || "").toUpperCase();
-    if (!["MOTOR", "TANQUE"].includes(esp))
-      return res.json({ ok: true, avgDailyRate: 0, activeTechs: 0, totalTechs: 0 });
 
     const now = new Date();
     const day = now.getDay();
@@ -146,7 +154,7 @@ router.get("/api/tecnico/equipo-stats", async (req, res) => {
       { method: "GET", headers: supabaseHeaders_() }
     );
     const users = rUsers.ok ? await rUsers.json() : [];
-    if (!users.length) return res.json({ ok: true, avgDailyRate: 0, activeTechs: 0, totalTechs: 0 });
+    if (!users.length) return { ok: true, avgDailyRate: 0, activeTechs: 0, totalTechs: 0 };
 
     // Fetch with updated_at so we can count distinct working days per tech
     const { LIM_STATS_SEMANA } = await getConfig_();
@@ -174,13 +182,29 @@ router.get("/api/tecnico/equipo-stats", async (req, res) => {
       ? (() => { const s = [...rates].sort((a,b) => a-b); const m = Math.floor(s.length/2); return s.length % 2 ? s[m] : (s[m-1]+s[m])/2; })()
       : 0;
 
-    return res.json({
+    return {
       ok: true,
       avgDailyRate,
       medianDailyRate: Math.round(medianDailyRate * 10) / 10,
       activeTechs,
       totalTechs: users.length,
-    });
+    };
+  }
+}
+
+router.get("/api/tecnico/equipo-stats", async (req, res) => {
+  try {
+    const esp = String(req.query.especialidad || "").toUpperCase();
+    if (!["MOTOR", "TANQUE"].includes(esp))
+      return res.json({ ok: true, avgDailyRate: 0, activeTechs: 0, totalTechs: 0 });
+
+    const cfg = await getConfig_();
+    const payload = await cachedByTopics_(
+      `tecnico:equipo-stats:${esp}`, TOPICS_EQUIPO, cfg.SRV_CACHE_PESADO_MS,
+      () => armarEquipoStats_(esp),
+      { bypass: req.query.fresh === "1" },
+    );
+    return res.json(payload);
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e.message) });
   }

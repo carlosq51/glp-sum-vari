@@ -1,18 +1,34 @@
 // =========================
 // public/js/core/loops.js
 // Loops sin circular imports: recibe callbacks
+//
+// Los dos bucles que hablan con la RED (sync de "mis activas" y estado del VIN
+// escrito) van por startPoll, no por setInterval. Antes eran timers crudos y se
+// quedaban fuera de todo lo que core/poll.js aporta: seguían latiendo con la app
+// en segundo plano —el celular del técnico en el bolsillo toda la jornada— y sus
+// intervalos estaban hardcodeados aquí, así que no había forma de tocarlos sin
+// redeploy. Ahora salen de POLL_TEC_SYNC_MS y POLL_TEC_ESTADO_MS.
+//
+// El reloj de las tarjetas sí sigue en setInterval: es pintar segundos en
+// pantalla, no pide nada a nadie, y pausarlo dejaría los cronómetros congelados.
 // =========================
 import { CORE, ctx_ } from "./state.js";
 import { el_ } from "./dom.js";
 import { setEstadoText } from "./ui-shell.js";
+import { startPoll, stopPoll } from "./poll.js";
 
 import { renderFinalizados_ } from "../work/index.js";
 
 const timersByModule = {
-  TECNICO: { syncTimer: null, clockTimer: null, estadoTimer: null, syncStopped: false },
-  CALIDAD: { syncTimer: null, clockTimer: null, estadoTimer: null, syncStopped: false },
-  RAMALERO: { syncTimer: null, clockTimer: null, estadoTimer: null, syncStopped: false },
+  TECNICO: { clockTimer: null, syncStopped: false },
+  CALIDAD: { clockTimer: null, syncStopped: false },
+  RAMALERO: { clockTimer: null, syncStopped: false },
 };
+
+// Claves de poll por módulo: únicas por módulo para que cambiar de vista pare
+// las del módulo anterior sin tocar las del nuevo.
+const syncKey_   = (mod) => `TEC_SYNC:${mod}`;
+const estadoKey_ = (mod) => `TEC_ESTADO:${mod}`;
 
 function tctx_(mod) {
   return timersByModule[mod] || timersByModule.TECNICO;
@@ -23,13 +39,11 @@ export function stopLoopsFor_(mod) {
 
   t.syncStopped = true;
 
-  if (t.syncTimer) clearTimeout(t.syncTimer);
-  if (t.clockTimer) clearInterval(t.clockTimer);
-  if (t.estadoTimer) clearInterval(t.estadoTimer);
+  stopPoll(syncKey_(mod));
+  stopPoll(estadoKey_(mod));
 
-  t.syncTimer = null;
+  if (t.clockTimer) clearInterval(t.clockTimer);
   t.clockTimer = null;
-  t.estadoTimer = null;
 }
 
 export function clearModuleUI_(mod) {
@@ -68,24 +82,6 @@ export function clearModuleUI_(mod) {
   }
 }
 
-async function runSyncLoop_(mod, syncNow) {
-  const t = tctx_(mod);
-  if (!syncNow) return;
-  if (t.syncStopped) return;
-
-  try {
-    await syncNow({ forceFull: false, showOut: false });
-  } catch (err) {
-    console.error(`[${mod}] sync loop error:`, err);
-  }
-
-  if (t.syncStopped) return;
-
-  t.syncTimer = setTimeout(() => {
-    runSyncLoop_(mod, syncNow);
-  }, 60000);
-}
-
 export function startLoopsFor_(
   mod,
   { syncNow, tickClocksUI, refreshEstadoForVinRole, buildAvgTopHTML } = {}
@@ -105,11 +101,17 @@ export function startLoopsFor_(
         console.error(`[${mod}] initial sync error:`, err);
       })
       .finally(() => {
-        if (!t.syncStopped) {
-          t.syncTimer = setTimeout(() => {
-            runSyncLoop_(mod, syncNow);
-          }, 10000);
-        }
+        // El poll arranca DESPUÉS del sync completo y sin repetirlo
+        // (immediate:false): entrar a la vista pedía las mismas activas dos
+        // veces, la segunda diez segundos después de la primera.
+        if (t.syncStopped || !syncNow) return;
+        startPoll(syncKey_(mod), async () => {
+          try {
+            await syncNow({ forceFull: false, showOut: false });
+          } catch (err) {
+            console.error(`[${mod}] sync loop error:`, err);
+          }
+        }, { immediate: false, cfgKey: "POLL_TEC_SYNC_MS" });
       });
 
     t.clockTimer = setInterval(() => {
@@ -117,9 +119,8 @@ export function startLoopsFor_(
     }, 1000);
 
     if (mod === "TECNICO" || mod === "CALIDAD") {
-      t.estadoTimer = setInterval(() => {
-        refreshEstadoForVinRole?.({ showOut: false });
-      }, 8000);
+      startPoll(estadoKey_(mod), () => refreshEstadoForVinRole?.({ showOut: false }),
+        { immediate: false, cfgKey: "POLL_TEC_ESTADO_MS" });
 
       setTimeout(() => {
         refreshEstadoForVinRole?.({ showOut: false }).catch(() => {});

@@ -15,7 +15,7 @@ import {
   getJSON, postJSON,
 } from "./js/core/core.js";
 
-import { getUsuarioPerfil, supabaseEnabled, getRealtimeStatus } from "./js/core/supabase-client.js";
+import { getUsuarioPerfil, supabaseEnabled } from "./js/core/supabase-client.js";
 
 import { openView } from "./js/core/router-lite.js";
 import { initUploaderView, showUploaderView, hideUploaderView } from "./js/views/uploader/uploader.js";
@@ -373,5 +373,3 @@ if ("serviceWorker" in navigator) {
   setInterval(checkForSwUpdate_, 60_000);
 }
 
-// 🔌 Exponer funciones de debug en consola
-window.getRealtimeStatus = getRealtimeStatus;

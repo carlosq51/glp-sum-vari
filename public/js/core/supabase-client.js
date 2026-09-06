@@ -176,112 +176,18 @@ export async function supabaseDelete(table, filter = {}) {
 }
 
 /**
- * REALTIME SUBSCRIPTIONS (WebSockets)
- * Suscripción a cambios en tablas Supabase en tiempo real
+ * Aquí vivía subscribeToChanges(): cuatro WebSockets por dispositivo contra
+ * Supabase Realtime. Se eliminaron porque nunca funcionaron —enviaban
+ * {type:"subscribe"} y Supabase espera un phx_join con la config de
+ * postgres_changes, así que ningún cambio llegó jamás— y porque el reintento de
+ * onclose añadía un listener en lugar de reabrir el socket. Con 30 técnicos eran
+ * ~120 conexiones simultáneas del límite del plan sin entregar un solo evento.
+ *
+ * Lo que refresca la app es el SSE del propio servidor (core/live.js): toda
+ * mutación pasa por él, llega en menos de un segundo y no gasta egress de
+ * Supabase. Si algún día hace falta Realtime de verdad, tener presente que sus
+ * mensajes SÍ cuentan como egress facturado, multiplicados por dispositivo.
  */
-
-let realtimeSubscriptions = {}; // { tableName: { ws, listeners: [callbacks] } }
-
-export async function subscribeToChanges(table, callback) {
-  if (!supabaseEnabled()) throw new Error("Supabase no configurado");
-  
-  // Si ya existe suscripción, solo agregar listener
-  if (realtimeSubscriptions[table]) {
-    realtimeSubscriptions[table].listeners.push(callback);
-    return () => {
-      realtimeSubscriptions[table].listeners = 
-        realtimeSubscriptions[table].listeners.filter(l => l !== callback);
-    };
-  }
-  
-  // Crear nueva suscripción WebSocket
-  const wsUrl = SUPABASE_CONFIG.URL.replace("https://", "wss://").replace("http://", "ws://") + "/realtime/v1";
-  
-  try {
-    const ws = new WebSocket(`${wsUrl}?apikey=${SUPABASE_CONFIG.ANON_KEY}`);
-    
-    realtimeSubscriptions[table] = {
-      ws,
-      listeners: [callback],
-      connected: false,
-    };
-    
-    ws.onopen = () => {
-      realtimeSubscriptions[table].connected = true;
-      // Suscribirse al canal
-      const subscribeMsg = {
-        type: "subscribe",
-        topic: `realtime:${table}`,
-      };
-      ws.send(JSON.stringify(subscribeMsg));
-    };
-    
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        
-        // Filtrar mensajes del canal que nos interesa
-        if (msg.topic !== `realtime:${table}`) return;
-        
-        // Eventos: INSERT, UPDATE, DELETE
-        if (msg.type === "broadcast" || msg.type === "postgres_changes") {
-          const payload = msg.payload || msg;
-          if (payload.new || payload.old) {
-            // Notificar a todos los listeners
-            realtimeSubscriptions[table].listeners.forEach(cb => {
-              try {
-                cb(payload);
-              } catch (e) {
-                console.error(`[Realtime ${table}] Callback error:`, e.message);
-              }
-            });
-          }
-        }
-      } catch (e) {
-        console.warn(`[Realtime ${table}] Parse error:`, e.message);
-      }
-    };
-    
-    ws.onerror = (error) => {
-      console.error(`[Realtime ${table}] WebSocket error:`, error);
-      realtimeSubscriptions[table].connected = false;
-    };
-    
-    ws.onclose = () => {
-      console.warn(`[Realtime ${table}] Desconectado, reintentando en 5s...`);
-      realtimeSubscriptions[table].connected = false;
-      // Reintentar en 5 segundos
-      setTimeout(() => subscribeToChanges(table, callback).catch(() => {}), 5000);
-    };
-    
-    // Retornar función para cancelar la suscripción
-    return () => {
-      realtimeSubscriptions[table].listeners = 
-        realtimeSubscriptions[table].listeners.filter(l => l !== callback);
-      if (realtimeSubscriptions[table].listeners.length === 0) {
-        realtimeSubscriptions[table].ws.close();
-        delete realtimeSubscriptions[table];
-      }
-    };
-  } catch (e) {
-    console.error(`[Realtime ${table}] Error:`, e.message);
-    throw e;
-  }
-}
-
-/**
- * Obtener estado de todas las suscripciones
- */
-export function getRealtimeStatus() {
-  const status = {};
-  Object.entries(realtimeSubscriptions).forEach(([table, sub]) => {
-    status[table] = {
-      connected: sub.connected,
-      listeners: sub.listeners.length,
-    };
-  });
-  return status;
-}
 
 // =========================
 // HIGH-LEVEL QUERIES (reemplazan /api/*)

@@ -18,13 +18,17 @@ import { loadConfig } from "./config.js";
 
 // Topic del servidor → claves de config de los polls que deben refrescarse ya.
 // (pollNowByCfg solo dispara los que estén ACTIVOS — vista abierta.)
+// POLL_TEC_SYNC_MS es la lista de "mis activas" del técnico. Antes dependía de
+// un WebSocket a Supabase que nunca entregó un evento (ver conversion-sync.js),
+// así que su única frescura era el latido. Ahora entra por aquí: el técnico ve
+// el cambio al instante y el latido vuelve a ser solo respaldo.
 const TOPIC_TO_POLLS = {
-  asignaciones: ["POLL_SUP_LIVE_MS", "POLL_SUP_OT_CONTROL_MS", "POLL_ZONAS_MAPA_MS", "POLL_MOVILIZADOR_MS", "POLL_COLA_BADGE_MS", "POLL_VIN_READY_MS", "POLL_PAIR_SUGGEST_MS"],
+  asignaciones: ["POLL_SUP_LIVE_MS", "POLL_SUP_OT_CONTROL_MS", "POLL_ZONAS_MAPA_MS", "POLL_MOVILIZADOR_MS", "POLL_COLA_BADGE_MS", "POLL_VIN_READY_MS", "POLL_PAIR_SUGGEST_MS", "POLL_TEC_SYNC_MS"],
   ramal:        ["POLL_RAMAL_LISTO_MS", "POLL_COLA_POSICION_MS", "POLL_RAMALERO_SOL_MS"],
   ramales:      ["POLL_RAMALES_MS"],
   zonas:        ["POLL_ZONAS_MAPA_MS"],
   movilizador:  ["POLL_MOVILIZADOR_MS", "POLL_ZONAS_MAPA_MS"],
-  work_orders:  ["POLL_SUP_OT_CONTROL_MS", "POLL_SUP_LIVE_MS"],
+  work_orders:  ["POLL_SUP_OT_CONTROL_MS", "POLL_SUP_LIVE_MS", "POLL_TEC_SYNC_MS"],
   incidencias:  [],  // las vistas de incidencias escuchan "glp:live" directamente
   config:       [],  // manejado abajo: recarga la config
 };
