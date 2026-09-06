@@ -126,3 +126,96 @@ describe("lecturaTendencia_ contra el objetivo de 3 h", () => {
     expect(r.texto).toContain("Faltan datos");
   });
 });
+
+// ─── Percentiles y significancia ─────────────────────────────────────────────
+// El eje del gráfico ya no lo fijan el mínimo y el máximo: el taller tiene
+// registros de 7 segundos y de 947 horas, y con esos extremos la banda donde
+// vive el 40% de los carros ocupaba el 0,4% del alto. Los límites salen de
+// percentiles, y la tendencia solo habla si Mann–Kendall la respalda.
+
+const { percentil_, mannKendall_ } = await import("../lib/regresion.js");
+
+describe("percentil_", () => {
+  it("los extremos son el mínimo y el máximo", () => {
+    const xs = [1, 2, 3, 4, 5];
+    expect(percentil_(xs, 0)).toBe(1);
+    expect(percentil_(xs, 100)).toBe(5);
+  });
+
+  it("interpola entre dos valores en vez de saltar", () => {
+    expect(percentil_([0, 10], 25)).toBeCloseTo(2.5, 6);
+  });
+
+  it("la mediana coincide con mediana_", () => {
+    const xs = [3, 1, 4, 1, 5, 9, 2, 6];
+    expect(percentil_(xs, 50)).toBeCloseTo(mediana_(xs), 9);
+  });
+
+  it("NO se mueve con el carro de 947 horas, que es lo que se le pide", () => {
+    const sanos = Array.from({ length: 100 }, (_, i) => 2 + i / 100);
+    const p95 = percentil_(sanos, 95);
+    expect(percentil_([...sanos, 947], 95)).toBeCloseTo(p95, 1);
+  });
+
+  it("sin datos devuelve NaN, no 0", () => {
+    expect(Number.isNaN(percentil_([], 50))).toBe(true);
+  });
+});
+
+describe("mannKendall_", () => {
+  it("una serie que baja siempre es tendencia significativa hacia abajo", () => {
+    const r = mannKendall_(Array.from({ length: 20 }, (_, i) => 10 - i * 0.3));
+    expect(r.ok).toBe(true);
+    expect(r.significativa).toBe(true);
+    expect(r.sentido).toBe(-1);
+    expect(r.p).toBeLessThan(0.01);
+  });
+
+  it("un sube y baja simétrico NO es tendencia, aunque Theil–Sen dé pendiente", () => {
+    const zigzag = [3, 2.8, 3.1, 2.9, 3.05, 2.85, 3.02, 2.95, 3.08, 2.9, 3, 2.98];
+    const r = mannKendall_(zigzag);
+    expect(r.ok).toBe(true);
+    expect(r.significativa).toBe(false);
+    expect(r.sentido).toBe(0);
+  });
+
+  it("con menos de 8 jornadas no finge saber", () => {
+    expect(mannKendall_([1, 2, 3, 4]).ok).toBe(false);
+  });
+
+  it("una serie plana no tiene varianza y no inventa tendencia", () => {
+    const r = mannKendall_(Array(15).fill(2.8));
+    expect(r.significativa).toBe(false);
+  });
+
+  it("solo mira SIGNOS: un outlier absurdo no cambia el veredicto", () => {
+    const base = Array.from({ length: 20 }, (_, i) => 10 - i * 0.3);
+    const conBasura = [...base];
+    conBasura[7] = 947;   // la OT que nadie cerró
+    expect(mannKendall_(conBasura).sentido).toBe(-1);
+  });
+});
+
+describe("lecturaTendencia_ con Mann–Kendall", () => {
+  const UMBRAL = 3;
+
+  it("si la pendiente es ruido, se calla la mejora y solo sitúa contra el objetivo", () => {
+    const m = theilSen_([{ x: 0, y: 4 }, { x: 10, y: 3.6 }]);
+    const r = lecturaTendencia_(m, UMBRAL, 10, 30, { ok: true, significativa: false, p: 0.6 });
+    expect(r.ruido).toBe(true);
+    expect(r.texto).toContain("sin tendencia clara");
+    expect(r.texto).not.toContain("alcanzaría");
+  });
+
+  it("con significancia sigue anunciando el cruce como antes", () => {
+    const m = theilSen_([{ x: 0, y: 4 }, { x: 10, y: 3.5 }]);
+    const r = lecturaTendencia_(m, UMBRAL, 10, 30, { ok: true, significativa: true, p: 0.001 });
+    expect(r.ruido).toBeUndefined();
+    expect(r.texto).toContain("objetivo");
+  });
+
+  it("sin pasarle Mann–Kendall se comporta igual que siempre", () => {
+    const m = theilSen_([{ x: 0, y: 4 }, { x: 10, y: 3.5 }]);
+    expect(lecturaTendencia_(m, UMBRAL, 10).texto).toBe(lecturaTendencia_(m, UMBRAL, 10, 30, null).texto);
+  });
+});

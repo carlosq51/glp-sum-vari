@@ -1,37 +1,45 @@
 // =========================
 // public/js/views/supervisor/sup-trend-chart.js
-// Tendencia de los tiempos de conversión: datos crudos + regresión + objetivo.
+// Tendencia de los tiempos de conversión: mediana diaria + dispersión + objetivo.
 //
 // QUÉ CONTESTA: "¿estamos mejorando?". El promedio del mes no lo dice —sube y
 // baja con el mix de carros— y la lista de tiempos tampoco: son cien números
-// sueltos. Aquí se ve la nube real, la recta de tendencia encima, y la línea
-// del objetivo cruzando las dos.
+// sueltos.
 //
-// LA RECTA ES THEIL–SEN, NO MÍNIMOS CUADRADOS
-// Un carro que nadie cerró marca catorce horas. Eso no es trabajo lento, es un
-// registro roto, y con el error al cuadrado un solo punto así inclina la recta
-// entera: la "tendencia" acabaría midiendo los olvidos. Theil–Sen toma la
-// mediana de las pendientes entre pares y aguanta ~29% de basura. Ver
-// lib/regresion.js.
+// SE REGRESA SOBRE LA MEDIANA DIARIA, NO SOBRE EL CARRO SUELTO
+// La versión anterior ajustaba la recta a los 7.505 carros crudos y contra el
+// ÍNDICE del carro en la lista. Dos problemas. Uno: la pendiente salía en
+// "horas por carro-en-la-lista", y como el volumen diario va de 30 a 93 carros
+// ese número no se traduce a nada que se pueda decir en voz alta. Dos: una
+// recta sobre 185 días no puede mostrar CUÁNDO cambió algo, y este taller no va
+// a la deriva constante, cambia a saltos (gente nueva, modelo nuevo).
+// Ahora se agrupa por jornada, se toma la MEDIANA del día y se regresa contra
+// la fecha real. La mediana es inmune por construcción a los 199 carros sin
+// cerrar: no hay que decidir qué borrar. La pendiente sale en minutos por
+// semana, y la serie diaria (2,61 · 2,74 · 2,73 · 2,55 …) se lee de un vistazo.
 //
-// LOS OUTLIERS SE DIBUJAN, NO SE BORRAN
-// Antes se descartaba todo lo que pasara de 10 h. Escondía datos: el supervisor
-// no veía que existían, y son justo la señal de que hay que enseñarle a alguien
-// a cerrar su OT. Se les quita el voto sobre la recta, no la existencia.
+// LA RECTA ES THEIL–SEN Y SOLO HABLA SI MANN–KENDALL LA DEJA
+// Theil–Sen toma la mediana de las pendientes entre pares: aguanta ~29% de
+// basura sin moverse. Pero SIEMPRE devuelve una pendiente, también sobre ruido
+// puro, y la lectura anunciaba "vas mejorando" por un número que era azar.
+// Mann–Kendall contrasta el desbalance de pares subida/bajada contra el que
+// daría el azar; si no hay significancia, la lectura lo dice y se calla el
+// resto. Ver lib/regresion.js.
 //
-// EL EJE Y ES LOGARÍTMICO Y GIRA ALREDEDOR DEL OBJETIVO
-// En escala lineal un carro de 14 h estira el eje hasta 14 h, y los cientos de
-// carros que están entre 2 h y 4 h —donde de verdad se decide si el taller
-// cumple— quedan aplastados en una franja de dos milímetros. Se perdía justo la
-// información que se venía a mirar.
-// Con eje log la distancia deja de medir horas y pasa a medir PROPORCIÓN: la
-// separación entre 1 h30 y 3 h es la misma que entre 3 h y 6 h. Los ticks se
-// generan anclados en el objetivo (…×¼, ×½, objetivo, ×2, ×4), así que el
-// objetivo cae siempre sobre una línea rotulada y "el doble del objetivo" es
-// una distancia constante. Los outliers siguen dibujados, pero a una casilla
-// del resto en vez de a media pantalla.
-// La escala lineal sigue disponible en el selector: es la que no exagera ni
-// disimula la pendiente cuando se quiere leer la mejora en horas reales.
+// EL EJE NO LO FIJAN LOS EXTREMOS, LOS FIJA UN PERCENTIL
+// El taller tiene registros de 7 SEGUNDOS y de 947 HORAS: un factor de 470.000.
+// No son mediciones —son OTs abiertas y cerradas por error, y OTs que nadie
+// cerró—, y ninguna escala arregla eso, tampoco la logarítmica: con peldaños de
+// ×2 harían falta 19 para cubrir ese rango, y la banda donde vive el 40% de los
+// carros (2 h–3 h) ocuparía menos de uno. El eje se recorta con percentiles del
+// subconjunto FILTRADO (dinámico: cambia con el rol y el modelo que se estén
+// mirando) y anclado al objetivo, para que la línea de meta nunca quede fuera.
+//
+// LOS OUTLIERS SE APOYAN EN EL RIEL, NO SE BORRAN
+// Lo que cae fuera de la banda se clava en el borde como triángulo y se cuenta
+// en la leyenda. Borrarlos escondería datos: el supervisor no vería que existen
+// y son justo la señal de que hay que enseñarle a alguien a cerrar su OT. Se
+// les quita el eje, no la existencia.
 //
 // EL CANVAS NO LLEVA ALTURA
 // Con responsive + maintainAspectRatio:false, Chart.js dimensiona el canvas al
@@ -44,7 +52,7 @@
 import { Chart } from "chart.js/auto";
 import { readVizColors, chartBaseOptions, hexA } from "../../core/viz.js";
 import { cfg } from "../../core/config.js";
-import { theilSen_, lecturaTendencia_ } from "../../../../lib/regresion.js";
+import { theilSen_, lecturaTendencia_, mannKendall_, percentil_, mediana_ } from "../../../../lib/regresion.js";
 import { normalizeModelo_ } from "../../../../lib/utils.js";
 
 let chartInstance = null;
@@ -52,27 +60,66 @@ let _last = null;   // { items, techName } para re-render al cambiar de tema/fil
 
 // Filtros de la vista. Viven aquí porque son del gráfico, no del reporte: el
 // supervisor acota lo que MIRA sin recargar ni volver a consultar la base.
-const F = { rol: "TODOS", modelo: "TODOS", escala: "LOG", visible: false };
+const F = { rol: "TODOS", modelo: "TODOS", visible: false };
 
 const ROLES_CONV = ["MOTOR", "TANQUE", "TANQUERO", "TECNICO", "CONVERSION"];
 const esDelantero_ = (r) => ["MOTOR", "TECNICO", "CONVERSION"].includes(r);
 const esTanquero_  = (r) => ["TANQUE", "TANQUERO"].includes(r);
 
-// Cada peldaño del eje log es el DOBLE del anterior. Con 2 el objetivo de 3 h
-// da 45 min · 1 h30 · 3 h · 6 h · 12 h: números que el supervisor ya usa al
-// hablar ("el doble del objetivo"). Con 10 el eje tendría tres marcas y con
-// √2 sería ilegible.
-const PASO_LOG = 2;
+// ─── Constantes de la vista ──────────────────────────────────────────────────
 
-// Los ticks se generan más allá de los datos y luego se recortan; este tope
-// evita que un dato absurdo (un tiempo de milisegundos) genere miles de vueltas.
-const MAX_PELDANOS_LOG = 24;
+// Percentiles que fijan la banda visible. El problema está ARRIBA —el 2,7% de
+// carros sobre 12 h que nadie cerró— y por eso el techo recorta al p95 (6,5 h
+// con los datos de hoy). El suelo es mucho más tímido a propósito: un carro
+// hecho en 1 h es trabajo rápido de verdad, no un registro roto, y mandarlo al
+// riel sería llamar error a lo que hay que copiar. Abajo solo se recorta el
+// p1, donde viven los tiempos físicamente imposibles.
+const PCT_TECHO = 95;
+const PCT_SUELO = 1;
+
+// El eje nunca se cierra más que esto alrededor del objetivo, pase lo que pase
+// con el percentil: si un filtro deja solo carros de 2,9 h a 3,1 h, un eje
+// pegado a los datos convertiría medio minuto de diferencia en media pantalla.
+const TECHO_MIN_x_OBJETIVO = 1.5;
+const SUELO_MAX_x_OBJETIVO = 0.25;
+
+// Por encima de esto un tiempo deja de ser trabajo lento y pasa a ser, casi
+// seguro, una OT que nadie cerró. Solo colorea y cuenta; no borra nada.
+const SOSPECHOSO_x_OBJETIVO = 2;
+
+// Días mínimos con datos para dibujar la serie diaria. Por debajo no hay
+// jornada que comparar con jornada y se cae a la nube de carros sueltos.
+const MIN_DIAS_SERIE = 3;
+
+// Un día con dos carros da una "mediana diaria" que es un carro suelto con
+// nombre de estadístico. Por debajo de esto el día se dibuja, pero no vota en
+// la tendencia.
+const MIN_CARROS_POR_DIA = 5;
+
+const DIAS_POR_SEMANA = 7;
+const TZ_PERU = "America/Lima";
+
+// ─── Utilidades ──────────────────────────────────────────────────────────────
+
+const fmtDiaPeru_ = new Intl.DateTimeFormat("en-CA", {
+  timeZone: TZ_PERU, year: "numeric", month: "2-digit", day: "2-digit",
+});
+
+/** Jornada peruana de una fecha, "YYYY-MM-DD". A las 21:00 de Lima ya es otro día en UTC. */
+const diaPeru_ = (d) => fmtDiaPeru_.format(d);
+
+/** "2026-09-05" → "05/09" */
+const fmtDiaCorto_ = (clave) => `${clave.slice(8, 10)}/${clave.slice(5, 7)}`;
+
+/** Clave "YYYY-MM-DD" a N días de otra. Inversa de diasEntre_. */
+function diaMasOffset_(clave, off) {
+  const [a, m, d] = clave.split("-").map(Number);
+  return new Date(Date.UTC(a, m - 1, d + Math.round(off))).toISOString().slice(0, 10);
+}
 
 /** Horas → texto corto: "20 s", "45 min", "3.5 h", "14 h". */
 function fmtHoras_(h) {
   if (!Number.isFinite(h) || h <= 0) return "";
-  // Los peldaños de abajo del eje log pueden bajar del minuto; sin este caso
-  // todos se rotularían "0 min" y el eje quedaría con marcas repetidas.
   if (h < 1 / 60) return `${Math.max(1, Math.round(h * 3600))} s`;
   if (h < 1) return `${Math.round(h * 60)} min`;
   if (h < 10) return `${Math.round(h * 10) / 10} h`;
@@ -80,29 +127,16 @@ function fmtHoras_(h) {
 }
 
 /**
- * ticksLog_ — marcas del eje ancladas en el objetivo, no en potencias de 10.
- * Devuelve objetivoH · PASO_LOG^k, el peldaño justo por debajo del mínimo y el
- * justo por encima del máximo: los datos quedan dentro sin desperdiciar eje.
+ * Diferencia en días CIVILES entre dos claves "YYYY-MM-DD".
+ * Se arma con Date.UTC para que ni el horario de verano de la máquina del
+ * supervisor ni su zona horaria puedan mover el resultado un día.
  */
-function ticksLog_(minH, maxH, objetivoH) {
-  const lp  = Math.log(PASO_LOG);
-  const lo  = Math.max(Math.min(minH, maxH), Number.MIN_VALUE);
-  const hi  = Math.max(maxH, lo);
-  let kMin  = Math.floor(Math.log(lo / objetivoH) / lp);
-  let kMax  = Math.ceil(Math.log(hi / objetivoH) / lp);
-  // Todos los carros en el mismo peldaño (o uno solo) daría min === max y el
-  // eje se queda sin altura: se abre un peldaño a cada lado.
-  if (kMax - kMin < 1) { kMin -= 1; kMax += 1; }
-  // Un tiempo absurdo por abajo (una OT cerrada en milisegundos) pediría cien
-  // peldaños. Se recorta por ABAJO, nunca por arriba: perder el techo dejaría
-  // los outliers lentos —el motivo de mirar el gráfico— fuera del eje.
-  kMin = Math.max(kMin, kMax - MAX_PELDANOS_LOG + 1);
-
-  const out = [];
-  for (let k = kMin; k <= kMax && out.length < MAX_PELDANOS_LOG; k++) {
-    out.push(objetivoH * Math.pow(PASO_LOG, k));
-  }
-  return out;
+function diasEntre_(claveA, claveB) {
+  const utc = (clave) => {
+    const [a, m, d] = clave.split("-").map(Number);
+    return Date.UTC(a, m - 1, d);
+  };
+  return Math.round((utc(claveB) - utc(claveA)) / 86400000);
 }
 
 window.addEventListener("glp:themechange", () => {
@@ -113,6 +147,8 @@ export function destroyTrendChart_() {
   try { chartInstance?.destroy(); } catch { /* ya destruido */ }
   chartInstance = null;
 }
+
+// ─── Datos ───────────────────────────────────────────────────────────────────
 
 /** Puntos utilizables: finalizados, de conversión, con tiempo y fecha. */
 function puntosDe_(items) {
@@ -133,6 +169,7 @@ function puntosDe_(items) {
     out.push({
       y: ms / 3600000,             // horas
       date: d,
+      dia: diaPeru_(d),
       rol,
       vin: it?.vin || "N/A",
       // El backend ya manda el canónico, pero se vuelve a normalizar aquí: es
@@ -154,9 +191,48 @@ const aplicaFiltro_ = (p) => {
   return true;
 };
 
-function fmtFecha_(d) {
-  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
+/**
+ * resumenDiario_ — una fila por jornada con mediana y cuartiles.
+ *
+ * Los cuartiles no son adorno: mediana 2,8 h con p75 en 3,5 h es un taller, y
+ * mediana 2,8 h con p75 en 6 h es otro muy distinto. El promedio no los
+ * distingue y es justo la diferencia sobre la que se puede actuar.
+ */
+function resumenDiario_(pts) {
+  const porDia = new Map();
+  for (const p of pts) {
+    if (!porDia.has(p.dia)) porDia.set(p.dia, []);
+    porDia.get(p.dia).push(p.y);
+  }
+  return [...porDia.entries()]
+    .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+    .map(([dia, ys]) => ({
+      dia,
+      n: ys.length,
+      mediana: mediana_(ys),
+      p25: percentil_(ys, 25),
+      p75: percentil_(ys, 75),
+      // Un día de dos carros no es una jornada medida: se dibuja, pero no vota.
+      fiable: ys.length >= MIN_CARROS_POR_DIA,
+    }));
 }
+
+/**
+ * bandaVisible_ — límites del eje a partir del subconjunto filtrado.
+ *
+ * Dinámica (cambia con el rol y el modelo elegidos) pero siempre con el
+ * objetivo holgadamente dentro: un eje que se coma la línea de meta no sirve
+ * para lo único que se le pide a este gráfico.
+ */
+function bandaVisible_(ys, objetivoH) {
+  const techoPct = percentil_(ys, PCT_TECHO);
+  const sueloPct = percentil_(ys, PCT_SUELO);
+  const techo = Math.max(Number.isFinite(techoPct) ? techoPct : 0, objetivoH * TECHO_MIN_x_OBJETIVO);
+  const suelo = Math.max(0, Math.min(Number.isFinite(sueloPct) ? sueloPct : 0, objetivoH * SUELO_MAX_x_OBJETIVO));
+  return { suelo, techo };
+}
+
+// ─── Controles ───────────────────────────────────────────────────────────────
 
 /** Barra de filtros + botón. Se re-pinta sola al cambiar de selección. */
 function pintarControles_(todos) {
@@ -179,10 +255,6 @@ function pintarControles_(todos) {
         ${opt("TODOS", `Todos los modelos (${modelos.length})`, F.modelo)}
         ${modelos.map(m => opt(m, m, F.modelo)).join("")}
       </select>
-      <select id="supTrendEscala" class="small" style="padding:7px 10px; border-radius:8px;">
-        ${opt("LOG", "Detalle cerca del objetivo", F.escala)}
-        ${opt("LINEAL", "Horas a escala real", F.escala)}
-      </select>
       <span class="small" id="supTrendCount" style="opacity:.7;"></span>
     </div>`;
 
@@ -201,15 +273,16 @@ function pintarControles_(todos) {
   };
   onFiltro("#supTrendRol", "rol");
   onFiltro("#supTrendModelo", "modelo");
-  onFiltro("#supTrendEscala", "escala");
 }
+
+// ─── Pintado ─────────────────────────────────────────────────────────────────
 
 function pintar_() {
   destroyTrendChart_();
   if (!_last) return;
 
-  const canvasEl = document.getElementById("supTrendChart");
-  const wrap     = document.getElementById("supTrendCanvasWrap");
+  const canvasEl  = document.getElementById("supTrendChart");
+  const wrap      = document.getElementById("supTrendCanvasWrap");
   const lecturaEl = document.getElementById("supTrendLectura");
   if (!canvasEl || !wrap) return;
 
@@ -225,151 +298,234 @@ function pintar_() {
   if (lecturaEl) lecturaEl.style.display = F.visible ? "block" : "none";
   if (!F.visible) return;
 
-  if (pts.length < 2) {
-    if (lecturaEl) lecturaEl.innerHTML = "Faltan carros cerrados con estos filtros para dibujar una tendencia.";
+  const dias = resumenDiario_(pts);
+  if (dias.length < MIN_DIAS_SERIE) {
+    if (lecturaEl) {
+      lecturaEl.innerHTML = `Con estos filtros hay ${dias.length} jornada(s) cerrada(s). ` +
+        `Hacen falta ${MIN_DIAS_SERIE} para comparar día contra día.`;
+    }
     wrap.style.display = "none";
     return;
   }
 
-  const objetivoMin = Math.max(1, Number(cfg("TARGET_CONVERSION_MIN")) || 180);
-  const objetivoH   = objetivoMin / 60;
-  const sospechosoH = objetivoH * 2;
+  const objetivoMin  = Math.max(1, Number(cfg("TARGET_CONVERSION_MIN")) || 180);
+  const objetivoH    = objetivoMin / 60;
+  const sospechosoH  = objetivoH * SOSPECHOSO_x_OBJETIVO;
 
-  // La regresión va sobre el ÍNDICE del punto, que es el eje X del gráfico.
-  const modelo    = theilSen_(pts.map((p, i) => ({ x: i, y: p.y })));
-  const tendencia = modelo.ok ? pts.map((_, i) => modelo.intercepto + modelo.pendiente * i) : [];
-  const lectura   = lecturaTendencia_(modelo, objetivoH, Math.max(0, pts.length - 1));
+  const { suelo, techo } = bandaVisible_(pts.map(p => p.y), objetivoH);
+  const dentro_ = (v) => v >= suelo && v <= techo;
+  const aRiel_  = (v) => Math.min(techo, Math.max(suelo, v));
+
+  // ── Tendencia: Theil–Sen sobre las medianas diarias FIABLES, contra la
+  // FECHA real, no contra la posición del día en la lista. Un lunes después de
+  // un feriado largo quedaría pegado al viernes y la pendiente saldría inflada.
+  // Por eso el eje X también es lineal en días y no una lista de categorías —
+  // que además Chart.js resolvería mal: sobre una escala de categorías ignora
+  // las x numéricas y las sustituye por la posición en el array, lo que dejaría
+  // cada carro de la nube en un día que no es el suyo.
+  const base0 = dias[0].dia;
+  dias.forEach(d => { d.x = diasEntre_(base0, d.dia); });
+
+  const fiables  = dias.filter(d => d.fiable && Number.isFinite(d.mediana));
+  const modelo   = theilSen_(fiables.map(d => ({ x: d.x, y: d.mediana })));
+  const mk       = mannKendall_(fiables.map(d => d.mediana));
+  const xUltimo  = dias[dias.length - 1].x;
+  const lectura  = lecturaTendencia_(modelo, objetivoH, xUltimo, 30, mk);
+  const recta    = modelo.ok
+    ? dias.map(d => ({ x: d.x, y: modelo.intercepto + modelo.pendiente * d.x }))
+    : [];
 
   const c    = readVizColors();
-  const base = chartBaseOptions(c);
-  const line = c.accent2;
+  const b    = chartBaseOptions(c);
+  const acc  = c.accent2;
+  const malo = c.bad || "#d03b3b";
 
-  const esLog = F.escala === "LOG";
-  const ys    = pts.map(p => p.y);
-  const marcas = ticksLog_(Math.min(...ys), Math.max(...ys), objetivoH);
-  // En log el cero no existe: un valor de la recta que caiga en negativo (la
-  // extrapolación de Theil–Sen puede hacerlo con pocos puntos) se deja sin
-  // dibujar en vez de romper el eje entero.
-  const paraEje_ = (v) => (esLog && !(v > 0) ? null : v);
+  // La nube cruda va como textura de fondo: un carro por punto, en su jornada.
+  // Deja ver la dispersión real y de dónde sale cada mediana, sin competir con
+  // la serie diaria, que es lo que se lee.
+  const idxDia = new Map(dias.map((d, i) => [d.dia, i]));
+  const nube = [], rielAlto = [], rielBajo = [];
+  for (const p of pts) {
+    const d = dias[idxDia.get(p.dia) ?? -1];
+    if (!d) continue;
+    const destino = dentro_(p.y) ? nube : (p.y > techo ? rielAlto : rielBajo);
+    destino.push({ x: d.x, y: aRiel_(p.y), _p: p });
+  }
+
+  const ds = [];
+
+  // Banda p25–p75: se dibuja primero para que quede DEBAJO de todo. Es
+  // contexto, no dato que se señale con el dedo.
+  ds.push({
+    label: "p25 diario", data: dias.map(d => ({ x: d.x, y: aRiel_(d.p25) })),
+    borderColor: "transparent", pointRadius: 0, fill: false, tension: .3, order: 40,
+  });
+  ds.push({
+    label: "Mitad central de los carros (p25–p75)", data: dias.map(d => ({ x: d.x, y: aRiel_(d.p75) })),
+    borderColor: "transparent", backgroundColor: hexA(acc, .14),
+    pointRadius: 0, fill: "-1", tension: .3, order: 39,
+  });
+
+  ds.push({
+    label: `Objetivo ${Math.round(objetivoMin)} min`,
+    data: dias.map(d => ({ x: d.x, y: objetivoH })),
+    borderColor: c.warn || "#facc15",
+    borderWidth: 2, borderDash: [6, 5], pointRadius: 0, fill: false, tension: 0, order: 30,
+  });
+
+  if (recta.length) {
+    ds.push({
+      label: mk.significativa ? "Tendencia" : "Tendencia (no significativa)",
+      data: recta.map(r => ({ x: r.x, y: dentro_(r.y) ? r.y : null })),
+      borderColor: mk.significativa ? (c.good || "#0ca30c") : hexA(c.ink2, .5),
+      borderWidth: 3, borderDash: mk.significativa ? [] : [4, 4],
+      pointRadius: 0, fill: false, tension: 0, spanGaps: true, order: 20,
+    });
+  }
+
+  ds.push({
+    label: "Carros (uno por punto)",
+    data: nube,
+    showLine: false, pointRadius: 2, pointHoverRadius: 5,
+    pointBackgroundColor: hexA(acc, .22), pointBorderWidth: 0, order: 15,
+  });
+
+  ds.push({
+    label: "Mediana del día",
+    data: dias.map(d => ({ x: d.x, y: aRiel_(d.mediana) })),
+    borderColor: acc, borderWidth: 3, tension: .25, fill: false,
+    pointRadius: dias.map(d => (d.fiable ? 3.5 : 2)),
+    pointHoverRadius: 7,
+    pointBackgroundColor: dias.map(d => (d.mediana > sospechosoH ? malo : acc)),
+    pointBorderColor: hexA(c.surface, 1), pointBorderWidth: 1,
+    order: 10,
+  });
+
+  // Rieles: lo que no cabe en la banda se apoya en el borde como triángulo.
+  const riel_ = (etiqueta, datos, rot) => ({
+    label: etiqueta, data: datos,
+    showLine: false, pointStyle: "triangle", rotation: rot,
+    pointRadius: 6, pointHoverRadius: 9,
+    pointBackgroundColor: hexA(malo, .85), pointBorderColor: hexA(c.surface, 1), pointBorderWidth: 1,
+    order: 5,
+  });
+  if (rielAlto.length) ds.push(riel_(`Sobre ${fmtHoras_(techo)} (${rielAlto.length})`, rielAlto, 0));
+  if (rielBajo.length) ds.push(riel_(`Bajo ${fmtHoras_(suelo)} (${rielBajo.length})`, rielBajo, 180));
 
   chartInstance = new Chart(canvasEl.getContext("2d"), {
     type: "line",
-    data: {
-      labels: pts.map((_, i) => i),
-      datasets: [
-        // Objetivo y tendencia van primero: quedan DEBAJO de la nube, que es
-        // el dato. Las líneas son la referencia, no el protagonista.
-        {
-          label: `Objetivo ${Math.round(objetivoMin)} min`,
-          data: pts.map(() => objetivoH),
-          borderColor: c.warn || "#facc15",
-          borderWidth: 2, borderDash: [6, 5], pointRadius: 0, fill: false, tension: 0,
-        },
-        ...(tendencia.length ? [{
-          label: "Tendencia",
-          data: tendencia.map(paraEje_),
-          spanGaps: true,
-          borderColor: c.good || "#0ca30c",
-          borderWidth: 3, pointRadius: 0, fill: false, tension: 0,
-        }] : []),
-        {
-          label: "Tiempo por carro (h)",
-          data: pts.map(p => p.y),
-          // Sin línea entre puntos: son carros distintos, no una serie continua.
-          // Unirlos sugeriría una evolución que no existe entre dos VIN.
-          showLine: false,
-          pointRadius: 3.5,
-          pointHoverRadius: 7,
-          pointBackgroundColor: pts.map(p => (p.y > sospechosoH ? (c.bad || "#d03b3b") : line)),
-          pointBorderColor: hexA(c.surface, 1),
-          pointBorderWidth: 1,
-        },
-      ],
-    },
+    data: { datasets: ds },
     options: {
-      ...base,
+      ...b,
       plugins: {
-        ...base.plugins,
+        ...b.plugins,
         title: { display: false },
-        legend: { display: true, labels: { color: c.ink2, boxWidth: 12, font: { size: 10 } } },
+        legend: {
+          display: true,
+          labels: {
+            color: c.ink2, boxWidth: 12, font: { size: 10 },
+            // "p25 diario" solo existe para que la banda tenga contra qué
+            // rellenar; enseñarlo en la leyenda sería ruido.
+            filter: (item) => item.text !== "p25 diario",
+          },
+        },
         tooltip: {
-          ...base.plugins.tooltip,
+          ...b.plugins.tooltip,
           callbacks: {
             title: (ctx) => {
-              const p = pts[ctx?.[0]?.dataIndex];
-              return p ? fmtFecha_(p.date) : "";
+              // La nube y los rieles llevan un punto por CARRO: su dataIndex no
+              // es el del día. El día se saca del propio carro.
+              const p = ctx?.[0]?.raw?._p;
+              const d = p ? dias[idxDia.get(p.dia)] : dias[ctx?.[0]?.dataIndex];
+              return d ? `${fmtDiaCorto_(d.dia)} · ${d.n} carro(s)` : "";
             },
             label: (ctx) => {
-              // Solo la NUBE lleva VIN. Sin esta guarda, pasar por la recta o
-              // por el objetivo mostraría el VIN del carro de ese índice.
-              if (!String(ctx.dataset?.label || "").startsWith("Tiempo por carro")) {
-                return `${ctx.dataset?.label}: ${Number(ctx.parsed?.y ?? 0).toFixed(2)} h`;
+              const p = ctx.raw?._p;
+              if (p) {
+                const sosp = p.y > sospechosoH ? "  ⚠ probable OT sin cerrar" : "";
+                return [
+                  `${fmtHoras_(p.y)}${sosp}`,
+                  `VIN: ${p.vin}`,
+                  `Modelo: ${p.modelo}`,
+                  p.tecnico ? `Técnico: ${p.tecnico}` : "",
+                ].filter(Boolean);
               }
-              const p = pts[ctx.dataIndex];
-              if (!p) return "";
-              const sosp = p.y > sospechosoH ? "  ⚠ probable OT sin cerrar" : "";
-              return [
-                `${p.y.toFixed(2)} h${sosp}`,
-                `VIN: ${p.vin}`,
-                `Modelo: ${p.modelo}`,
-                p.tecnico ? `Técnico: ${p.tecnico}` : "",
-              ].filter(Boolean);
+              const et = String(ctx.dataset?.label || "");
+              if (et === "Mediana del día") {
+                const d = dias[ctx.dataIndex];
+                const flojo = d && !d.fiable ? "  (pocos carros: no vota en la tendencia)" : "";
+                return `Mediana: ${fmtHoras_(d?.mediana)}${flojo}`;
+              }
+              if (et.startsWith("Mitad central")) {
+                const d = dias[ctx.dataIndex];
+                return `Mitad central: ${fmtHoras_(d?.p25)} – ${fmtHoras_(d?.p75)}`;
+              }
+              return `${et}: ${fmtHoras_(Number(ctx.parsed?.y ?? 0))}`;
             },
           },
         },
       },
       scales: {
-        ...base.scales,
+        ...b.scales,
         x: {
-          ...base.scales.x,
+          ...b.scales.x,
+          type: "linear",
+          min: 0,
+          max: xUltimo,
           ticks: {
-            ...base.scales.x.ticks,
-            maxRotation: 0, autoSkip: true, maxTicksLimit: 6,
-            callback: (_v, i) => {
-              const paso = Math.max(1, Math.floor(pts.length / 6));
-              return (i === 0 || i === pts.length - 1 || i % paso === 0) && pts[i]
-                ? fmtFecha_(pts[i].date) : "";
-            },
+            ...b.scales.x.ticks,
+            maxRotation: 0, autoSkip: true, maxTicksLimit: 8,
+            // El valor del eje son días desde la primera jornada; al supervisor
+            // se le enseña la fecha, no el número de días.
+            callback: (v) => fmtDiaCorto_(diaMasOffset_(base0, v)),
           },
         },
-        y: esLog ? {
-          ...base.scales.y,
-          type: "logarithmic",
-          // Los extremos son el primer y el último peldaño: así el eje empieza
-          // y termina en una marca rotulada y nadie queda pegado al borde.
-          min: marcas[0],
-          max: marcas[marcas.length - 1],
-          // Chart.js rellena el eje log con sus propias marcas (1, 2, 5, 10…),
-          // que no dicen nada aquí. Se reemplazan por las del objetivo.
-          afterBuildTicks: (eje) => { eje.ticks = marcas.map(value => ({ value })); },
-          ticks: {
-            ...base.scales.y.ticks,
-            autoSkip: false,
-            callback: (v) => fmtHoras_(v),
-          },
-        } : {
-          ...base.scales.y,
-          // En lineal arranca en cero a propósito: un eje recortado exagera la
-          // pendiente, y este gráfico se usa para decidir si alguien mejora.
-          beginAtZero: true,
-          ticks: { ...base.scales.y.ticks, callback: (v) => `${v}h` },
+        y: {
+          ...b.scales.y,
+          // Los límites NO salen de min/max: salen de percentiles del
+          // subconjunto filtrado, con el objetivo siempre dentro.
+          min: suelo,
+          max: techo,
+          ticks: { ...b.scales.y.ticks, callback: (v) => fmtHoras_(v) },
         },
       },
     },
   });
 
-  if (lecturaEl) {
-    const n = pts.filter(p => p.y > sospechosoH).length;
-    const aviso = n
-      ? ` · <span style="color:var(--danger,#f87171);">${n} carro(s) sobre ${sospechosoH.toFixed(0)} h</span>, probablemente OTs sin cerrar: se muestran, pero no inclinan la tendencia.`
-      : "";
-    // Advertir la escala es parte del dato: en log la nube parece más apretada
-    // de lo que es y la recta se dibuja curvada. Callarlo sería engañar.
-    const nota = esLog
-      ? ` · <span style="opacity:.75;">Eje en pasos de ×${PASO_LOG} sobre el objetivo (${fmtHoras_(objetivoH)}): acerca los extremos para ver el detalle de la zona del objetivo.</span>`
-      : "";
-    lecturaEl.innerHTML = `📈 <b>${lectura.texto}</b>${aviso}${nota}`;
+  if (lecturaEl) lecturaEl.innerHTML = textoLectura_(lectura, modelo, mk, dias, rielAlto, rielBajo, suelo, techo, sospechosoH);
+}
+
+/** La frase de abajo: qué dice la tendencia, con cuánta confianza, y qué quedó fuera del eje. */
+function textoLectura_(lectura, modelo, mk, dias, rielAlto, rielBajo, suelo, techo, sospechosoH) {
+  const partes = [`📈 <b>${lectura.texto}</b>`];
+
+  // La pendiente en minutos por SEMANA: en minutos por día sale "-0,6 min" y
+  // no significa nada para nadie.
+  if (modelo.ok && mk.ok && mk.significativa) {
+    const minSemana = modelo.pendiente * 60 * DIAS_POR_SEMANA;
+    const signo = minSemana < 0 ? "−" : "+";
+    partes.push(`${signo}${Math.abs(minSemana).toFixed(0)} min por semana ` +
+      `<span style="opacity:.7;">(${dias.length} jornadas, p=${mk.p.toFixed(3)})</span>`);
+  } else if (mk.ok) {
+    partes.push(`<span style="opacity:.7;">${dias.length} jornadas · p=${mk.p.toFixed(2)}: ` +
+      `el sube y baja no se distingue del azar</span>`);
   }
+
+  const lentos = dias.filter(d => d.mediana > sospechosoH).length;
+  if (lentos) {
+    partes.push(`<span style="color:var(--danger,#f87171);">${lentos} jornada(s) con mediana sobre ` +
+      `${fmtHoras_(sospechosoH)}</span>`);
+  }
+
+  const fuera = [];
+  if (rielAlto.length) fuera.push(`${rielAlto.length} sobre ${fmtHoras_(techo)} (probable OT sin cerrar)`);
+  if (rielBajo.length) fuera.push(`${rielBajo.length} bajo ${fmtHoras_(suelo)} (probable OT cerrada por error)`);
+  if (fuera.length) {
+    partes.push(`<span style="opacity:.75;">Fuera del eje, apoyados en el borde: ${fuera.join(" · ")}. ` +
+      `Se cuentan, pero no estiran la escala ni mueven la mediana.</span>`);
+  }
+
+  return partes.join(" · ");
 }
 
 /**
