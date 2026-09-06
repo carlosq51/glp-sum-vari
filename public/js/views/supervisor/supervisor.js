@@ -422,7 +422,9 @@ function renderSupervisor_(j) {
     }
   }
 
-  // Renderizar gráfico de tendencias (solo si hay técnico seleccionado)
+  // Gráfico de tendencias. Ya NO exige técnico: "¿está bajando el tiempo de
+  // conversión?" es una pregunta del taller entero, y limitarla a una persona
+  // obligaba a revisarla de uno en uno para responder algo global.
   const canvasEl = document.getElementById("supTrendChart");
   if (canvasEl) {
     renderTrendChart_(canvasEl, list, hasTechFilter ? techName : "");

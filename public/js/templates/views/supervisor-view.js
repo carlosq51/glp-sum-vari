@@ -85,8 +85,16 @@ export function supervisorView() {
 
         <!-- Gráfico de tendencias (solo cuando hay técnico seleccionado) -->
         <div id="supTrendContainer" style="display:none; margin-top:20px; background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(0,0,0,.08)); border:1px solid rgba(255,255,255,.18); border-radius:18px; padding:20px;">
-          <canvas id="supTrendChart" style="width:100%; height:400px;"></canvas>
-          <div id="supTrendLectura" class="small" style="margin-top:10px; opacity:.9; line-height:1.5;"></div>
+          <div id="supTrendControls"></div>
+          <!-- La ALTURA vive aquí, no en el canvas, y el wrap es position:relative.
+               Con responsive + maintainAspectRatio:false, Chart.js dimensiona el
+               canvas al contenedor; si el contenedor sacaba su altura del canvas
+               y el canvas del contenedor, cada frame crecía un poco y el gráfico
+               se "generaba" hacia abajo sin parar. Ese era el bug. -->
+          <div id="supTrendCanvasWrap" style="display:none; position:relative; height:380px; width:100%;">
+            <canvas id="supTrendChart"></canvas>
+          </div>
+          <div id="supTrendLectura" class="small" style="display:none; margin-top:10px; opacity:.9; line-height:1.5;"></div>
         </div>
 
         <div id="supSummary" class="small" style="margin-top:10px;"></div>

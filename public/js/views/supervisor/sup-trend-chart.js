@@ -1,192 +1,208 @@
 // =========================
 // public/js/views/supervisor/sup-trend-chart.js
-// GRÁFICO DE TENDENCIAS: Muestra evolución del tiempo de conversión por técnico
+// Tendencia de los tiempos de conversión: datos crudos + regresión + objetivo.
+//
+// QUÉ CONTESTA: "¿estamos mejorando?". El promedio del mes no lo dice —sube y
+// baja con el mix de carros— y la lista de tiempos tampoco: son cien números
+// sueltos. Aquí se ve la nube real, la recta de tendencia encima, y la línea
+// del objetivo cruzando las dos.
+//
+// LA RECTA ES THEIL–SEN, NO MÍNIMOS CUADRADOS
+// Un carro que nadie cerró marca catorce horas. Eso no es trabajo lento, es un
+// registro roto, y con el error al cuadrado un solo punto así inclina la recta
+// entera: la "tendencia" acabaría midiendo los olvidos. Theil–Sen toma la
+// mediana de las pendientes entre pares y aguanta ~29% de basura. Ver
+// lib/regresion.js.
+//
+// LOS OUTLIERS SE DIBUJAN, NO SE BORRAN
+// Antes se descartaba todo lo que pasara de 10 h. Escondía datos: el supervisor
+// no veía que existían, y son justo la señal de que hay que enseñarle a alguien
+// a cerrar su OT. Se les quita el voto sobre la recta, no la existencia.
+//
+// EL CANVAS NO LLEVA ALTURA
+// Con responsive + maintainAspectRatio:false, Chart.js dimensiona el canvas al
+// CONTENEDOR. Si el contenedor no tiene altura propia, la toma del canvas, que
+// a su vez la toma del contenedor: cada frame crece un poco y el gráfico se
+// "genera" hacia abajo sin parar. La altura vive en el contenedor (que además
+// es position:relative) y el canvas no la declara.
 // =========================
 
 import { Chart } from "chart.js/auto";
-import { readVizColors, chartBaseOptions, verticalFill, hexA } from "../../core/viz.js";
+import { readVizColors, chartBaseOptions, hexA } from "../../core/viz.js";
 import { cfg } from "../../core/config.js";
 import { theilSen_, lecturaTendencia_ } from "../../../../lib/regresion.js";
 
 let chartInstance = null;
-let _last = null; // { canvasEl, items, techName } para re-render al cambiar de tema
+let _last = null;   // { items, techName } para re-render al cambiar de tema/filtro
 
-// Re-render automático cuando cambia el tema (colores desde tokens)
+// Filtros de la vista. Viven aquí porque son del gráfico, no del reporte: el
+// supervisor acota lo que MIRA sin recargar ni volver a consultar la base.
+const F = { rol: "TODOS", modelo: "TODOS", visible: false };
+
+const ROLES_CONV = ["MOTOR", "TANQUE", "TANQUERO", "TECNICO", "CONVERSION"];
+const esDelantero_ = (r) => ["MOTOR", "TECNICO", "CONVERSION"].includes(r);
+const esTanquero_  = (r) => ["TANQUE", "TANQUERO"].includes(r);
+
 window.addEventListener("glp:themechange", () => {
-  if (_last && chartInstance) {
-    renderTrendChart_(_last.canvasEl, _last.items, _last.techName);
-  }
+  if (_last && F.visible) pintar_();
 });
 
-/**
- * Renderiza gráfico de tendencias de tiempo de conversión
- * @param {HTMLElement} canvasEl - Canvas element para Chart.js
- * @param {Array} items - Array de items filtrados del técnico
- * @param {string} techName - Nombre del técnico
- */
-export function renderTrendChart_(canvasEl, items, techName) {
-  if (!canvasEl) return;
+export function destroyTrendChart_() {
+  try { chartInstance?.destroy(); } catch { /* ya destruido */ }
+  chartInstance = null;
+}
 
-  // Destruir instancia previa
-  if (chartInstance) {
-    chartInstance.destroy();
-    chartInstance = null;
-  }
+/** Puntos utilizables: finalizados, de conversión, con tiempo y fecha. */
+function puntosDe_(items) {
+  const out = [];
+  for (const it of items || []) {
+    const est = String(it?.estado || "").trim().toUpperCase();
+    if (!["FINALIZADO", "FIN", "COMPLETADO"].includes(est)) continue;
 
-  // Si no hay técnico seleccionado, ocultar
-  if (!techName || techName === "Técnico" || items.length === 0) {
-    canvasEl.style.display = "none";
-    const container = canvasEl.closest("#supTrendContainer");
-    if (container) container.style.display = "none";
-    return;
-  }
+    const rol = String(it?.rol || it?.rolTrabajo || "").toUpperCase();
+    if (!ROLES_CONV.includes(rol)) continue;
 
-  _last = { canvasEl, items, techName };
+    const ms = Number(it?.tiempo_ms ?? it?.tiempo_trab_ms ?? 0);
+    if (!Number.isFinite(ms) || ms <= 0) continue;
 
-  const container = canvasEl.closest("#supTrendContainer");
-  if (container) container.style.display = "block";
-  canvasEl.style.display = "block";
+    const d = new Date(it?.updated_at || it?.fecha_asignacion || it?.fecha_inicio || 0);
+    if (isNaN(d.getTime()) || d.getTime() <= 0) continue;
 
-  // Preparar datos: Mostrar CADA conversión individual (no promedios)
-  const allPoints = [];
-  let finalizadosCount = 0;
-
-  items.forEach((it) => {
-    const estado = String(it.estado || "").trim().toUpperCase();
-    const isFinalizado = estado === "FINALIZADO" || estado === "FIN" || estado === "COMPLETADO";
-    if (!isFinalizado) return;
-
-    finalizadosCount++;
-
-    const tiempoMs = Number(it?.tiempo_ms ?? 0);
-    if (!Number.isFinite(tiempoMs) || tiempoMs <= 0) return;
-
-    const tiempoHoras = tiempoMs / (1000 * 60 * 60);
-
-    // Extraer fecha
-    let fecha = it.updated_at || it.fecha_asignacion || it.fecha_inicio || it.fecha || it.fechaHora;
-    if (!fecha) return;
-
-    const dateObj = new Date(fecha);
-    if (isNaN(dateObj.getTime())) return;
-
-    allPoints.push({
-      x: dateObj.toISOString().split("T")[0], // YYYY-MM-DD
-      y: tiempoHoras,
-      date: dateObj,
-      vin: it.vin || "N/A",
+    out.push({
+      y: ms / 3600000,             // horas
+      date: d,
+      rol,
+      vin: it?.vin || "N/A",
+      modelo: String(it?.modelo || "").trim() || "Sin modelo",
+      tecnico: it?.userName || "",
     });
+  }
+  out.sort((a, b) => a.date - b.date);
+  return out;
+}
+
+const aplicaFiltro_ = (p) => {
+  if (F.rol === "DELANTERO" && !esDelantero_(p.rol)) return false;
+  if (F.rol === "TANQUERO"  && !esTanquero_(p.rol))  return false;
+  if (F.modelo !== "TODOS" && p.modelo !== F.modelo) return false;
+  return true;
+};
+
+function fmtFecha_(d) {
+  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/** Barra de filtros + botón. Se re-pinta sola al cambiar de selección. */
+function pintarControles_(todos) {
+  const box = document.getElementById("supTrendControls");
+  if (!box) return;
+
+  const modelos = [...new Set(todos.map(p => p.modelo))].sort();
+  const opt = (v, txt, sel) => `<option value="${v}"${sel === v ? " selected" : ""}>${txt}</option>`;
+
+  box.innerHTML = `
+    <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:12px;">
+      <button type="button" id="supTrendToggle" class="btn3"
+        style="font-weight:900;">${F.visible ? "Ocultar gráfico" : "📈 Mostrar gráfico"}</button>
+      <select id="supTrendRol" class="small" style="padding:7px 10px; border-radius:8px;">
+        ${opt("TODOS", "Ambos puestos", F.rol)}
+        ${opt("DELANTERO", "Solo delantero", F.rol)}
+        ${opt("TANQUERO", "Solo tanquero", F.rol)}
+      </select>
+      <select id="supTrendModelo" class="small" style="padding:7px 10px; border-radius:8px; max-width:190px;">
+        ${opt("TODOS", `Todos los modelos (${modelos.length})`, F.modelo)}
+        ${modelos.map(m => opt(m, m, F.modelo)).join("")}
+      </select>
+      <span class="small" id="supTrendCount" style="opacity:.7;"></span>
+    </div>`;
+
+  box.querySelector("#supTrendToggle")?.addEventListener("click", () => {
+    F.visible = !F.visible;
+    pintar_();
   });
+  const onFiltro = (id, campo) => {
+    box.querySelector(id)?.addEventListener("change", (e) => {
+      F[campo] = e.target.value;
+      // Cambiar un filtro implica querer verlo: obligar a pulsar "mostrar"
+      // otra vez sería castigar al que está explorando.
+      F.visible = true;
+      pintar_();
+    });
+  };
+  onFiltro("#supTrendRol", "rol");
+  onFiltro("#supTrendModelo", "modelo");
+}
 
-  // Ordenar por fecha
-  allPoints.sort((a, b) => new Date(a.x) - new Date(b.x));
+function pintar_() {
+  destroyTrendChart_();
+  if (!_last) return;
 
-  // Los carros disparatados YA NO SE BORRAN.
-  //
-  // Antes se descartaba todo lo que pasara de 10 h. El motivo era bueno —esos
-  // puntos son casi siempre OTs que nadie cerró, no trabajo lento— pero la
-  // solución escondía datos: el supervisor no veía que existían, y son justo la
-  // señal de que hay que enseñarle a alguien a cerrar su OT.
-  //
-  // Ahora se dibujan todos y se les quita el VOTO, no la existencia: la recta
-  // de tendencia es Theil–Sen (mediana de pendientes), que aguanta hasta ~29%
-  // de basura sin moverse. Ver lib/regresion.js.
-  const filteredPoints = allPoints;
+  const canvasEl = document.getElementById("supTrendChart");
+  const wrap     = document.getElementById("supTrendCanvasWrap");
+  const lecturaEl = document.getElementById("supTrendLectura");
+  if (!canvasEl || !wrap) return;
 
-  // Umbral de "esto huele a OT sin cerrar": el doble del objetivo. Se pintan
-  // en rojo para que se distingan de un carro simplemente lento.
-  const objetivoMin  = Math.max(1, Number(cfg("TARGET_CONVERSION_MIN")) || 180);
-  const objetivoH    = objetivoMin / 60;
-  const sospechosoH  = objetivoH * 2;
-  const nSospechosos = filteredPoints.filter(p => p.y > sospechosoH).length;
+  const todos = puntosDe_(_last.items);
+  pintarControles_(todos);
 
-  if (filteredPoints.length === 0) {
-    canvasEl.style.display = "none";
-    if (container) container.style.display = "none";
+  const pts = todos.filter(aplicaFiltro_);
+  const cnt = document.getElementById("supTrendCount");
+  if (cnt) cnt.textContent = `${pts.length} de ${todos.length} carros`;
+
+  // Oculto: el canvas no se dibuja y no hay nada que crezca.
+  wrap.style.display = F.visible ? "block" : "none";
+  if (lecturaEl) lecturaEl.style.display = F.visible ? "block" : "none";
+  if (!F.visible) return;
+
+  if (pts.length < 2) {
+    if (lecturaEl) lecturaEl.innerHTML = "Faltan carros cerrados con estos filtros para dibujar una tendencia.";
+    wrap.style.display = "none";
     return;
   }
 
-  // Crear labels con índice secuencial
-  const labels = filteredPoints.map((_, idx) => idx);
-  
-  const formatDate = (d) => {
-    const day = String(d.getDate()).padStart(2, '0');
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    return `${day}/${month}`;
-  };
+  const objetivoMin = Math.max(1, Number(cfg("TARGET_CONVERSION_MIN")) || 180);
+  const objetivoH   = objetivoMin / 60;
+  const sospechosoH = objetivoH * 2;
 
-  // Tendencia robusta sobre (índice, horas). El eje X del gráfico es el índice
-  // secuencial del punto, así que la regresión se hace en ese mismo espacio
-  // para que la recta caiga donde tiene que caer.
-  const modelo = theilSen_(filteredPoints.map((p, i) => ({ x: i, y: p.y })));
-  const tendencia = modelo.ok
-    ? labels.map(i => modelo.intercepto + modelo.pendiente * i)
-    : [];
-  const lectura = lecturaTendencia_(modelo, objetivoH, Math.max(0, filteredPoints.length - 1));
+  // La regresión va sobre el ÍNDICE del punto, que es el eje X del gráfico.
+  const modelo    = theilSen_(pts.map((p, i) => ({ x: i, y: p.y })));
+  const tendencia = modelo.ok ? pts.map((_, i) => modelo.intercepto + modelo.pendiente * i) : [];
+  const lectura   = lecturaTendencia_(modelo, objetivoH, Math.max(0, pts.length - 1));
 
-  // La lectura en castellano bajo el gráfico. Una recta sin interpretar obliga
-  // a cada supervisor a deducir la pendiente a ojo, y cada uno deduce otra cosa.
-  const elLectura = document.getElementById("supTrendLectura");
-  if (elLectura) {
-    const aviso = nSospechosos
-      ? ` · <span style="color:var(--danger,#f87171);">${nSospechosos} carro(s) sobre ${sospechosoH.toFixed(0)} h</span>, probablemente OTs sin cerrar: se muestran pero no inclinan la tendencia.`
-      : "";
-    elLectura.innerHTML = `📈 <b>${lectura.texto}</b>${aviso}`;
-  }
-
-  // Crear gráfico
-  const ctx = canvasEl.getContext("2d");
-
-  // Colores desde los tokens del tema activo (day/night)
-  const c = readVizColors();
-  const line = c.accent2; // azul del acento
+  const c    = readVizColors();
   const base = chartBaseOptions(c);
+  const line = c.accent2;
 
-  chartInstance = new Chart(ctx, {
+  chartInstance = new Chart(canvasEl.getContext("2d"), {
     type: "line",
     data: {
-      labels: labels,
+      labels: pts.map((_, i) => i),
       datasets: [
-        // Recta de tendencia y objetivo van PRIMERO para quedar por debajo de
-        // los puntos: la nube es el dato, las líneas son la referencia.
+        // Objetivo y tendencia van primero: quedan DEBAJO de la nube, que es
+        // el dato. Las líneas son la referencia, no el protagonista.
+        {
+          label: `Objetivo ${Math.round(objetivoMin)} min`,
+          data: pts.map(() => objetivoH),
+          borderColor: c.warn || "#facc15",
+          borderWidth: 2, borderDash: [6, 5], pointRadius: 0, fill: false, tension: 0,
+        },
         ...(tendencia.length ? [{
           label: "Tendencia",
           data: tendencia,
-          borderColor: c.ok || "#22c55e",
-          borderWidth: 3,
-          borderDash: [],
-          pointRadius: 0,
-          tension: 0,
-          fill: false,
+          borderColor: c.good || "#0ca30c",
+          borderWidth: 3, pointRadius: 0, fill: false, tension: 0,
         }] : []),
         {
-          label: `Objetivo ${Math.round(objetivoMin)} min`,
-          data: labels.map(() => objetivoH),
-          borderColor: c.warn || "#facc15",
-          borderWidth: 2,
-          borderDash: [6, 5],
-          pointRadius: 0,
-          tension: 0,
-          fill: false,
-        },
-        {
-          label: "Tiempo de conversión (h)",
-          data: filteredPoints.map(p => p.y),
-          borderColor: line,
-          backgroundColor: (context) => {
-            const { ctx: cx, chartArea } = context.chart;
-            if (!chartArea) return hexA(line, 0.14);
-            return verticalFill(cx, chartArea, line, 0.30, 0.0);
-          },
-          borderWidth: 2,
-          tension: 0.35,
-          pointRadius: 3,
-          pointHoverRadius: 6,
-          pointBackgroundColor: filteredPoints.map(
-            p => (p.y > sospechosoH ? (c.danger || "#f87171") : line)),
-          pointBorderColor: c.surface,
-          pointBorderWidth: 2,
-          fill: true,
+          label: "Tiempo por carro (h)",
+          data: pts.map(p => p.y),
+          // Sin línea entre puntos: son carros distintos, no una serie continua.
+          // Unirlos sugeriría una evolución que no existe entre dos VIN.
+          showLine: false,
+          pointRadius: 3.5,
+          pointHoverRadius: 7,
+          pointBackgroundColor: pts.map(p => (p.y > sospechosoH ? (c.bad || "#d03b3b") : line)),
+          pointBorderColor: hexA(c.surface, 1),
+          pointBorderWidth: 1,
         },
       ],
     },
@@ -194,65 +210,87 @@ export function renderTrendChart_(canvasEl, items, techName) {
       ...base,
       plugins: {
         ...base.plugins,
-        title: { display: false }, // el título vive en el marco .trendBox
-        // Con tres series (nube, tendencia y objetivo) la leyenda deja de ser
-        // decoración: sin ella no se sabe cuál línea es cuál.
+        title: { display: false },
         legend: { display: true, labels: { color: c.ink2, boxWidth: 12, font: { size: 10 } } },
         tooltip: {
           ...base.plugins.tooltip,
           callbacks: {
-            title: (context) => formatDate(filteredPoints[context[0].dataIndex].date),
-            label: (context) => {
-              // Solo la NUBE lleva VIN. Sin esta guarda, pasar por la recta de
-              // tendencia o por la línea de objetivo mostraría el VIN del
-              // carro que casualmente cae en ese índice.
-              const esNube = String(context.dataset?.label || "").startsWith("Tiempo de conversión");
-              if (!esNube) return `${context.dataset?.label}: ${Number(context.parsed?.y ?? 0).toFixed(2)} h`;
-              const p = filteredPoints[context.dataIndex];
-              const sosp = p && p.y > sospechosoH ? " ⚠ probable OT sin cerrar" : "";
-              return [`Tiempo: ${p.y.toFixed(2)} h${sosp}`, `VIN: ${p.vin}`];
+            title: (ctx) => {
+              const p = pts[ctx?.[0]?.dataIndex];
+              return p ? fmtFecha_(p.date) : "";
+            },
+            label: (ctx) => {
+              // Solo la NUBE lleva VIN. Sin esta guarda, pasar por la recta o
+              // por el objetivo mostraría el VIN del carro de ese índice.
+              if (!String(ctx.dataset?.label || "").startsWith("Tiempo por carro")) {
+                return `${ctx.dataset?.label}: ${Number(ctx.parsed?.y ?? 0).toFixed(2)} h`;
+              }
+              const p = pts[ctx.dataIndex];
+              if (!p) return "";
+              const sosp = p.y > sospechosoH ? "  ⚠ probable OT sin cerrar" : "";
+              return [
+                `${p.y.toFixed(2)} h${sosp}`,
+                `VIN: ${p.vin}`,
+                `Modelo: ${p.modelo}`,
+                p.tecnico ? `Técnico: ${p.tecnico}` : "",
+              ].filter(Boolean);
             },
           },
         },
       },
       scales: {
+        ...base.scales,
         x: {
           ...base.scales.x,
           ticks: {
             ...base.scales.x.ticks,
-            maxRotation: 0,
-            autoSkip: true,
-            maxTicksLimit: 5,
-            callback: function (value, index) {
-              const totalPoints = filteredPoints.length;
-              const step = Math.max(1, Math.floor(totalPoints / 5));
-              if (index === 0 || index === totalPoints - 1 || index % step === 0) {
-                const point = filteredPoints[index];
-                if (point) return formatDate(point.date);
-              }
-              return "";
+            maxRotation: 0, autoSkip: true, maxTicksLimit: 6,
+            callback: (_v, i) => {
+              const paso = Math.max(1, Math.floor(pts.length / 6));
+              return (i === 0 || i === pts.length - 1 || i % paso === 0) && pts[i]
+                ? fmtFecha_(pts[i].date) : "";
             },
           },
         },
         y: {
           ...base.scales.y,
+          // Arranca en cero a propósito: un eje recortado exagera la pendiente,
+          // y este gráfico se usa para decidir si alguien está mejorando.
           beginAtZero: true,
-          ticks: {
-            ...base.scales.y.ticks,
-            callback: (value) => value.toFixed(1) + "h",
-          },
+          ticks: { ...base.scales.y.ticks, callback: (v) => `${v}h` },
         },
       },
     },
   });
+
+  if (lecturaEl) {
+    const n = pts.filter(p => p.y > sospechosoH).length;
+    const aviso = n
+      ? ` · <span style="color:var(--danger,#f87171);">${n} carro(s) sobre ${sospechosoH.toFixed(0)} h</span>, probablemente OTs sin cerrar: se muestran, pero no inclinan la tendencia.`
+      : "";
+    lecturaEl.innerHTML = `📈 <b>${lectura.texto}</b>${aviso}`;
+  }
 }
 
 /**
- * Destruir instancia del gráfico
+ * Punto de entrada desde el reporte.
+ *
+ * Ya NO exige técnico: la pregunta "¿está bajando el tiempo de conversión?" es
+ * del taller entero, y limitarla a una persona obligaba a revisarla de uno en
+ * uno para responder algo global.
+ *
+ * @param {HTMLElement} canvasEl  (se conserva por compatibilidad de la firma)
+ * @param {Array}  items          items del reporte, ya filtrados
+ * @param {string} techName       nombre si hay filtro de técnico (solo informativo)
  */
-export function destroyTrendChart_() {
-  if (chartInstance) {
-    chartInstance.destroy();
-    chartInstance = null;
-  }
+export function renderTrendChart_(canvasEl, items, techName) {
+  const container = document.getElementById("supTrendContainer");
+  if (!container) return;
+
+  const hay = (items || []).length > 0;
+  container.style.display = hay ? "block" : "none";
+  if (!hay) { destroyTrendChart_(); return; }
+
+  _last = { items, techName };
+  pintar_();
 }
