@@ -61,7 +61,11 @@ export function getScanConfig(mode) {
   ];
 
   return {
-    fps: ios ? 6 : (isBar ? 8 : 10),
+    // fps: iOS estaba en 6 y era demasiado bajo. Seis intentos de decodificación
+    // por segundo, con la mano temblando sobre un código de barras, es la
+    // diferencia entre "lee al instante" y "no lee nunca". Se sube a 10; el
+    // cuello de botella del iPhone no es la CPU, es la resolución (abajo).
+    fps: ios ? 10 : (isBar ? 8 : 10),
     // iOS siempre usa función relativa; Android puede usar función o fijo
     qrbox: ios ? qrboxFn : (isBar ? { width: 200, height: 360 } : qrboxFn),
     formatsToSupport: isBar ? barFormats : [Html5QrcodeSupportedFormats.QR_CODE],
@@ -84,9 +88,38 @@ export function getScanConfig(mode) {
  * @param {function} onDecoded
  * @returns {Promise<void>}
  */
-export async function startCameraWithFallback(instance, config, onDecoded) {
+/**
+ * Restricciones de VIDEO. Aquí estaba el problema real del iPhone.
+ *
+ * Sin pedir resolución, Safari entrega el stream por defecto —típicamente
+ * 640×480— y a esa resolución las barras finas de un VIN se funden entre sí:
+ * el decodificador no falla, es que no hay información que leer. Android no lo
+ * sufría porque su `exact: environment` negocia un stream mucho mejor.
+ *
+ * Se pide `ideal` y no `exact` a propósito: `exact` en un dispositivo que no
+ * puede darlo lanza OverconstrainedError y deja al técnico sin cámara. Con
+ * `ideal` el navegador se acerca todo lo que pueda y nunca falla por esto.
+ */
+function videoConstraints_(facingMode, isBar) {
+  return {
+    facingMode,
+    // El código de barras del VIN necesita más ancho que un QR: son barras
+    // finas repartidas a lo largo, y lo que las resuelve es la horizontal.
+    width:  { ideal: isBar ? 2560 : 1920 },
+    height: { ideal: isBar ? 1440 : 1080 },
+  };
+}
+
+export async function startCameraWithFallback(instance, config, onDecoded, { isBar = false } = {}) {
   if (isIOS_()) {
     // iOS: evitar { exact: "environment" } — genera OverconstrainedError en Safari
+    try {
+      await instance.start(videoConstraints_("environment", isBar), config, onDecoded, () => {});
+      return;
+    } catch { /* fallback */ }
+
+    // Sin resolución pedida: si el iPhone no pudo con la ideal, al menos que
+    // abra la cámara. Vale más un escaneo difícil que ninguno.
     try {
       await instance.start({ facingMode: "environment" }, config, onDecoded, () => {});
       return;
@@ -188,7 +221,9 @@ export function createScanner(readerId) {
         await onDecoded?.(code);
       };
 
-      await startCameraWithFallback(inst, cfg, wrappedOnDecoded);
+      // El modo viaja a las restricciones de vídeo: el código de barras del
+      // VIN pide más resolución horizontal que un QR.
+      await startCameraWithFallback(inst, cfg, wrappedOnDecoded, { isBar: mode === "BAR" });
     } catch (err) {
       const msg = String(err?.message || err || "");
       const isPermission = /permission|denied|notallowed|not allowed/i.test(msg);
