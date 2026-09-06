@@ -198,6 +198,8 @@ export function renderRowGroup_(row, { escapeHtml, fmtShort_ }) {
         <div class="small" style="padding:4px 10px;border-radius:8px;background:${estadoColor};font-weight:700;">
           ${escapeHtml(estadoLabel)}
         </div>
+        <button type="button" class="btn3" data-sup-fotos="1" data-vin="${escapeHtml(vin)}"
+          style="padding:4px 10px; min-height:0; font-size:.78em;">📸 Fotos</button>
       </div>
 
       <div class="card" style="margin-top:10px; border:1px solid var(--surfaceLine);">

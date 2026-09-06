@@ -31,6 +31,7 @@ import { bindSupNameSuggest_ } from "./sup-name-suggest.js";
 import { bindSupVinSuggest_ } from "./sup-vin-suggest.js";
 import { bindSupQuickDates_ } from "./sup-quick-dates.js";
 import { bindSupPausaIndefinida_ } from "./sup-pausa-indefinida.js";
+import { bindSupFotos_ } from "./sup-fotos.js";
 import { bindSupLive_, enterLive_, exitLive_ } from "./sup-live.js";
 import { bindSupOtControl_, enterOtControl_, exitOtControl_ } from "./sup-ot-control.js";
 import { bindSupIncidenciasReport_, enterIncReport_, exitIncReport_ } from "./sup-incidencias-report.js";
@@ -561,6 +562,7 @@ export function init() {
   bindSupNameSuggest_({ CORE, escapeHtml, onApply: () => fetchSupervisorReport_().catch(() => {}) });
   bindSupVinSuggest_({ CORE, escapeHtml, onApply: () => fetchSupervisorReport_().catch(() => {}) });
   bindSupPausaIndefinida_({ getJSON_user });
+  bindSupFotos_();
   bindSupLive_();
   bindSupOtControl_();
   bindSupIncidenciasReport_({ getJSON_user, escapeHtml });
