@@ -69,6 +69,18 @@ const ROLES_CONV = ["MOTOR", "TANQUE", "TANQUERO", "TECNICO", "CONVERSION"];
 const esDelantero_ = (r) => ["MOTOR", "TECNICO", "CONVERSION"].includes(r);
 const esTanquero_  = (r) => ["TANQUE", "TANQUERO"].includes(r);
 
+/**
+ * El puesto real, que es lo comparable. El rol crudo trae tres nombres para el
+ * mismo trabajo de delante (MOTOR, TECNICO, CONVERSION) y dos para el de atrás:
+ * tratarlos como cinco puestos distintos partiría los datos sin motivo.
+ */
+export const puestoDe_ = (rol) => {
+  const r = String(rol || "").toUpperCase();
+  if (esDelantero_(r)) return "DELANTERO";
+  if (esTanquero_(r)) return "TANQUERO";
+  return "OTRO";
+};
+
 // ─── Constantes de la vista ──────────────────────────────────────────────────
 
 // Percentiles que fijan la banda visible. El problema está ARRIBA —el 2,7% de
@@ -174,7 +186,7 @@ export function destroyTrendChart_() {
 // ─── Datos ───────────────────────────────────────────────────────────────────
 
 /** Puntos utilizables: finalizados, de conversión, con tiempo y fecha. */
-function puntosDe_(items) {
+export function puntosDe_(items) {
   const out = [];
   for (const it of items || []) {
     const est = String(it?.estado || "").trim().toUpperCase();

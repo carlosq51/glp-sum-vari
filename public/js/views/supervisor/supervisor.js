@@ -17,6 +17,7 @@ import { isFinalizado_, matchMarca_, durationMsFromItem_ } from "./sup-filters.j
 import { groupByVinForUI_ } from "./sup-grouping.js";
 import { renderAvgCard_, renderTable_ } from "./sup-render.js";
 import { renderTrendChart_, destroyTrendChart_ } from "./sup-trend-chart.js";
+import { renderComparativaTecnicos_ } from "./sup-tecnicos.js";
 import { renderSupDashboard_, destroySupDashboard_ } from "./sup-dashboard.js";
 import { icon } from "../../core/icons.js";
 import { exportCsv_ } from "../../core/csv.js";
@@ -429,6 +430,11 @@ function renderSupervisor_(j) {
   if (canvasEl) {
     renderTrendChart_(canvasEl, list, hasTechFilter ? techName : "");
   }
+
+  // Comparación entre técnicos. Va con la lista SIN mirar el filtro de modelo
+  // del gráfico: el ajuste por modelo y puesto ya vive dentro del cálculo, así
+  // que recortar aquí solo tiraría los carros que hacen falta para comparar.
+  renderComparativaTecnicos_(list);
 
   if (!box) return;
 

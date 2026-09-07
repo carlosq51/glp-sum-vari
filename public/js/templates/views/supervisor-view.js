@@ -97,6 +97,15 @@ export function supervisorView() {
           <div id="supTrendLectura" class="small" style="display:none; margin-top:10px; opacity:.9; line-height:1.5;"></div>
         </div>
 
+        <!-- Comparación entre técnicos. Pregunta distinta a la del gráfico de
+             arriba: no "¿estamos mejorando?" sino "¿cómo va cada uno frente a
+             sus compañeros?", y para eso hay que mirar a la gente en paralelo,
+             no al calendario. -->
+        <div id="supTecnicosContainer" style="display:none; margin-top:16px; background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(0,0,0,.08)); border:1px solid rgba(255,255,255,.18); border-radius:18px; padding:20px;">
+          <button id="btnComparaTecnicos" type="button" class="btn3" style="font-weight:900;">👥 Comparar técnicos</button>
+          <div id="supTecnicosPanel" style="display:none; margin-top:14px;"></div>
+        </div>
+
         <div id="supSummary" class="small" style="margin-top:10px;"></div>
         <div id="supTable" style="margin-top:10px;"></div>
       </div>
