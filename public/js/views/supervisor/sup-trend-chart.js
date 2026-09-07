@@ -52,7 +52,10 @@
 import { Chart } from "chart.js/auto";
 import { readVizColors, chartBaseOptions, hexA } from "../../core/viz.js";
 import { cfg } from "../../core/config.js";
-import { theilSen_, lecturaTendencia_, mannKendall_, percentil_, mediana_ } from "../../../../lib/regresion.js";
+import {
+  theilSen_, lecturaTendencia_, mannKendall_, percentil_, mediana_,
+  elegirVentana_, MIN_PUNTOS_TENDENCIA,
+} from "../../../../lib/regresion.js";
 import { normalizeModelo_ } from "../../../../lib/utils.js";
 
 let chartInstance = null;
@@ -92,9 +95,29 @@ const SOSPECHOSO_x_OBJETIVO = 2;
 const MIN_DIAS_SERIE = 3;
 
 // Un día con dos carros da una "mediana diaria" que es un carro suelto con
-// nombre de estadístico. Por debajo de esto el día se dibuja, pero no vota en
-// la tendencia.
+// nombre de estadístico. Por debajo de esto el punto se dibuja más pequeño y el
+// tooltip lo avisa. Ya NO es un veto: ver LA VENTANA SE ADAPTA, más abajo.
 const MIN_CARROS_POR_DIA = 5;
+
+// LA VENTANA SE ADAPTA AL VOLUMEN DEL FILTRO
+// ──────────────────────────────────────────
+// La jornada es la unidad natural cuando hay carros de sobra, y el taller entero
+// hace 30–93 al día. Pero al filtrar por modelo Y puesto ese volumen se reparte:
+// un modelo de dos carros al día no tiene ninguna jornada con cinco, así que
+// TODOS sus días quedaban fuera y la tendencia sencillamente no existía —solo
+// Jetour delantero, el único combo con volumen, llegaba a dibujar recta.
+//
+// El arreglo no es un modelo más flexible (una polinómica o un SVR necesitan
+// MÁS puntos, no menos, y devuelven una pendiente que no se puede decir en voz
+// alta): es agrupar más grueso cuando hay menos carros. Si el día no da, se
+// agrupa de tres en tres; si tampoco, por semana o por quincena. La pregunta
+// "¿estamos mejorando?" se sigue respondiendo igual, solo que con el paso que
+// los datos aguantan.
+// La mecánica vive en lib/regresion.js (elegirVentana_), donde se puede probar.
+
+// Nombre de la ventana para la frase de abajo. Que el supervisor sepa sobre qué
+// se está midiendo: "por semana" y "por día" no son la misma afirmación.
+const NOMBRE_VENTANA = { 1: "por jornada", 3: "cada 3 días", 7: "por semana", 14: "por quincena" };
 
 const DIAS_POR_SEMANA = 7;
 const TZ_PERU = "America/Lima";
@@ -326,9 +349,20 @@ function pintar_() {
   const base0 = dias[0].dia;
   dias.forEach(d => { d.x = diasEntre_(base0, d.dia); });
 
-  const fiables  = dias.filter(d => d.fiable && Number.isFinite(d.mediana));
-  const modelo   = theilSen_(fiables.map(d => ({ x: d.x, y: d.mediana })));
-  const mk       = mannKendall_(fiables.map(d => d.mediana));
+  // La ventana del ajuste se elige según el volumen del subconjunto FILTRADO:
+  // con Jetour delantero sale la jornada, con un modelo de dos carros al día
+  // sale la semana. Antes esto era un umbral fijo por día y los filtros finos
+  // se quedaban sin un solo punto que votara — sin recta y sin lectura.
+  const carros = pts.map(p => ({ x: diasEntre_(base0, p.dia), y: p.y }));
+  const { ancho: anchoVentana, cubos } = elegirVentana_(carros);
+
+  // Cada punto pesa según lo bien que se conozca su mediana. La precisión de
+  // una mediana crece con la RAÍZ del tamaño, no con el tamaño: sin la raíz,
+  // un lunes de 40 carros valdría veinte veces un martes de 2 y la recta sería
+  // la de un solo día. Pesar en vez de excluir es lo que hace que las jornadas
+  // flojas aporten su parte en lugar de desaparecer.
+  const modelo   = theilSen_(cubos.map(c => ({ x: c.x, y: c.mediana, w: Math.sqrt(c.n) })));
+  const mk       = mannKendall_(cubos.map(c => c.mediana));
   const xUltimo  = dias[dias.length - 1].x;
   const lectura  = lecturaTendencia_(modelo, objetivoH, xUltimo, 30, mk);
   const recta    = modelo.ok
@@ -375,7 +409,9 @@ function pintar_() {
 
   if (recta.length) {
     ds.push({
-      label: mk.significativa ? "Tendencia" : "Tendencia (no significativa)",
+      label: mk.significativa
+        ? `Tendencia (${NOMBRE_VENTANA[anchoVentana] || `cada ${anchoVentana} días`})`
+        : "Tendencia (no significativa)",
       data: recta.map(r => ({ x: r.x, y: dentro_(r.y) ? r.y : null })),
       borderColor: mk.significativa ? (c.good || "#0ca30c") : hexA(c.ink2, .5),
       borderWidth: 3, borderDash: mk.significativa ? [] : [4, 4],
@@ -453,7 +489,8 @@ function pintar_() {
               const et = String(ctx.dataset?.label || "");
               if (et === "Mediana del día") {
                 const d = dias[ctx.dataIndex];
-                const flojo = d && !d.fiable ? "  (pocos carros: no vota en la tendencia)" : "";
+                // Ya no es un veto: el día cuenta, pero pesa menos en la recta.
+                const flojo = d && !d.fiable ? `  (solo ${d.n} carros: pesa poco en la tendencia)` : "";
                 return `Mediana: ${fmtHoras_(d?.mediana)}${flojo}`;
               }
               if (et.startsWith("Mitad central")) {
@@ -492,23 +529,36 @@ function pintar_() {
     },
   });
 
-  if (lecturaEl) lecturaEl.innerHTML = textoLectura_(lectura, modelo, mk, dias, rielAlto, rielBajo, suelo, techo, sospechosoH);
+  if (lecturaEl) {
+    lecturaEl.innerHTML = textoLectura_(lectura, modelo, mk, dias, rielAlto, rielBajo,
+      suelo, techo, sospechosoH, { ancho: anchoVentana, puntos: cubos.length });
+  }
 }
 
 /** La frase de abajo: qué dice la tendencia, con cuánta confianza, y qué quedó fuera del eje. */
-function textoLectura_(lectura, modelo, mk, dias, rielAlto, rielBajo, suelo, techo, sospechosoH) {
+function textoLectura_(lectura, modelo, mk, dias, rielAlto, rielBajo, suelo, techo, sospechosoH, ventana) {
   const partes = [`📈 <b>${lectura.texto}</b>`];
+
+  // Sobre QUÉ se midió. Con pocos carros la recta se ajusta sobre grupos de
+  // varios días, y decir "12 jornadas" cuando son 12 semanas sería otra cosa.
+  const paso = NOMBRE_VENTANA[ventana?.ancho] || `cada ${ventana?.ancho} días`;
+  const base = `${ventana?.puntos} puntos ${paso}`;
 
   // La pendiente en minutos por SEMANA: en minutos por día sale "-0,6 min" y
   // no significa nada para nadie.
   if (modelo.ok && mk.ok && mk.significativa) {
     const minSemana = modelo.pendiente * 60 * DIAS_POR_SEMANA;
     const signo = minSemana < 0 ? "−" : "+";
+    const exacto = mk.exacto ? ", exacto" : "";
     partes.push(`${signo}${Math.abs(minSemana).toFixed(0)} min por semana ` +
-      `<span style="opacity:.7;">(${dias.length} jornadas, p=${mk.p.toFixed(3)})</span>`);
+      `<span style="opacity:.7;">(${base}, p=${mk.p.toFixed(3)}${exacto})</span>`);
   } else if (mk.ok) {
-    partes.push(`<span style="opacity:.7;">${dias.length} jornadas · p=${mk.p.toFixed(2)}: ` +
+    partes.push(`<span style="opacity:.7;">${base} · p=${mk.p.toFixed(2)}: ` +
       `el sube y baja no se distingue del azar</span>`);
+  } else {
+    // Ni agrupando por quincena hay serie: se dice cuánto hay, no se calla.
+    partes.push(`<span style="opacity:.7;">Solo ${base}: hacen falta al menos ` +
+      `${MIN_PUNTOS_TENDENCIA} para contrastar una tendencia contra el azar</span>`);
   }
 
   const lentos = dias.filter(d => d.mediana > sospechosoH).length;
