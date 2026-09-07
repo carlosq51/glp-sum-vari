@@ -10,7 +10,15 @@ const router = Router();
 // Topics que invalidan el cache de las vistas del movilizador: cualquier cosa
 // que mueva un VIN por el flujo (traslado propio, OT abierta o cerrada por un
 // técnico, cambio de zona) tiene que verse en la pantalla del taller al toque.
-const TOPICS_MOV = ["movilizador", "asignaciones", "work_orders", "zonas"];
+//
+// "asignaciones" NO está aquí a propósito. Es el topic más ruidoso del sistema
+// (~130 mutaciones al día: cada avance de un técnico) y de esta vista solo
+// mueve UN dato — la fecha de fin que list1 saca de las asignaciones
+// FINALIZADAS. Tenerlo dentro obligaba a recalcular las ~210 KB de /status en
+// cada avance (~27 MB/día de egress) para cambiar una hora en pantalla. Lo que
+// de verdad mueve un VIN de lista es que su OT cambie de estado, y eso emite
+// "work_orders", que sí invalida. La fecha, como mucho, llega un ciclo tarde.
+const TOPICS_MOV = ["movilizador", "work_orders", "zonas"];
 
 /**
  * Desde qué fecha mira el movilizador ("YYYY-MM-DD", o "" = sin filtro).
@@ -29,6 +37,29 @@ function fechaCorteMovilizador_(cfg) {
   return cfg.FECHA_CORTE_MOVILIZADOR || "";
 }
 
+/**
+ * Desde qué fecha cuenta un traslado como "vivo" ("" = sin filtro).
+ *
+ * movilizador_traslados guarda UNA fila por VIN y solo cambia de estado; nada
+ * la cierra. Sin filtro, un VIN registrado como EN_ESPERA_CONVERSION que nunca
+ * llegó a convertirse se queda en la pantalla de Ingreso para siempre: al
+ * escribir esto había 141 traslados activos, 53 de más de 20 días y el más
+ * viejo de hacía tres meses y medio. El movilizador leía su lista de hoy
+ * mezclada con el cementerio de mayo.
+ *
+ * La ventana es MÁS ANCHA que la de las OTs (MOV_VENTANA_DIAS) porque el
+ * registro de entrada ocurre ANTES de la conversión: si fuera igual o menor,
+ * un carro que espera turno más días que la ventana desaparecería de Ingreso
+ * justo mientras sigue en el patio.
+ *
+ * Lo que cae fuera NO se tira: vuelve en `olvidados` para que la vista lo
+ * muestre aparte. Un VIN que se esfuma en silencio es peor que uno viejo.
+ */
+function fechaCorteTraslados_(cfg) {
+  const dias = Number(cfg.MOV_VENTANA_TRASLADOS_DIAS) || 0;
+  return dias > 0 ? fechaPeruMenosDias_(dias) : "";
+}
+
 // ─── MOVILIZADOR STATUS ───────────────────────────────────────────────
 // GET /api/movilizador/status
 // Devuelve las 3 listas del flujo movilizador + fecha_corte activa
@@ -36,12 +67,13 @@ router.get("/api/movilizador/status", async (req, res) => {
   try {
     const cfg = await getConfig_();
     const fechaCorte = fechaCorteMovilizador_(cfg);
+    const corteTraslados = fechaCorteTraslados_(cfg);
 
-    // La fecha de corte entra en la CLAVE del cache, no solo en la consulta:
-    // al cruzar la medianoche la ventana se desplaza un día y la entrada vieja
-    // dejaría de corresponder a lo que se está pidiendo.
+    // Las fechas de corte entran en la CLAVE del cache, no solo en la consulta:
+    // al cruzar la medianoche las ventanas se desplazan un día y la entrada
+    // vieja dejaría de corresponder a lo que se está pidiendo.
     const payload = await cachedByTopics_(
-      `movilizador:status:${fechaCorte}`, TOPICS_MOV, cfg.SRV_CACHE_PESADO_MS, async () => {
+      `movilizador:status:${fechaCorte}:${corteTraslados}`, TOPICS_MOV, cfg.SRV_CACHE_PESADO_MS, async () => {
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const headers = supabaseHeaders_();
 
@@ -66,9 +98,20 @@ router.get("/api/movilizador/status", async (req, res) => {
       { method: "GET", headers }
     );
     const trasRows = trasResp.ok ? await trasResp.json() : [];
+
+    // La fila se sigue bajando entera (son ~140, 24 KB: partirla en dos
+    // consultas no ahorraría nada) pero se separa aquí: `trasMap` es lo que
+    // alimenta las listas del día, `trasOlvidados` lo que lleva meses sin que
+    // nadie lo mueva y se devuelve aparte. El corte mira el ÚLTIMO movimiento
+    // (entregado_at si lo hubo, si no el ingreso), no la fecha de entrada.
+    const corteTrasMs = corteTraslados ? Date.parse(`${corteTraslados}T00:00:00Z`) : 0;
     const trasMap = new Map();
+    const trasOlvidados = new Map();
     for (const t of (trasRows || [])) {
-      if (t.vin) trasMap.set(t.vin, t);
+      if (!t.vin) continue;
+      const ultimoMov = Date.parse(t.entregado_at || t.trasladado_at || "") || 0;
+      if (corteTrasMs && ultimoMov && ultimoMov < corteTrasMs) trasOlvidados.set(t.vin, t);
+      else trasMap.set(t.vin, t);
     }
 
     // 4. CALIDAD FINALIZADO (con filtro de fecha de corte)
@@ -83,10 +126,12 @@ router.get("/api/movilizador/status", async (req, res) => {
     }
 
     // 4b. CALIDAD ACTIVA (PENDIENTE o EN PROCESO) — para saber si el inspector está trabajando
-    const calActivaResp = await fetch(
-      `${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CALIDAD&estado_general=in.(PENDIENTE,EN PROCESO)&select=vin,fecha_creacion,created_at`,
-      { method: "GET", headers }
-    );
+    // Con la misma fecha de corte que el resto: era la única consulta del
+    // endpoint sin filtro, y una OT de calidad que nadie cierra se quedaba
+    // marcando "EN REVISIÓN" en Zona de Espera indefinidamente.
+    let calActivaUrl = `${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CALIDAD&estado_general=in.(PENDIENTE,EN PROCESO)&select=vin,fecha_creacion,created_at`;
+    if (fechaCorte) calActivaUrl += `&fecha_creacion=gte.${fechaCorte}T00:00:00`;
+    const calActivaResp = await fetch(calActivaUrl, { method: "GET", headers });
     const calActivaRows = calActivaResp.ok ? await calActivaResp.json() : [];
     // Map vin → OT data para VINs con CALIDAD activa
     const calidadActivaMap = new Map();
@@ -365,14 +410,37 @@ router.get("/api/movilizador/status", async (req, res) => {
     const flowOrder = { PENDIENTE_ENTRADA: 0, EN_ESPERA: 1, EN_CONVERSION: 2, CONVERSION_DONE: 3, EN_ZONA: 4, EN_REVISION: 5, LISTA_SALIDA: 6 };
     listDiaria.sort((a, b) => (flowOrder[a.flow_status] ?? 9) - (flowOrder[b.flow_status] ?? 9));
 
+    // ─── Olvidados: traslados fuera de la ventana que nadie cerró ───
+    // Se muestran aparte (panel plegado en Ingreso) en vez de desaparecer:
+    // casi siempre es un carro que salió sin registrar la salida, y el
+    // movilizador es el único que puede saberlo. Los que sí siguen vivos en
+    // alguna lista (su OT es reciente aunque el ingreso sea viejo) no cuentan.
+    const vivos = new Set([
+      ...list0.map(r => r.vin), ...list1.map(r => r.vin),
+      ...list2.map(r => r.vin), ...list3.map(r => r.vin),
+    ]);
+    const olvidados = [];
+    for (const [vin, t] of trasOlvidados) {
+      if (vivos.has(vin)) continue;
+      olvidados.push({
+        vin,
+        estado: t.estado,
+        fecha: t.entregado_at || t.trasladado_at || null,
+        registrado_por: t.trasladado_por || "",
+      });
+    }
+    olvidados.sort((a, b) => new Date(a.fecha || 0) - new Date(b.fecha || 0));
+
     return {
       ok: true,
       fechaCorte,
+      corteTraslados,
       list0,
       list1,
       list2,
       list3,
       listDiaria,
+      olvidados,
       counts: {
         list0: list0.length,
         list0_espera: list0.filter(r => !r.en_conversion).length,
@@ -382,6 +450,7 @@ router.get("/api/movilizador/status", async (req, res) => {
         list3: list3.length,
         listDiaria: listDiaria.length,
         listDiariaPendientes: listDiaria.filter(r => r.flow_status === "PENDIENTE_ENTRADA").length,
+        olvidados: olvidados.length,
       },
     };
       }, { bypass: req.query.fresh === "1" });
@@ -516,6 +585,17 @@ router.get("/api/movilizador/revalidate-ot", async (req, res) => {
 
     if (!vins.length) return res.json({ ok: true, vins_con_ot: [] });
 
+    const { SRV_CACHE_PESADO_MS } = await getConfig_();
+
+    // Cacheado como el resto: todos los dispositivos con la pantalla de Salida
+    // abierta preguntan por el MISMO conjunto de VINs (los que a esa hora no
+    // tienen #OT), así que la clave se ordena para que coincidan. Sin esto era
+    // el único endpoint del movilizador que iba directo a Supabase, N veces
+    // cada POLL_OT_RECHECK_MS. Lo invalida "work_orders", que es justo el topic
+    // que emite Apps Script al escribir el número de OT.
+    const clave = [...vins].sort().join(",");
+    const payload = await cachedByTopics_(
+      `movilizador:revalidate-ot:${clave}`, ["work_orders"], SRV_CACHE_PESADO_MS, async () => {
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const headers = supabaseHeaders_();
 
@@ -540,7 +620,9 @@ router.get("/api/movilizador/revalidate-ot", async (req, res) => {
       }
     }
 
-    return res.json({ ok: true, vins_con_ot });
+    return { ok: true, vins_con_ot };
+      });
+    return res.json(payload);
   } catch (e) {
     console.error("[MOV_REVALIDATE_OT]", e.message);
     return res.status(500).json({ ok: false, error: String(e.message || e) });

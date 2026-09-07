@@ -103,6 +103,48 @@ function renderList0_(rows) {
   box.innerHTML = html;
 }
 
+/**
+ * renderOlvidados_ — VINs registrados hace más de MOV_VENTANA_TRASLADOS_DIAS
+ * que siguen sin cerrarse.
+ *
+ * Van en un panel aparte y plegado en vez de mezclados en Ingreso: casi
+ * siempre son carros que salieron sin que nadie registrara la salida, y
+ * ensuciaban la lista del día con meses de historia. Pero tampoco pueden
+ * desaparecer solos — el movilizador es el único que puede saber si alguno
+ * sigue de verdad en el patio.
+ */
+function renderOlvidados_(rows) {
+  const panel = document.getElementById("movPanelOlvidados");
+  const box   = document.getElementById("movPanelOlvidadosBody");
+  const hint  = document.getElementById("movOlvidadosHint");
+  if (!panel || !box) return;
+
+  if (!rows?.length) {
+    panel.style.display = "none";
+    box.innerHTML = "";
+    return;
+  }
+  panel.style.display = "";
+  if (hint) hint.textContent = `${rows.length} sin cerrar — revisar si ya salieron`;
+
+  box.innerHTML = `
+    <div class="movCardList">
+      ${rows.map(r => `
+        <div class="movCard">
+          <div class="movCardTop">
+            <span class="movVin">${escapeHtml(r.vin)}</span>
+            <span class="badge badge-warn">${escapeHtml(r.estado || "")}</span>
+          </div>
+          <div class="movCardSub small muted">
+            ${r.fecha ? `Último movimiento: ${fmtDate_(r.fecha)}` : "Sin fecha"}
+            ${r.registrado_por ? ` · por ${escapeHtml(r.registrado_por)}` : ""}
+          </div>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
 // ─── Lista cache (localStorage) ─────────────────────────────────────
 
 function saveListaCache_(rows) {
@@ -630,6 +672,7 @@ async function refreshAll_({ fresh = false } = {}) {
     renderList1_(j.list1 || []);
     renderList2_(j.list2 || []);
     renderList3_(j.list3 || []);
+    renderOlvidados_(j.olvidados || []);
 
     if (statusEl) {
       const t = new Date();

@@ -117,6 +117,18 @@ export function movilizadorView() {
           </button>
           <div id="movPanel0Body" class="movPanelBody"></div>
         </div>
+
+        <div class="movPanel" id="movPanelOlvidados" style="display:none;">
+          <button class="movPanelHeader" type="button" aria-expanded="false">
+            <span class="movPanelIcon">🕸️</span>
+            <div class="movPanelTitleGroup">
+              <span class="movPanelTitle">Sin movimiento</span>
+              <span class="movPanelHint" id="movOlvidadosHint">Registrados hace mucho y nunca cerrados</span>
+            </div>
+            <span class="movChevron" aria-hidden="true">▼</span>
+          </button>
+          <div id="movPanelOlvidadosBody" class="movPanelBody"></div>
+        </div>
       </div>
 
       <!-- ── Screen: Zona de Espera ── -->
