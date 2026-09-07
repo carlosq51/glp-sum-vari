@@ -4,19 +4,20 @@
 //
 // Aquí el ramalero solo ve —y solo puede tocar— lo suyo:
 //   · si le toca el turno de la próxima caja
-//   · la caja que está desembalando ahora, con su tiempo corriendo
+//   · la caja que está revisando ahora, con su tiempo corriendo
 //   · los ramales que le repartieron y todavía no devuelve
 //
 // LO QUE ESTE PANEL A PROPÓSITO NO PUEDE HACER
 // ────────────────────────────────────────────
 // No arranca ni para el cronómetro oficial. El botón «ya terminé» manda
-// un AVISO al supervisor; el reloj lo cierra él cuando tiene los cables
-// principales en la mano. Si el ramalero pudiera cerrar su propio
-// tiempo, la medición volvería a ser una declaración — que es justo el
-// problema que este módulo existe para resolver.
+// un AVISO al supervisor; el reloj lo cierra él cuando tiene la caja
+// revisada delante. Si el ramalero pudiera cerrar su propio tiempo, la
+// medición volvería a ser una declaración — que es justo el problema
+// que este módulo existe para resolver.
 //
 // Devolver ramales sí lo hace él, pero contra la cantidad que el
-// supervisor le firmó: no puede devolver más de lo que le asignaron.
+// supervisor le firmó, marca por marca: no puede devolver más de lo que
+// le asignaron ni cambiarle la marca a lo que trae.
 // =========================
 
 import { getJSON, postJSON, escapeHtml, getEmail } from "../../core/core.js";
@@ -67,12 +68,19 @@ async function cargar_() {
   }
 }
 
+/**
+ * Un reparto pendiente. La marca va escrita al lado del número porque
+ * de una misma caja se pueden tener dos marcas abiertas, y devolver 8
+ * sin saber de cuál es exactamente el error que el stock no perdona.
+ */
 function renderPendiente_(p) {
   return `
     <div class="rmSplit__row">
       <span class="rmSplit__nom">
-        Caja ${esc(p.codigo || "—")}
-        <span class="rmSplit__sub">${p.cantidad_asignada} ramales asignados</span>
+        ${esc(p.tipo_ramal || "Sin marca")}
+        <span class="rmSplit__sub">
+          caja ${esc(p.codigo || "—")} · ${p.cantidad_asignada} asignados
+        </span>
       </span>
       <input type="number" min="0" step="1" max="${p.cantidad_asignada}"
              value="${p.cantidad_asignada}" data-mt-cant="${p.id}"
@@ -88,13 +96,14 @@ function render_() {
   const d = MT.raw;
   MT.root.style.display = "block";
 
-  const desembalando = d.mi_desembalaje;
+  const caja = d.mi_caja;
+  const items = d.mis_items || [];
   const pendientes = d.pendientes || [];
 
   // Si no le toca nada y no debe nada, el panel no ocupa espacio: una
   // línea. El ramalero tiene su trabajo de armado al frente y eso es lo
   // que hace el 90% del día.
-  if (!desembalando && !pendientes.length && !d.me_toca) {
+  if (!caja && !pendientes.length && !d.me_toca) {
     MT.root.innerHTML = `
       <div class="rmMio">
         <div class="rmMio__vacio">
@@ -107,37 +116,45 @@ function render_() {
 
   MT.root.innerHTML = `
     <div class="rmMio">
-      ${d.me_toca && !desembalando ? `
+      ${d.me_toca && !caja ? `
         <div class="rmMio__turno is-mio">
           <strong>📦 Te toca la próxima caja</strong>
           <div class="rmMio__vacio" style="margin-top:4px;">
-            Cuando llegue el camión, te toca a ti abrir la caja y sacar los
-            ramales. El tiempo empieza a correr en cuanto el supervisor la
+            Cuando llegue el camión, te toca a ti abrirla y revisar lo que
+            trae. El tiempo empieza a correr en cuanto el supervisor la
             registre — no tienes que apretar nada para arrancarlo.
           </div>
         </div>` : ""}
 
-      ${desembalando ? `
+      ${caja ? `
         <div class="rmMio__turno is-mio">
-          <div class="rmTurno__label">Estás sacando los ramales de esta caja</div>
+          <div class="rmTurno__label">Estás revisando esta caja</div>
           <div class="rmMio__head">
-            <strong style="font-size:1.1rem;">${esc(desembalando.codigo)}</strong>
-            <span class="rmChip">${desembalando.cantidad_equipos} vehículos</span>
+            <strong style="font-size:1.1rem;">${esc(caja.codigo)}</strong>
+            <span class="rmChip">${caja.cantidad_equipos} equipos</span>
             <span class="rmClock is-corriendo" data-mt-clock="1">—</span>
           </div>
+
+          ${items.length ? `
+            <div class="rmMarcasLinea" style="margin-top:8px;">
+              ${items.map(i => `
+                <span class="rmMarcaChip"><b>${i.cantidad}</b> ${esc(i.tipo_ramal)}</span>
+              `).join("")}
+            </div>` : ""}
+
           <div class="rmMio__vacio" style="margin-top:6px;">
-            Vino con material para ${desembalando.cantidad_equipos} vehículos.
-            Saca los ramales y entrégale los cables principales al supervisor.
+            Revisa lo que trae y entrégasela al supervisor cuando termines.
           </div>
-          ${desembalando.desembalaje_fin_at ? `
+
+          ${caja.revision_aviso_at ? `
             <div class="rmAviso info" style="margin-top:10px;">
               <strong>✓ Ya avisaste</strong>
-              Tu tiempo se cierra cuando el supervisor tenga los cables
-              principales en la mano.
+              Tu tiempo se cierra cuando el supervisor tenga la caja revisada
+              delante.
             </div>` : `
             <button class="btn3 rmBtn--primary" style="margin-top:11px;width:100%;"
-                    data-mt="fin" data-id="${desembalando.id}">
-              ${icon("trayOut", 14)} Ya saqué todo — avisar al supervisor
+                    data-mt="fin" data-id="${caja.id}">
+              ${icon("trayOut", 14)} Ya terminé — avisar al supervisor
             </button>`}
         </div>` : ""}
 
@@ -159,9 +176,9 @@ function render_() {
 
 function tick_() {
   const el = MT.root?.querySelector("[data-mt-clock]");
-  const d = MT.raw?.mi_desembalaje;
-  if (!el || !d?.desembalaje_inicio_at) return;
-  el.textContent = fmtDur_(Date.now() - new Date(d.desembalaje_inicio_at).getTime());
+  const d = MT.raw?.mi_caja;
+  if (!el || !d?.revision_inicio_at) return;
+  el.textContent = fmtDur_(Date.now() - new Date(d.revision_inicio_at).getTime());
 }
 
 async function onClick_(e) {
@@ -171,9 +188,9 @@ async function onClick_(e) {
 
   try {
     if (btn.dataset.mt === "fin") {
-      const j = await postJSON(`/api/ramales/lote/${id}/fin-desembalaje`, { email: MT.email });
+      const j = await postJSON(`/api/ramales/lote/${id}/aviso`, { email: MT.email });
       if (!j?.ok) return toast_(j?.error || "No se pudo avisar.", "bad");
-      toast_("Avisado. El supervisor va por los cables.");
+      toast_("Avisado. El supervisor va por la caja.");
       await cargar_();
     } else if (btn.dataset.mt === "devolver") {
       const cant = Number(MT.root.querySelector(`[data-mt-cant="${id}"]`)?.value ?? 0);

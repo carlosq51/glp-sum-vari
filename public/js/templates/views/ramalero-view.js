@@ -61,7 +61,7 @@ export function ramaleroView() {
         </div>
       </div>
 
-      <!-- ── 2. MI CAJA · turno de desembalaje y ramales por devolver ── -->
+      <!-- ── 2. MI CAJA · turno de revisión y ramales por devolver ── -->
       <div class="card" id="ramalMiTurnoCard" style="margin-top:12px;">
         <h3 style="margin:0 0 8px;">
           <span class="accentBar"></span>📦 Mi caja

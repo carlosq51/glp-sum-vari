@@ -18,7 +18,7 @@ export function ramalesView() {
         </button>
         <div class="rmPageTitle">
           <h2>Control de ramales</h2>
-          <span>Turno, desembalaje, reparto y stock</span>
+          <span>Turno, revisión de cajas, reparto y stock</span>
         </div>
       </div>
       <div id="rmPageBody" class="invPageBody"></div>

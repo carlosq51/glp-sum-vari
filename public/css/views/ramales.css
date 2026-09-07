@@ -788,3 +788,277 @@
   .ramArmar__row { grid-template-columns: 1fr; }
   .ramArmar__btn { width: 100%; }
 }
+
+/* =====================================================================
+   16. CAJAS MIXTAS · líneas de marca, editor y matriz de reparto
+   ---------------------------------------------------------------------
+   Una caja trae «15 Jetour y 10 V3». Eso obliga a tres piezas nuevas:
+
+     · rmMarcasLinea  lo que trae la caja, en la tarjeta del lote
+     · rmItems        el editor de esas líneas (registrar / corregir)
+     · rmMatriz       el reparto: personas en filas, marcas en columnas
+
+   La matriz es la que carga el peso. En una caja de tres marcas el
+   formulario anterior obligaba a abrir el modal tres veces sin ver, en
+   cada pasada, qué se hizo en la anterior. Aquí el reparto entero está
+   a la vista y la fila de «sin asignar» se mueve mientras escribes.
+   ===================================================================== */
+
+/* ── 16a. Lo que trae la caja, en la tarjeta ── */
+.rmMarcasLinea {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 4px;
+}
+.rmMarcasLinea--vacia {
+  font-size: .75rem;
+  color: var(--muted);
+  font-style: italic;
+}
+.rmMarcaChip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--surface2);
+  border: 1px solid var(--surfaceLine);
+  font-size: .76rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.rmMarcaChip b { font-size: .95rem; font-weight: 900; }
+.rmMarcaChip i {
+  font-style: normal;
+  font-size: .68rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+.rmMarcaChip.is-ok   { border-color: color-mix(in srgb, var(--ok) 50%, transparent); }
+.rmMarcaChip.is-pend { border-color: color-mix(in srgb, var(--warn) 50%, transparent); }
+.rmMarcaChip.is-mal  {
+  border-color: var(--bad, #ef4444);
+  color: var(--bad, #ef4444);
+}
+
+/* Los repartos de una persona: varias marcas en una sola fila. */
+.rmReparto__linea {
+  display: inline-block;
+  margin-right: 8px;
+  font-weight: 700;
+}
+.rmReparto__linea.is-abierta { color: var(--warn); }
+
+/* ── 16b. Editor de las líneas de la caja ── */
+.rmItems { display: grid; gap: 7px; }
+.rmItemRow {
+  display: grid;
+  grid-template-columns: 1fr 110px 34px;
+  gap: 7px;
+  align-items: center;
+}
+.rmItemRow.is-dup select { border-color: var(--warn); }
+.rmItemRow select,
+.rmItemRow input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--radiusSm, 11px);
+  background: var(--surface2);
+  border: 1px solid var(--surfaceLine);
+  color: var(--text);
+  font: inherit;
+  font-weight: 700;
+}
+.rmItemRow input { font-variant-numeric: tabular-nums; text-align: center; }
+.rmItemDel {
+  height: 34px;
+  border-radius: var(--radiusSm, 11px);
+  background: none;
+  border: 1px solid var(--surfaceLine);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: .8rem;
+}
+.rmItemDel:hover:not(:disabled) {
+  color: var(--bad, #ef4444);
+  border-color: var(--bad, #ef4444);
+}
+.rmItemDel:disabled { opacity: .3; cursor: default; }
+
+.rmItemsFoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 4px;
+}
+.rmItemsTotal {
+  font-size: .78rem;
+  color: var(--muted);
+  font-weight: 700;
+}
+.rmItemsTotal b {
+  color: var(--text);
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 16c. Matriz de reparto ── */
+.rmMatrizAcc {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.rmMatrizAcc__hint {
+  font-size: .72rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+/* La tabla puede pasarse de ancho con cinco marcas: rueda dentro de su
+   caja en vez de empujar el modal entero. */
+.rmMatrizWrap {
+  overflow-x: auto;
+  border-radius: var(--radiusSm, 12px);
+  border: 1px solid var(--surfaceLine);
+}
+.rmMatriz {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .84rem;
+}
+.rmMatriz th,
+.rmMatriz td {
+  padding: 8px 10px;
+  text-align: center;
+  border-bottom: 1px solid var(--surfaceLine);
+}
+.rmMatriz thead th {
+  font-size: .7rem;
+  font-weight: 900;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: var(--surface2);
+  white-space: nowrap;
+}
+.rmMatriz thead th small {
+  display: block;
+  font-size: .64rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--muted);
+  opacity: .8;
+}
+
+/* La columna de nombres se queda quieta al rodar en horizontal: sin eso
+   con tres marcas ya no sabes de quién es la fila que estás llenando. */
+.rmMatriz__quien {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  text-align: left !important;
+  background: var(--surface);
+  display: table-cell;
+  white-space: nowrap;
+}
+.rmMatriz tbody .rmMatriz__quien {
+  font-weight: 800;
+}
+.rmMatriz tbody .rmMatriz__quien span { display: inline-block; vertical-align: middle; }
+.rmMatriz tbody .rmMatriz__quien small {
+  display: block;
+  font-size: .66rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+.rmMatriz tbody tr.is-turno .rmMatriz__quien {
+  box-shadow: inset 3px 0 0 var(--accent, #3b82f6);
+}
+.rmMatriz tbody tr.is-ausente { opacity: .55; }
+
+.rmMatriz__in {
+  width: 62px;
+  padding: 7px 6px;
+  border-radius: var(--radiusSm, 10px);
+  background: var(--surface2);
+  border: 1px solid var(--surfaceLine);
+  color: var(--text);
+  font: inherit;
+  font-weight: 800;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.rmMatriz__in:focus {
+  outline: none;
+  border-color: var(--accent, #3b82f6);
+}
+.rmMatriz__tot {
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.rmMatriz__tot.is-ok { color: var(--text); }
+
+.rmMatriz__todo {
+  background: none;
+  border: 1px solid var(--surfaceLine);
+  border-radius: 999px;
+  color: var(--muted);
+  font: inherit;
+  font-size: .68rem;
+  font-weight: 800;
+  padding: 4px 9px;
+  cursor: pointer;
+}
+.rmMatriz__todo:hover { color: var(--text); border-color: var(--accent, #3b82f6); }
+
+.rmMatriz tfoot th,
+.rmMatriz tfoot td {
+  background: var(--surface2);
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  border-bottom: none;
+}
+.rmMatriz__falta.is-ok  { color: var(--ok); }
+.rmMatriz__falta.is-mal { color: var(--bad, #ef4444); }
+
+/* ── 16d. Recepción por persona, marca por marca ── */
+.rmDevRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+  align-items: end;
+  padding: 10px 12px;
+  border-radius: var(--radiusSm, 11px);
+  background: var(--surface2);
+}
+.rmDevRow__marca {
+  font-weight: 800;
+  font-size: .85rem;
+  align-self: center;
+}
+.rmDevRow__marca small {
+  display: block;
+  font-size: .68rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.rmModalSub {
+  display: block;
+  font-size: .72rem;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+@media (max-width: 620px) {
+  .rmItemRow { grid-template-columns: 1fr 84px 34px; }
+  .rmDevRow  { grid-template-columns: 1fr; gap: 7px; }
+  .rmMatrizAcc__hint { display: none; }
+}

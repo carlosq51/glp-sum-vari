@@ -299,19 +299,19 @@ function chartReparto_(filas) {
   );
 }
 
-// ─── 4. Tiempo de desembalaje por caja ───────────────────────────────
+// ─── 4. Tiempo de revisión por caja ──────────────────────────────────
 //  Una sola serie a lo largo del tiempo → línea, sin leyenda (el título
 //  la nombra). Se dibuja también la media para tener contra qué leer
 //  cada punto.
 
-function chartDesembalaje_(lotes) {
+function chartRevision_(lotes) {
   const datos = lotes
-    .filter(l => l.desembalaje_min != null && Number(l.desembalaje_min) > 0)
+    .filter(l => l.revision_min != null && Number(l.revision_min) > 0)
     .slice(0, 14)
     .reverse()
     .map(l => ({
       cod: String(l.codigo || "").replace(/^L-/, ""),
-      v: num_(l.desembalaje_min),
+      v: num_(l.revision_min),
       quien: corto_(l.encargado),
       eq: num_(l.cantidad_equipos),
     }));
@@ -360,9 +360,9 @@ function chartDesembalaje_(lotes) {
 
   return figura_(
     "Cuánto se demora una caja",
-    "Tiempo oficial: de que llegó a que el supervisor recibió los cables",
+    "Tiempo oficial: de que llegó la caja a que el supervisor la recibió revisada",
     `<svg viewBox="0 0 ${ancho} ${alto}" class="rmSvg" role="img"
-          aria-label="Minutos de desembalaje de las últimas cajas cerradas, en orden">
+          aria-label="Minutos de revisión de las últimas cajas cerradas, en orden">
        ${rejilla}
        <line x1="${izq}" y1="${py(media)}" x2="${izq + uw}" y2="${py(media)}" class="rmMedian" />
        <text x="${izq + uw}" y="${py(media) - 6}" class="rmAxTick" text-anchor="end">media ${fmt1_(media)}m</text>
@@ -431,7 +431,7 @@ function tabla_(filas) {
               <th>Ramalero</th><th class="num">Asignados</th><th class="num">Devueltos</th>
               <th class="num">Rechazados</th><th class="num">% rechazo</th>
               <th class="num">Min/ramal</th><th class="num">Cajas</th>
-              <th class="num">Desembalaje</th><th class="num">Entregas</th>
+              <th class="num">Revisión</th><th class="num">Entregas</th>
             </tr>
           </thead>
           <tbody>
@@ -443,8 +443,8 @@ function tabla_(filas) {
                 <td class="num">${num_(d.ramales_rechazados)}</td>
                 <td class="num"><span class="rmRechazo ${num_(d.pct_rechazo) >= 10 ? "is-alto" : ""}">${fmt1_(d.pct_rechazo)}%</span></td>
                 <td class="num">${d.armado_min_por_ramal ?? "—"}</td>
-                <td class="num">${num_(d.lotes_desembalados)}</td>
-                <td class="num">${d.desembalaje_min_prom ?? "—"}</td>
+                <td class="num">${num_(d.lotes_revisados)}</td>
+                <td class="num">${d.revision_min_prom ?? "—"}</td>
                 <td class="num">${num_(d.entregas_a_tecnicos)}</td>
               </tr>`).join("")}
           </tbody>
@@ -480,7 +480,7 @@ export function comportamientoHTML(raw) {
       ${chartVelocidadCalidad_(filas)}
       ${chartProduccion_(filas)}
       ${chartReparto_(filas)}
-      ${chartDesembalaje_(lotes)}
+      ${chartRevision_(lotes)}
     </div>
     ${tabla_(filas)}`;
 }
