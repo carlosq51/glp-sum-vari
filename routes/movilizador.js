@@ -591,8 +591,12 @@ router.get("/api/movilizador/revalidate-ot", async (req, res) => {
     // abierta preguntan por el MISMO conjunto de VINs (los que a esa hora no
     // tienen #OT), así que la clave se ordena para que coincidan. Sin esto era
     // el único endpoint del movilizador que iba directo a Supabase, N veces
-    // cada POLL_OT_RECHECK_MS. Lo invalida "work_orders", que es justo el topic
-    // que emite Apps Script al escribir el número de OT.
+    // cada POLL_OT_RECHECK_MS.
+    //
+    // Aquí la frescura la da el TTL, no el topic: quien escribe numero_ot es
+    // obtenervin.js con un PATCH directo a Supabase, que no pasa por este
+    // servidor y por tanto no emite "work_orders". El topic queda declarado
+    // porque el día que el #OT se registre desde la app, invalidará al toque.
     const clave = [...vins].sort().join(",");
     const payload = await cachedByTopics_(
       `movilizador:revalidate-ot:${clave}`, ["work_orders"], SRV_CACHE_PESADO_MS, async () => {
