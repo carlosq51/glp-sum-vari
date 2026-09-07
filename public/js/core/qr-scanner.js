@@ -89,16 +89,28 @@ export function getScanConfig(mode) {
  * @returns {Promise<void>}
  */
 /**
- * Restricciones de VIDEO. Aquí estaba el problema real del iPhone.
+ * Restricciones de VIDEO — y DÓNDE se entregan, que es lo que importa.
  *
- * Sin pedir resolución, Safari entrega el stream por defecto —típicamente
- * 640×480— y a esa resolución las barras finas de un VIN se funden entre sí:
- * el decodificador no falla, es que no hay información que leer. Android no lo
- * sufría porque su `exact: environment` negocia un stream mucho mejor.
+ * El porqué de pedir resolución: sin pedirla, Safari entrega el stream por
+ * defecto —típicamente 640×480— y a esa resolución las barras finas de un VIN
+ * se funden entre sí; el decodificador no falla, es que no hay información que
+ * leer. Se pide `ideal` y nunca `exact`: exact en un dispositivo que no puede
+ * darlo lanza OverconstrainedError y deja al técnico sin cámara.
  *
- * Se pide `ideal` y no `exact` a propósito: `exact` en un dispositivo que no
- * puede darlo lanza OverconstrainedError y deja al técnico sin cámara. Con
- * `ideal` el navegador se acerca todo lo que pueda y nunca falla por esto.
+ * El porqué de que esto viaje en `config.videoConstraints` y NO en el primer
+ * argumento de `start()`: html5-qrcode valida ese primer argumento con
+ * `createVideoConstraints`, que exige UNA SOLA clave —`facingMode` o
+ * `deviceId`— y lanza en cuanto ve tres. Y lanza DENTRO del ejecutor de la
+ * promesa, después de haber abierto la transición de estado y sin cancelarla:
+ * la instancia queda atrapada en TRANSITIONING y todo `start()` posterior
+ * muere con "already under transition". Por eso el iPhone dejó de abrir la
+ * cámara del todo, y por eso el mensaje hablaba de permisos: los dos
+ * reintentos ya nacían muertos y el error final no tenía nada que ver con la
+ * causa. Android nunca pasó por aquí, y por eso solo se rompió el iPhone.
+ *
+ * `config.videoConstraints` es la puerta que sí acepta un MediaTrackConstraints
+ * completo —solo rechaza claves de audio— y cuando está presente la librería
+ * ignora el primer argumento para armar el stream.
  */
 function videoConstraints_(facingMode, isBar) {
   return {
@@ -110,23 +122,39 @@ function videoConstraints_(facingMode, isBar) {
   };
 }
 
-export async function startCameraWithFallback(instance, config, onDecoded, { isBar = false } = {}) {
+export async function startCameraWithFallback(
+  instance,
+  config,
+  onDecoded,
+  { isBar = false, reset = null } = {}
+) {
+  // Un intento fallido puede dejar la máquina de estados de html5-qrcode a
+  // medias, y el intento siguiente hereda ese cadáver en vez de fallar por su
+  // propio motivo. `reset` entrega una instancia limpia para que el fallback
+  // sea de verdad un fallback y no la misma muerte repetida tres veces.
+  const fresh = async () => (reset ? await reset() : instance);
+
   if (isIOS_()) {
     // iOS: evitar { exact: "environment" } — genera OverconstrainedError en Safari
     try {
-      await instance.start(videoConstraints_("environment", isBar), config, onDecoded, () => {});
+      await instance.start(
+        { facingMode: "environment" },
+        { ...config, videoConstraints: videoConstraints_("environment", isBar) },
+        onDecoded,
+        () => {}
+      );
       return;
     } catch { /* fallback */ }
 
     // Sin resolución pedida: si el iPhone no pudo con la ideal, al menos que
     // abra la cámara. Vale más un escaneo difícil que ninguno.
     try {
-      await instance.start({ facingMode: "environment" }, config, onDecoded, () => {});
+      await (await fresh()).start({ facingMode: "environment" }, config, onDecoded, () => {});
       return;
     } catch { /* fallback */ }
 
     // Último recurso iOS: cámara frontal
-    await instance.start({ facingMode: "user" }, config, onDecoded, () => {});
+    await (await fresh()).start({ facingMode: "user" }, config, onDecoded, () => {});
     return;
   }
 
@@ -199,6 +227,21 @@ export function createScanner(readerId) {
   }
 
   /**
+   * Tira la instancia y devuelve una nueva.
+   *
+   * La máquina de estados de html5-qrcode vive DENTRO de la instancia, y un
+   * start() que falla a medio camino puede dejarla trabada para siempre. Como
+   * la instancia se cachea por readerId, esa avería no se va ni cerrando el
+   * modal: el técnico tendría que recargar la app. Botarla y crear otra cuesta
+   * nada y es lo único que garantiza que el siguiente intento empiece limpio.
+   */
+  async function resetInstance() {
+    await stopScanner(instance);
+    instance = null;
+    return ensureInstance();
+  }
+
+  /**
    * Inicia el escaneo.
    * @param {object}   opts
    * @param {"QR"|"BAR"} [opts.mode="QR"]     – modo de escaneo
@@ -223,15 +266,29 @@ export function createScanner(readerId) {
 
       // El modo viaja a las restricciones de vídeo: el código de barras del
       // VIN pide más resolución horizontal que un QR.
-      await startCameraWithFallback(inst, cfg, wrappedOnDecoded, { isBar: mode === "BAR" });
+      await startCameraWithFallback(inst, cfg, wrappedOnDecoded, {
+        isBar: mode === "BAR",
+        reset: resetInstance,
+      });
     } catch (err) {
       const msg = String(err?.message || err || "");
-      const isPermission = /permission|denied|notallowed|not allowed/i.test(msg);
+      const isPermission =
+        err?.name === "NotAllowedError" ||
+        /permission|denied|notallowed|not allowed/i.test(msg);
+
+      // Si el scanner queda trabado, el próximo intento arranca de cero en vez
+      // de heredar el estado roto. Sin esto, una sola falla condena al botón.
+      instance = null;
+
       if (msgEl) {
         msgEl.textContent = isPermission
           ? "Permiso de cámara denegado. Ve a Configuración > Safari > Cámara y permite el acceso."
-          : "No se pudo abrir la cámara. Revisa permisos en tu navegador.";
+          : "No se pudo abrir la cámara. Vuelve a intentar.";
       }
+      // El mensaje de pantalla tiene que ser corto; el motivo real no se pierde
+      // por eso. Decirle "revisa permisos" a alguien cuya cámara falló por otra
+      // cosa lo manda una hora a Ajustes a no encontrar nada.
+      console.error("[qr-scanner] no se pudo abrir la cámara:", err);
       throw err;
     }
   }
