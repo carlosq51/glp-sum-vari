@@ -27,6 +27,135 @@
   border-radius: var(--radius);
   padding: 14px;
   margin-top: var(--gap);
+  position: relative;   /* ancla de la franja de estado */
+  overflow: hidden;
+  transition: border-color .18s ease;
+}
+
+/* ─── Estado de la tarjeta durante una subida ───────────────────────────────
+   La franja de color es el único aviso que el técnico ve sin desplazarse:
+   el <pre> de estado queda al final de la pantalla, fuera de campo. Se pinta
+   con un pseudo-elemento y no con el `border` de la tarjeta para que el
+   contenido no salte un pixel al cambiar de estado.
+────────────────────────────────────────────────────────────────────────────*/
+.uploader-shell .slotCard::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: transparent;
+  transition: background .18s ease;
+}
+
+.uploader-shell .slotCard[data-estado="trabajando"]::before { background: var(--warn); }
+.uploader-shell .slotCard[data-estado="ok"]::before          { background: var(--ok); }
+.uploader-shell .slotCard[data-estado="error"]::before       { background: var(--danger); }
+
+.uploader-shell .slotCard[data-estado="error"] { border-color: var(--danger); }
+
+/* Barra de avance: no sabemos cuánto falta (el navegador no reporta progreso
+   de un POST con base64), así que se anima en bucle. Dice "sigue trabajando",
+   que es la pregunta real, y no miente con un porcentaje inventado. */
+.uploader-shell .slotCard[data-estado="trabajando"]::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 3px;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, var(--warn), transparent);
+  animation: upBarrido 1.1s linear infinite;
+}
+
+@keyframes upBarrido {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(350%); }
+}
+
+/* Respeta a quien pidió menos movimiento: se queda la franja lateral fija. */
+@media (prefers-reduced-motion: reduce) {
+  .uploader-shell .slotCard[data-estado="trabajando"]::after { animation: none; opacity: .5; }
+}
+
+/* Botones bloqueados mientras la foto viaja: un segundo toque abría otra
+   subida al mismo slot y la segunda pisaba a la primera a media transferencia. */
+.uploader-shell .btnUp:disabled {
+  opacity: .45;
+  cursor: progress;
+  filter: none;
+  transform: none;
+}
+
+/* ─────────────────────────────────────────────────
+   RESUMEN DE AVANCE (pantalla de parámetros)
+   ---------------------------------------------------------------------
+   Pegado bajo la cabecera para que sobreviva al scroll de las tarjetas: es
+   lo primero que el técnico busca al volver a un carro a medio registrar.
+───────────────────────────────────────────────── */
+.upResumen {
+  position: sticky;
+  top: var(--safeTop);
+  z-index: var(--z-sticky);
+  background: var(--grad-surface);
+  border: var(--border-w) solid var(--surfaceLine);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin: var(--gap) 0;
+  box-shadow: var(--shadowSm);
+}
+
+.upResumen[data-completo="si"] { border-color: var(--ok); }
+
+.upResumenFila {
+  display: flex;
+  align-items: baseline;
+  gap: var(--gap-sm);
+  margin-bottom: var(--gap-sm);
+}
+
+.upResumenCuenta {
+  font-size: var(--fs-2xl);
+  font-weight: var(--fw-black);
+  font-variant-numeric: tabular-nums;   /* la cuenta no debe bailar al cambiar */
+  white-space: nowrap;
+}
+
+.upResumen[data-completo="si"] .upResumenCuenta { color: var(--ok); }
+
+/* Lo que falta puede ser largo. Se deja envolver en vez de recortarlo con
+   puntos suspensivos: un faltante que no se lee no sirve de nada. */
+.upResumenFaltan {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.upBarra {
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--pillBg);
+  overflow: hidden;
+}
+
+.upBarraLleno {
+  height: 100%;
+  width: 0;
+  border-radius: var(--radius-full);
+  background: var(--grad-btn);
+  transition: width .25s ease;
+}
+
+.upResumen[data-completo="si"] .upBarraLleno { background: var(--ok); }
+
+@media (prefers-reduced-motion: reduce) {
+  .upBarraLleno { transition: none; }
+}
+
+/* Aclaración dentro de una etiqueta de slot ("Compresión (4 tomas)") */
+.uploader-shell .upNota {
+  font-weight: var(--fw-bold);
+  font-size: var(--fs-xs);
+  color: var(--muted);
 }
 
 /* Card de opción del menú */

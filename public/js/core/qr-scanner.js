@@ -16,6 +16,15 @@ function isIOS_() {
 }
 
 /**
+ * ¿El navegador trae el decodificador de códigos del sistema?
+ * En iOS nunca; ahí ni se pregunta, porque el solo hecho de que html5-qrcode
+ * vaya a buscarla es lo que rompía el escaneo en Safari.
+ */
+function hayDetectorNativo_() {
+  return !isIOS_() && typeof window !== "undefined" && "BarcodeDetector" in window;
+}
+
+/**
  * Normaliza el texto escaneado: elimina espacios y convierte a mayúsculas.
  * @param {string} text
  * @returns {string}
@@ -28,10 +37,10 @@ export function normalizeScanText(text) {
  * Configuraciones de escaneo predeterminadas por modo y plataforma.
  *
  * iOS Safari: usa qrbox relativo al viewfinder (función) para adaptarse a la
- * alta resolución de cámara del iPhone 13+ y deshabilita BarcodeDetector API
- * (nativa de Chromium) que no existe en WebKit.
+ * alta resolución de cámara del iPhone 13+.
  *
- * Android/Desktop: qrbox fijo, mayor fps, sin restricciones.
+ * Android/Desktop: qrbox fijo para barras, mayor fps, y decodificador nativo
+ * del sistema cuando el navegador lo trae.
  *
  * @param {"QR"|"BAR"} mode
  * @returns {{ fps: number, qrbox: object|function, formatsToSupport: number[], experimentalFeatures: object }}
@@ -69,9 +78,16 @@ export function getScanConfig(mode) {
     // iOS siempre usa función relativa; Android puede usar función o fijo
     qrbox: ios ? qrboxFn : (isBar ? { width: 200, height: 360 } : qrboxFn),
     formatsToSupport: isBar ? barFormats : [Html5QrcodeSupportedFormats.QR_CODE],
-    // BarcodeDetector API no existe en Safari/WebKit → deshabilitarla evita
-    // que html5-qrcode rompa silenciosamente en iOS.
-    experimentalFeatures: { useBarCodeDetectorIfSupported: false },
+    // BarcodeDetector es el decodificador del propio sistema operativo: lee en
+    // una fracción del tiempo que tarda el decodificador en JS que trae la
+    // librería, y aguanta mucho mejor un código torcido o mal iluminado.
+    //
+    // Estaba apagado en TODAS las plataformas, pero el motivo era solo iOS:
+    // WebKit no tiene la API y html5-qrcode se rompía en silencio al buscarla.
+    // Apagarlo también en Android salió caro — ahí sí existe, y es justo el
+    // dispositivo de la mayoría de los técnicos. Ahora se pregunta en vez de
+    // suponer: si el navegador la trae, se usa.
+    experimentalFeatures: { useBarCodeDetectorIfSupported: hayDetectorNativo_() },
   };
 }
 
@@ -159,8 +175,29 @@ export async function startCameraWithFallback(
   }
 
   // ── Android / Desktop ────────────────────────────────────────────────────
+  // Intento 0: cámara trasera CON resolución pedida.
+  //
+  // La resolución se había puesto solo en la rama de iOS, porque era el iPhone
+  // el que estaba fallando. Pero el motivo de pedirla no es de iPhone: sin
+  // pedirla el navegador entrega 640×480, y a esa resolución las barras finas
+  // de un VIN se funden entre sí en cualquier teléfono. Android leía, sí, pero
+  // leía peor de lo que podía.
+  //
+  // Va primero y no reemplaza a nada: si el dispositivo no puede con esa
+  // resolución, los tres intentos de abajo siguen intactos.
+  try {
+    await instance.start(
+      { facingMode: "environment" },
+      { ...config, videoConstraints: videoConstraints_("environment", isBar) },
+      onDecoded,
+      () => {}
+    );
+    return;
+  } catch { /* fallback */ }
+
   // Intento 1: exact environment (funciona en la mayoría de Android Chrome)
   try {
+    instance = await fresh();
     await instance.start(
       { facingMode: { exact: "environment" } },
       config,
@@ -217,6 +254,53 @@ export async function stopScanner(instance) {
  */
 export function createScanner(readerId) {
   let instance = null;
+  let linternaEncendida = false;
+
+  // ─── Linterna ────────────────────────────────────────────────────────────
+  // Los VIN se leen debajo del capó, en el marco de la puerta o bajo el carro:
+  // sitios sin luz. Ahí no falla el decodificador, falla que no hay contraste,
+  // y el técnico termina escribiendo los 17 caracteres a mano. La cámara ya
+  // trae la lámpara; solo hacía falta un botón para encenderla.
+
+  /**
+   * pistaDeVideo_ — el MediaStreamTrack de la cámara abierta.
+   * html5-qrcode no lo expone, pero monta un <video> dentro del contenedor y
+   * de ahí sí se puede sacar. Si la librería cambia su DOM esto devuelve null
+   * y lo único que se pierde es el botón, no el escaneo.
+   */
+  function pistaDeVideo_() {
+    const video = document.getElementById(readerId)?.querySelector("video");
+    return video?.srcObject?.getVideoTracks?.()[0] || null;
+  }
+
+  /** ¿Esta cámara tiene lámpara y la deja controlar? (iOS: nunca.) */
+  function tieneLinterna() {
+    const pista = pistaDeVideo_();
+    if (!pista?.getCapabilities) return false;
+    try {
+      return !!pista.getCapabilities().torch;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * alternarLinterna — prende o apaga. Devuelve el estado real conseguido.
+   * Si el dispositivo rechaza la restricción se queda como estaba y lo dice,
+   * en vez de dejar el botón mintiendo.
+   */
+  async function alternarLinterna(encender = !linternaEncendida) {
+    const pista = pistaDeVideo_();
+    if (!pista) return false;
+    try {
+      await pista.applyConstraints({ advanced: [{ torch: !!encender }] });
+      linternaEncendida = !!encender;
+    } catch {
+      linternaEncendida = false;
+    }
+    return linternaEncendida;
+  }
+
 
   function ensureInstance() {
     if (!window.Html5Qrcode) {
@@ -266,6 +350,7 @@ export function createScanner(readerId) {
 
       // El modo viaja a las restricciones de vídeo: el código de barras del
       // VIN pide más resolución horizontal que un QR.
+      linternaEncendida = false;
       await startCameraWithFallback(inst, cfg, wrappedOnDecoded, {
         isBar: mode === "BAR",
         reset: resetInstance,
@@ -294,6 +379,10 @@ export function createScanner(readerId) {
   }
 
   async function stop() {
+    // Apagar ANTES de soltar la cámara: si el track muere con la lámpara
+    // encendida, en varios Android se queda prendida hasta que se reinicia el
+    // teléfono. El técnico lo nota cuando ya guardó el celular en el bolsillo.
+    if (linternaEncendida) await alternarLinterna(false);
     await stopScanner(instance);
   }
 
@@ -305,5 +394,5 @@ export function createScanner(readerId) {
     return !!(instance && instance.isScanning);
   }
 
-  return { start, stop, getInstance, isActive };
+  return { start, stop, getInstance, isActive, tieneLinterna, alternarLinterna };
 }

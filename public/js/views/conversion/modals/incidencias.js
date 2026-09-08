@@ -11,6 +11,7 @@ import {
 } from "../../../core/core.js";
 
 import { createSuggest_ } from "../../../core/suggest.js";
+import { comprimirImagen, ahorroLegible } from "../../../core/image-compress.js";
 
 import {
   renderActivas_, renderFinalizados_, patchVisibleCards_,
@@ -73,123 +74,29 @@ function clearIncFoto_() {
   incFotoPreviewWrap()?.classList.add("hidden");
 }
 
-// iOS fix: usa createObjectURL en vez de FileReader+data URL para evitar
-// el bug de crossOrigin en Safari iOS que taintea el canvas
+/**
+ * imageFileToUploadPayload_ — deja la foto de la incidencia lista para subir.
+ *
+ * La compresión vive en core/image-compress.js. Aquí había una copia casi
+ * idéntica a la del uploader, con la misma renuncia ante los HEIC del iPhone:
+ * se subían crudos, 3-8 MB, y encima sin vista previa. Ahora se decodifican
+ * como cualquier otra foto y el técnico ve lo que mandó.
+ */
 async function imageFileToUploadPayload_(file) {
-  // HEIC/HEIF (iPhone): Safari no puede dibujarlo en canvas → subir sin comprimir
-  const isHeic = /heic|heif/i.test(file.type || "") || /\.heic$|\.heif$/i.test(file.name || "");
-  if (isHeic) {
-    const b64 = await new Promise((resolve, reject) => {
-      const r = new FileReader();
-      r.onload = () => resolve(String(r.result).split(",")[1] || "");
-      r.onerror = () => reject(new Error("No se pudo leer el archivo HEIC."));
-      r.readAsDataURL(file);
-    });
-    return {
-      mimeType: file.type || "image/heic",
-      b64,
-      previewUrl: null,
-      name: file.name || "incidencia.heic",
-    };
-  }
+  const foto = await comprimirImagen(file);
+  const nombreBase = (file.name || "incidencia.jpg").replace(/\.[^.]+$/, "");
 
-  const objectUrl = URL.createObjectURL(file);
-
-  try {
-    const img = await new Promise((resolve, reject) => {
-      const im = new Image();
-
-      const timeout = setTimeout(() => {
-        reject(new Error("Timeout cargando imagen. Intenta de nuevo."));
-      }, 15000);
-
-      im.onload = () => {
-        clearTimeout(timeout);
-        resolve(im);
-      };
-
-      im.onerror = () => {
-        clearTimeout(timeout);
-        reject(new Error("NO_SE_PUDO_ABRIR"));
-      };
-
-      // NO crossOrigin aquí: los object URLs son same-origin, no necesitan CORS
-      // y ponerlo causaba que iOS Safari fallara o taintara el canvas
-      im.src = objectUrl;
-    });
-
-    const maxW = 800;
-    const maxH = 800;
-
-    let width = img.naturalWidth || img.width || 0;
-    let height = img.naturalHeight || img.height || 0;
-
-    if (!width || !height) {
-      throw new Error("No se pudo obtener dimensiones de la imagen.");
-    }
-
-    const ratio = Math.min(maxW / width, maxH / height, 1);
-    const w = Math.round(width * ratio);
-    const h = Math.round(height * ratio);
-
-    const canvas = document.createElement("canvas");
-    canvas.width = w;
-    canvas.height = h;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) {
-      throw new Error("Canvas 2D no disponible en este navegador.");
-    }
-
-    try {
-      ctx.drawImage(img, 0, 0, w, h);
-    } catch (err) {
-      throw new Error(`Error dibujando en canvas: ${err?.message || err}`);
-    }
-
-    let outDataUrl;
-    try {
-      outDataUrl = canvas.toDataURL("image/jpeg", 0.55);
-    } catch (err) {
-      throw new Error(`Error generando imagen comprimida: ${err?.message || err}`);
-    }
-
-    const m = outDataUrl.match(/^data:(.*?);base64,(.*)$/);
-    if (!m || !m[2]) {
-      throw new Error("No se pudo procesar la imagen (base64 vacío).");
-    }
-
-    const b64 = m[2];
-    const b64SizeMB = (b64.length * 0.75) / (1024 * 1024);
-    if (b64SizeMB > 3.5) {
-      throw new Error(`Imagen muy grande (${b64SizeMB.toFixed(1)}MB). Intenta con otra foto.`);
-    }
-
-    return {
-      mimeType: "image/jpeg",
-      b64,
-      previewUrl: outDataUrl,
-      name: (file.name || "incidencia.jpg").replace(/\.[^.]+$/, "") + ".jpg",
-    };
-  } catch (err) {
-    // Cualquier fallo de canvas → subir original sin comprimir
-    try { URL.revokeObjectURL(objectUrl); } catch {}
-    const b64 = await new Promise((resolve, reject) => {
-      const r = new FileReader();
-      r.onload = () => resolve(String(r.result).split(",")[1] || "");
-      r.onerror = () => reject(new Error("No se pudo leer el archivo."));
-      r.readAsDataURL(file);
-    });
-    const dataUrl = `data:${file.type || "image/jpeg"};base64,${b64}`;
-    return {
-      mimeType: file.type || "image/jpeg",
-      b64,
-      previewUrl: dataUrl,
-      name: file.name || "incidencia.jpg",
-    };
-  } finally {
-    try { URL.revokeObjectURL(objectUrl); } catch {}
-  }
+  return {
+    mimeType: foto.mimeType,
+    b64: foto.b64,
+    // Solo se ofrece vista previa de lo que el navegador seguro puede pintar.
+    // Un HEIC que no se pudo decodificar tampoco se va a poder mostrar.
+    previewUrl: foto.comprimida ? `data:${foto.mimeType};base64,${foto.b64}` : null,
+    name: foto.comprimida ? `${nombreBase}.jpg` : (file.name || "incidencia"),
+    bytes: foto.bytes,
+    bytesOriginales: foto.bytesOriginales,
+    comprimida: foto.comprimida,
+  };
 }
 
 async function onIncFotoChange_(e) {
@@ -240,7 +147,9 @@ async function onIncFotoChange_(e) {
         </div>`;
       }
     }
-    incSetMsg("");
+    // Se deja a la vista lo que pesó al final. Sin esto la compresión es
+    // invisible y el técnico no sabe si va a subir 100 KB o 4 MB por su plan.
+    incSetMsg(`📷 ${ahorroLegible(payload)}`);
   } catch (err) {
     console.error("[INC foto] ERROR:", err);
     incSetMsg("❌ No se pudo procesar la foto. " + String(err?.message || ""));

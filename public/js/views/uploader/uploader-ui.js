@@ -16,7 +16,8 @@ import {
   deleteSlot,
 } from "./uploader-api.js";
 
-import { createScanner, getScanConfig } from "../../core/qr-scanner.js";
+import { createScanner } from "../../core/qr-scanner.js";
+import { ahorroLegible } from "../../core/image-compress.js";
 
 export function initUploaderUI(root, options = {}) {
   const shell = root.querySelector(".uploader-shell") || root;
@@ -69,6 +70,84 @@ export function initUploaderUI(root, options = {}) {
     const el = $(id);
     if (el) el.textContent = String(txt || "");
   }
+
+  // =========================
+  // Estado por slot
+  // ---------------------------------------------------------------------
+  // Todo el avance de una subida se escribía en #up_out, un <pre> al final de
+  // la pantalla. En un celular eso queda dos pantallazos más abajo del botón
+  // que el técnico acaba de tocar: no ve nada, cree que no pasó nada y vuelve
+  // a tocar. De ahí las fotos duplicadas y los "no sube" que sí subían.
+  //
+  // El estado ahora vive en la propia tarjeta del slot —donde están sus ojos—
+  // y el <pre> queda como bitácora de la pantalla completa.
+  // =========================
+
+  /**
+   * Slots que no tienen tarjeta propia porque comparten una.
+   * `comp_1..4` son las cuatro tomas de la prueba de compresión y viven en una
+   * sola tarjeta con cuatro miniaturas; `calidad_1..4`, igual. Sin este mapa,
+   * el estado de esas subidas no se pintaba en ningún lado.
+   */
+  function claveDeTarjeta(slot) {
+    if (/^comp_\d$/.test(slot)) return "comp";
+    if (/^calidad_\d$/.test(slot)) return "qc";
+    return slot;
+  }
+
+  function tarjetaSlot(slot) {
+    return shell.querySelector(`.slotCard[data-slot="${claveDeTarjeta(slot)}"]`);
+  }
+
+  /**
+   * marcarSlot — pinta la tarjeta y bloquea sus botones mientras hay trabajo.
+   *
+   * Bloquear no es cosmético: sin eso, dos toques seguidos disparan dos
+   * subidas al mismo slot y la segunda pisa a la primera a medio camino.
+   */
+  function marcarSlot(slot, estado, texto) {
+    const card = tarjetaSlot(slot);
+    if (card) {
+      if (estado) card.setAttribute("data-estado", estado);
+      else card.removeAttribute("data-estado");
+
+      const ocupado = estado === "trabajando";
+      card.querySelectorAll("button[data-pick], button[data-clear]").forEach((b) => {
+        b.disabled = ocupado;
+      });
+    }
+    if (texto != null) setText(`${claveDeTarjeta(slot)}_meta`, texto);
+  }
+
+  /**
+   * conBotonOcupado — bloquea el botón mientras corre la acción.
+   *
+   * Los botones grandes de enviar (falla, calidad, conformidad) no tenían
+   * ningún freno: un segundo toque mientras la primera tanda todavía se estaba
+   * comprimiendo mandaba una segunda tanda entera, y en R2 quedaban dos lotes
+   * de la misma falla con distinto batchId. Nadie lo veía desde la app.
+   */
+  async function conBotonOcupado(btn, etiquetaOcupado, accion) {
+    if (!btn) return await accion();
+    if (btn.disabled) return;
+
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = etiquetaOcupado;
+    try {
+      return await accion();
+    } finally {
+      btn.disabled = false;
+      btn.textContent = original;
+    }
+  }
+
+  /** Texto de la etapa en curso. El técnico necesita saber si ya salió de su teléfono. */
+  const ETAPAS = {
+    decodificando: "Abriendo foto…",
+    comprimiendo: "Comprimiendo…",
+    upload: "Subiendo…",
+  };
 
   function getQueryParam(name) {
     try {
@@ -126,42 +205,53 @@ export function initUploaderUI(root, options = {}) {
   // =========================
   // Preview helpers
   // =========================
+  /**
+   * miniatura — pinta un archivo local en una caja de preview.
+   *
+   * El object URL se revoca en onload/onerror. Antes cada sitio ponía su
+   * propio `setTimeout(revoke, 15000)`: si el teléfono tardaba más de 15 s en
+   * decodificar una foto de 12 MP la miniatura salía en blanco, y si tardaba
+   * menos el archivo entero seguía retenido en memoria hasta que venciera el
+   * reloj — con cuatro fotos abiertas a la vez, eso es lo que tumbaba la
+   * pestaña en los Android con poca RAM.
+   */
+  function miniatura(box, file, { alt = "preview", vacio = "" } = {}) {
+    if (!box) return;
+    if (!file) {
+      box.innerHTML = `<span class="small">${vacio}</span>`;
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    const img = document.createElement("img");
+    img.alt = alt;
+    img.decoding = "async";
+    const soltar = () => URL.revokeObjectURL(url);
+    img.onload = soltar;
+    img.onerror = () => {
+      soltar();
+      box.innerHTML = `<span class="small">${vacio || "sin vista previa"}</span>`;
+    };
+    img.src = url;
+    box.innerHTML = "";
+    box.appendChild(img);
+  }
+
   function setPreview(slot, file) {
     const box = $(`${slot}_previewBox`);
-    const meta = $(`${slot}_meta`);
-    if (!box || !meta) return;
+    if (!box) return;
 
     if (!file) {
-      box.innerHTML = `<span class="small">Sin foto</span>`;
-      meta.textContent = "Ningún archivo seleccionado.";
+      miniatura(box, null, { vacio: "Sin foto" });
+      marcarSlot(slot, null, "Ningún archivo seleccionado.");
       return;
     }
 
-    meta.textContent = `${file.name || "(foto)"} • ${humanBytes(file.size || 0)}`;
-
-    const isHeic = /heic|heif/i.test(file.type || "") || /\.heic$|\.heif$/i.test(file.name || "");
-    if (isHeic) {
-      box.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:4px;padding:8px;">
-        <span style="font-size:2rem;">&#128247;</span>
-        <span style="font-size:.7rem;word-break:break-all;text-align:center;opacity:.7;">${file.name || "HEIC"}</span>
-      </div>`;
-      return;
-    }
-
-    const url = URL.createObjectURL(file);
-    const previewImg = document.createElement("img");
-    previewImg.alt = "preview";
-    previewImg.onerror = () => {
-      box.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:4px;padding:8px;">
-        <span style="font-size:2rem;">&#128247;</span>
-        <span style="font-size:.7rem;word-break:break-all;text-align:center;opacity:.7;">${file.name || "foto"}</span>
-      </div>`;
-      URL.revokeObjectURL(url);
-    };
-    previewImg.src = url;
-    box.innerHTML = "";
-    box.appendChild(previewImg);
-    setTimeout(() => URL.revokeObjectURL(url), 30000);
+    // Ya no hay rama especial para HEIC. Safari en iPhone los pinta sin
+    // problema, y donde no se puedan pintar el onerror de `miniatura` deja el
+    // aviso. Adivinar por la extensión solo servía para negarle la vista
+    // previa a la mitad de los técnicos que sí la podían ver.
+    miniatura(box, file, { alt: slotLabels[slot] || "foto", vacio: "Sin vista previa" });
+    marcarSlot(slot, null, `${file.name || "(foto)"} • ${humanBytes(file.size || 0)}`);
   }
 
   function setRemotePreview(slot, p) {
@@ -171,10 +261,15 @@ export function initUploaderUI(root, options = {}) {
 
     const src1 = p.thumbUrl || "";
     const src2 = p.imgUrl || "";
-    meta.textContent = "📡 Ya existe en Drive (preview).";
+    // Si el slot acaba de subirse, su tarjeta ya dice cuánto pesó y cuánto se
+    // ahorró; el refresco posterior no debe borrar ese dato para poner un
+    // genérico. (Y hace rato que las fotos no viven en Drive sino en R2.)
+    if (tarjetaSlot(slot)?.getAttribute("data-estado") !== "ok") {
+      meta.textContent = "📡 Ya guardada en el servidor.";
+    }
 
     const img = document.createElement("img");
-    img.alt = "drive preview";
+    img.alt = "foto guardada";
     img.loading = "eager";
     img.referrerPolicy = "no-referrer";
     img.style.width = "100%";
@@ -203,7 +298,7 @@ export function initUploaderUI(root, options = {}) {
     const src2 = p.imgUrl || "";
 
     const img = document.createElement("img");
-    img.alt = "drive preview";
+    img.alt = "foto guardada";
     img.loading = "eager";
     img.referrerPolicy = "no-referrer";
     img.style.width = "100%";
@@ -227,38 +322,74 @@ export function initUploaderUI(root, options = {}) {
   // =========================
   // Status (parámetros)
   // =========================
+  /**
+   * Los nueve archivos del registro, agrupados como los ve el técnico: la
+   * prueba de compresión son cuatro tomas de un mismo paso, no cuatro pasos.
+   * La cuenta sigue siendo sobre 9 archivos porque eso es lo que exige el
+   * registro; lo que cambia es cómo se nombra lo que falta.
+   */
+  const PASOS_REGISTRO = [
+    { titulo: "Compresión", slots: ["comp_1", "comp_2", "comp_3", "comp_4"] },
+    { titulo: "Foto del VIN", slots: ["vin"] },
+    { titulo: "Amperaje antes", slots: ["corr_pre"] },
+    { titulo: "Amperaje después", slots: ["corr_post"] },
+    { titulo: "Voltaje", slots: ["voltaje"] },
+    { titulo: "Scan del carro", slots: ["scan_carro"] },
+  ];
+
+  const TOTAL_REGISTRO = PASOS_REGISTRO.reduce((a, p) => a + p.slots.length, 0);
+
+  /**
+   * renderResumen — la línea de arriba: cuántas van y qué falta, por nombre.
+   *
+   * Decir "faltan 3" no sirve de nada si el técnico tiene que bajar nueve
+   * tarjetas para averiguar cuáles. Se nombran, y la compresión se nombra con
+   * su cuenta propia porque ahí faltar una o faltar las cuatro es distinto.
+   */
+  function renderResumen(estado = {}) {
+    const listas = PASOS_REGISTRO.reduce(
+      (a, p) => a + p.slots.filter((sl) => estado[sl]).length, 0
+    );
+
+    setText("resumenCuenta", `${listas} / ${TOTAL_REGISTRO}`);
+
+    const barra = $("resumenBarra");
+    if (barra) barra.style.width = `${Math.round((listas / TOTAL_REGISTRO) * 100)}%`;
+
+    const faltan = PASOS_REGISTRO.flatMap((p) => {
+      const hechas = p.slots.filter((sl) => estado[sl]).length;
+      if (hechas === p.slots.length) return [];
+      return [p.slots.length > 1 ? `${p.titulo} (${hechas}/${p.slots.length})` : p.titulo];
+    });
+
+    setText("resumenFaltan", faltan.length ? `Falta: ${faltan.join(", ")}` : "Registro completo 🎉");
+
+    const caja = $("resumen");
+    if (caja) caja.setAttribute("data-completo", faltan.length ? "no" : "si");
+  }
+
   function renderStatus(j) {
-    let s = "";
-    s += `VIN: ${j.vin || "-"}\n`;
-    s += `Fecha: ${j.dateStr || "-"}\n`;
-    s += `Carpeta: ${j.monthFolderName || "-"} / ${j.carFolderName || "-"} / REGISTRO\n\n`;
+    renderResumen(j.status || {});
 
-    const compSlots = ["comp_1", "comp_2", "comp_3", "comp_4"];
-    const compOkCount = compSlots.filter((sl) => j.status && j.status[sl]).length;
-    const compMissingCount = 4 - compOkCount;
+    // El detalle deja de repetir la lista de faltantes: eso ya lo dice el
+    // resumen de arriba, y decirlo dos veces con distinto formato solo hacía
+    // dudar de cuál de los dos estaba al día. Aquí quedan los enlaces, que es
+    // lo único que el resumen no puede dar.
+    const lineas = [
+      `VIN ${j.vin || "-"} · ${j.dateStr || "-"}`,
+      `Carpeta: ${j.monthFolderName || "-"} / ${j.carFolderName || "-"} / REGISTRO`,
+      "",
+    ];
 
-    s += `${compOkCount === 4 ? "✅" : "❌"} Compresión (${compOkCount}/4)\n`;
-    if (compMissingCount > 0) s += `   Faltan: ${compMissingCount} foto(s)\n`;
-
-    const otherSlots = ["vin", "corr_pre", "corr_post", "voltaje", "scan_carro"];
-    const missing = [];
-
-    for (const slot of otherSlots) {
-      const ok = j.status && j.status[slot];
-      const p = j.previews && j.previews[slot];
-
-      s += `${ok ? "✅" : "❌"} ${slotLabels[slot]}`;
-      if (p && p.url) s += `  (ver: ${p.url})`;
-      s += "\n";
-
-      if (!ok) missing.push(slotLabels[slot]);
+    for (const paso of PASOS_REGISTRO) {
+      for (const slot of paso.slots) {
+        const ok = j.status && j.status[slot];
+        const url = j.previews?.[slot]?.url || "";
+        lineas.push(`${ok ? "✅" : "⬜"} ${slotLabels[slot] || slot}${url ? `  ${url}` : ""}`);
+      }
     }
 
-    const allMissingCount = compMissingCount + missing.length;
-    s += `\nFaltantes (${allMissingCount}/9):\n- ${
-      allMissingCount ? [`Compresión (${compOkCount}/4)`, ...missing].join("\n- ") : "Ninguno 🎉"
-    }`;
-
+    const s = lineas.join("\n");
     setText("out", s);
   }
 
@@ -267,7 +398,9 @@ export function initUploaderUI(root, options = {}) {
     const dateStr = $("dateStr")?.value || todayYYYYMMDD();
 
     if (!vin) {
-      setText("out", "❌ Falta VIN (texto).");
+      renderResumen({});
+      setText("resumenFaltan", "Escanea un VIN para ver el avance.");
+      setText("out", "Escribe o escanea un VIN para consultar su estado.");
       return;
     }
 
@@ -301,15 +434,25 @@ export function initUploaderUI(root, options = {}) {
     const dateStr = String(dateOverride || $("dateStr")?.value || todayYYYYMMDD());
 
     if (!vin) {
+      marcarSlot(slot, "error", "Falta el VIN.");
       setText(outId, "❌ Falta VIN.");
       return { ok: false, error: "Falta VIN" };
     }
 
+    marcarSlot(slot, "trabajando", ETAPAS.decodificando);
+
     try {
-      setText(outId, `Preparando ${slot}...\n`);
-      const j = await uploadOne({ vin, dateStr, slot, file, apsUrl: options.apsUrl });
+      const j = await uploadOne({
+        vin,
+        dateStr,
+        slot,
+        file,
+        apsUrl: options.apsUrl,
+        onProgress: (p) => marcarSlot(slot, "trabajando", ETAPAS[p.phase] || "Procesando…"),
+      });
 
       if (!j.ok) {
+        marcarSlot(slot, "error", `No se pudo subir: ${j.error || "error"}`);
         setText(outId, `❌ uploadOne(${slot}): ${j.error}`);
         return j;
       }
@@ -323,9 +466,13 @@ export function initUploaderUI(root, options = {}) {
         }
       }
 
-      setText(outId, `✅ Guardado: ${slot}\n`);
+      // El ahorro se muestra en la tarjeta: es la única señal de que la foto
+      // de 4 MB del iPhone no se fue entera por los datos del técnico.
+      marcarSlot(slot, "ok", `✅ Guardada · ${ahorroLegible(j.foto)}`);
+      setText(outId, `✅ Guardado: ${slot} (${ahorroLegible(j.foto)})`);
       return j;
     } catch (e) {
+      marcarSlot(slot, "error", `Error: ${e?.message || e}`);
       setText(outId, `❌ Error ${slot}: ${e}`);
       return { ok: false, error: String(e) };
     }
@@ -356,14 +503,7 @@ export function initUploaderUI(root, options = {}) {
       const f = compFilesVisual[idx];
       if (!box) return;
 
-      if (!f) {
-        box.innerHTML = `<span class="small">${idx + 1}</span>`;
-        return;
-      }
-
-      const url = URL.createObjectURL(f);
-      box.innerHTML = `<img alt="preview" src="${url}">`;
-      setTimeout(() => URL.revokeObjectURL(url), 15000);
+      miniatura(box, f, { alt: `compresión ${idx + 1}`, vacio: String(idx + 1) });
     });
 
     const chosen = compFilesVisual.filter(Boolean);
@@ -422,14 +562,12 @@ export function initUploaderUI(root, options = {}) {
     grid.innerHTML = "";
 
     fallaFiles.forEach((f, idx) => {
-      const url = URL.createObjectURL(f);
-
       const wrap = document.createElement("div");
       wrap.style.position = "relative";
 
       const thumb = document.createElement("div");
       thumb.className = "thumb";
-      thumb.innerHTML = `<img alt="falla" src="${url}">`;
+      miniatura(thumb, f, { alt: `falla ${idx + 1}` });
       wrap.appendChild(thumb);
 
       const x = document.createElement("button");
@@ -448,8 +586,6 @@ export function initUploaderUI(root, options = {}) {
       wrap.appendChild(x);
 
       grid.appendChild(wrap);
-
-      setTimeout(() => URL.revokeObjectURL(url), 15000);
     });
 
     const total = fallaFiles.reduce((a, f) => a + (f.size || 0), 0);
@@ -487,14 +623,7 @@ export function initUploaderUI(root, options = {}) {
       const f = qcFiles[idx];
       if (!box) return;
 
-      if (!f) {
-        box.innerHTML = `<span class="small">${idx + 1}</span>`;
-        return;
-      }
-
-      const url = URL.createObjectURL(f);
-      box.innerHTML = `<img alt="qc" src="${url}">`;
-      setTimeout(() => URL.revokeObjectURL(url), 15000);
+      miniatura(box, f, { alt: `calidad ${idx + 1}`, vacio: String(idx + 1) });
     });
 
     const chosen = qcFiles.filter(Boolean);
@@ -559,9 +688,7 @@ export function initUploaderUI(root, options = {}) {
     }
 
     meta.textContent = `${confFile.name || "(foto)"} • ${humanBytes(confFile.size || 0)}`;
-    const url = URL.createObjectURL(confFile);
-    box.innerHTML = `<img alt="equipo" src="${url}">`;
-    setTimeout(() => URL.revokeObjectURL(url), 15000);
+    miniatura(box, confFile, { alt: "equipo" });
   }
 
   function openConformidad(tipo) {
@@ -647,6 +774,42 @@ export function initUploaderUI(root, options = {}) {
     await stopScanner("sold");
   }
 
+  /**
+   * botonLinterna — crea (una vez por visor) el botón de la lámpara.
+   *
+   * Se monta sobre el vídeo y no en la fila de botones porque el técnico ya
+   * tiene el celular apuntando al VIN: mover el pulgar fuera del visor para
+   * encender la luz significa perder el encuadre que acaba de conseguir.
+   *
+   * Solo aparece si la cámara declara tener lámpara, y eso no se sabe hasta
+   * que el stream está abierto — de ahí que se llame después del start.
+   */
+  function botonLinterna(which) {
+    const m = scannerMap[which];
+    const cont = document.getElementById(`up_qrReader_${which}`);
+    if (!m || !cont || !m.scanner.tieneLinterna()) return;
+
+    let btn = cont.querySelector(".btnLinterna");
+    if (!btn) {
+      btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btnLinterna";
+      btn.addEventListener("click", async (ev) => {
+        ev.stopPropagation();
+        const encendida = await m.scanner.alternarLinterna();
+        btn.classList.toggle("on", encendida);
+        btn.setAttribute("aria-pressed", String(encendida));
+        btn.title = encendida ? "Apagar linterna" : "Encender linterna";
+      });
+      cont.appendChild(btn);
+    }
+    btn.textContent = "🔦";
+    btn.classList.remove("on");
+    btn.setAttribute("aria-pressed", "false");
+    btn.setAttribute("aria-label", "Linterna");
+    btn.title = "Encender linterna";
+  }
+
   async function startScanner(which, mode) {
     await stopScanner(which);
 
@@ -675,6 +838,11 @@ export function initUploaderUI(root, options = {}) {
           stopScanner(which).catch(() => {});
         },
       });
+
+      // El <video> y sus capacidades no existen en el instante en que start()
+      // resuelve; un tick de espera evita preguntar por la lámpara antes de que
+      // el navegador haya montado la pista.
+      setTimeout(() => botonLinterna(which), 400);
     } catch (e) {
       if ($(m.msg)) $(m.msg).textContent = `Error cámara (${mode}): ${e}`;
     }
@@ -807,14 +975,11 @@ export function initUploaderUI(root, options = {}) {
     });
 
     // Params: status
-    $("btnRefresh")?.addEventListener("click", refreshStatus);
+    $("btnRefresh")?.addEventListener("click", () =>
+      conBotonOcupado($("btnRefresh"), "🔄 Consultando…", refreshStatus)
+    );
     $("vinText")?.addEventListener("change", refreshStatus);
     $("dateStr")?.addEventListener("change", refreshStatus);
-
-    $("btnUpload")?.addEventListener("click", async () => {
-      setText("out", "📡 Refrescando estado...");
-      await refreshStatus();
-    });
 
     // Delegación tomar/subir/quitar (slots normales + comp)
     shell.addEventListener("click", (ev) => {
@@ -974,51 +1139,53 @@ export function initUploaderUI(root, options = {}) {
     });
 
     $("btnEnviarFalla")?.addEventListener("click", async () => {
-      const vin = ($("fallaVin")?.value || "").trim();
-      const dateStr = $("fallaDate")?.value || todayYYYYMMDD();
-      const note = ($("fallaNota")?.value || "").trim();
+      await conBotonOcupado($("btnEnviarFalla"), "⏳ ENVIANDO…", async () => {
+        const vin = ($("fallaVin")?.value || "").trim();
+        const dateStr = $("fallaDate")?.value || todayYYYYMMDD();
+        const note = ($("fallaNota")?.value || "").trim();
 
-      if (!vin) {
-        setText("outFalla", "❌ Falta VIN.");
-        return;
-      }
-
-      if (!note && fallaFiles.length === 0) {
-        setText("outFalla", "⚠️ Agrega una nota o al menos una foto.");
-        return;
-      }
-
-      try {
-        const j = await uploadFalla({
-          vin,
-          dateStr,
-          note,
-          files: fallaFiles,
-          apsUrl: options.apsUrl,
-          onProgress: (p) => {
-            if (p.phase === "prepare") {
-              setText("outFalla", `Preparando foto ${p.index}/${p.total}...\n`);
-            } else if (p.phase === "upload") {
-              setText("outFalla", `Subiendo FALLA (${p.total} foto(s) + nota)...\n`);
-            }
-          },
-        });
-
-        if (!j.ok) {
-          setText("outFalla", "❌ uploadFalla: " + (j.error || "Error"));
+        if (!vin) {
+          setText("outFalla", "❌ Falta VIN.");
           return;
         }
 
-        setText(
-          "outFalla",
-          `✅ Falla registrada.\nCarpeta: ${j.carFolderName}/FALLAS\nBatch: ${j.batchId}\nGuardados: ${j.savedCount}`
-        );
+        if (!note && fallaFiles.length === 0) {
+          setText("outFalla", "⚠️ Agrega una nota o al menos una foto.");
+          return;
+        }
 
-        fallaFiles = [];
-        renderFalla();
-      } catch (e) {
-        setText("outFalla", `❌ Error FALLA: ${e}`);
-      }
+        try {
+          const j = await uploadFalla({
+            vin,
+            dateStr,
+            note,
+            files: fallaFiles,
+            apsUrl: options.apsUrl,
+            onProgress: (p) => {
+              if (p.phase === "prepare") {
+                setText("outFalla", `Comprimiendo foto ${p.index}/${p.total}…\n`);
+              } else if (p.phase === "upload") {
+                setText("outFalla", `Subiendo FALLA: ${p.total} foto(s) + nota · ${humanBytes(p.bytes)}\n`);
+              }
+            },
+          });
+
+          if (!j.ok) {
+            setText("outFalla", "❌ uploadFalla: " + (j.error || "Error"));
+            return;
+          }
+
+          setText(
+            "outFalla",
+            `✅ Falla registrada.\nCarpeta: ${j.carFolderName}/FALLAS\nBatch: ${j.batchId}\nGuardados: ${j.savedCount}`
+          );
+
+          fallaFiles = [];
+          renderFalla();
+        } catch (e) {
+          setText("outFalla", `❌ Error FALLA: ${e}`);
+        }
+      });
     });
 
     renderFalla();
@@ -1033,58 +1200,60 @@ export function initUploaderUI(root, options = {}) {
     clearQc();
 
     $("btnQcUpload")?.addEventListener("click", async () => {
-      const vin = ($("qcVin")?.value || "").trim();
-      const dateStr = $("qcDate")?.value || todayYYYYMMDD();
+      await conBotonOcupado($("btnQcUpload"), "⏳ ENVIANDO…", async () => {
+        const vin = ($("qcVin")?.value || "").trim();
+        const dateStr = $("qcDate")?.value || todayYYYYMMDD();
 
-      if (!vin) {
-        setText("outQc", "❌ Falta VIN.");
-        return;
-      }
-
-      const chosen = qcFiles.filter(Boolean);
-      if (chosen.length < 3) {
-        setText("outQc", "⚠️ Debes subir mínimo 3 fotos de calidad.");
-        return;
-      }
-
-      const items = [];
-      for (let i = 0; i < 4; i++) {
-        const f = qcFiles[i];
-        if (!f) continue;
-        items.push({ slot: `calidad_${i + 1}`, file: f });
-      }
-
-      try {
-        const j = await uploadCalidadBatch({
-          vin,
-          dateStr,
-          items,
-          apsUrl: options.apsUrl,
-          onProgress: (p) => {
-            if (p.phase === "prepare") {
-              setText("outQc", `Preparando ${p.slot}...\n`);
-            } else if (p.phase === "upload") {
-              setText("outQc", `Enviando CALIDAD (${p.total} foto(s))...\n`);
-            }
-          },
-        });
-
-        if (!j.ok) {
-          setText("outQc", "❌ uploadCalidad: " + (j.error || "Error"));
+        if (!vin) {
+          setText("outQc", "❌ Falta VIN.");
           return;
         }
 
-        setText(
-          "outQc",
-          `✅ Calidad registrada.\nCarpeta: ${j.carFolderName}/CALIDAD\nGuardados: ${
-            Array.isArray(j.saved) ? j.saved.length : items.length
-          }`
-        );
+        const chosen = qcFiles.filter(Boolean);
+        if (chosen.length < 3) {
+          setText("outQc", "⚠️ Debes subir mínimo 3 fotos de calidad.");
+          return;
+        }
 
-        clearQc();
-      } catch (e) {
-        setText("outQc", `❌ Error CALIDAD: ${e}`);
-      }
+        const items = [];
+        for (let i = 0; i < 4; i++) {
+          const f = qcFiles[i];
+          if (!f) continue;
+          items.push({ slot: `calidad_${i + 1}`, file: f });
+        }
+
+        try {
+          const j = await uploadCalidadBatch({
+            vin,
+            dateStr,
+            items,
+            apsUrl: options.apsUrl,
+            onProgress: (p) => {
+              if (p.phase === "prepare") {
+                setText("outQc", `Comprimiendo foto ${p.index}/${p.total}…\n`);
+              } else if (p.phase === "upload") {
+                setText("outQc", `Enviando CALIDAD: ${p.total} foto(s) · ${humanBytes(p.bytes)}\n`);
+              }
+            },
+          });
+
+          if (!j.ok) {
+            setText("outQc", "❌ uploadCalidad: " + (j.error || "Error"));
+            return;
+          }
+
+          setText(
+            "outQc",
+            `✅ Calidad registrada.\nCarpeta: ${j.carFolderName}/CALIDAD\nGuardados: ${
+              Array.isArray(j.saved) ? j.saved.length : items.length
+            }`
+          );
+
+          clearQc();
+        } catch (e) {
+          setText("outQc", `❌ Error CALIDAD: ${e}`);
+        }
+      });
     });
 
     // Conformidad
@@ -1108,69 +1277,70 @@ export function initUploaderUI(root, options = {}) {
     });
 
     $("btnEnviarConf")?.addEventListener("click", async () => {
-      const tipo = ($("confTipo")?.value || "").trim();
-      const vin = ($("confVin")?.value || "").trim();
-      const dateStr = $("confDate")?.value || todayYYYYMMDD();
-      const tecnico = ($("confTecnico")?.value || "").trim();
+      await conBotonOcupado($("btnEnviarConf"), "⏳ ENVIANDO…", async () => {
+        const tipo = ($("confTipo")?.value || "").trim();
+        const vin = ($("confVin")?.value || "").trim();
+        const dateStr = $("confDate")?.value || todayYYYYMMDD();
+        const tecnico = ($("confTecnico")?.value || "").trim();
 
-      const checklist = {
-        revisadoConTiempo: !!$("chk1")?.checked,
-        responsablePerdida: !!$("chk2")?.checked,
-        todoConforme: !!$("chk3")?.checked,
-      };
+        const checklist = {
+          revisadoConTiempo: !!$("chk1")?.checked,
+          responsablePerdida: !!$("chk2")?.checked,
+          todoConforme: !!$("chk3")?.checked,
+        };
 
-      if (!vin) {
-        setText("outConf", "❌ Falta VIN.");
-        return;
-      }
-      if (!tecnico) {
-        setText("outConf", "❌ Falta nombre del técnico.");
-        return;
-      }
-      if (!confFile) {
-        setText("outConf", "❌ Falta foto del equipo.");
-        return;
-      }
-
-      if (!checklist.revisadoConTiempo || !checklist.responsablePerdida || !checklist.todoConforme) {
-        setText("outConf", "⚠️ Debes marcar los 3 checks de conformidad.");
-        return;
-      }
-
-      try {
-        const j = await uploadConformidad({
-          tipo,
-          vin,
-          dateStr,
-          tecnico,
-          checklist,
-          file: confFile,
-          apsUrl: options.apsUrl,
-          onProgress: (p) => {
-            if (p.phase === "prepare") setText("outConf", "Preparando foto...\n");
-            if (p.phase === "upload") setText("outConf", "Enviando conformidad...\n");
-          },
-        });
-
-        if (!j.ok) {
-          setText("outConf", "❌ uploadConformidad: " + (j.error || "Error"));
+        if (!vin) {
+          setText("outConf", "❌ Falta VIN.");
+          return;
+        }
+        if (!tecnico) {
+          setText("outConf", "❌ Falta nombre del técnico.");
+          return;
+        }
+        if (!confFile) {
+          setText("outConf", "❌ Falta foto del equipo.");
           return;
         }
 
-        setText(
-          "outConf",
-          `✅ Conformidad registrada.\n` +
-            `Tipo: ${tipo}\n` +
-            `Carpeta: ${j.carFolderName}/${j.mainFolderName}/${j.subFolderName}\n` +
-            `Acta: ${j.actaName}\n` +
-            `Foto: ${j.photoName}`
-        );
+        if (!checklist.revisadoConTiempo || !checklist.responsablePerdida || !checklist.todoConforme) {
+          setText("outConf", "⚠️ Debes marcar los 3 checks de conformidad.");
+          return;
+        }
 
-        confFile = null;
-        renderConfPhoto();
-      } catch (e) {
-        setText("outConf", `❌ Error CONFORMIDAD: ${e}`);
-      }
+        try {
+          const j = await uploadConformidad({
+            tipo,
+            vin,
+            dateStr,
+            tecnico,
+            checklist,
+            file: confFile,
+            apsUrl: options.apsUrl,
+            onProgress: (p) => {
+              setText("outConf", ETAPAS[p.phase] || "Enviando conformidad…");
+            },
+          });
+
+          if (!j.ok) {
+            setText("outConf", "❌ uploadConformidad: " + (j.error || "Error"));
+            return;
+          }
+
+          setText(
+            "outConf",
+            `✅ Conformidad registrada.\n` +
+              `Tipo: ${tipo}\n` +
+              `Carpeta: ${j.carFolderName}/${j.mainFolderName}/${j.subFolderName}\n` +
+              `Acta: ${j.actaName}\n` +
+              `Foto: ${j.photoName}`
+          );
+
+          confFile = null;
+          renderConfPhoto();
+        } catch (e) {
+          setText("outConf", `❌ Error CONFORMIDAD: ${e}`);
+        }
+      });
     });
 
     renderConfPhoto();

@@ -106,19 +106,32 @@ export function uploaderView() {
             </div>
 
             <div class="row">
-              <button class="btn3" id="up_btnRefresh">Refrescar estado</button>
+              <button class="btn3" id="up_btnRefresh">🔄 Refrescar estado</button>
             </div>
           </div>
 
-          <h3>Fotos (9) — se guardan en Drive</h3>
+          <!-- Resumen de avance.
+               La pregunta que el técnico trae al abrir esta pantalla es "¿qué
+               me falta?", y hasta ahora se contestaba con un muro de texto al
+               final de todo, después de nueve tarjetas de scroll. Aquí va
+               arriba, en una línea, y con los faltantes nombrados. -->
+          <div class="upResumen" id="up_resumen" aria-live="polite">
+            <div class="upResumenFila">
+              <span class="upResumenCuenta" id="up_resumenCuenta">— / 9</span>
+              <span class="upResumenFaltan" id="up_resumenFaltan">Escanea un VIN para ver el avance.</span>
+            </div>
+            <div class="upBarra"><div class="upBarraLleno" id="up_resumenBarra"></div></div>
+          </div>
+
+          <h3>Fotos del registro</h3>
 
           <div class="box grid">
 
             <!-- 1) VIN -->
             <div class="slotCard" data-slot="vin">
-              <label>1) Foto del VIN</label>
+              <label>1 · Foto del VIN</label>
 
-              <input class="hiddenInput" type="file" accept="image/*;capture=camera" capture="environment" id="up_vin_cam">
+              <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" capture="environment" id="up_vin_cam">
               <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" id="up_vin_file">
 
               <div class="slotActions upActions">
@@ -141,9 +154,9 @@ export function uploaderView() {
 
             <!-- 2) COMPRESIÓN: 4 fotos -->
             <div class="slotCard" data-slot="comp">
-              <label>2) Compresión (toma 4 fotos)</label>
+              <label>2 · Compresión <span class="upNota">(4 tomas)</span></label>
 
-              <input class="hiddenInput" type="file" accept="image/*;capture=camera" capture="environment" id="up_comp_cam">
+              <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" capture="environment" id="up_comp_cam">
               <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" id="up_comp_file" multiple>
 
               <div class="slotActions upActions">
@@ -172,9 +185,9 @@ export function uploaderView() {
 
             <!-- 6) Corriente antes -->
             <div class="slotCard" data-slot="corr_pre">
-              <label>6) Amperaje antes</label>
+              <label>3 · Amperaje antes</label>
 
-              <input class="hiddenInput" type="file" accept="image/*;capture=camera" capture="environment" id="up_corr_pre_cam">
+              <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" capture="environment" id="up_corr_pre_cam">
               <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" id="up_corr_pre_file">
 
               <div class="slotActions upActions">
@@ -197,9 +210,9 @@ export function uploaderView() {
 
             <!-- 7) Corriente después -->
             <div class="slotCard" data-slot="corr_post">
-              <label>7) Amperaje después</label>
+              <label>4 · Amperaje después</label>
 
-              <input class="hiddenInput" type="file" accept="image/*;capture=camera" capture="environment" id="up_corr_post_cam">
+              <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" capture="environment" id="up_corr_post_cam">
               <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" id="up_corr_post_file">
 
               <div class="slotActions upActions">
@@ -222,9 +235,9 @@ export function uploaderView() {
 
             <!-- 8) Voltaje -->
             <div class="slotCard" data-slot="voltaje">
-              <label>8) Voltaje</label>
+              <label>5 · Voltaje</label>
 
-              <input class="hiddenInput" type="file" accept="image/*;capture=camera" capture="environment" id="up_voltaje_cam">
+              <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" capture="environment" id="up_voltaje_cam">
               <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" id="up_voltaje_file">
 
               <div class="slotActions upActions">
@@ -247,9 +260,9 @@ export function uploaderView() {
 
             <!-- 9) Scan del carro -->
             <div class="slotCard" data-slot="scan_carro">
-              <label>9) Scan del carro</label>
+              <label>6 · Scan del carro</label>
 
-              <input class="hiddenInput" type="file" accept="image/*;capture=camera" capture="environment" id="up_scan_carro_cam">
+              <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" capture="environment" id="up_scan_carro_cam">
               <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" id="up_scan_carro_file">
 
               <div class="slotActions upActions">
@@ -272,11 +285,12 @@ export function uploaderView() {
 
           </div>
 
-          <div class="row">
-            <button class="btnPrimaryBig" id="up_btnUpload">🔄 REFRESCAR ESTADO</button>
-          </div>
-
-          <h3>Estado colaborativo</h3>
+          <!-- El botón grande "REFRESCAR ESTADO" que había aquí hacía
+               exactamente lo mismo que el btn3 de arriba, pero con el aspecto
+               del botón de confirmar de las otras pantallas: leído rápido
+               parecía el "enviar" que cierra el registro, y no lo era. Cada
+               foto ya se sube sola al tomarla; esta pantalla no tiene envío. -->
+          <h3>Detalle</h3>
           <div id="up_out" class="status">Listo.</div>
         </section>
 
@@ -324,7 +338,7 @@ export function uploaderView() {
             <div class="row">
               <label>Fotos de falla (sin límite)</label>
 
-              <input class="hiddenInput" type="file" accept="image/*;capture=camera" capture="environment" id="up_falla_cam">
+              <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" capture="environment" id="up_falla_cam">
               <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" id="up_falla_file" multiple>
 
               <div class="slotActions upActions">
@@ -386,10 +400,13 @@ export function uploaderView() {
               <input id="up_qcDate" type="date" />
             </div>
 
-            <div class="slotCard" style="margin-top:10px;">
+            <!-- data-slot="qc" es lo que ata calidad_1..4 a esta tarjeta:
+                 las cuatro fotos comparten una sola, y sin el atributo su
+                 estado de subida no se pintaba en ninguna parte. -->
+            <div class="slotCard" data-slot="qc" style="margin-top:10px;">
               <label>Fotos de Calidad (mín 3, máx 4)</label>
 
-              <input class="hiddenInput" type="file" accept="image/*;capture=camera" capture="environment" id="up_qc_cam">
+              <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" capture="environment" id="up_qc_cam">
               <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" id="up_qc_file" multiple>
 
               <div class="slotActions upActions">
@@ -489,7 +506,7 @@ export function uploaderView() {
             <div class="slotCard" style="margin-top:10px;">
               <label>Foto del equipo (1)</label>
 
-              <input class="hiddenInput" type="file" accept="image/*;capture=camera" capture="environment" id="up_conf_cam">
+              <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" capture="environment" id="up_conf_cam">
               <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" id="up_conf_file">
 
               <div class="slotActions upActions">
@@ -559,7 +576,7 @@ export function uploaderView() {
             <div class="slotCard" data-slot="sold_sensor_antes">
               <label>1) Sensor de nivel <span class="small">ANTES (ver soldadura)</span></label>
 
-              <input class="hiddenInput" type="file" accept="image/*;capture=camera" capture="environment" id="up_sold_sensor_antes_cam">
+              <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" capture="environment" id="up_sold_sensor_antes_cam">
               <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" id="up_sold_sensor_antes_file">
 
               <div class="slotActions upActions">
@@ -584,7 +601,7 @@ export function uploaderView() {
             <div class="slotCard" data-slot="sold_sensor_post">
               <label>2) Sensor de nivel <span class="small">DESPUÉS (con termocontraíble)</span></label>
 
-              <input class="hiddenInput" type="file" accept="image/*;capture=camera" capture="environment" id="up_sold_sensor_post_cam">
+              <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" capture="environment" id="up_sold_sensor_post_cam">
               <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" id="up_sold_sensor_post_file">
 
               <div class="slotActions upActions">
@@ -609,7 +626,7 @@ export function uploaderView() {
             <div class="slotCard" data-slot="sold_cabina_antes">
               <label>3) Cabina <span class="small">ANTES</span></label>
 
-              <input class="hiddenInput" type="file" accept="image/*;capture=camera" capture="environment" id="up_sold_cabina_antes_cam">
+              <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" capture="environment" id="up_sold_cabina_antes_cam">
               <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" id="up_sold_cabina_antes_file">
 
               <div class="slotActions upActions">
@@ -634,7 +651,7 @@ export function uploaderView() {
             <div class="slotCard" data-slot="sold_cabina_post">
               <label>4) Cabina <span class="small">DESPUÉS</span></label>
 
-              <input class="hiddenInput" type="file" accept="image/*;capture=camera" capture="environment" id="up_sold_cabina_post_cam">
+              <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" capture="environment" id="up_sold_cabina_post_cam">
               <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" id="up_sold_cabina_post_file">
 
               <div class="slotActions upActions">

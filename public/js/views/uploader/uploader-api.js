@@ -4,6 +4,11 @@
 // =========================
 
 import { postJSON } from "../../core/api.js";
+import {
+  comprimirImagen,
+  comprimirVarias,
+  bytesLegibles,
+} from "../../core/image-compress.js";
 
 export const APS_URL = "/api/uploader/proxy";
 
@@ -17,16 +22,8 @@ export function todayYYYYMMDD() {
   return `${y}-${m}-${day}`;
 }
 
-export function humanBytes(n) {
-  const u = ["B", "KB", "MB", "GB"];
-  let i = 0;
-  let v = Number(n || 0);
-  while (v >= 1024 && i < u.length - 1) {
-    v /= 1024;
-    i++;
-  }
-  return `${v.toFixed(i === 0 ? 0 : 1)} ${u[i]}`;
-}
+/** Re-export: media vista del uploader ya lo importaba desde aquí. */
+export const humanBytes = bytesLegibles;
 
 // Delegación en core/api.js:postJSON. A diferencia del resto de la app,
 // los callers del uploader esperan EXCEPCIÓN en error HTTP (no {ok:false}),
@@ -40,120 +37,37 @@ export async function callAPS(payload, apsUrl = APS_URL) {
   return j;
 }
 
+/**
+ * fileToB64Compressed — compatibilidad con los callers viejos que solo querían
+ * el base64. Lo nuevo debería usar `comprimirImagen` directamente, que además
+ * devuelve el mimeType real y cuánto se ahorró.
+ */
 export async function fileToB64Compressed(file) {
   if (!file) return "";
-
-  // Si no es imagen, sube tal cual en base64
-  if (!/^image\//i.test(file.type || "")) {
-    return await new Promise((resolve, reject) => {
-      const r = new FileReader();
-      r.onload = () => resolve(String(r.result).split(",")[1] || "");
-      r.onerror = () => reject(new Error("No se pudo leer el archivo."));
-      r.readAsDataURL(file);
-    });
-  }
-
-  // HEIC / HEIF: el navegador no puede decodificarlos en canvas → subir sin compresión
-  const isHeic = /heic|heif/i.test(file.type || "") || /\.heic$|\.heif$/i.test(file.name || "");
-  if (isHeic) {
-    return await new Promise((resolve, reject) => {
-      const r = new FileReader();
-      r.onload = () => resolve(String(r.result).split(",")[1] || "");
-      r.onerror = () => reject(new Error("No se pudo leer el archivo HEIC."));
-      r.readAsDataURL(file);
-    });
-  }
-
-  const imgURL = URL.createObjectURL(file);
-
-  try {
-    const img = await new Promise((resolve, reject) => {
-      const im = new Image();
-
-      const timer = setTimeout(() => {
-        reject(new Error("La imagen tardó demasiado en cargar para compresión."));
-      }, 15000);
-
-      im.onload = () => {
-        clearTimeout(timer);
-        resolve(im);
-      };
-
-      im.onerror = () => {
-        clearTimeout(timer);
-        reject(new Error("NO_SE_PUDO_ABRIR"));
-      };
-
-      im.src = imgURL;
-    });
-
-    const maxW = 800;
-    const quality = 0.55;
-
-    let w = img.naturalWidth || img.width || 0;
-    let h = img.naturalHeight || img.height || 0;
-
-    if (!w || !h) {
-      throw new Error("La imagen no tiene dimensiones válidas.");
-    }
-
-    if (w > maxW) {
-      const scale = maxW / w;
-      w = Math.round(w * scale);
-      h = Math.round(h * scale);
-    }
-
-    const canvas = document.createElement("canvas");
-    canvas.width = w;
-    canvas.height = h;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) {
-      throw new Error("No se pudo crear el contexto de compresión.");
-    }
-
-    ctx.drawImage(img, 0, 0, w, h);
-
-    const dataUrl = canvas.toDataURL("image/jpeg", quality);
-    const b64 = String(dataUrl).split(",")[1] || "";
-
-    if (!b64) {
-      throw new Error("La compresión devolvió una imagen vacía.");
-    }
-
-    return b64;
-  } catch (err) {
-    // Si la compresión falla por CUALQUIER razón (formato no soportado, dimensiones
-    // inválidas, canvas bloqueado, etc.), subir el archivo original sin comprimir.
-    URL.revokeObjectURL(imgURL);
-    try {
-      return await new Promise((resolve, reject) => {
-        const r = new FileReader();
-        r.onload = () => resolve(String(r.result).split(",")[1] || "");
-        r.onerror = () => reject(new Error("No se pudo leer el archivo."));
-        r.readAsDataURL(file);
-      });
-    } catch {
-      throw new Error(`Error comprimiendo imagen: ${err?.message || err}`);
-    }
-  } finally {
-    URL.revokeObjectURL(imgURL);
-  }
+  const { b64 } = await comprimirImagen(file);
+  return b64;
 }
 
 export async function getStatus({ vin, dateStr, apsUrl = APS_URL }) {
   return callAPS({ action: "getStatus", vin, dateStr }, apsUrl);
 }
 
-export async function uploadOne({ vin, dateStr, slot, file, apsUrl = APS_URL }) {
-  const b64 = await fileToB64Compressed(file);
-  // Detectar HEIC/HEIF para enviar el mimeType correcto al backend
-  const isHeic = /heic|heif/i.test(file?.type || "") || /\.heic$|\.heif$/i.test(file?.name || "");
-  const mimeType = isHeic ? (file.type || "image/heic") : "image/jpeg";
-  return callAPS(
-    { action: "uploadOne", vin, dateStr, slot, mimeType, b64 },
+export async function uploadOne({ vin, dateStr, slot, file, onProgress, apsUrl = APS_URL }) {
+  // El mimeType se toma de lo que REALMENTE se comprimió. Antes se mandaba
+  // "image/jpeg" siempre, incluso cuando el archivo subía crudo por ser HEIC:
+  // el servidor lo salvaba mirando los magic bytes, pero la mentira no ayudaba
+  // a nadie a entender qué estaba pasando.
+  const foto = await comprimirImagen(file, {
+    onEtapa: (etapa) => onProgress?.({ phase: etapa }),
+  });
+
+  onProgress?.({ phase: "upload", bytes: foto.bytes });
+
+  const j = await callAPS(
+    { action: "uploadOne", vin, dateStr, slot, mimeType: foto.mimeType, b64: foto.b64 },
     apsUrl
   );
+  return { ...j, foto };
 }
 
 export async function uploadFalla({
@@ -164,21 +78,25 @@ export async function uploadFalla({
   onProgress,
   apsUrl = APS_URL,
 }) {
-  const payloadFiles = [];
+  const fotos = await comprimirVarias(files, {
+    onProgreso: ({ listas, total }) =>
+      onProgress?.({ phase: "prepare", index: listas, total }),
+  });
 
-  for (let i = 0; i < files.length; i++) {
-    if (typeof onProgress === "function") {
-      onProgress({ phase: "prepare", index: i + 1, total: files.length });
-    }
-    const b64 = await fileToB64Compressed(files[i]);
-    payloadFiles.push({ slot: "falla", mimeType: "image/jpeg", b64 });
-  }
+  const payloadFiles = fotos.map((f) => ({
+    slot: "falla",
+    mimeType: f.mimeType,
+    b64: f.b64,
+  }));
 
-  if (typeof onProgress === "function") {
-    onProgress({ phase: "upload", total: payloadFiles.length });
-  }
+  const bytes = fotos.reduce((a, f) => a + (f.bytes || 0), 0);
+  onProgress?.({ phase: "upload", total: payloadFiles.length, bytes });
 
-  return callAPS({ action: "uploadFalla", vin, dateStr, note, files: payloadFiles }, apsUrl);
+  const j = await callAPS(
+    { action: "uploadFalla", vin, dateStr, note, files: payloadFiles },
+    apsUrl
+  );
+  return { ...j, fotos };
 }
 
 export async function uploadCalidadBatch({
@@ -188,25 +106,27 @@ export async function uploadCalidadBatch({
   onProgress,
   apsUrl = APS_URL,
 }) {
-  const files = [];
+  const validos = items.filter((it) => it?.file && it?.slot);
 
-  for (let i = 0; i < items.length; i++) {
-    const it = items[i];
-    if (!it?.file || !it?.slot) continue;
+  const fotos = await comprimirVarias(validos.map((it) => it.file), {
+    // Sin `slot` a propósito: con dos compresiones en vuelo, la que termina
+    // no tiene por qué ser la que le toca al contador, y nombrar la foto
+    // equivocada confunde más de lo que informa. La cuenta sí es exacta.
+    onProgreso: ({ listas, total }) =>
+      onProgress?.({ phase: "prepare", index: listas, total }),
+  });
 
-    if (typeof onProgress === "function") {
-      onProgress({ phase: "prepare", slot: it.slot, index: i + 1, total: items.length });
-    }
+  const files = fotos.map((f, i) => ({
+    slot: validos[i].slot,
+    mimeType: f.mimeType,
+    b64: f.b64,
+  }));
 
-    const b64 = await fileToB64Compressed(it.file);
-    files.push({ slot: it.slot, mimeType: "image/jpeg", b64 });
-  }
+  const bytes = fotos.reduce((a, f) => a + (f.bytes || 0), 0);
+  onProgress?.({ phase: "upload", total: files.length, bytes });
 
-  if (typeof onProgress === "function") {
-    onProgress({ phase: "upload", total: files.length });
-  }
-
-  return callAPS({ action: "uploadCalidad", vin, dateStr, files }, apsUrl);
+  const j = await callAPS({ action: "uploadCalidad", vin, dateStr, files }, apsUrl);
+  return { ...j, fotos };
 }
 
 export async function uploadConformidad({
@@ -219,11 +139,13 @@ export async function uploadConformidad({
   onProgress,
   apsUrl = APS_URL,
 }) {
-  if (typeof onProgress === "function") onProgress({ phase: "prepare" });
-  const b64 = await fileToB64Compressed(file);
+  const foto = await comprimirImagen(file, {
+    onEtapa: (etapa) => onProgress?.({ phase: etapa }),
+  });
 
-  if (typeof onProgress === "function") onProgress({ phase: "upload" });
-  return callAPS(
+  onProgress?.({ phase: "upload", bytes: foto.bytes });
+
+  const j = await callAPS(
     {
       action: "uploadConformidad",
       tipo,
@@ -231,10 +153,11 @@ export async function uploadConformidad({
       dateStr,
       tecnico,
       checklist,
-      file: { mimeType: "image/jpeg", b64 },
+      file: { mimeType: foto.mimeType, b64: foto.b64 },
     },
     apsUrl
   );
+  return { ...j, foto };
 }
 
 export async function deleteSlot({ vin, dateStr, slot, apsUrl = APS_URL }) {
