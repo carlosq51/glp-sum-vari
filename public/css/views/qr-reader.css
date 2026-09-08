@@ -10,7 +10,6 @@
   border-radius: var(--radius);
   overflow: hidden;
   border: var(--border-w) solid var(--surfaceLine);
-  position: relative;   /* ancla del botón de linterna */
 }
 
 /* Forzar ancho completo al vídeo y altura automática */
@@ -20,47 +19,4 @@
   width: 100% !important;
   height: auto !important;
   display: block;
-}
-
-
-/* =====================================================================
-   Linterna
-   ---------------------------------------------------------------------
-   Va encima del vídeo, en la esquina, y no en la fila de botones de la
-   pantalla: cuando hace falta luz el técnico ya tiene el celular encuadrado
-   sobre el VIN, y bajar el pulgar fuera del visor le cuesta el encuadre.
-
-   El área táctil es de 48 px aunque el icono sea más chico: se usa con
-   guantes y a pulso.
-===================================================================== */
-.btnLinterna {
-  position: absolute;
-  right: 10px;
-  bottom: 10px;
-  z-index: 2;
-  width: 48px;
-  height: 48px;
-  border-radius: var(--radius-full);
-  border: var(--border-w-md) solid rgba(255, 255, 255, .35);
-  background: rgba(0, 0, 0, .55);
-  color: #fff;
-  font-size: var(--fs-3xl);
-  line-height: 1;
-  display: grid;
-  place-items: center;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-  /* El visor es una imagen en movimiento: sin desenfoque de fondo el botón
-     desaparece cada vez que pasa por delante una zona clara. */
-  backdrop-filter: blur(4px);
-  transition: background .15s ease, border-color .15s ease;
-}
-
-.btnLinterna:active { transform: scale(.94); }
-
-.btnLinterna.on {
-  background: var(--warn);
-  border-color: var(--warn);
-  color: #1a1a1a;
-  box-shadow: 0 0 0 4px var(--warnBg);
 }

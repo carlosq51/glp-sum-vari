@@ -774,42 +774,6 @@ export function initUploaderUI(root, options = {}) {
     await stopScanner("sold");
   }
 
-  /**
-   * botonLinterna — crea (una vez por visor) el botón de la lámpara.
-   *
-   * Se monta sobre el vídeo y no en la fila de botones porque el técnico ya
-   * tiene el celular apuntando al VIN: mover el pulgar fuera del visor para
-   * encender la luz significa perder el encuadre que acaba de conseguir.
-   *
-   * Solo aparece si la cámara declara tener lámpara, y eso no se sabe hasta
-   * que el stream está abierto — de ahí que se llame después del start.
-   */
-  function botonLinterna(which) {
-    const m = scannerMap[which];
-    const cont = document.getElementById(`up_qrReader_${which}`);
-    if (!m || !cont || !m.scanner.tieneLinterna()) return;
-
-    let btn = cont.querySelector(".btnLinterna");
-    if (!btn) {
-      btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "btnLinterna";
-      btn.addEventListener("click", async (ev) => {
-        ev.stopPropagation();
-        const encendida = await m.scanner.alternarLinterna();
-        btn.classList.toggle("on", encendida);
-        btn.setAttribute("aria-pressed", String(encendida));
-        btn.title = encendida ? "Apagar linterna" : "Encender linterna";
-      });
-      cont.appendChild(btn);
-    }
-    btn.textContent = "🔦";
-    btn.classList.remove("on");
-    btn.setAttribute("aria-pressed", "false");
-    btn.setAttribute("aria-label", "Linterna");
-    btn.title = "Encender linterna";
-  }
-
   async function startScanner(which, mode) {
     await stopScanner(which);
 
@@ -838,11 +802,6 @@ export function initUploaderUI(root, options = {}) {
           stopScanner(which).catch(() => {});
         },
       });
-
-      // El <video> y sus capacidades no existen en el instante en que start()
-      // resuelve; un tick de espera evita preguntar por la lámpara antes de que
-      // el navegador haya montado la pista.
-      setTimeout(() => botonLinterna(which), 400);
     } catch (e) {
       if ($(m.msg)) $(m.msg).textContent = `Error cámara (${mode}): ${e}`;
     }
