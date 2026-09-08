@@ -128,8 +128,8 @@ export function uploaderView() {
           <div class="box grid">
 
             <!-- 1) VIN -->
-            <div class="slotCard" data-slot="vin" data-obligatorio="si">
-              <label>1 · Foto del VIN <span class="upObligatoria">obligatoria</span></label>
+            <div class="slotCard" data-slot="vin">
+              <label>1 · Foto del VIN</label>
 
               <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" capture="environment" id="up_vin_cam">
               <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" id="up_vin_file">
@@ -153,8 +153,8 @@ export function uploaderView() {
             </div>
 
             <!-- 2) COMPRESIÓN: 4 fotos -->
-            <div class="slotCard" data-slot="comp" data-obligatorio="si">
-              <label>2 · Compresión <span class="upNota">(4 tomas)</span> <span class="upObligatoria">obligatorias</span></label>
+            <div class="slotCard" data-slot="comp">
+              <label>2 · Compresión <span class="upNota">(4 tomas)</span></label>
 
               <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" capture="environment" id="up_comp_cam">
               <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" id="up_comp_file" multiple>

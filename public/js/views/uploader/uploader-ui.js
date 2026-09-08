@@ -18,6 +18,7 @@ import {
 
 import { createScanner } from "../../core/qr-scanner.js";
 import { ahorroLegible } from "../../core/image-compress.js";
+import { SLOTS_REGISTRO } from "../../../../lib/fin-prerequisites.js";
 
 export function initUploaderUI(root, options = {}) {
   const shell = root.querySelector(".uploader-shell") || root;
@@ -172,51 +173,7 @@ export function initUploaderUI(root, options = {}) {
     }
   }
 
-  /**
-   * puedeSalirDeParams — ¿se puede abandonar el registro tal como está?
-   *
-   * No se puede si falta alguna de las cinco obligatorias. El motivo no es
-   * disciplina: un registro sin las cuatro compresiones o sin la foto del VIN
-   * no sirve para nada río abajo —calidad no puede inspeccionar, el supervisor
-   * no puede cerrar la OT— y el técnico se entera al día siguiente, cuando el
-   * carro ya no está. Es mucho más barato pararlo aquí.
-   *
-   * Sin VIN escrito no hay registro empezado que proteger, y bloquear ahí solo
-   * dejaría encerrado a quien entró a la pantalla por equivocación.
-   *
-   * Se vuelve a preguntar al servidor antes de decidir: lo que vale es lo que
-   * está guardado en R2, no lo que la pantalla recuerde de hace diez minutos.
-   */
-  async function puedeSalirDeParams() {
-    const vin = ($("vinText")?.value || "").trim();
-    if (!vin) return true;
-
-    await refreshStatus().catch(() => {});
-    const faltan = SLOTS_OBLIGATORIOS.filter((sl) => !estadoRegistro[sl]);
-    if (!faltan.length) return true;
-
-    const compFaltan = faltan.filter((sl) => sl.startsWith("comp_")).length;
-    const partes = [];
-    if (faltan.includes("vin")) partes.push("la foto del VIN");
-    if (compFaltan) partes.push(`${compFaltan} de las 4 compresiones`);
-
-    const caja = $("resumen");
-    if (caja) {
-      caja.setAttribute("data-bloqueado", "si");
-      caja.scrollIntoView({ block: "nearest", behavior: "smooth" });
-      // El aviso se quita solo: si se queda pegado, la próxima vez que el
-      // técnico mire la caja no sabrá si le habla de ahora o de hace un rato.
-      setTimeout(() => caja.removeAttribute("data-bloqueado"), 6000);
-    }
-    setText("resumenFaltan", `No puedes salir todavía: falta ${partes.join(" y ")}.`);
-    return false;
-  }
-
-  async function openBackControl() {
-    // Volver al Control de Trabajo desde el registro es salir igual que
-    // pulsar "⬅ Volver": la guardia tiene que valer para las dos puertas.
-    if (screens.params?.classList.contains("active") && !(await puedeSalirDeParams())) return;
-
+  function openBackControl() {
     if (typeof options.onBackControl === "function") {
       options.onBackControl();
       return;
@@ -384,15 +341,32 @@ export function initUploaderUI(root, options = {}) {
   const TOTAL_REGISTRO = PASOS_REGISTRO.reduce((a, p) => a + p.slots.length, 0);
 
   /**
-   * Las cinco que no son negociables: la foto del VIN y las cuatro tomas de
-   * compresión. Sin el VIN no se sabe de qué carro es el registro, y una
-   * prueba de compresión con tres cilindros no es una prueba de compresión.
-   * El resto de fotos se puede completar después; estas no.
+   * marcarObligatorias — pone el distintivo en las tarjetas que bloquean el
+   * cierre de la OT.
+   *
+   * La lista se importa de lib/fin-prerequisites.js, que es la MISMA que usa
+   * el servidor para decidir si deja finalizar. Escribirla otra vez aquí
+   * habría funcionado hasta el día en que alguien cambiara una de las dos: el
+   * técnico vería "obligatoria" en una foto que ya no lo es, o peor, no la
+   * vería en una que sí, y se enteraría al chocar con el bloqueo.
    */
-  const SLOTS_OBLIGATORIOS = ["vin", "comp_1", "comp_2", "comp_3", "comp_4"];
+  function marcarObligatorias() {
+    for (const paso of PASOS_REGISTRO) {
+      if (!paso.slots.every((sl) => SLOTS_REGISTRO.includes(sl))) continue;
 
-  /** Último estado confirmado por el servidor. Lo llena renderStatus. */
-  let estadoRegistro = {};
+      const card = tarjetaSlot(paso.slots[0]);
+      const label = card?.querySelector("label");
+      if (!card || !label || label.querySelector(".upObligatoria")) continue;
+
+      card.setAttribute("data-obligatorio", "si");
+      const tag = document.createElement("span");
+      tag.className = "upObligatoria";
+      tag.textContent = paso.slots.length > 1 ? "obligatorias" : "obligatoria";
+      tag.title = "Sin esta foto no se puede finalizar el carro";
+      label.appendChild(document.createTextNode(" "));
+      label.appendChild(tag);
+    }
+  }
 
   /**
    * renderResumen — la línea de arriba: cuántas van y qué falta, por nombre.
@@ -436,8 +410,7 @@ export function initUploaderUI(root, options = {}) {
   }
 
   function renderStatus(j) {
-    estadoRegistro = j.status || {};
-    renderResumen(estadoRegistro);
+    renderResumen(j.status || {});
 
     // El detalle deja de repetir la lista de faltantes: eso ya lo dice el
     // resumen de arriba, y decirlo dos veces con distinto formato solo hacía
@@ -466,7 +439,6 @@ export function initUploaderUI(root, options = {}) {
     const dateStr = $("dateStr")?.value || todayYYYYMMDD();
 
     if (!vin) {
-      estadoRegistro = {};
       renderResumen({});
       setText("resumenFaltan", "Escanea un VIN para ver el avance.");
       setText("out", "Escribe o escanea un VIN para consultar su estado.");
@@ -995,18 +967,11 @@ export function initUploaderUI(root, options = {}) {
     });
 
     // Nav buttons (data-nav)
-    shell.addEventListener("click", async (ev) => {
+    shell.addEventListener("click", (ev) => {
       const b = ev.target.closest("button");
       if (!b) return;
-      if (b.getAttribute("data-nav") !== "menu") return;
-
-      if (screens.params?.classList.contains("active")) {
-        await conBotonOcupado(b, "⏳ Comprobando…", async () => {
-          if (await puedeSalirDeParams()) showScreen("menu");
-        });
-        return;
-      }
-      showScreen("menu");
+      const nav = b.getAttribute("data-nav");
+      if (nav === "menu") showScreen("menu");
     });
 
     // Params: status
@@ -1132,6 +1097,8 @@ export function initUploaderUI(root, options = {}) {
     $("btnScanQR_sold")?.addEventListener("click", () => startScanner("sold", "QR"));
     $("btnScanBAR_sold")?.addEventListener("click", () => startScanner("sold", "BAR"));
     $("btnStop_sold")?.addEventListener("click", () => stopScanner("sold"));
+
+    marcarObligatorias();
 
     // Compresión (4)
     $("comp_cam")?.addEventListener("change", (e) => onPickCompCam(e.target.files));

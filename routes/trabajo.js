@@ -9,6 +9,7 @@ import {
 } from "../lib/supabase.js";
 import { addServerTiming_ } from "../lib/timing.js";
 import { r2GetStatus } from "../r2-uploads.js";
+import { bloqueosDeFotos, fusionarStatus } from "../lib/fin-prerequisites.js";
 import { pendingSuggestions_ } from "../lib/ml-state.js";
 import { emitEvent_ } from "../lib/events.js";
 import { getConfig_ } from "../lib/config.js";
@@ -1083,7 +1084,7 @@ router.post("/api/fin-prerequisites", async (req, res) => {
       }
     }
 
-    // 2) Fotos de soldadura en R2
+    // 2) Fotos en R2: soldadura del rol + registro de parametros
     if (vin) {
       // Usar siempre hora Lima para evitar desfase UTC vs Peru (bug al finalizar después de 7 PM)
       const limaToday = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Lima" }).format(new Date());
@@ -1097,24 +1098,19 @@ router.post("/api/fin-prerequisites", async (req, res) => {
           r2GetStatus({ vin, dateStr: limaToday }),
           r2GetStatus({ vin, dateStr: limaPrev }),
         ]);
-        // Combinar: foto presente en cualquiera de los dos meses cuenta
-        const s = {};
-        for (const key of Object.keys(r2Cur.status || {})) {
-          s[key] = !!(r2Cur.status[key] || (r2Prev.status || {})[key]);
-        }
 
-        if (rolUp === "MOTOR") {
-          if (!s.sold_cabina_antes || !s.sold_cabina_post) {
-            blockers.push("Falta registrar fotos de soldadura de CABINA (antes y después).");
-          }
-        }
-
-        if (rolUp === "TANQUE") {
-          if (!s.sold_sensor_antes || !s.sold_sensor_post) {
-            blockers.push("Falta registrar fotos de soldadura del SENSOR DE NIVEL (antes y después).");
-          }
-        }
+        // Qué falta lo decide lib/fin-prerequisites.js. Aquí solo se consigue
+        // el estado; la regla vive aparte porque es la parte que cambia y la
+        // única que se puede probar sin R2 delante.
+        blockers.push(...bloqueosDeFotos({
+          rol: rolUp,
+          status: fusionarStatus(r2Cur.status, r2Prev.status),
+        }));
       } catch (e) {
+        // Si R2 no responde no se bloquea a nadie: una caída del almacenamiento
+        // dejaría a todos los técnicos sin poder cerrar carros que sí están
+        // bien. El aviso queda en el log, y el cliente ya advierte al técnico
+        // cuando la verificación no se pudo hacer.
         console.warn("[FIN-PREREQ] Error consultando R2 status:", e.message);
       }
     }
