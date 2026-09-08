@@ -281,8 +281,7 @@ export async function getMisActivas(email) {
   const data = await res.json();
   if (!data || !data.length) return [];
   
-  // Enriquecer: extraer work_order info del JOIN
-  return data
+  const items = data
     .map(asg => {
       const wo = Array.isArray(asg.work_orders) 
         ? asg.work_orders[0] 
@@ -312,6 +311,48 @@ export async function getMisActivas(email) {
       };
     })
     .filter(it => it.work_order_id);
+
+  return await conZonas_(items);
+}
+
+/**
+ * conZonas_ — añade a cada trabajo la plaza donde está aparcado su carro.
+ *
+ * Va en una consulta aparte y no embebida en el JOIN de arriba porque
+ * `conversion_zonas` cuelga del VIN y no de la asignación: PostgREST no la
+ * puede alcanzar desde `asignaciones` sin una relación que no existe.
+ *
+ * Es una petición más por ciclo del poll, pero devuelve dos columnas por cada
+ * VIN que el técnico tiene abierto —tres o cuatro— y se filtra en Supabase, no
+ * aquí. Al lado de las asignaciones con su JOIN a work_orders y vins que ya
+ * viajan en el mismo ciclo, no se nota.
+ *
+ * Si la consulta falla, los trabajos se devuelven igual y sin zona: quedarse
+ * sin ver el trabajo porque no se pudo resolver un número de plaza sería un
+ * intercambio pésimo.
+ */
+async function conZonas_(items) {
+  const vins = [...new Set(items.map(it => it.vin).filter(Boolean))];
+  if (!vins.length) return items;
+
+  try {
+    const lista = vins.map(encodeURIComponent).join(",");
+    const url = `${SUPABASE_CONFIG.URL}/rest/v1/conversion_zonas` +
+                `?vin=in.(${lista})&select=vin,zona_id`;
+
+    const res = await fetch(url, { method: "GET", headers: supabaseHeaders() });
+    if (!res.ok) throw new Error(`Supabase GET conversion_zonas: ${res.status}`);
+
+    const porVin = new Map((await res.json()).map(z => [z.vin, z.zona_id]));
+    // `?? null` y no `|| null`: un carro sin plaza tiene que llegar como null
+    // explícito, para que el normalizador lo distinga de "este payload no
+    // habla de zonas" y no conserve una plaza vieja que ya no es cierta.
+    for (const it of items) it.zona = porVin.get(it.vin) ?? null;
+  } catch (err) {
+    console.warn("[getMisActivas] no se pudieron resolver las zonas:", err.message);
+  }
+
+  return items;
 }
 
 /**

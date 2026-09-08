@@ -1003,6 +1003,17 @@ router.post("/api/sync", async (req, res) => {
       work_orders: asg.work_orders || {},
     }));
 
+    // La plaza del carro, igual que en /api/mis-activas y en la consulta
+    // directa del navegador. Los tres caminos alimentan la misma tarjeta: si
+    // uno no la trae, la zona aparece o desaparece según por dónde entró el
+    // dato, que es peor que no tenerla.
+    try {
+      const zonas = await zonasDeVins_(items.map(i => i.vin));
+      for (const it of items) it.zona = zonas.get(it.vin) ?? null;
+    } catch (e) {
+      console.warn("[sync] no se pudo resolver zonas:", e.message);
+    }
+
     return res.json({
       ok: true,
       items,
