@@ -92,6 +92,24 @@ function attachWorkDelegationOnce_(mod) {
                 });
                 return;   // bloquear FIN
               }
+
+              // Avisos: le falta el registro de parámetros pero su compañero
+              // sigue en el carro y todavía puede subirlo. Se le recuerda y
+              // cierra: el que paga el registro es el ÚLTIMO en cerrar, y a
+              // ese el servidor ya se lo devuelve como bloqueo.
+              if (check.ok && check.warnings?.length) {
+                const lista = check.warnings.map(b => `• ${b}`).join("<br>");
+                const okAviso = await askConfirmFinish_({
+                  title: "📸 No te olvides de subir tus fotos",
+                  message:
+                    `Este carro todavía no tiene:<br><br>${lista}<br><br>` +
+                    `Puedes cerrar tu parte, pero el registro queda pendiente: ` +
+                    `si tu compañero no lo sube, no va a poder cerrar el carro.`,
+                  acceptText: "Cerrar igual",
+                  cancelText: "Voy a subirlas",
+                });
+                if (!okAviso) return;
+              }
             } catch (e) {
               console.warn("[FIN] No se pudo verificar requisitos previos:", e);
               checkFailed = true;

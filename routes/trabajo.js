@@ -1082,17 +1082,52 @@ router.post("/api/equipo-conformidad", async (req, res) => {
 // FIN PREREQUISITES — valida antes de finalizar OT
 // POST /api/fin-prerequisites
 // Body: { vin, rol, workOrderId, dateStr }
-// Returns: { ok, canFin, blockers: string[] }
+// Returns: { ok, canFin, blockers: string[], warnings: string[], esUltimo }
+//
+// blockers impide cerrar; warnings se avisa y se puede cerrar igual. El
+// registro de parámetros cae en uno u otro según si este técnico es el último
+// que queda en el carro (ver lib/fin-prerequisites.js).
 // =========================
 router.post("/api/fin-prerequisites", async (req, res) => {
   try {
     const { vin, rol, workOrderId, dateStr } = req.body || {};
     const rolUp = String(rol || "").trim().toUpperCase();
     const blockers = [];
+    const warnings = [];
 
     // Solo aplica a MOTOR y TANQUE
     if (rolUp !== "MOTOR" && rolUp !== "TANQUE") {
-      return res.json({ ok: true, canFin: true, blockers: [] });
+      return res.json({ ok: true, canFin: true, blockers: [], warnings: [], esUltimo: true });
+    }
+
+    // ¿Queda alguien detrás de este técnico en el carro?
+    //
+    // El registro de parámetros (VIN + compresiones) se sube una sola vez
+    // entre los dos roles. Si el complementario sigue trabajando, todavía
+    // puede subirlo: a este se le avisa y se le deja cerrar. Si ya cerró —o
+    // nunca hubo complementario— este es el último que puede subirlo, y
+    // cerrarlo sin registro deja el carro sin prueba de qué se le hizo.
+    //
+    // Ante la duda (Supabase no responde) se asume ÚLTIMO: el falso bloqueo
+    // se resuelve subiendo la foto que igual había que subir; el falso pase
+    // no se resuelve nunca, porque la OT ya se cerró.
+    let esUltimo = true;
+    if (workOrderId) {
+      const complemento = rolUp === "MOTOR" ? "TANQUE" : "MOTOR";
+      try {
+        const asgs = await supabaseGet_("asignaciones", {
+          work_order_id: workOrderId,
+          activo: true,
+        });
+        const comp = (asgs || []).find(
+          (a) => String(a.rol_trabajo || "").toUpperCase() === complemento
+        );
+        if (comp && String(comp.estado_actual || "").toUpperCase() !== "FINALIZADO") {
+          esUltimo = false;
+        }
+      } catch (e) {
+        console.warn("[FIN-PREREQ] No se pudo ver al complementario:", e.message);
+      }
     }
 
     // 1) Conformidad de equipos
@@ -1131,10 +1166,13 @@ router.post("/api/fin-prerequisites", async (req, res) => {
         // Qué falta lo decide lib/fin-prerequisites.js. Aquí solo se consigue
         // el estado; la regla vive aparte porque es la parte que cambia y la
         // única que se puede probar sin R2 delante.
-        blockers.push(...bloqueosDeFotos({
+        const fotos = bloqueosDeFotos({
           rol: rolUp,
           status: fusionarStatus(r2Cur.status, r2Prev.status),
-        }));
+          esUltimo,
+        });
+        blockers.push(...fotos.bloqueos);
+        warnings.push(...fotos.avisos);
       } catch (e) {
         // Si R2 no responde no se bloquea a nadie: una caída del almacenamiento
         // dejaría a todos los técnicos sin poder cerrar carros que sí están
@@ -1148,10 +1186,12 @@ router.post("/api/fin-prerequisites", async (req, res) => {
       ok: true,
       canFin: blockers.length === 0,
       blockers,
+      warnings,
+      esUltimo,
     });
   } catch (e) {
     console.error("[POST /api/fin-prerequisites]", e.message);
-    res.status(500).json({ ok: false, canFin: true, blockers: [], error: String(e.message || e) });
+    res.status(500).json({ ok: false, canFin: true, blockers: [], warnings: [], esUltimo: true, error: String(e.message || e) });
   }
 });
 
