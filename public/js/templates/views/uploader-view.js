@@ -128,8 +128,8 @@ export function uploaderView() {
           <div class="box grid">
 
             <!-- 1) VIN -->
-            <div class="slotCard" data-slot="vin">
-              <label>1 · Foto del VIN</label>
+            <div class="slotCard" data-slot="vin" data-obligatorio="si">
+              <label>1 · Foto del VIN <span class="upObligatoria">obligatoria</span></label>
 
               <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" capture="environment" id="up_vin_cam">
               <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" id="up_vin_file">
@@ -146,36 +146,36 @@ export function uploaderView() {
                 </button>
               </div>
 
-              <div class="mini">
-                <div class="thumb" id="up_vin_previewBox"><span class="small">Sin foto</span></div>
+              <div class="upMini">
+                <div class="thumb upFoto" id="up_vin_previewBox"><span class="small">Sin foto</span></div>
                 <div class="miniInfo" id="up_vin_meta">Ningún archivo seleccionado.</div>
               </div>
             </div>
 
             <!-- 2) COMPRESIÓN: 4 fotos -->
-            <div class="slotCard" data-slot="comp">
-              <label>2 · Compresión <span class="upNota">(4 tomas)</span></label>
+            <div class="slotCard" data-slot="comp" data-obligatorio="si">
+              <label>2 · Compresión <span class="upNota">(4 tomas)</span> <span class="upObligatoria">obligatorias</span></label>
 
               <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" capture="environment" id="up_comp_cam">
               <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" id="up_comp_file" multiple>
 
               <div class="slotActions upActions">
                 <button class="btnUp" type="button" data-pick="cam" data-slot="comp">
-                  <span class="ico">📷</span><span>Foto (agrega)</span>
+                  <span class="ico">📷</span><span>Foto</span>
                 </button>
                 <button class="btnUp" type="button" data-pick="file" data-slot="comp">
-                  <span class="ico">📁</span><span>Cargar (agrega)</span>
+                  <span class="ico">📁</span><span>Cargar</span>
                 </button>
                 <button class="btnUp btnUp-danger" type="button" data-clear="1" data-slot="comp">
-                  <span class="ico">🗑️</span><span>Borrar todo</span>
+                  <span class="ico">🗑️</span><span>Borrar</span>
                 </button>
               </div>
 
-              <div class="grid" style="grid-template-columns: repeat(4, 1fr); gap:10px; margin-top:10px;">
-                <div class="thumb" id="up_comp_p1"><span class="small">1</span></div>
-                <div class="thumb" id="up_comp_p2"><span class="small">2</span></div>
-                <div class="thumb" id="up_comp_p3"><span class="small">3</span></div>
-                <div class="thumb" id="up_comp_p4"><span class="small">4</span></div>
+              <div class="upGridFotos">
+                <div class="thumb upFoto" id="up_comp_p1"><span class="small">1</span></div>
+                <div class="thumb upFoto" id="up_comp_p2"><span class="small">2</span></div>
+                <div class="thumb upFoto" id="up_comp_p3"><span class="small">3</span></div>
+                <div class="thumb upFoto" id="up_comp_p4"><span class="small">4</span></div>
               </div>
 
               <div class="miniInfo" id="up_comp_meta" style="margin-top:10px;">
@@ -202,8 +202,8 @@ export function uploaderView() {
                 </button>
               </div>
 
-              <div class="mini">
-                <div class="thumb" id="up_corr_pre_previewBox"><span class="small">Sin foto</span></div>
+              <div class="upMini">
+                <div class="thumb upFoto" id="up_corr_pre_previewBox"><span class="small">Sin foto</span></div>
                 <div class="miniInfo" id="up_corr_pre_meta">Ningún archivo seleccionado.</div>
               </div>
             </div>
@@ -227,8 +227,8 @@ export function uploaderView() {
                 </button>
               </div>
 
-              <div class="mini">
-                <div class="thumb" id="up_corr_post_previewBox"><span class="small">Sin foto</span></div>
+              <div class="upMini">
+                <div class="thumb upFoto" id="up_corr_post_previewBox"><span class="small">Sin foto</span></div>
                 <div class="miniInfo" id="up_corr_post_meta">Ningún archivo seleccionado.</div>
               </div>
             </div>
@@ -252,8 +252,8 @@ export function uploaderView() {
                 </button>
               </div>
 
-              <div class="mini">
-                <div class="thumb" id="up_voltaje_previewBox"><span class="small">Sin foto</span></div>
+              <div class="upMini">
+                <div class="thumb upFoto" id="up_voltaje_previewBox"><span class="small">Sin foto</span></div>
                 <div class="miniInfo" id="up_voltaje_meta">Ningún archivo seleccionado.</div>
               </div>
             </div>
@@ -277,8 +277,8 @@ export function uploaderView() {
                 </button>
               </div>
 
-              <div class="mini">
-                <div class="thumb" id="up_scan_carro_previewBox"><span class="small">Sin foto</span></div>
+              <div class="upMini">
+                <div class="thumb upFoto" id="up_scan_carro_previewBox"><span class="small">Sin foto</span></div>
                 <div class="miniInfo" id="up_scan_carro_meta">Ningún archivo seleccionado.</div>
               </div>
             </div>
@@ -421,11 +421,11 @@ export function uploaderView() {
                 </button>
               </div>
 
-              <div class="grid" style="grid-template-columns: repeat(4, 1fr); gap:10px; margin-top:10px;">
-                <div class="thumb" id="up_qc_p1"><span class="small">1</span></div>
-                <div class="thumb" id="up_qc_p2"><span class="small">2</span></div>
-                <div class="thumb" id="up_qc_p3"><span class="small">3</span></div>
-                <div class="thumb" id="up_qc_p4"><span class="small">4</span></div>
+              <div class="upGridFotos">
+                <div class="thumb upFoto" id="up_qc_p1"><span class="small">1</span></div>
+                <div class="thumb upFoto" id="up_qc_p2"><span class="small">2</span></div>
+                <div class="thumb upFoto" id="up_qc_p3"><span class="small">3</span></div>
+                <div class="thumb upFoto" id="up_qc_p4"><span class="small">4</span></div>
               </div>
 
               <div class="miniInfo" id="up_qc_meta" style="margin-top:10px;">0/4 seleccionadas.</div>
@@ -521,8 +521,8 @@ export function uploaderView() {
                 </button>
               </div>
 
-              <div class="mini">
-                <div class="thumb" id="up_conf_previewBox"><span class="small">Sin foto</span></div>
+              <div class="upMini">
+                <div class="thumb upFoto" id="up_conf_previewBox"><span class="small">Sin foto</span></div>
                 <div class="miniInfo" id="up_conf_meta">Ningún archivo seleccionado.</div>
               </div>
             </div>
@@ -591,8 +591,8 @@ export function uploaderView() {
                 </button>
               </div>
 
-              <div class="mini">
-                <div class="thumb" id="up_sold_sensor_antes_previewBox"><span class="small">Sin foto</span></div>
+              <div class="upMini">
+                <div class="thumb upFoto" id="up_sold_sensor_antes_previewBox"><span class="small">Sin foto</span></div>
                 <div class="miniInfo" id="up_sold_sensor_antes_meta">Ningún archivo seleccionado.</div>
               </div>
             </div>
@@ -616,8 +616,8 @@ export function uploaderView() {
                 </button>
               </div>
 
-              <div class="mini">
-                <div class="thumb" id="up_sold_sensor_post_previewBox"><span class="small">Sin foto</span></div>
+              <div class="upMini">
+                <div class="thumb upFoto" id="up_sold_sensor_post_previewBox"><span class="small">Sin foto</span></div>
                 <div class="miniInfo" id="up_sold_sensor_post_meta">Ningún archivo seleccionado.</div>
               </div>
             </div>
@@ -641,8 +641,8 @@ export function uploaderView() {
                 </button>
               </div>
 
-              <div class="mini">
-                <div class="thumb" id="up_sold_cabina_antes_previewBox"><span class="small">Sin foto</span></div>
+              <div class="upMini">
+                <div class="thumb upFoto" id="up_sold_cabina_antes_previewBox"><span class="small">Sin foto</span></div>
                 <div class="miniInfo" id="up_sold_cabina_antes_meta">Ningún archivo seleccionado.</div>
               </div>
             </div>
@@ -666,8 +666,8 @@ export function uploaderView() {
                 </button>
               </div>
 
-              <div class="mini">
-                <div class="thumb" id="up_sold_cabina_post_previewBox"><span class="small">Sin foto</span></div>
+              <div class="upMini">
+                <div class="thumb upFoto" id="up_sold_cabina_post_previewBox"><span class="small">Sin foto</span></div>
                 <div class="miniInfo" id="up_sold_cabina_post_meta">Ningún archivo seleccionado.</div>
               </div>
             </div>

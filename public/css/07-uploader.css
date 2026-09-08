@@ -151,6 +151,65 @@
   .upBarraLleno { transition: none; }
 }
 
+/* Aviso de que no se puede salir todavía. Dura unos segundos: si se quedara
+   fijo, la próxima vez que el técnico mire la caja no sabría si le habla de
+   ahora o de hace un rato. */
+.upResumen[data-bloqueado="si"] {
+  border-color: var(--danger);
+  animation: upAviso .4s var(--ease-out) 2;
+}
+
+.upResumen[data-bloqueado="si"] .upResumenFaltan {
+  color: var(--danger);
+  font-weight: var(--fw-extrabold);
+}
+
+@keyframes upAviso {
+  0%, 100% { transform: translateX(0); }
+  25%      { transform: translateX(-4px); }
+  75%      { transform: translateX(4px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .upResumen[data-bloqueado="si"] { animation: none; }
+}
+
+/* Las tarjetas obligatorias se distinguen del resto aun sin leer la etiqueta:
+   el borde marca cuáles no se pueden dejar para después. */
+.uploader-shell .slotCard[data-obligatorio="si"] {
+  border-color: var(--warn);
+}
+
+.uploader-shell .slotCard[data-obligatorio="si"][data-estado="ok"] {
+  border-color: var(--ok);
+}
+
+/* Distintivo de foto obligatoria.
+   Va en la etiqueta del slot y no solo en el aviso de salida: enterarse de que
+   algo era obligatorio justo cuando te impiden salir es una trampa. */
+.uploader-shell .upObligatoria {
+  display: inline-block;
+  vertical-align: middle;
+  margin-left: var(--gap-xs);
+  padding: 1px 7px;
+  border-radius: var(--radius-full);
+  background: var(--warnBg);
+  border: var(--border-w) solid var(--warn);
+  color: var(--warn);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-extrabold);
+  text-transform: uppercase;
+  letter-spacing: .3px;
+}
+
+/* Una obligatoria ya cumplida deja de insistir: el distintivo se apaga en
+   cuanto la tarjeta está en verde. */
+.uploader-shell .slotCard[data-estado="ok"] .upObligatoria {
+  background: var(--okBg);
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
 /* Aclaración dentro de una etiqueta de slot ("Compresión (4 tomas)") */
 .uploader-shell .upNota {
   font-weight: var(--fw-bold);
@@ -221,6 +280,50 @@
 
 
 /* ─────────────────────────────────────────────────
+   FOTOS: el contenido de la tarjeta
+   ---------------------------------------------------------------------
+   El reparto estaba al revés. Tres botones de 46 px de alto y ancho completo
+   se comían la tarjeta, y la foto —lo único que el técnico necesita mirar
+   para saber si la toma salió bien— quedaba en un cuadrito de 80 px donde no
+   se distingue si el manómetro marca 11 o 17.
+
+   Ahora la foto manda: ocupa el ancho de la tarjeta, y los botones bajan a
+   una fila compacta que no la estorba.
+───────────────────────────────────────────────── */
+
+/* Un slot de una sola foto */
+.uploader-shell .upFoto {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 4 / 3;   /* la proporción con la que sale casi toda foto de celular */
+}
+
+.uploader-shell .upMini { margin-top: var(--gap); }
+
+/* Las cuatro tomas de compresión (y las de calidad).
+   En 2×2 y no en fila de cuatro: repartidas a lo ancho de un celular, cada
+   una quedaba en 60 px y las cuatro se veían igual de negras. */
+.uploader-shell .upGridFotos {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--gap);
+  margin-top: var(--gap);
+}
+
+.uploader-shell .upGridFotos .upFoto { aspect-ratio: 1 / 1; }
+
+/* En pantalla ancha caben las cuatro en fila sin encogerse. */
+@media (min-width: 640px) {
+  .uploader-shell .upGridFotos { grid-template-columns: repeat(4, 1fr); }
+}
+
+/* La foto se ve entera, sin recortar: en una toma de un manómetro o de una
+   pinza amperimétrica, lo que importa suele estar justo en el borde, y el
+   `cover` heredado de .thumb se lo comía. */
+.uploader-shell .upFoto img { object-fit: contain; }
+
+
+/* ─────────────────────────────────────────────────
    BOTONES DE ACCIÓN (btnUp)
    — flex row dentro de .upActions
 ───────────────────────────────────────────────── */
@@ -232,9 +335,14 @@
 }
 
 .btnUp {
-  flex: 1 1 0;
+  /* `flex: 1 1 0` los estiraba hasta ocupar toda la fila y aun así les
+     recortaba la etiqueta con puntos suspensivos: lo peor de los dos mundos.
+     Ahora cada uno mide lo que mide su texto y la fila queda del tamaño de lo
+     que dice, dejando el resto de la tarjeta para la foto. */
+  flex: 0 1 auto;
   min-width: 0;
-  height: 46px;
+  padding: 0 14px;
+  height: 38px;
   border-radius: var(--radiusSm);
   font-size: var(--fs-md);
   font-weight: var(--fw-extrabold);
@@ -268,14 +376,19 @@
 
 /* Variante peligro (borrar) */
 .btnUp-danger {
+  /* Separado del resto: es el único que destruye algo, y pegado a "Cargar"
+     se toca por error con el pulgar. */
+  margin-left: auto;
   border-color: var(--danger);
   color: var(--danger);
   background: linear-gradient(160deg, var(--dangerBg) 0%, var(--dangerBgFade) 100%);
 }
 
-/* En pantallas muy pequeñas: icono sin etiqueta en el botón borrar */
+/* En pantallas muy pequeñas el borrar se queda solo con su icono: ya no hace
+   falta que quepa su etiqueta, porque los botones dejaron de estirarse. */
 @media (max-width: 380px) {
   .btnUp-danger span:last-child { display: none; }
+  .btnUp-danger { padding: 0 12px; }
 }
 
 

@@ -172,14 +172,58 @@ export function initUploaderUI(root, options = {}) {
     }
   }
 
-    function openBackControl() {
+  /**
+   * puedeSalirDeParams — ¿se puede abandonar el registro tal como está?
+   *
+   * No se puede si falta alguna de las cinco obligatorias. El motivo no es
+   * disciplina: un registro sin las cuatro compresiones o sin la foto del VIN
+   * no sirve para nada río abajo —calidad no puede inspeccionar, el supervisor
+   * no puede cerrar la OT— y el técnico se entera al día siguiente, cuando el
+   * carro ya no está. Es mucho más barato pararlo aquí.
+   *
+   * Sin VIN escrito no hay registro empezado que proteger, y bloquear ahí solo
+   * dejaría encerrado a quien entró a la pantalla por equivocación.
+   *
+   * Se vuelve a preguntar al servidor antes de decidir: lo que vale es lo que
+   * está guardado en R2, no lo que la pantalla recuerde de hace diez minutos.
+   */
+  async function puedeSalirDeParams() {
+    const vin = ($("vinText")?.value || "").trim();
+    if (!vin) return true;
+
+    await refreshStatus().catch(() => {});
+    const faltan = SLOTS_OBLIGATORIOS.filter((sl) => !estadoRegistro[sl]);
+    if (!faltan.length) return true;
+
+    const compFaltan = faltan.filter((sl) => sl.startsWith("comp_")).length;
+    const partes = [];
+    if (faltan.includes("vin")) partes.push("la foto del VIN");
+    if (compFaltan) partes.push(`${compFaltan} de las 4 compresiones`);
+
+    const caja = $("resumen");
+    if (caja) {
+      caja.setAttribute("data-bloqueado", "si");
+      caja.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      // El aviso se quita solo: si se queda pegado, la próxima vez que el
+      // técnico mire la caja no sabrá si le habla de ahora o de hace un rato.
+      setTimeout(() => caja.removeAttribute("data-bloqueado"), 6000);
+    }
+    setText("resumenFaltan", `No puedes salir todavía: falta ${partes.join(" y ")}.`);
+    return false;
+  }
+
+  async function openBackControl() {
+    // Volver al Control de Trabajo desde el registro es salir igual que
+    // pulsar "⬅ Volver": la guardia tiene que valer para las dos puertas.
+    if (screens.params?.classList.contains("active") && !(await puedeSalirDeParams())) return;
+
     if (typeof options.onBackControl === "function") {
-        options.onBackControl();
-        return;
+      options.onBackControl();
+      return;
     }
     // fallback local (sin redirect)
     showScreen("menu");
-    }
+  }
 
   // =========================
   // Lightbox
@@ -340,6 +384,17 @@ export function initUploaderUI(root, options = {}) {
   const TOTAL_REGISTRO = PASOS_REGISTRO.reduce((a, p) => a + p.slots.length, 0);
 
   /**
+   * Las cinco que no son negociables: la foto del VIN y las cuatro tomas de
+   * compresión. Sin el VIN no se sabe de qué carro es el registro, y una
+   * prueba de compresión con tres cilindros no es una prueba de compresión.
+   * El resto de fotos se puede completar después; estas no.
+   */
+  const SLOTS_OBLIGATORIOS = ["vin", "comp_1", "comp_2", "comp_3", "comp_4"];
+
+  /** Último estado confirmado por el servidor. Lo llena renderStatus. */
+  let estadoRegistro = {};
+
+  /**
    * renderResumen — la línea de arriba: cuántas van y qué falta, por nombre.
    *
    * Decir "faltan 3" no sirve de nada si el técnico tiene que bajar nueve
@@ -366,10 +421,23 @@ export function initUploaderUI(root, options = {}) {
 
     const caja = $("resumen");
     if (caja) caja.setAttribute("data-completo", faltan.length ? "no" : "si");
+
+    // Las tarjetas también se pintan desde lo que dice el servidor, no solo
+    // desde las subidas de esta sesión. Un técnico que vuelve a un carro que
+    // dejó a medias veía todas las tarjetas en gris aunque la mitad estuviera
+    // guardada, y el distintivo de "obligatoria" seguía en ámbar para siempre.
+    for (const paso of PASOS_REGISTRO) {
+      const card = tarjetaSlot(paso.slots[0]);
+      if (!card || card.getAttribute("data-estado") === "trabajando") continue;
+      const completo = paso.slots.every((sl) => estado[sl]);
+      if (completo) card.setAttribute("data-estado", "ok");
+      else card.removeAttribute("data-estado");
+    }
   }
 
   function renderStatus(j) {
-    renderResumen(j.status || {});
+    estadoRegistro = j.status || {};
+    renderResumen(estadoRegistro);
 
     // El detalle deja de repetir la lista de faltantes: eso ya lo dice el
     // resumen de arriba, y decirlo dos veces con distinto formato solo hacía
@@ -398,6 +466,7 @@ export function initUploaderUI(root, options = {}) {
     const dateStr = $("dateStr")?.value || todayYYYYMMDD();
 
     if (!vin) {
+      estadoRegistro = {};
       renderResumen({});
       setText("resumenFaltan", "Escanea un VIN para ver el avance.");
       setText("out", "Escribe o escanea un VIN para consultar su estado.");
@@ -926,11 +995,18 @@ export function initUploaderUI(root, options = {}) {
     });
 
     // Nav buttons (data-nav)
-    shell.addEventListener("click", (ev) => {
+    shell.addEventListener("click", async (ev) => {
       const b = ev.target.closest("button");
       if (!b) return;
-      const nav = b.getAttribute("data-nav");
-      if (nav === "menu") showScreen("menu");
+      if (b.getAttribute("data-nav") !== "menu") return;
+
+      if (screens.params?.classList.contains("active")) {
+        await conBotonOcupado(b, "⏳ Comprobando…", async () => {
+          if (await puedeSalirDeParams()) showScreen("menu");
+        });
+        return;
+      }
+      showScreen("menu");
     });
 
     // Params: status
