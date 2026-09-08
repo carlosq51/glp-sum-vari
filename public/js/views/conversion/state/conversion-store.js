@@ -38,6 +38,14 @@ export function mergePrevAndCache_(it, prev) {
     if (!it.last_nota_ts) it.last_nota_ts = prev.last_nota_ts || null;
     if (!it.created_at) it.created_at = prev.created_at || null;
   }
+
+  // La zona solo la manda /api/mis-activas. La respuesta de un evento trae la
+  // OT sin ese campo, y sin esto la plaza se borraría de la tarjeta en cuanto
+  // el técnico tocara un botón, para reaparecer en el refresco siguiente.
+  // `undefined` es "este payload no habla de zonas"; `null` sí es una respuesta
+  // —el carro no tiene plaza— y esa sí se respeta.
+  if (it.zona === undefined) it.zona = prev?.zona ?? null;
+
   return it;
 }
 

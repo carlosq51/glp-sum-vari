@@ -35,10 +35,19 @@ export function renderActivas_() {
     const motorNombre = escapeHtml(it.motorNombre || "");
     const tanqueroNombre = escapeHtml(it.tanqueroNombre || "");
 
+    // La plaza va pegada al VIN porque las dos responden a lo mismo: a qué
+    // carro voy y dónde está. En RAMALERO no se pone: ahí el título es el tipo
+    // de ramal, no un carro, y una zona colgando de un ramal no significa nada.
+    // Si el carro aún no está registrado en ninguna zona, no se muestra nada:
+    // "(ZONA -)" ocupa sitio para no decir nada.
+    const zona = Number.isFinite(it.zona)
+      ? ` <span class="jobZona">(ZONA ${it.zona})</span>`
+      : "";
+
     const title =
       CORE.state.currentModule === "RAMALERO"
         ? `RAMAL: ${tipo || "-"}`
-        : vin || "<span class='small'>(sin VIN)</span>";
+        : (vin ? `${vin}${zona}` : "<span class='small'>(sin VIN)</span>");
 
     out += `
       <div class="jobCard card state-${estado}" data-key="${escapeHtml(k)}">

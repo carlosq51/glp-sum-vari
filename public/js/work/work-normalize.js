@@ -7,6 +7,35 @@ import {
   ramalCacheSet_,
 } from "../core/core.js";
 
+/**
+ * zonaDe_ — plaza donde está aparcado el carro.
+ *
+ * Devuelve tres cosas distintas a propósito:
+ *   número     → está en esa plaza
+ *   null       → el servidor dice que no tiene plaza asignada
+ *   undefined  → este payload no habla de zonas
+ *
+ * La diferencia entre los dos últimos importa. La zona solo viaja en
+ * /api/mis-activas; la respuesta de un evento (iniciar, pausar, finalizar) trae
+ * la OT sin ese campo. Si ahí devolviéramos null, la plaza desaparecería de la
+ * tarjeta en cuanto el técnico tocara cualquier botón, y volvería sola en el
+ * siguiente refresco: un parpadeo sin explicación. Con `undefined`,
+ * mergePrevAndCache_ sabe que debe conservar la que ya tenía.
+ *
+ * No se pasa por `pickFirst_` porque ese devuelve "" cuando no encuentra nada,
+ * y `Number("")` es 0 — la tarjeta acabaría anunciando una "ZONA 0" que no
+ * existe en el taller.
+ */
+function zonaDe_(raw) {
+  if (!raw || !("zona" in raw || "zona_id" in raw || "zonaId" in raw)) return undefined;
+
+  const v = raw.zona ?? raw.zona_id ?? raw.zonaId;
+  if (v === undefined || v === null || v === "") return null;
+
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
 export function normalizeItem_(raw) {
   const pickFirst_ = (...xs) => {
     for (const x of xs) {
@@ -41,6 +70,7 @@ export function normalizeItem_(raw) {
     inc_leve: Number(pickFirst_(raw?.inc_leve, raw?.INC_LEVE, 0)) || 0,
     inc_moderada: Number(pickFirst_(raw?.inc_moderada, raw?.INC_MODERADA, 0)) || 0,
     inc_critica: Number(pickFirst_(raw?.inc_critica, raw?.INC_CRITICA, 0)) || 0,
+    zona: zonaDe_(raw),
     motorNombre: String(pickFirst_(raw?.motorNombre, raw?.motor_nombre, raw?.MOTOR_NOMBRE, "")).trim(),
     tanqueroNombre: String(pickFirst_(raw?.tanqueroNombre, raw?.tanquero_nombre, raw?.TANQUERO_NOMBRE, "")).trim(),
   };

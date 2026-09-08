@@ -14,7 +14,7 @@ import { pendingSuggestions_ } from "../lib/ml-state.js";
 import { emitEvent_ } from "../lib/events.js";
 import { getConfig_ } from "../lib/config.js";
 import { esOtDeUnSoloRol_, estadoGeneralDeAsignacion_ } from "../lib/utils.js";
-import { dispararMotor_, despachoReparteAhora_, apoyosPorPuesto_, duplaDeTrabajoDe_ } from "./despacho.js";
+import { dispararMotor_, despachoReparteAhora_, apoyosPorPuesto_, duplaDeTrabajoDe_, zonasDeVins_ } from "./despacho.js";
 import { jornadaFecha_ } from "../lib/despacho.js";
 import { puedeColaborar_, notaApoyo_, notaDupla_, notaCierreAjeno_, combinarNotas_ } from "../lib/colaboracion.js";
 
@@ -229,6 +229,24 @@ router.get("/api/mis-activas", async (req, res) => {
     const t1 = Date.now();
     const { finalUserId, tecnicoEmail } = await resolveUserId_(email, userId);
     const items = await fetchAsignacionesByUser_(finalUserId, tecnicoEmail, "activo=eq.true&estado_actual=neq.FINALIZADO");
+
+    // En qué plaza está aparcado cada carro. Va aquí y no en el helper que
+    // comparten activas y finalizadas: en una OT cerrada la zona ya no dice
+    // dónde está el carro —lo más probable es que se haya ido— y sería una
+    // consulta de más por cada refresco para acabar mostrando algo falso.
+    //
+    // Son un puñado de VINs (los que el técnico tiene abiertos) y dos columnas
+    // por fila; al lado de las asignaciones que ya viajan, no se nota.
+    try {
+      const zonas = await zonasDeVins_(items.map(i => i.vin));
+      for (const it of items) it.zona = zonas.get(it.vin) ?? null;
+    } catch (e) {
+      // Sin zona la tarjeta se pinta igual, solo que sin la plaza. Que el
+      // técnico no pueda ver su trabajo porque falló una consulta accesoria
+      // sería mucho peor que no saber el número de plaza.
+      console.warn("[mis-activas] no se pudo resolver zonas:", e.message);
+    }
+
     const duration = Date.now() - t1;
 
     res.set("Server-Timing", `query;dur=${duration}`);

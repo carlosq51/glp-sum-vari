@@ -97,3 +97,41 @@ describe("normalizeItem_", () => {
     expect(it.tanque_asignado).toBe("T-05");
   });
 });
+
+// ─────────────────────────────────────────────
+// Zona (plaza donde está aparcado el carro)
+// ─────────────────────────────────────────────
+describe("normalizeItem_ — zona", () => {
+  it("acepta el nombre que llegue: zona, zona_id o zonaId", () => {
+    expect(normalizeItem_({ vin: "A", zona: 10 }).zona).toBe(10);
+    expect(normalizeItem_({ vin: "A", zona_id: 7 }).zona).toBe(7);
+    expect(normalizeItem_({ vin: "A", zonaId: 3 }).zona).toBe(3);
+  });
+
+  it("un carro sin zona asignada da null, NO cero", () => {
+    // Aquí estuvo el fallo al escribirlo: pasar el valor por el pickFirst_ del
+    // módulo devuelve "" cuando no hay nada, y Number("") es 0. La tarjeta
+    // habría anunciado una "ZONA 0" que no existe en el taller.
+    expect(normalizeItem_({ vin: "A", zona: null }).zona).toBe(null);
+    expect(normalizeItem_({ vin: "A", zona: "" }).zona).toBe(null);
+  });
+
+  it("un payload que NO habla de zonas da undefined, no null", () => {
+    // La distinción no es cosmética: es lo que permite a mergePrevAndCache_
+    // conservar la plaza cuando llega la respuesta de un evento, que trae la OT
+    // sin ese campo. Con null, la zona parpadearía en cada botón que se toque.
+    expect(normalizeItem_({ vin: "A" }).zona).toBe(undefined);
+  });
+
+  it("la zona en texto se convierte a número: viene así de la querystring", () => {
+    expect(normalizeItem_({ vin: "A", zona: "12" }).zona).toBe(12);
+  });
+
+  it("una zona que no es número no se inventa", () => {
+    expect(normalizeItem_({ vin: "A", zona: "patio" }).zona).toBe(null);
+  });
+
+  it("la zona 16 —la virtual de los carros sin plaza— pasa tal cual", () => {
+    expect(normalizeItem_({ vin: "A", zona: 16 }).zona).toBe(16);
+  });
+});

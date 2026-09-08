@@ -500,8 +500,13 @@ async function duplasDeJornada_(fecha, estados = ["PENDIENTE", "ACTIVA"]) {
   }));
 }
 
-/** vin → zona donde está estacionado ahora. */
-async function zonasDeVins_(vins) {
+/**
+ * vin → zona donde está estacionado ahora.
+ * Exportada porque la lista de OTs del técnico (routes/trabajo.js) necesita lo
+ * mismo: saber a qué plaza ir. Una segunda copia de esta consulta acabaría
+ * divergiendo el día que la tabla cambie.
+ */
+export async function zonasDeVins_(vins) {
   const lista = [...new Set(vins)].filter(Boolean);
   if (!lista.length) return new Map();
   const r = await fetch(

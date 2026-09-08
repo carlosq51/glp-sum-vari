@@ -42,3 +42,20 @@
   padding: 12px;
   margin-top: var(--gap);
 }
+
+
+/* =====================================================================
+   Plaza del carro en el título de la OT — "ABC1234 (ZONA 10) (MOTOR)"
+   ---------------------------------------------------------------------
+   Va coloreada porque el título ya termina en "(ROL)": dos paréntesis
+   seguidos del mismo color se leen como uno solo y el técnico tiene que
+   pararse a separar cuál es cuál. Con el ámbar de la marca, la plaza salta
+   antes que nada, que es justo lo que se busca cuando lo que se pregunta es
+   "¿a qué carro voy?".
+===================================================================== */
+.jobZona {
+  color: var(--btnBg);
+  font-weight: var(--fw-black);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
