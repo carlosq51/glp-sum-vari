@@ -207,7 +207,12 @@ export async function apiSync_(email, since, { forceRefresh = false } = {}) {
 
     try {
 
-      const items = await getMisActivas(email);
+      // El módulo actual decide si además vienen las OTs de CALIDAD que el otro
+      // inspector ya empezó: en TECNICO o RAMALERO no pintarían nada, solo
+      // costarían una consulta por ciclo del poll.
+      const items = await getMisActivas(email, {
+        calidadColaborativa: CORE.state.currentModule === "CALIDAD",
+      });
 
       // El userId ahora estÃ¡ cacheado en getMisActivas (primera llamada solamente)
 

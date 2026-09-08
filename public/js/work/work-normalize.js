@@ -71,6 +71,10 @@ export function normalizeItem_(raw) {
     inc_moderada: Number(pickFirst_(raw?.inc_moderada, raw?.INC_MODERADA, 0)) || 0,
     inc_critica: Number(pickFirst_(raw?.inc_critica, raw?.INC_CRITICA, 0)) || 0,
     zona: zonaDe_(raw),
+    // OT de CALIDAD registrada por el OTRO inspector: se puede accionar, pero
+    // el crédito es de quien la abrió y la tarjeta lo tiene que decir.
+    ajena: raw?.ajena === true,
+    titularNombre: String(pickFirst_(raw?.titularNombre, raw?.titular_nombre, "")).trim(),
     motorNombre: String(pickFirst_(raw?.motorNombre, raw?.motor_nombre, raw?.MOTOR_NOMBRE, "")).trim(),
     tanqueroNombre: String(pickFirst_(raw?.tanqueroNombre, raw?.tanquero_nombre, raw?.TANQUERO_NOMBRE, "")).trim(),
   };

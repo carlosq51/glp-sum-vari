@@ -46,6 +46,15 @@ export function mergePrevAndCache_(it, prev) {
   // —el carro no tiene plaza— y esa sí se respeta.
   if (it.zona === undefined) it.zona = prev?.zona ?? null;
 
+  // Lo mismo con la marca de OT ajena: solo viaja en la lista, no en la
+  // respuesta de un evento. Sin esto el "registró Wilmer" desaparecía de la
+  // tarjeta en cuanto Jesús tocaba un botón — justo cuando más importa saber
+  // de quién es el carro que se acaba de mover.
+  if (!it.ajena && prev?.ajena) {
+    it.ajena = true;
+    if (!it.titularNombre) it.titularNombre = prev.titularNombre || "";
+  }
+
   return it;
 }
 

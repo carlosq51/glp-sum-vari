@@ -32,6 +32,15 @@ export function renderActivas_() {
     const tipo = escapeHtml(it.tipoRamal || "");
     const live = msToHMS_(computeLiveMs_(it, nowMs));
     const cre = escapeHtml(fmtFechaCreacion_(it.running_since || it.created_at || it.fecha_creacion));
+
+    // OT de CALIDAD que abrió el OTRO inspector. Se acciona igual —el permiso ya
+    // existía—, pero el crédito sigue siendo suyo: sin este aviso la tarjeta
+    // ajena es idéntica a la propia y quien la cierra no sabe que está cerrando
+    // trabajo de otro.
+    const ajena = it.ajena
+      ? `<span class="small jobAjena">👥 Registró: <b>${escapeHtml(it.titularNombre || "otro inspector")}</b></span>`
+      : "";
+
     const motorNombre = escapeHtml(it.motorNombre || "");
     const tanqueroNombre = escapeHtml(it.tanqueroNombre || "");
 
@@ -57,6 +66,7 @@ export function renderActivas_() {
             <div class="jobSub">
               <span><b>Estado:</b> <span class="js-estado">${estado}</span></span>
               <span class="small">Inicio: ${cre}</span>
+              ${ajena}
               ${CORE.state.currentModule === "CALIDAD" && (motorNombre || tanqueroNombre) ? `
                 <span class="small js-personal">
                   ${motorNombre ? `🔧 MOTOR: <b>${motorNombre}</b>` : ""}

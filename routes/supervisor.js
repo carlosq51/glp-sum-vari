@@ -269,7 +269,17 @@ async function armarReporteSupervisor_(payload) {
   // camino que un rango explícito y se activan las consultas cross-day (Q2/Q5),
   // que son las que recogen el carro empezado ayer y terminado hoy. Sin ellas,
   // "hoy" se dejaría fuera media producción de la mañana.
-  if (!effectiveFrom && !effectiveTo && !month) {
+  //
+  // Con un VIN buscado NO se pone esa fecha. `ignoraFechas` ya había vaciado
+  // el rango que venía de la pantalla justamente para que el carro apareciera
+  // estuviera donde estuviera, y volver a meter "hoy" aquí lo deshacía en la
+  // línea siguiente. El caso que se veía en el taller: un carro con la
+  // conversión cerrada hace días y todavía sin calidad no salía en NINGUNA de
+  // las consultas —Q1 pide fecha_asignacion de hoy, Q2 pide cierre de hoy y Q5
+  // solo mira los que siguen abiertos—, así que escanear su VIN devolvía «sin
+  // resultados» sobre una OT que existe y está cerrada. Sin fechas la consulta
+  // sigue acotada por los work_order_id de ese VIN: un puñado de filas.
+  if (!ignoraFechas && !effectiveFrom && !effectiveTo && !month) {
     effectiveFrom = todayStr;
     effectiveTo   = todayStr;
   }

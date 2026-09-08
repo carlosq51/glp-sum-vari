@@ -16,7 +16,10 @@ import { getConfig_ } from "../lib/config.js";
 import { esOtDeUnSoloRol_, estadoGeneralDeAsignacion_ } from "../lib/utils.js";
 import { dispararMotor_, despachoReparteAhora_, apoyosPorPuesto_, duplaDeTrabajoDe_, zonasDeVins_ } from "./despacho.js";
 import { jornadaFecha_ } from "../lib/despacho.js";
-import { puedeColaborar_, notaApoyo_, notaDupla_, notaCierreAjeno_, combinarNotas_ } from "../lib/colaboracion.js";
+import {
+  puedeColaborar_, notaApoyo_, notaDupla_, notaCierreAjeno_, combinarNotas_,
+  ESTADOS_CALIDAD_COLABORATIVA,
+} from "../lib/colaboracion.js";
 
 const router = Router();
 
@@ -49,42 +52,117 @@ async function resolveUserId_(email, userId) {
   return { finalUserId, tecnicoEmail };
 }
 
+// PostgREST devuelve el embed como OBJETO cuando la relación es de muchos a uno
+// y como ARRAY cuando la lee por el otro lado. Aquí conviven los dos casos
+// (`usuarios!inner(...)` llega como objeto), y leer siempre `[0]` dejaba el
+// nombre del titular en blanco — que es justo el dato que necesita la tarjeta
+// de una OT ajena. Se aplana una vez, en un sitio.
+const uno_ = (x) => (Array.isArray(x) ? x[0] : x) || {};
+
+// Fila de `asignaciones` → item que pinta la tarjeta del técnico.
+// Lo comparten la lista propia y la de CALIDAD ajena: si cada una armara el
+// suyo, la misma OT se vería distinta según de qué lista viniera.
+function mapAsignacion_(asg, tecnicoEmail) {
+  const wo    = uno_(asg.work_orders);
+  const dueno = uno_(asg.usuarios);
+  const vins  = uno_(wo.vins);
+  return {
+    id:                 asg.id,
+    work_order_id:      asg.work_order_id,
+    tipo_ot:            asg.tipo_ot,
+    rol_trabajo:        asg.rol_trabajo,
+    estado_actual:      asg.estado_actual,
+    running_since:      asg.running_since,
+    created_at:         asg.running_since || wo.fecha_creacion || "",
+    fecha_creacion:     wo.fecha_creacion || "",
+    tiempo_trab_ms:     asg.tiempo_trab_ms || 0,
+    updated_at:         asg.updated_at,
+    last_nota:          asg.last_nota || "",
+    vin:                wo.vin || "",
+    tipo_ramal:         wo.tipo_ramal || "",
+    tipoRamal:          wo.tipo_ramal || "",
+    estado:             asg.estado_actual,
+    tiempo_ms:          asg.tiempo_trab_ms || 0,
+    reductor_asignado:  vins.reductor_asignado || "",
+    tanque_asignado:    vins.tanque_asignado   || "",
+    tecnico_id:         asg.user_id,
+    tecnico_email:      dueno.email  || tecnicoEmail || "",
+    tecnico_nombre:     dueno.nombre || "",
+  };
+}
+
 // Consulta asignaciones y normaliza el resultado.
 // filtro: string que va directo en la querystring de Supabase (ej. "estado_actual=eq.FINALIZADO&limit=5000")
-async function fetchAsignacionesByUser_(finalUserId, tecnicoEmail, filtro) {
+async function fetchAsignaciones_(filtro, tecnicoEmail = "") {
   const SUPABASE_URL = process.env.SUPABASE_URL;
   const headers = supabaseHeaders_();
-  const url = `${SUPABASE_URL}/rest/v1/asignaciones?user_id=eq.${finalUserId}&${filtro}&select=${ASG_SELECT}&order=updated_at.desc`;
+  const url = `${SUPABASE_URL}/rest/v1/asignaciones?${filtro}&select=${ASG_SELECT}&order=updated_at.desc`;
   const r = await fetch(url, { method: "GET", headers });
   if (!r.ok) throw new Error(`Supabase asignaciones ${r.status}`);
 
   const asignaciones = await r.json();
-  return asignaciones.map(asg => {
-    const wo = Array.isArray(asg.work_orders) ? asg.work_orders[0] : asg.work_orders;
-    return {
-      id:                 asg.id,
-      work_order_id:      asg.work_order_id,
-      tipo_ot:            asg.tipo_ot,
-      rol_trabajo:        asg.rol_trabajo,
-      estado_actual:      asg.estado_actual,
-      running_since:      asg.running_since,
-      created_at:         asg.running_since || wo?.fecha_creacion || "",
-      fecha_creacion:     wo?.fecha_creacion || "",
-      tiempo_trab_ms:     asg.tiempo_trab_ms || 0,
-      updated_at:         asg.updated_at,
-      last_nota:          asg.last_nota || "",
-      vin:                wo?.vin || "",
-      tipo_ramal:         wo?.tipo_ramal || "",
-      tipoRamal:          wo?.tipo_ramal || "",
-      estado:             asg.estado_actual,
-      tiempo_ms:          asg.tiempo_trab_ms || 0,
-      reductor_asignado:  wo?.vins?.reductor_asignado || "",
-      tanque_asignado:    wo?.vins?.tanque_asignado   || "",
-      tecnico_id:         asg.user_id,
-      tecnico_email:      asg.usuarios?.[0]?.email   || tecnicoEmail || "",
-      tecnico_nombre:     asg.usuarios?.[0]?.nombre  || "",
-    };
-  });
+  return (asignaciones || []).map(asg => mapAsignacion_(asg, tecnicoEmail));
+}
+
+async function fetchAsignacionesByUser_(finalUserId, tecnicoEmail, filtro) {
+  return fetchAsignaciones_(`user_id=eq.${finalUserId}&${filtro}`, tecnicoEmail);
+}
+
+// ── CALIDAD colaborativa: poder tocarla no servía de nada si no se veía ──────
+//
+// El permiso ya existía (lib/colaboracion.js, y el 409 de /api/evento que lo
+// consulta): el segundo inspector puede accionar la OT que el primero empezó.
+// Pero la lista de trabajos activos seguía siendo `user_id=eq.yo`, así que la
+// OT de Wilmer no aparecía en la pantalla de Jesús y el permiso solo servía si
+// Jesús adivinaba el VIN y lo escribía a mano. Un permiso que no se ve no
+// existe: en el taller se seguía esperando a que volviera el otro.
+//
+// El crédito NO se mueve —el user_id sigue siendo el del titular— y por eso las
+// OTs ajenas viajan marcadas con `ajena` y con el nombre de quien las registró:
+// la tarjeta tiene que decir de quién es antes de que nadie la cierre.
+const _esCalidadCache = new Map();          // user_id → { ts, es }
+const CALIDAD_CACHE_MS = 10 * 60 * 1000;
+
+async function esInspectorCalidad_(userId) {
+  if (!userId) return false;
+  const hit = _esCalidadCache.get(userId);
+  if (hit && (Date.now() - hit.ts) < CALIDAD_CACHE_MS) return hit.es;
+  try {
+    const mods = await supabaseGet_("usuario_modulos", { user_id: userId });
+    const es = (mods || []).some(m => String(m.modulo || "").toUpperCase() === "CALIDAD");
+    _esCalidadCache.set(userId, { ts: Date.now(), es });
+    return es;
+  } catch {
+    // Ante un fallo de lectura, la lista de siempre. No se abre una puerta
+    // porque una consulta accesoria se haya caído.
+    return false;
+  }
+}
+
+/**
+ * OTs de CALIDAD de los DEMÁS inspectores que este puede accionar.
+ *
+ * Solo las que el titular ya empezó: es la misma frontera de puedeColaborar_
+ * (ESTADOS_CALIDAD_COLABORATIVA). Enseñar una SIN_INICIAR sería invitar a
+ * cerrar una inspección que nadie hizo, y además la acción rebotaría con 409.
+ *
+ * Devuelve [] si el usuario no es inspector. Que falle Supabase lo maneja quien
+ * llama: quedarse sin las ajenas es una pantalla incompleta, quedarse sin las
+ * propias es no poder trabajar.
+ */
+async function calidadDeOtros_(finalUserId) {
+  if (!finalUserId) return [];
+  if (!(await esInspectorCalidad_(finalUserId))) return [];
+  const estados = ESTADOS_CALIDAD_COLABORATIVA.join(",");
+  const items = await fetchAsignaciones_(
+    `user_id=neq.${finalUserId}&tipo_ot=eq.CALIDAD&activo=eq.true&estado_actual=in.(${estados})`,
+  );
+  return items.map(it => ({
+    ...it,
+    ajena: true,
+    titular_nombre: it.tecnico_nombre || "",
+    titular_email:  it.tecnico_email  || "",
+  }));
 }
 
 /** Nombre de un usuario por id. Devuelve "" si no se puede: una nota sin
@@ -229,6 +307,16 @@ router.get("/api/mis-activas", async (req, res) => {
     const t1 = Date.now();
     const { finalUserId, tecnicoEmail } = await resolveUserId_(email, userId);
     const items = await fetchAsignacionesByUser_(finalUserId, tecnicoEmail, "activo=eq.true&estado_actual=neq.FINALIZADO");
+
+    // Las de CALIDAD que otro inspector ya empezó. Van ANTES de resolver zonas
+    // para que la plaza salga también en ellas: si el carro que voy a revisar
+    // es el que abrió mi compañero, saber dónde está aparcado importa igual.
+    try {
+      const ajenas = await calidadDeOtros_(finalUserId);
+      for (const a of ajenas) if (!items.some(i => i.id === a.id)) items.push(a);
+    } catch (e) {
+      console.warn("[mis-activas] calidad colaborativa:", e.message);
+    }
 
     // En qué plaza está aparcado cada carro. Va aquí y no en el helper que
     // comparten activas y finalizadas: en una OT cerrada la zona ya no dice
@@ -1002,6 +1090,36 @@ router.post("/api/sync", async (req, res) => {
       last_nota: asg.last_nota || "",
       work_orders: asg.work_orders || {},
     }));
+
+    // Mismo añadido que en /api/mis-activas: las OTs de CALIDAD que otro
+    // inspector ya empezó. Los tres caminos que alimentan esta pantalla
+    // (Supabase directo, /api/sync y /api/mis-activas) tienen que traer lo
+    // mismo; si uno se dejara las ajenas, el inspector las vería o no según por
+    // dónde entró el dato.
+    try {
+      const ajenas = await calidadDeOtros_(finalUserId);
+      for (const a of ajenas) {
+        if (items.some(i => i.asignacion_id === a.id)) continue;
+        items.push({
+          asignacion_id:  a.id,
+          vin:            a.vin,
+          conversion_id:  a.work_order_id,
+          work_order_id:  a.work_order_id,
+          rol_trabajo:    a.rol_trabajo,
+          estado_actual:  a.estado_actual,
+          tiempo_ms:      a.tiempo_ms,
+          running_since:  a.running_since,
+          created_at:     a.created_at,
+          fecha_creacion: a.fecha_creacion,
+          last_nota:      a.last_nota,
+          ajena:          true,
+          titular_nombre: a.titular_nombre,
+          work_orders:    { vin: a.vin, fecha_creacion: a.fecha_creacion },
+        });
+      }
+    } catch (e) {
+      console.warn("[sync] calidad colaborativa:", e.message);
+    }
 
     // La plaza del carro, igual que en /api/mis-activas y en la consulta
     // directa del navegador. Los tres caminos alimentan la misma tarjeta: si

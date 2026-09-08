@@ -59,3 +59,17 @@
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+
+/* =====================================================================
+   OT de CALIDAD abierta por el OTRO inspector
+   ---------------------------------------------------------------------
+   La tarjeta se acciona igual que la propia, así que nada en su forma
+   dice que el trabajo es de alguien más. Esta línea es lo único que lo
+   dice, y por eso va marcada: en una lista donde casi todo es propio,
+   lo ajeno tiene que reconocerse sin leer.
+===================================================================== */
+.jobAjena {
+  color: var(--btnBg);
+  font-weight: var(--fw-bold, 700);
+  white-space: nowrap;
+}

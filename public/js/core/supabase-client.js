@@ -259,7 +259,7 @@ export async function getUsuarioPerfil(email) {
  * GET /api/mis-activas — Obtener trabajos activos del usuario
  * ⚡ OPTIMIZADO: Filtra EN SUPABASE (no trae todo)
  */
-export async function getMisActivas(email) {
+export async function getMisActivas(email, { calidadColaborativa = false } = {}) {
   if (!supabaseEnabled()) throw new Error("Supabase no configurado");
   
   // Obtener user_id (cacheado: no se relee en cada ciclo del poll)
@@ -312,7 +312,72 @@ export async function getMisActivas(email) {
     })
     .filter(it => it.work_order_id);
 
+  if (calidadColaborativa) {
+    items.push(...await calidadDeOtros_(userId));
+  }
+
   return await conZonas_(items);
+}
+
+/**
+ * calidadDeOtros_ — las OTs de CALIDAD que el OTRO inspector ya empezó.
+ *
+ * El permiso para accionarlas existe desde hace tiempo (lib/colaboracion.js y
+ * el 409 de /api/evento que lo consulta), pero esta consulta seguía filtrando
+ * por `user_id=eq.yo`: la OT de Wilmer no salía en la pantalla de Jesús y el
+ * permiso solo servía si Jesús adivinaba el VIN y lo escribía a mano. Un
+ * permiso que no se ve no existe.
+ *
+ * Solo las TRABAJANDO/PAUSADO, que es la misma frontera del permiso: una OT
+ * SIN_INICIAR no es trabajo compartido todavía y su acción rebotaría con 409.
+ *
+ * El crédito no se mueve: siguen siendo del titular, y por eso vuelven marcadas
+ * con `ajena` y su nombre para que la tarjeta diga de quién es.
+ *
+ * Si la consulta falla se devuelve []: el inspector se queda sin ver las del
+ * compañero, que es mucho menos grave que quedarse sin ver las suyas.
+ */
+async function calidadDeOtros_(userId) {
+  const select = "id,work_order_id,tipo_ot,rol_trabajo,estado_actual,running_since,tiempo_trab_ms,updated_at,last_nota,user_id,usuarios(id,nombre,email),work_orders(id,vin,tipo_ramal,estado_general,tanque_registrado,reductor_registrado,fecha_creacion)";
+  const url = `${SUPABASE_CONFIG.URL}/rest/v1/asignaciones?user_id=neq.${userId}` +
+    `&tipo_ot=eq.CALIDAD&activo=eq.true&estado_actual=in.(TRABAJANDO,PAUSADO)` +
+    `&select=${encodeURIComponent(select)}&order=updated_at.desc`;
+
+  try {
+    const res = await fetch(url, { method: "GET", headers: supabaseHeaders() });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data || []).map(asg => {
+      const wo = Array.isArray(asg.work_orders) ? asg.work_orders[0] : asg.work_orders;
+      const titular = Array.isArray(asg.usuarios) ? asg.usuarios[0] : asg.usuarios;
+      return {
+        id: asg.id,
+        work_order_id: asg.work_order_id,
+        tipo_ot: asg.tipo_ot,
+        rol_trabajo: asg.rol_trabajo,
+        estado_actual: asg.estado_actual,
+        running_since: asg.running_since,
+        created_at: asg.running_since || wo?.fecha_creacion || "",
+        fecha_creacion: wo?.fecha_creacion || "",
+        tiempo_trab_ms: asg.tiempo_trab_ms || 0,
+        updated_at: asg.updated_at,
+        last_nota: asg.last_nota || "",
+        vin: wo?.vin || "",
+        tipo_ramal: wo?.tipo_ramal || "",
+        tipoRamal: wo?.tipo_ramal || "",
+        estado_general: wo?.estado_general,
+        tanque_registrado: wo?.tanque_registrado,
+        reductor_registrado: wo?.reductor_registrado,
+        tiempo_ms: Number(asg.tiempo_trab_ms || 0),
+        estado: asg.estado_actual,
+        ajena: true,
+        titular_nombre: titular?.nombre || "",
+        titular_email: titular?.email || "",
+      };
+    }).filter(it => it.work_order_id);
+  } catch {
+    return [];
+  }
 }
 
 /**
