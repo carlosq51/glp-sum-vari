@@ -5,6 +5,16 @@
 --  solo desde la versión anterior del módulo (bloque 0).
 --  Requiere `supabase/schema.sql`.
 --
+--  ACTUALIZACIÓN 2026-09-12 · FLUJO SIMPLIFICADO
+--  ─────────────────────────────────────────────
+--  La app ya no usa el turno rotativo ni la revisión cronometrada de
+--  la caja. El flujo es: el supervisor ingresa los equipos del día por
+--  marca (lote + líneas) → reparte a cada ramalero → cada uno devuelve.
+--  El tiempo que se mide es el del reparto (`asignado_at → devuelto_at`).
+--  Las columnas `revision_*`, `encargado_*` y la tabla `ramal_rotacion`
+--  se quedan con su histórico, pero nadie las escribe. Este script no
+--  cambió por eso: no hace falta volver a correrlo.
+--
 --  EL PROBLEMA QUE RESUELVE
 --  ────────────────────────
 --  Antes el ramalero decía «hice 5 en una hora» y no había forma de
@@ -346,11 +356,19 @@ UPDATE ramal_repartos r
 -- Un ramalero, una fila por marca y lote: si se le da más de la misma
 -- marca, se SUMA a su fila en vez de abrir otra. Dos filas del mismo
 -- trío harían que el arqueo contara doble y el promedio de tiempo
--- saliera partido a la mitad. `COALESCE` porque en SQL dos NULL no son
--- iguales y sin él una caja sin marca admitiría filas repetidas.
+-- saliera partido a la mitad.
+--
+-- Son DOS índices porque en SQL dos NULL no son iguales: el primero
+-- cuida los repartos que ya tienen marca, el segundo las cajas que
+-- todavía no la tienen (una sola fila por ramalero). Juntarlos en uno
+-- con `COALESCE(tipo_ramal::text, '')` no se puede: pasar un enum a
+-- texto usa su función de salida, que Postgres no considera IMMUTABLE,
+-- y rechaza el índice entero con 42P17.
 DROP INDEX IF EXISTS idx_ramal_reparto_uniq;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_ramal_reparto_uniq
-  ON ramal_repartos (lote_id, user_id, COALESCE(tipo_ramal::text, ''));
+  ON ramal_repartos (lote_id, user_id, tipo_ramal) WHERE tipo_ramal IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ramal_reparto_uniq_sin_marca
+  ON ramal_repartos (lote_id, user_id)             WHERE tipo_ramal IS NULL;
 CREATE INDEX IF NOT EXISTS idx_ramal_reparto_user ON ramal_repartos (user_id);
 CREATE INDEX IF NOT EXISTS idx_ramal_reparto_lote ON ramal_repartos (lote_id);
 

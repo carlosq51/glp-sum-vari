@@ -91,12 +91,11 @@
   margin-bottom: 11px;
   transition: border-color var(--dur, .18s) ease;
 }
-/* La franja izquierda dice el estado sin leer nada. */
-.rmLote[data-estado="RECIBIDO"]     { border-left: 4px solid var(--muted); }
-.rmLote[data-estado="DESEMBALANDO"] { border-left: 4px solid var(--warn); }
-.rmLote[data-estado="DESEMBALADO"]  { border-left: 4px solid var(--accent, #3b82f6); }
-.rmLote[data-estado="REPARTIDO"]    { border-left: 4px solid var(--ok); }
-.rmLote[data-estado="CERRADO"]      { border-left: 4px solid var(--surfaceLine); opacity: .7; }
+/* La franja izquierda dice en qué va el día sin leer nada. */
+.rmLote[data-fase="repartir"]   { border-left: 4px solid var(--warn); }
+.rmLote[data-fase="trabajando"] { border-left: 4px solid var(--accent, #3b82f6); }
+.rmLote[data-fase="listo"]      { border-left: 4px solid var(--ok); }
+.rmLote[data-fase="cerrado"]    { border-left: 4px solid var(--surfaceLine); opacity: .7; }
 /* Un descuadre gana a cualquier estado: es lo único que hay que mirar. */
 .rmLote.is-descuadre { border-left-color: var(--bad, #ef4444); }
 
@@ -1061,4 +1060,93 @@
   .rmItemRow { grid-template-columns: 1fr 84px 34px; }
   .rmDevRow  { grid-template-columns: 1fr; gap: 7px; }
   .rmMatrizAcc__hint { display: none; }
+}
+
+/* =====================================================================
+   17. RAMALEROS · tiempo promedio por persona y su detalle
+   ---------------------------------------------------------------------
+   Cada fila es un botón: tocarla abre el detalle. El número grande es el
+   tiempo por ramal; la barra lo pone contra el más lento del grupo para
+   que la comparación se lea sin hacer cuentas. El rechazo va al lado.
+   ===================================================================== */
+.rmGente { display: grid; gap: 7px; }
+.rmGente__row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(120px, 190px) 70px 14px;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 11px 14px;
+  border-radius: var(--radiusSm, 12px);
+  background: var(--surface2);
+  border: var(--border-w) solid var(--surfaceLine);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--dur, .18s) ease;
+}
+.rmGente__row:hover,
+.rmGente__row:focus-visible { border-color: var(--accent, #3b82f6); outline: none; }
+
+.rmGente__quien { min-width: 0; }
+.rmGente__quien b {
+  display: block;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rmGente__quien small,
+.rmGente__tiempo small,
+.rmGente__rech small {
+  display: block;
+  font-size: .7rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.rmGente__tiempo b {
+  font-size: 1.15rem;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.rmGente__bar {
+  display: block;
+  height: 5px;
+  margin-top: 5px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--pillBg);
+}
+.rmGente__bar i { display: block; height: 100%; border-radius: 999px; }
+
+.rmGente__rech {
+  text-align: right;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.rmGente__rech.is-alto { color: var(--bad, #ef4444); }
+.rmGente__ir { color: var(--muted); font-size: 1.2rem; font-weight: 700; }
+
+/* Historial de repartos en el detalle */
+.rmHist tr.is-abierto td { color: var(--muted); }
+.rmHist__t { min-width: 150px; }
+.rmHist__bar {
+  display: inline-block;
+  width: 80px;
+  height: 6px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--pillBg);
+  vertical-align: middle;
+  margin-right: 7px;
+}
+.rmHist__bar i { display: block; height: 100%; }
+.rmHist__v { font-weight: 800; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 620px) {
+  .rmGente__row { grid-template-columns: auto minmax(0, 1fr) auto 14px; }
+  .rmGente__rech { display: none; }
 }

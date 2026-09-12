@@ -21,7 +21,7 @@ export function enter() {
   // Cola de solicitudes en vivo (SSE + poll de respaldo)
   enterSolicitudes_();
 
-  // Turno de caja y ramales por devolver (ver views/ramales/mi-turno.js).
+  // Ramales repartidos y por devolver (ver views/ramales/mi-turno.js).
   // Si el módulo de ramales todavía no está instalado en Supabase, el
   // panel se oculta solo y la vista sigue funcionando igual.
   mountMiTurno(document.getElementById("ramalMiTurnoBody"));

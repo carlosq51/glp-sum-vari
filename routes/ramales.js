@@ -1,39 +1,35 @@
 // =========================
 // routes/ramales.js
-// Módulo RAMALES — turno rotativo, revisión cronometrada por el
-// supervisor, reparto por marca, devolución a oficina y stock.
+// Módulo RAMALES — equipos del día por marca, reparto a cada ramalero,
+// devolución a oficina, stock y métricas de tiempo.
 //
 // Requiere `supabase/ramales.sql`.
 //
-// LA REGLA QUE GOBIERNA TODO ESTE ARCHIVO
-// ───────────────────────────────────────
-// Ningún número que mide a alguien lo escribe esa misma persona.
+// EL FLUJO (simplificado el 2026-09-12)
+// ─────────────────────────────────────
+//   · /lote                  el SUPERVISOR anota los equipos del día:
+//                            «día 13 · 30 Jetour · 2 VW»
+//   · /lote/:id/repartir     el SUPERVISOR reparte: «Salomón 20 Jetour,
+//                            Andy 10 Jetour, Gabriel 2 VW». Aquí arranca
+//                            el tiempo de cada uno.
+//   · /reparto/:id/devolver  el ramalero (o el supervisor por él) trae lo
+//                            armado. Aquí para su tiempo.
+//   · /ramalero/:id          el detalle de una persona: tiempos por marca
+//                            e historial de repartos.
 //
-//   · /lote          lo crea el SUPERVISOR y ahí arranca el cronómetro
-//   · /aviso         lo marca el RAMALERO, pero es un aviso, no el reloj
-//   · /recibir       lo confirma el SUPERVISOR y ESO cierra el reloj
-//   · /repartir      lo firma el SUPERVISOR (cuántos de qué marca a cada uno)
-//   · /devolver      lo cierra el RAMALERO contra lo que le asignaron
+// Antes había un turno rotativo y una revisión cronometrada de la caja
+// antes de poder repartir. Se quitó: el taller no lo usaba y el número
+// que se quiere mirar es cuánto tarda cada uno en armar. Las columnas de
+// revisión y la tabla de rotación siguen en la base (con su histórico),
+// pero ya nadie las escribe.
 //
-// Por eso los endpoints están partidos así y no en uno solo «guardar
-// lote»: la separación de quién puede escribir qué ES el control.
+// Lo que sí se conserva: el tiempo lo abre quien reparte y lo cierra la
+// devolución, así que el ramalero no escribe los dos extremos de su
+// propia métrica.
 //
-// UN SOLO TRABAJO
-// ───────────────
-// La versión anterior tenía dos encargados por caja (desembalaje y
-// revisión) con dos rotaciones y dos relojes. En el taller es una sola
-// persona abriendo una caja y revisando lo que trae: ahora hay un
-// encargado, un contador de turnos y un reloj.
-//
-// CAJAS MIXTAS
-// ────────────
-// Una caja trae 15 Jetour y 10 KYC V3: eso son LÍNEAS del lote
-// (`ramal_lote_items`), no dos cajas. El reparto lleva la marca encima
-// porque al devolver hay que saber a qué saldo sumarle lo armado.
-//
-// La auditoría es POR LOTE, no por unidad: no hay QR ni etiqueta en el
-// ramal. Lo que entró en la caja tiene que aparecer repartido, devuelto
-// o como merma con motivo. Ver `v_ramal_lote_arqueo` en el SQL.
+// Un día puede traer varias marcas (`ramal_lote_items`) y el reparto
+// lleva la marca encima, porque al devolver hay que saber a qué saldo
+// sumarle lo armado.
 // =========================
 
 import { Router } from "express";
@@ -49,9 +45,13 @@ const router = Router();
 
 const SB = () => process.env.SUPABASE_URL;
 
-// Cuántos lotes ve el panel hacia atrás. El trabajo del día son 1-3 cajas;
-// 40 cubre casi un mes sin que la vista tenga que paginar.
+// Cuántos días ve el panel hacia atrás. Es uno o dos por día; 40 cubre
+// casi un mes sin que la vista tenga que paginar.
 const LIM_LOTES = 40;
+
+// Cuántos repartos trae el detalle de un ramalero. Son uno o dos por día:
+// 300 son meses de historia, de sobra para un promedio que diga algo.
+const LIM_DETALLE = 300;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -117,10 +117,28 @@ function nEntero_(v, def = 0) {
   return Number.isFinite(n) ? Math.trunc(n) : def;
 }
 
+const RE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const RE_FECHA = /^\d{4}-\d{2}-\d{2}$/;
+
+/** «13/09» — el día como se dice en un push. */
+function fechaCorta_(fecha) {
+  const m = RE_FECHA.exec(String(fecha || ""));
+  return m ? `${fecha.slice(8, 10)}/${fecha.slice(5, 7)}` : String(fecha || "");
+}
+
 /**
- * Normaliza las líneas de una caja: `[{ tipo_ramal, cantidad }]`.
+ * Un reparto con su día embebido (`select=*,ramal_lotes(codigo,fecha)`)
+ * aplanado: la vista necesita «día 13 · 20 JETOUR», no un objeto anidado.
+ */
+function aplanarLote_(r) {
+  const { ramal_lotes: l, ...resto } = r;
+  return { ...resto, codigo: l?.codigo || "", fecha: l?.fecha || null };
+}
+
+/**
+ * Normaliza las líneas de un día: `[{ tipo_ramal, cantidad }]`.
  * Suma las repetidas en vez de dejarlas pasar — la marca aparece una vez
- * por caja (índice único del SQL) y dos líneas de lo mismo harían que el
+ * por día (índice único del SQL) y dos líneas de lo mismo harían que el
  * arqueo contara doble sin que nada se vea raro.
  */
 function normalizarItems_(entrada) {
@@ -135,7 +153,7 @@ function normalizarItems_(entrada) {
 }
 
 /**
- * Reescribe las líneas de una caja y deja `cantidad_equipos` igual a su
+ * Reescribe las líneas de un día y deja `cantidad_equipos` igual a su
  * suma. Se hace en un solo sitio porque el total desnormalizado y las
  * líneas tienen que moverse juntos o el arqueo empieza a mentir.
  */
@@ -149,17 +167,10 @@ async function guardarItems_(loteId, items) {
   return limpias;
 }
 
-/** «15 JETOUR · 10 KYC V3» — como se dice la caja en voz alta. */
-function textoItems_(items) {
-  return items.map(i => `${i.cantidad} ${i.tipo_ramal}`).join(" · ");
-}
-
 /**
- * Código legible del lote: L-AAMMDD-NN. Se usa para hablar de la caja en
- * voz alta ("el L-260904-02"), no como llave — la llave es el UUID.
- * El correlativo se calcula contando los lotes del día; si dos cajas se
- * registran en el mismo segundo el índice único del SQL rechaza la
- * segunda y el reintento le da el número siguiente.
+ * Código legible del día: L-AAMMDD-NN. Sirve para distinguir dos pedidos
+ * del mismo día, no como llave — la llave es el UUID. Si dos se registran
+ * en el mismo segundo, el índice único del SQL rechaza el segundo.
  */
 async function siguienteCodigo_(fecha) {
   const rows = await sbGet_(
@@ -175,73 +186,11 @@ async function siguienteCodigo_(fecha) {
 }
 
 /**
- * A quién le toca. La rotación NO es un puntero circular: es «el que
- * menos veces le tocó, y a igualdad el que hace más tiempo que no le
- * toca» (ese orden ya lo hace la vista v_ramal_rotacion).
- *
- * Encima de eso se filtra por quién marcó asistencia hoy. Saltarse al
- * que faltó no le «debe» un turno: su contador se queda atrás y mañana
- * entra primero solo. Es la diferencia entre rotar y repartir parejo.
- *
- * Si nadie marcó asistencia (taller sin módulo de despacho, o aún es
- * temprano) devuelve la lista completa en vez de nada: sugerir a alguien
- * que quizá no vino es mejor que no sugerir y obligar a elegir a ciegas.
- */
-async function candidatosTurno_() {
-  const rot = await sbGet_("v_ramal_rotacion?select=*");
-  if (!rot.length) return { candidatos: [], sugerido: null, filtradoPorAsistencia: false };
-
-  let presentes = null;
-  try {
-    const fecha = jornadaFecha_();
-    const asis = await sbGet_(
-      `asistencia_jornada?jornada_fecha=eq.${fecha}&estado=neq.FUERA&select=user_id`,
-    );
-    if (asis.length) presentes = new Set(asis.map(a => a.user_id));
-  } catch {
-    // Sin módulo de despacho no hay asistencia que consultar: la rotación
-    // sigue funcionando, solo que sin saltarse a quien no vino.
-  }
-
-  const conPresencia = rot.map(r => ({
-    ...r,
-    presente: presentes ? presentes.has(r.user_id) : null,
-  }));
-  const elegibles = presentes
-    ? conPresencia.filter(r => r.presente)
-    : conPresencia;
-
-  return {
-    candidatos: conPresencia,
-    sugerido: (elegibles[0] || conPresencia[0] || null),
-    filtradoPorAsistencia: !!presentes,
-  };
-}
-
-/** Suma un turno cumplido al historial de rotación. */
-async function anotarTurno_(userId) {
-  if (!userId) return;
-  const rows = await sbGet_(`ramal_rotacion?user_id=eq.${userId}&select=veces`);
-  const actual = rows[0];
-  const ahora = new Date().toISOString();
-  const patch = { veces: (actual?.veces || 0) + 1, ultima_vez: ahora, updated_at: ahora };
-
-  if (actual) {
-    await sbPatch_("ramal_rotacion", `user_id=eq.${userId}`, patch);
-  } else {
-    // Un ramalero que nunca entró a la tabla (se le dio el módulo hoy) no
-    // puede quedar fuera del historial solo por eso: se crea al vuelo.
-    await sbPost_("ramal_rotacion", { user_id: userId, ...patch });
-  }
-}
-
-/**
  * Anota un movimiento en el libro mayor del stock. `cantidad` va con signo.
  *
- * `cantidad: 0` es válido y a propósito: un rechazo en revisión o la merma
- * de una caja nunca llegaron a entrar al stock, así que no hay saldo que
- * mover — pero el rastro de que existieron sí tiene que quedar. Un faltante
- * sin fila es un faltante que nadie puede investigar después.
+ * `cantidad: 0` es válido y a propósito: un rechazo o una merma nunca
+ * llegaron a entrar al stock, así que no hay saldo que mover — pero el
+ * rastro de que existieron sí tiene que quedar.
  */
 async function moverStock_(mov) {
   if (mov.cantidad == null) return null;
@@ -265,31 +214,29 @@ async function moverStock_(mov) {
 
 // GET /api/ramales/panel
 // Todo el estado del módulo en una sola respuesta: la vista se pinta de
-// un tirón en vez de encadenar seis fetches (patrón de /api/zonas).
-// Topics que mueven el panel: todo el módulo de ramales (lotes, reparto,
-// devolución, stock) y la cola técnico→ramalero.
+// un tirón en vez de encadenar cinco fetches (patrón de /api/zonas).
 const TOPICS_RAMALES = ["ramales", "ramal", "asignaciones"];
 
-// El armado va aparte porque se sirve CACHEADO: son varias consultas por
-// pasada y los ramaleros en turno tienen el panel abierto a la vez, cada uno
-// repitiendo las mismas. El SSE "ramales" borra la entrada en cuanto algo
-// cambia de verdad, así que el reparto se sigue viendo al instante.
+// Se sirve CACHEADO: son varias consultas por pasada y quien tenga el panel
+// abierto repite las mismas. El SSE "ramales" borra la entrada en cuanto
+// algo cambia de verdad, así que el reparto se sigue viendo al instante.
 async function armarPanelRamales_() {
-  const [lotes, repartos, items, rot, stock, desempeno, ramaleros] = await Promise.all([
+  const [lotes, repartos, items, stock, desempeno, usuarios] = await Promise.all([
     sbGet_(`v_ramal_lote_arqueo?select=*&order=fecha.desc,codigo.desc&limit=${LIM_LOTES}`),
-    // Los repartos y las líneas de los lotes recientes. Se filtran en
-    // memoria contra los lotes traídos: pedir "in.(40 uuids)" por URL es
+    // Los repartos y las líneas de los días recientes. Se filtran en
+    // memoria contra los días traídos: pedir "in.(40 uuids)" por URL es
     // más frágil que traer los últimos y cruzarlos aquí.
     sbGet_("ramal_repartos?select=*&order=asignado_at.desc&limit=600"),
     sbGet_("v_ramal_lote_items?select=*&order=fecha.desc&limit=400"),
-    candidatosTurno_(),
     sbGet_("v_ramal_stock?select=*&order=tipo_ramal.asc"),
-    sbGet_("v_ramal_desempeno?select=*"),
+    // Una fila por usuario con el módulo RAMALERO: es a la vez la lista de
+    // gente a quien se reparte y la tabla de métricas.
+    sbGet_("v_ramal_desempeno?select=*&order=nombre.asc"),
     sbGet_("usuarios?select=id,nombre,email&activo=eq.true&order=nombre.asc"),
   ]);
 
   const lotesIds = new Set(lotes.map(l => l.lote_id));
-  const nombrePorId = new Map(ramaleros.map(u => [u.id, u.nombre]));
+  const nombrePorId = new Map(usuarios.map(u => [u.id, u.nombre]));
   const repartosVis = repartos
     .filter(r => lotesIds.has(r.lote_id))
     .map(r => ({ ...r, nombre: nombrePorId.get(r.user_id) || "—" }));
@@ -299,12 +246,8 @@ async function armarPanelRamales_() {
     lotes,
     items: items.filter(i => lotesIds.has(i.lote_id)),
     repartos: repartosVis,
-    rotacion: rot.candidatos,
-    sugerido: rot.sugerido,
-    filtrado_por_asistencia: rot.filtradoPorAsistencia,
     stock,
     desempeno,
-    usuarios: ramaleros,
   };
 }
 
@@ -324,45 +267,22 @@ router.get("/api/ramales/panel", async (req, res) => {
 });
 
 // GET /api/ramales/mi-panel?email=
-// Lo que el ramalero necesita ver en su vista: si le toca turno, qué
-// caja está revisando y qué ramales le deben devolución.
+// Lo que el ramalero necesita ver en su vista: lo que le repartieron y
+// todavía no devuelve.
 router.get("/api/ramales/mi-panel", async (req, res) => {
   try {
     const u = await userPorEmail_(req.query.email);
     if (!u) return res.status(404).json({ ok: false, error: "Usuario no encontrado" });
 
-    const [lotes, misRepartos, rot] = await Promise.all([
-      sbGet_(
-        `ramal_lotes?select=*&estado=in.(RECIBIDO,REVISANDO,REVISADO,REPARTIDO)` +
-        `&order=created_at.desc&limit=10`,
-      ),
-      sbGet_(`ramal_repartos?user_id=eq.${u.id}&devuelto_at=is.null&select=*&order=asignado_at.desc`),
-      candidatosTurno_(),
-    ]);
-
-    const codigoPorLote = new Map(lotes.map(l => [l.id, l.codigo]));
-    const miCaja = lotes.find(
-      l => l.encargado_user_id === u.id && l.estado === "REVISANDO",
-    ) || null;
-
-    // Las líneas de la caja que está revisando: «15 JETOUR · 10 KYC V3»
-    // es lo primero que necesita ver quien la tiene abierta delante.
-    let misItems = [];
-    if (miCaja) {
-      misItems = await sbGet_(
-        `ramal_lote_items?lote_id=eq.${miCaja.id}&select=tipo_ramal,cantidad&order=tipo_ramal.asc`,
-      );
-    }
+    const pendientes = await sbGet_(
+      `ramal_repartos?user_id=eq.${u.id}&devuelto_at=is.null` +
+      `&select=*,ramal_lotes(codigo,fecha)&order=asignado_at.desc`,
+    );
 
     return res.json({
       ok: true,
       user: { id: u.id, nombre: u.nombre },
-      // La caja donde ESTE ramalero es el encargado y el reloj corre.
-      mi_caja: miCaja,
-      mis_items: misItems,
-      pendientes: misRepartos.map(r => ({ ...r, codigo: codigoPorLote.get(r.lote_id) || "" })),
-      me_toca: rot.sugerido?.user_id === u.id,
-      siguiente_turno: rot.sugerido?.nombre || "",
+      pendientes: pendientes.map(aplanarLote_),
     });
   } catch (e) {
     console.error("[GET /api/ramales/mi-panel]", e.message);
@@ -370,102 +290,89 @@ router.get("/api/ramales/mi-panel", async (req, res) => {
   }
 });
 
-// ─── LOTES · el supervisor manda ──────────────────────────────────────────────
+// GET /api/ramales/ramalero/:id — el detalle de una persona.
+// Devuelve sus repartos con el día de cada uno; los promedios se sacan en
+// el cliente con la misma cuenta que usa `v_ramal_desempeno`, para que el
+// número de la lista y el del detalle sean el mismo.
+router.get("/api/ramales/ramalero/:id", async (req, res) => {
+  try {
+    const id = String(req.params.id || "");
+    if (!RE_UUID.test(id)) return res.status(400).json({ ok: false, error: "Id inválido" });
 
-// POST /api/ramales/lote — llegó una caja.
-// Body: { email, items: [{ tipo_ramal, cantidad }], encargado_user_id?,
-//         nota?, iniciar? }
+    const [us, reps] = await Promise.all([
+      sbGet_(`usuarios?id=eq.${id}&select=id,nombre,email&limit=1`),
+      sbGet_(
+        `ramal_repartos?user_id=eq.${id}&select=*,ramal_lotes(codigo,fecha)` +
+        `&order=asignado_at.desc&limit=${LIM_DETALLE}`,
+      ),
+    ]);
+    if (!us[0]) return res.status(404).json({ ok: false, error: "Usuario no encontrado" });
+
+    return res.json({ ok: true, user: us[0], repartos: reps.map(aplanarLote_) });
+  } catch (e) {
+    console.error("[GET /api/ramales/ramalero/:id]", e.message);
+    return res.status(500).json({ ok: false, error: String(e.message) });
+  }
+});
+
+// ─── EQUIPOS DEL DÍA · el supervisor manda ────────────────────────────────────
+
+// POST /api/ramales/lote — «día 13: 30 Jetour, 2 VW».
+// Body: { email, fecha?, items: [{ tipo_ramal, cantidad }], nota? }
 //
-// `iniciar` (default true) arranca el cronómetro en el mismo acto de
-// registrar la caja: es lo que hace que el reloj lo abra el supervisor y
-// no el ramalero. Se puede registrar sin iniciar para dejar la caja
-// anotada y arrancarla cuando el encargado esté frente a ella.
+// Queda listo para repartir en el acto: no hay turno ni revisión previa.
 router.post("/api/ramales/lote", requireRol_("SUPERVISOR", "ADMIN"), async (req, res) => {
   try {
     const b = req.body || {};
     const sup = await userPorEmail_(b.email);
 
-    // Una caja se registra por sus líneas. `cantidad_equipos` sigue
-    // aceptándose para una caja de la que todavía no se sabe la marca:
-    // registrarla sin detalle es peor que no registrarla, pero mucho
-    // mejor que inventar una marca para poder guardarla.
     const items = normalizarItems_(b.items);
-    const cantidad = items.length
-      ? items.reduce((a, i) => a + i.cantidad, 0)
-      : nEntero_(b.cantidad_equipos, 0);
+    const cantidad = items.reduce((a, i) => a + i.cantidad, 0);
     if (cantidad <= 0) {
-      return res.status(400).json({ ok: false, error: "¿Cuántos equipos trae la caja?" });
+      return res.status(400).json({ ok: false, error: "¿Cuántos equipos de qué marca?" });
     }
 
-    const { sugerido } = await candidatosTurno_();
-    // Si el supervisor no elige a nadie, manda el turno. Si elige, manda
-    // él — pero queda escrito a quién le tocaba, para que «se respeta la
-    // rotación» sea una afirmación verificable y no una promesa.
-    const encargado = b.encargado_user_id || sugerido?.user_id || null;
-    const iniciar = b.iniciar !== false;
-    const ahora = new Date().toISOString();
-    const fecha = jornadaFecha_();
+    // El día lo elige el supervisor: se anota el pedido del 13 aunque se
+    // escriba el 12 en la noche. Sin fecha válida, la jornada de hoy.
+    const fecha = RE_FECHA.test(String(b.fecha || "")) ? b.fecha : jornadaFecha_();
 
     const lote = await sbPost_("ramal_lotes", {
-      codigo:                await siguienteCodigo_(fecha),
+      codigo:           await siguienteCodigo_(fecha),
       fecha,
-      cantidad_equipos:      cantidad,
-      estado:                iniciar && encargado ? "REVISANDO" : "RECIBIDO",
-      encargado_user_id:     encargado,
-      encargado_sugerido_id: sugerido?.user_id || null,
-      revision_inicio_at:    iniciar && encargado ? ahora : null,
-      revision_inicio_por:   iniciar && encargado ? (sup?.nombre || "") : "",
-      nota:                  String(b.nota || ""),
-      creado_por:            sup?.nombre || "",
+      cantidad_equipos: cantidad,
+      estado:           "RECIBIDO",
+      nota:             String(b.nota || ""),
+      creado_por:       sup?.nombre || "",
     });
-
-    if (items.length) await guardarItems_(lote.id, items);
+    await guardarItems_(lote.id, items);
 
     emitEvent_("ramales", { accion: "LOTE_NUEVO", id: lote.id });
-
-    // Al encargado le avisamos al celular: el turno no sirve de nada si se
-    // entera media hora después porque nadie le fue a decir.
-    if (encargado && iniciar) {
-      (async () => {
-        const rows = await sbGet_(`usuarios?id=eq.${encargado}&select=email`);
-        const mail = rows[0]?.email;
-        if (!mail) return;
-        await sendPushToEmails_([mail], {
-          title: "📦 Te toca revisar una caja",
-          body:  `Caja ${lote.codigo} — ${items.length ? textoItems_(items) : `${cantidad} equipos`}. Tu tiempo ya está corriendo.`,
-          tag:   "ramal-turno",
-        });
-      })().catch(() => { /* el push nunca rompe el registro de la caja */ });
-    }
-
-    return res.json({ ok: true, lote, items, sugerido: sugerido || null });
+    return res.json({ ok: true, lote, items });
   } catch (e) {
     console.error("[POST /api/ramales/lote]", e.message);
     return res.status(500).json({ ok: false, error: String(e.message) });
   }
 });
 
-// POST /api/ramales/lote/:id/items — corregir lo que trajo la caja.
+// POST /api/ramales/lote/:id/items — corregir los equipos de un día.
 // Body: { email, items: [{ tipo_ramal, cantidad }] }
 //
-// La caja se abre y trae una marca más de la que decía la guía: eso se
-// corrige aquí, no borrando el lote. Lo único que no se deja es dejar una
-// marca por debajo de lo que ya se repartió de ella — ahí el error está
-// en el reparto o en el conteo, y taparlo cambiando el origen borra la
-// pista de cuál de los dos fue.
+// Lo único que no se deja es bajar una marca por debajo de lo que ya se
+// repartió de ella — ahí el error está en el reparto o en el conteo, y
+// taparlo cambiando el origen borra la pista de cuál de los dos fue.
 router.post("/api/ramales/lote/:id/items", requireRol_("SUPERVISOR", "ADMIN"), async (req, res) => {
   try {
     const id = String(req.params.id || "");
     const rows = await sbGet_(`ramal_lotes?id=eq.${id}&select=*`);
     const lote = rows[0];
-    if (!lote) return res.status(404).json({ ok: false, error: "Lote no encontrado" });
+    if (!lote) return res.status(404).json({ ok: false, error: "Día no encontrado" });
     if (lote.estado === "CERRADO") {
-      return res.status(409).json({ ok: false, error: "Esta caja ya está cerrada." });
+      return res.status(409).json({ ok: false, error: "Este día ya está cerrado." });
     }
 
     const items = normalizarItems_(req.body?.items);
     if (!items.length) {
-      return res.status(400).json({ ok: false, error: "La caja tiene que traer algo." });
+      return res.status(400).json({ ok: false, error: "Tiene que haber al menos una marca." });
     }
 
     const reps = await sbGet_(`ramal_repartos?lote_id=eq.${id}&select=tipo_ramal,cantidad_asignada`);
@@ -481,7 +388,7 @@ router.post("/api/ramales/lote/:id/items", requireRol_("SUPERVISOR", "ADMIN"), a
       if (ahora < ya) {
         return res.status(400).json({
           ok: false,
-          error: `De ${tipo} ya se repartieron ${ya}: no puedes dejar la caja en ${ahora}.`,
+          error: `De ${tipo} ya se repartieron ${ya}: no puedes dejarlo en ${ahora}.`,
         });
       }
     }
@@ -501,141 +408,12 @@ router.post("/api/ramales/lote/:id/items", requireRol_("SUPERVISOR", "ADMIN"), a
   }
 });
 
-// POST /api/ramales/lote/:id/iniciar — el supervisor arranca el reloj.
-// Solo el supervisor: es la mitad de la medición que no puede estar en
-// manos del medido.
-router.post("/api/ramales/lote/:id/iniciar", requireRol_("SUPERVISOR", "ADMIN"), async (req, res) => {
-  try {
-    const id = String(req.params.id || "");
-    const sup = await userPorEmail_(req.body?.email);
-    const rows = await sbGet_(`ramal_lotes?id=eq.${id}&select=*`);
-    const lote = rows[0];
-    if (!lote) return res.status(404).json({ ok: false, error: "Lote no encontrado" });
-    if (lote.revision_inicio_at) {
-      return res.status(409).json({ ok: false, error: "Esta caja ya tiene el tiempo corriendo." });
-    }
-
-    const encargado = req.body?.encargado_user_id || lote.encargado_user_id;
-    if (!encargado) {
-      return res.status(400).json({ ok: false, error: "Falta decir quién revisa la caja." });
-    }
-
-    const out = await sbPatch_("ramal_lotes", `id=eq.${id}`, {
-      estado: "REVISANDO",
-      encargado_user_id: encargado,
-      revision_inicio_at: new Date().toISOString(),
-      revision_inicio_por: sup?.nombre || "",
-      updated_at: new Date().toISOString(),
-    });
-    emitEvent_("ramales", { accion: "REVISION_INICIO", id });
-    return res.json({ ok: true, lote: out });
-  } catch (e) {
-    console.error("[POST /api/ramales/lote/:id/iniciar]", e.message);
-    return res.status(500).json({ ok: false, error: String(e.message) });
-  }
-});
-
-// POST /api/ramales/lote/:id/aviso — el ramalero AVISA que acabó.
-//
-// Ojo con lo que este endpoint NO hace: no cierra el reloj ni cambia el
-// estado a REVISADO. Es un aviso para que el supervisor sepa que puede ir
-// a recibir la caja. El tiempo oficial lo cierra /recibir. Si esto cerrara
-// la medición, volveríamos al cronómetro autogestionado.
-router.post("/api/ramales/lote/:id/aviso", async (req, res) => {
-  try {
-    const id = String(req.params.id || "");
-    const u = await userPorEmail_(req.body?.email);
-    if (!u) return res.status(403).json({ ok: false, error: "Sesión sin identidad." });
-
-    const rows = await sbGet_(`ramal_lotes?id=eq.${id}&select=*`);
-    const lote = rows[0];
-    if (!lote) return res.status(404).json({ ok: false, error: "Lote no encontrado" });
-    if (lote.encargado_user_id !== u.id) {
-      return res.status(403).json({ ok: false, error: "Esta caja no es tu turno." });
-    }
-    if (!lote.revision_inicio_at) {
-      return res.status(409).json({ ok: false, error: "El supervisor todavía no abrió esta caja." });
-    }
-
-    const out = await sbPatch_("ramal_lotes", `id=eq.${id}`, {
-      revision_aviso_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    });
-    emitEvent_("ramales", { accion: "REVISION_AVISO", id });
-
-    (async () => {
-      const sups = await sbGet_("usuarios?rol=eq.SUPERVISOR&activo=eq.true&select=email");
-      const mails = sups.map(s => s.email).filter(Boolean);
-      if (!mails.length) return;
-      await sendPushToEmails_(mails, {
-        title: "📦 Caja revisada",
-        body:  `${u.nombre} terminó de revisar la caja ${lote.codigo}.`,
-        tag:   "ramal-revision",
-      });
-    })().catch(() => {});
-
-    return res.json({ ok: true, lote: out });
-  } catch (e) {
-    console.error("[POST /api/ramales/lote/:id/aviso]", e.message);
-    return res.status(500).json({ ok: false, error: String(e.message) });
-  }
-});
-
-// POST /api/ramales/lote/:id/recibir — el supervisor confirma que recibió
-// la caja revisada. Esto sí cierra el reloj y suma el turno.
-// Body: { email, conformes?, observados?, nota? }
-router.post("/api/ramales/lote/:id/recibir", requireRol_("SUPERVISOR", "ADMIN"), async (req, res) => {
-  try {
-    const id = String(req.params.id || "");
-    const sup = await userPorEmail_(req.body?.email);
-    const rows = await sbGet_(`ramal_lotes?id=eq.${id}&select=*`);
-    const lote = rows[0];
-    if (!lote) return res.status(404).json({ ok: false, error: "Lote no encontrado" });
-    if (!lote.revision_inicio_at) {
-      return res.status(409).json({ ok: false, error: "Esta caja nunca arrancó." });
-    }
-    if (lote.revision_fin_at) {
-      return res.status(409).json({ ok: false, error: "Esta caja ya se recibió." });
-    }
-
-    const observados = nEntero_(req.body?.observados, 0);
-    const nota = String(req.body?.nota || "");
-    if (observados > 0 && !nota.trim()) {
-      return res.status(400).json({ ok: false, error: "Escribe qué se observó en esos equipos." });
-    }
-
-    const ahora = new Date().toISOString();
-    const out = await sbPatch_("ramal_lotes", `id=eq.${id}`, {
-      estado: "REVISADO",
-      revision_fin_at: ahora,
-      revision_fin_por: sup?.nombre || "",
-      // Si el ramalero nunca avisó, el aviso se da por dado aquí: sin esto
-      // el "declarado" quedaría vacío y parecería que no trabajó.
-      revision_aviso_at: lote.revision_aviso_at || ahora,
-      revision_conformes:  nEntero_(req.body?.conformes, 0),
-      revision_observados: observados,
-      revision_nota:       nota,
-      updated_at: ahora,
-    });
-
-    // El turno se cuenta cuando el trabajo se cerró de verdad, no cuando
-    // se asignó: si la caja se reasignó a medias, cuenta quien la acabó.
-    await anotarTurno_(lote.encargado_user_id);
-
-    emitEvent_("ramales", { accion: "REVISION_FIN", id });
-    return res.json({ ok: true, lote: out });
-  } catch (e) {
-    console.error("[POST /api/ramales/lote/:id/recibir]", e.message);
-    return res.status(500).json({ ok: false, error: String(e.message) });
-  }
-});
-
 // ─── REPARTO ──────────────────────────────────────────────────────────────────
 
-// POST /api/ramales/lote/:id/repartir — «a Luis 8 Jetour y 5 V3».
+// POST /api/ramales/lote/:id/repartir — «Salomón 20 Jetour, Gabriel 2 VW».
 // Body: { email, repartos: [{ user_id, tipo_ramal, cantidad }] }
 //
-// Si a alguien ya se le había repartido de esta caja y esta marca, se le
+// Si a alguien ya se le había repartido de este día y esta marca, se le
 // SUMA a su fila en lugar de abrir otra: dos filas del mismo trío
 // contarían doble en el arqueo y partirían su tiempo promedio a la mitad.
 router.post("/api/ramales/lote/:id/repartir", requireRol_("SUPERVISOR", "ADMIN"), async (req, res) => {
@@ -650,7 +428,10 @@ router.post("/api/ramales/lote/:id/repartir", requireRol_("SUPERVISOR", "ADMIN")
       sbGet_(`ramal_repartos?lote_id=eq.${id}&select=*`),
     ]);
     const lote = rows[0];
-    if (!lote) return res.status(404).json({ ok: false, error: "Lote no encontrado" });
+    if (!lote) return res.status(404).json({ ok: false, error: "Día no encontrado" });
+    if (lote.estado === "CERRADO") {
+      return res.status(409).json({ ok: false, error: "Este día ya está cerrado." });
+    }
 
     const limpias = entradas
       .map(r => ({
@@ -663,11 +444,10 @@ router.post("/api/ramales/lote/:id/repartir", requireRol_("SUPERVISOR", "ADMIN")
       return res.status(400).json({ ok: false, error: "No hay nada que repartir." });
     }
 
-    // No se puede repartir más de lo que trajo la caja, Y NO SOLO EN
-    // TOTAL: una caja mixta cuadra marca por marca. Si llegaron 15 Jetour
-    // y se reparten 16, da igual que el total cierre — hay una marca
-    // inventada y otra perdida. Se valida aquí y no solo en la UI: el
-    // descuadre que se evita es más barato que el que hay que explicar.
+    // No se puede repartir más de lo que se pidió, Y NO SOLO EN TOTAL: un
+    // día con varias marcas cuadra marca por marca. Si llegaron 30 Jetour
+    // y se reparten 31, da igual que el total cierre — hay una marca
+    // inventada y otra perdida.
     const clave = (t) => t || "";
     const capacidad = new Map(items.map(i => [clave(i.tipo_ramal), i.cantidad]));
     if (!items.length) capacidad.set("", lote.cantidad_equipos - lote.merma);
@@ -689,14 +469,14 @@ router.post("/api/ramales/lote/:id/repartir", requireRol_("SUPERVISOR", "ADMIN")
       if (tope === undefined) {
         return res.status(400).json({
           ok: false,
-          error: `La caja ${lote.codigo} no trajo ${k || "esa marca"}.`,
+          error: `Ese día no se pidió ${k || "esa marca"}.`,
         });
       }
       const libre = tope - (yaPorTipo.get(k) || 0);
       if (pide > libre) {
         return res.status(400).json({
           ok: false,
-          error: `De ${k || "la caja"} solo quedan ${libre} sin repartir y estás repartiendo ${pide}.`,
+          error: `De ${k || "ese día"} solo quedan ${libre} sin repartir y estás repartiendo ${pide}.`,
         });
       }
     }
@@ -726,8 +506,8 @@ router.post("/api/ramales/lote/:id/repartir", requireRol_("SUPERVISOR", "ADMIN")
     await sbPatch_("ramal_lotes", `id=eq.${id}`, { estado: "REPARTIDO", updated_at: ahora });
     emitEvent_("ramales", { accion: "REPARTIDO", id });
 
-    // Un push por persona, no uno por línea: a quien le tocan tres marcas
-    // le llega un mensaje con las tres, no tres notificaciones seguidas.
+    // Un push por persona, no uno por línea: a quien le tocan dos marcas
+    // le llega un mensaje con las dos, no dos notificaciones seguidas.
     (async () => {
       const porUser = new Map();
       for (const r of limpias) {
@@ -742,8 +522,8 @@ router.post("/api/ramales/lote/:id/repartir", requireRol_("SUPERVISOR", "ADMIN")
         const mail = porId.get(uid);
         if (!mail) continue;
         await sendPushToEmails_([mail], {
-          title: "🔩 Te asignaron ramales",
-          body:  `Caja ${lote.codigo}: ${partes.join(" · ")}.`,
+          title: "🔩 Te repartieron ramales",
+          body:  `Día ${fechaCorta_(lote.fecha)}: ${partes.join(" · ")}.`,
           tag:   "ramal-reparto",
         });
       }
@@ -760,8 +540,7 @@ router.post("/api/ramales/lote/:id/repartir", requireRol_("SUPERVISOR", "ADMIN")
 // Body: { email, cantidad_devuelta, cantidad_rechazada?, nota? }
 //
 // Lo devuelto SANO entra al stock como movimiento ARMADO, con la marca
-// del reparto. Ese es el enganche con el resto: a partir de aquí el ramal
-// existe para el sistema y solo puede salir entregándoselo a un técnico.
+// del reparto. `devuelto_at` es el otro extremo del tiempo del ramalero.
 router.post("/api/ramales/reparto/:id/devolver", async (req, res) => {
   try {
     const id = String(req.params.id || "");
@@ -771,6 +550,9 @@ router.post("/api/ramales/reparto/:id/devolver", async (req, res) => {
     const rows = await sbGet_(`ramal_repartos?id=eq.${id}&select=*`);
     const rep = rows[0];
     if (!rep) return res.status(404).json({ ok: false, error: "Reparto no encontrado" });
+    if (rep.devuelto_at) {
+      return res.status(409).json({ ok: false, error: "Esto ya se devolvió." });
+    }
 
     // El supervisor puede cerrar por el ramalero (se fue, se olvidó); un
     // ramalero solo puede cerrar lo suyo.
@@ -788,8 +570,7 @@ router.post("/api/ramales/reparto/:id/devolver", async (req, res) => {
       return res.status(400).json({ ok: false, error: "No puedes rechazar más de lo que devolviste." });
     }
     // El tope es lo que se le asignó. Sin esto «devolví 8» de un reparto
-    // de 6 pasaría sin ruido, que es exactamente el agujero que este
-    // módulo existe para tapar.
+    // de 6 pasaría sin ruido.
     if (devuelta > rep.cantidad_asignada) {
       return res.status(400).json({
         ok: false,
@@ -798,7 +579,9 @@ router.post("/api/ramales/reparto/:id/devolver", async (req, res) => {
     }
 
     const ahora = new Date().toISOString();
-    const lotes = await sbGet_(`ramal_lotes?id=eq.${rep.lote_id}&select=id,codigo`);
+    const lotes = await sbGet_(
+      `ramal_lotes?id=eq.${rep.lote_id}&select=id,codigo,fecha,cantidad_equipos,merma,estado`,
+    );
     const lote = lotes[0];
 
     await sbPatch_("ramal_repartos", `id=eq.${id}`, {
@@ -821,7 +604,7 @@ router.post("/api/ramales/reparto/:id/devolver", async (req, res) => {
         reparto_id: id,
         user_id: rep.user_id,
         user_nombre: u.id === rep.user_id ? u.nombre : "",
-        nota: `Devolución a oficina · caja ${lote?.codigo || ""}`,
+        nota: `Devolución a oficina · día ${fechaCorta_(lote?.fecha)}`,
         created_by: u.nombre,
       });
     }
@@ -833,28 +616,50 @@ router.post("/api/ramales/reparto/:id/devolver", async (req, res) => {
         lote_id: rep.lote_id,
         reparto_id: id,
         user_id: rep.user_id,
-        nota: `${rechazada} rechazados en revisión`,
+        nota: `${rechazada} rechazados`,
         created_by: u.nombre,
       });
     }
 
+    // Si con esta devolución el día quedó redondo —todo repartido, todo
+    // devuelto, nadie con ramales en la mano— se cierra solo. Cerrar a
+    // mano un día que ya cuadra era un clic que no decidía nada. El que no
+    // cuadra sigue abierto: ese sí necesita que alguien diga qué pasó.
+    let cerrado = false;
+    if (lote && lote.estado !== "CERRADO") {
+      const reps = await sbGet_(
+        `ramal_repartos?lote_id=eq.${lote.id}&select=cantidad_asignada,cantidad_devuelta,devuelto_at`,
+      );
+      const asig = reps.reduce((a, r) => a + (r.cantidad_asignada || 0), 0);
+      const dev  = reps.reduce((a, r) => a + (r.cantidad_devuelta  || 0), 0);
+      if (asig > 0 && asig === dev && reps.every(r => r.devuelto_at) &&
+          asig === lote.cantidad_equipos - (lote.merma || 0)) {
+        await sbPatch_("ramal_lotes", `id=eq.${lote.id}`, {
+          estado: "CERRADO",
+          cerrado_at: ahora,
+          cerrado_por: "automático",
+          updated_at: ahora,
+        });
+        cerrado = true;
+      }
+    }
+
     emitEvent_("ramales", { accion: "DEVUELTO", id });
-    return res.json({ ok: true, al_stock: buenos });
+    return res.json({ ok: true, al_stock: buenos, lote_cerrado: cerrado });
   } catch (e) {
     console.error("[POST /api/ramales/reparto/:id/devolver]", e.message);
     return res.status(500).json({ ok: false, error: String(e.message) });
   }
 });
 
-// ─── CIERRE Y AUDITORÍA ───────────────────────────────────────────────────────
+// ─── CIERRE ───────────────────────────────────────────────────────────────────
 
-// POST /api/ramales/lote/:id/cerrar — el supervisor cierra la caja.
-// Body: { email, merma?, merma_motivo?, forzar? }
+// POST /api/ramales/lote/:id/cerrar — el supervisor cierra un día que no
+// se cerró solo. Body: { email, merma?, merma_motivo?, forzar? }
 //
-// Una caja que no cuadra NO se cierra en silencio: o se explica la
-// diferencia como merma con motivo, o el supervisor tiene que decir
-// explícitamente `forzar` y queda escrito. Un descuadre explicado es
-// información; uno borrado es un agujero en el inventario.
+// Un día que no cuadra NO se cierra en silencio: o se explica la
+// diferencia como merma con motivo, o el supervisor dice `forzar` y queda
+// escrito. Un descuadre explicado es información; uno borrado es un agujero.
 router.post("/api/ramales/lote/:id/cerrar", requireRol_("SUPERVISOR", "ADMIN"), async (req, res) => {
   try {
     const id = String(req.params.id || "");
@@ -864,7 +669,7 @@ router.post("/api/ramales/lote/:id/cerrar", requireRol_("SUPERVISOR", "ADMIN"), 
 
     const rows = await sbGet_(`ramal_lotes?id=eq.${id}&select=*`);
     const lote = rows[0];
-    if (!lote) return res.status(404).json({ ok: false, error: "Lote no encontrado" });
+    if (!lote) return res.status(404).json({ ok: false, error: "Día no encontrado" });
     if (merma > 0 && !motivo.trim()) {
       return res.status(400).json({ ok: false, error: "Una merma sin motivo escrito no se puede cerrar." });
     }
@@ -879,7 +684,7 @@ router.post("/api/ramales/lote/:id/cerrar", requireRol_("SUPERVISOR", "ADMIN"), 
       return res.status(409).json({
         ok: false,
         motivo: "NO_CUADRA",
-        error: `La caja no cierra: ${enProceso} sin devolver y ${sinRepartir} sin repartir.`,
+        error: `El día no cierra: ${enProceso} sin devolver y ${sinRepartir} sin repartir.`,
         arqueo: { equipos: lote.cantidad_equipos, asignados, devueltos, enProceso, sinRepartir, merma },
       });
     }
@@ -895,15 +700,14 @@ router.post("/api/ramales/lote/:id/cerrar", requireRol_("SUPERVISOR", "ADMIN"), 
     });
 
     if (merma > 0) {
-      // La merma es del lote, no de una marca: en una caja mixta no se
-      // sabe cuál se rompió salvo que alguien lo escriba. Va sin
-      // `tipo_ramal` y con cantidad 0 — es un rastro del faltante, no un
-      // saldo, y adivinarle una marca sería inventar el dato.
+      // La merma es del día, no de una marca: si hay varias no se sabe
+      // cuál se rompió salvo que alguien lo escriba. Va sin `tipo_ramal` y
+      // con cantidad 0 — es un rastro del faltante, no un saldo.
       await moverStock_({
         tipo: "MERMA",
         cantidad: 0,
         lote_id: id,
-        nota: `Merma al cerrar ${lote.codigo}: ${motivo}`,
+        nota: `Merma al cerrar el día ${fechaCorta_(lote.fecha)}: ${motivo}`,
         created_by: sup?.nombre || "",
       });
     }
@@ -979,33 +783,6 @@ router.post("/api/ramales/stock/minimo", requireRol_("SUPERVISOR", "ADMIN"), asy
     return res.json({ ok: true, config: out });
   } catch (e) {
     console.error("[POST /api/ramales/stock/minimo]", e.message);
-    return res.status(500).json({ ok: false, error: String(e.message) });
-  }
-});
-
-// ─── ROTACIÓN ─────────────────────────────────────────────────────────────────
-
-// POST /api/ramales/rotacion — entrar/salir del turno, cambiar el orden.
-// Body: { email, user_id, activo?, orden?, nota? }
-router.post("/api/ramales/rotacion", requireRol_("SUPERVISOR", "ADMIN"), async (req, res) => {
-  try {
-    const b = req.body || {};
-    if (!b.user_id) return res.status(400).json({ ok: false, error: "Falta user_id" });
-
-    const patch = { updated_at: new Date().toISOString() };
-    if (b.activo !== undefined) patch.activo = !!b.activo;
-    if (b.orden  !== undefined) patch.orden  = nEntero_(b.orden, 0);
-    if (b.nota   !== undefined) patch.nota   = String(b.nota);
-
-    const existe = await sbGet_(`ramal_rotacion?user_id=eq.${b.user_id}&select=user_id`);
-    const out = existe.length
-      ? await sbPatch_("ramal_rotacion", `user_id=eq.${b.user_id}`, patch)
-      : await sbPost_("ramal_rotacion", { user_id: b.user_id, ...patch });
-
-    emitEvent_("ramales", { accion: "ROTACION" });
-    return res.json({ ok: true, rotacion: out });
-  } catch (e) {
-    console.error("[POST /api/ramales/rotacion]", e.message);
     return res.status(500).json({ ok: false, error: String(e.message) });
   }
 });

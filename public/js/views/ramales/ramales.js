@@ -1,50 +1,34 @@
 // =========================
 // public/js/views/ramales/ramales.js
-// Panel de RAMALES — control de cajas, turno rotativo, reparto y stock.
+// Panel de RAMALES — equipos del día, reparto, devolución, métricas y stock.
 //
 // Se pinta en dos sitios con el mismo código:
 //   · página propia /ramales (el supervisor entra directo)
 //   · pestaña RAMALES dentro de la vista de supervisor
 //
-// QUÉ MUESTRA Y POR QUÉ EN ESE ORDEN
-// ──────────────────────────────────
-//   1. De quién es el turno   → es la decisión del día
-//   2. Cajas abiertas         → lo que está corriendo ahora mismo
-//   3. Comportamiento         → cómo trabaja cada uno (ver comportamiento.js)
-//   4. Stock por marca        → qué hay para entregar y qué está en proceso
-//   5. Rotación               → la lectura larga, al final
+// EL FLUJO, EN DOS GESTOS
+// ───────────────────────
+//   1. «Día 13: 30 Jetour, 2 VW»               → Ingresar equipos del día
+//   2. «Salomón 20, Andy 10 Jetour, Gabriel 2 VW» → Repartir (se abre solo
+//                                                   al guardar el paso 1)
 //
-// Comportamiento va tercero y no último a propósito: es el parámetro que
-// el taller quiere medir, y una sección al pie del panel es una sección
-// que nadie abre. Lo que sí queda antes son las cajas — quien entra a
-// registrar una que acaba de llegar no debería tener que pasar por
-// cuatro gráficos para hacerlo.
+// Después cada uno devuelve lo que armó y de ahí sale su tiempo: de que
+// se le repartió a que devolvió, dividido entre lo que devolvió. La
+// sección «Ramaleros» lo muestra por persona y un clic abre su detalle
+// (ver comportamiento.js). Un día que queda redondo se cierra solo.
 //
-// UNA CAJA PUEDE TRAER VARIAS MARCAS
-// ──────────────────────────────────
-// «15 Jetour y 10 V3» es UNA caja. Antes había que registrarla como dos,
-// con dos códigos y dos relojes para un mismo camión, y el turno se
-// gastaba dos veces. Ahora la caja tiene líneas: el formulario de
-// registro empieza con una y se agregan las que hagan falta.
-//
-// EL REPARTO ES UNA MATRIZ, NO UNA COLA DE PREGUNTAS
-// ─────────────────────────────────────────────────
-// Repartir es mirar a la gente que vino y decidir en voz alta. Una fila
-// por ramalero, una columna por marca, y abajo cuánto falta de cada una
-// actualizándose mientras escribes. Con prompts encadenados te
-// equivocabas en el segundo número y ya no podías volver; con una
-// columna por marca no hace falta abrir el modal tres veces para una
-// caja de tres marcas.
-//
-// El cronómetro de cada caja abierta corre en vivo en el cliente, pero
-// los timestamps son del servidor: si alguien cambia la hora de su
-// celular, la métrica no se mueve.
+// Antes había turno rotativo y una revisión cronometrada de la caja antes
+// de poder repartir; se quitó el 2026-09-12 porque el taller no lo usaba
+// y solo alargaba el camino hasta el número que sí se quiere mirar.
 // =========================
 
 import { getJSON, postJSON, escapeHtml, CORE } from "../../core/core.js";
 import { startPoll, stopPoll } from "../../core/poll.js";
 import { icon } from "../../core/icons.js";
-import { comportamientoHTML } from "./comportamiento.js";
+import {
+  ramalerosHTML, detalleRamaleroHTML, trabajandoPorUser, tiempoPromedioGrupo,
+  fmtDia, fmtDuracion, fmtMinRamal,
+} from "./comportamiento.js";
 
 // Espejo del enum `tipo_ramal` (supabase/schema.sql).
 const TIPOS_RAMAL = ["JETOUR", "VOLKSWAGEN", "KYC V3", "KYC V5", "KYC V7", "KYC X5"];
@@ -55,47 +39,18 @@ const RM = {
   root: null,
   puedeEditar: false,   // SUPERVISOR o ADMIN
   email: "",
-  clockTimer: null,
-  cargando: false,
-  verCerradas: false,   // sobrevive al re-render del poll
+  enVuelo: null,        // la carga en curso, para no pisarse con el poll
+  verCerrados: false,   // sobrevive al re-render del poll
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
 const esc = escapeHtml;
 
-function $$(sel) { return [...(RM.root?.querySelectorAll(sel) || [])]; }
-
-/** mm:ss / h:mm:ss — el formato cambia solo según cuánto lleve corriendo. */
-function fmtDur_(ms) {
-  if (!Number.isFinite(ms) || ms < 0) return "—";
-  const seg = Math.floor(ms / 1000);
-  const h = Math.floor(seg / 3600);
-  const m = Math.floor((seg % 3600) / 60);
-  const s = seg % 60;
-  return h > 0
-    ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
-    : `${m}:${String(s).padStart(2, "0")}`;
-}
-
-function fmtMin_(min) {
-  if (min == null || !Number.isFinite(Number(min))) return "—";
-  const n = Number(min);
-  return n >= 60 ? `${Math.floor(n / 60)}h ${Math.round(n % 60)}m` : `${Math.round(n)}m`;
-}
-
-function fmtFecha_(iso) {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("es-PE", { day: "2-digit", month: "short" });
-}
-
 /** Inicial del nombre para el círculo de color. */
-function inicial_(nombre) {
-  return String(nombre || "?").trim().charAt(0).toUpperCase() || "?";
-}
-
 function avatar_(nombre, sm = false) {
-  return `<span class="rmInicial${sm ? " rmInicial--sm" : ""}">${esc(inicial_(nombre))}</span>`;
+  const ini = String(nombre || "?").trim().charAt(0).toUpperCase() || "?";
+  return `<span class="rmInicial${sm ? " rmInicial--sm" : ""}">${esc(ini)}</span>`;
 }
 
 /** Primer nombre — en la cabecera de una matriz «Juan Carlos» no cabe. */
@@ -109,9 +64,21 @@ function opciones_(arr, sel) {
   ).join("");
 }
 
-/** Las líneas de una caja, tal como las devuelve el panel. */
+/** Hoy en hora local, como lo quiere un <input type="date">. */
+function hoyISO_() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** Las líneas de un día, tal como las devuelve el panel. */
 function itemsDe_(loteId) {
   return (RM.raw?.items || []).filter(i => i.lote_id === loteId);
+}
+
+/** La gente a quien se reparte: todo usuario con el módulo RAMALERO. */
+function ramaleros_() {
+  return [...(RM.raw?.desempeno || [])]
+    .sort((a, b) => String(a.nombre).localeCompare(String(b.nombre)));
 }
 
 /** Aviso flotante — mismo gesto que usa el inventario. */
@@ -130,8 +97,8 @@ function toast_(msg, tipo = "ok") {
 /**
  * POST con el email de sesión ya puesto.
  * Devuelve la respuesta si salió bien, o `null` tras avisar del error.
- * Con `silencioso` el error no se muestra: lo usa el cierre de caja, que
- * espera el rechazo del servidor y quiere preguntar en vez de gritar.
+ * Con `silencioso` el error no se muestra: lo usa el cierre, que espera
+ * el rechazo del servidor y quiere preguntar en vez de gritar.
  */
 async function accion_(url, body = {}, { silencioso = false } = {}) {
   try {
@@ -140,7 +107,7 @@ async function accion_(url, body = {}, { silencioso = false } = {}) {
       if (!silencioso) toast_(j?.error || "No se pudo completar la acción.", "bad");
       return null;
     }
-    await cargar_();
+    await cargar_({ forzar: true });
     return j;
   } catch (e) {
     if (!silencioso) toast_(String(e?.message || e), "bad");
@@ -155,13 +122,14 @@ async function accion_(url, body = {}, { silencioso = false } = {}) {
 /**
  * @param {object} o
  * @param {string} o.titulo
- * @param {string} [o.sub]       línea de contexto bajo el título
- * @param {string} o.cuerpo      HTML del formulario
- * @param {string} [o.guardar]   texto del botón principal
+ * @param {string} [o.sub]         línea de contexto bajo el título
+ * @param {string} o.cuerpo        HTML del formulario
+ * @param {string} [o.guardar]     texto del botón principal
  * @param {boolean} [o.ancho]
- * @param {boolean} [o.peligro]  el botón principal se pinta como destructivo
+ * @param {boolean} [o.peligro]    el botón principal se pinta como destructivo
+ * @param {boolean} [o.soloLectura] sin botón principal: solo «Cerrar»
  * @param {(box:HTMLElement)=>void} [o.alAbrir]  para enganchar listeners vivos
- * @param {(box:HTMLElement)=>Promise<boolean|void>} o.alGuardar
+ * @param {(box:HTMLElement)=>Promise<boolean|void>} [o.alGuardar]
  *        devolver false deja el modal abierto (validación fallida)
  */
 function modal_(o) {
@@ -179,10 +147,11 @@ function modal_(o) {
       </div>
       <div class="modalBody"><div class="rmForm">${o.cuerpo}</div></div>
       <div class="rmModalFoot">
-        <button type="button" class="btn3 rmModalCancel">Cancelar</button>
-        <button type="button" class="btn3 ${o.peligro ? "rmBtn--danger" : "rmBtn--primary"} rmModalSave">
-          ${esc(o.guardar || "Guardar")}
-        </button>
+        <button type="button" class="btn3 rmModalCancel">${o.soloLectura ? "Cerrar" : "Cancelar"}</button>
+        ${o.soloLectura ? "" : `
+          <button type="button" class="btn3 ${o.peligro ? "rmBtn--danger" : "rmBtn--primary"} rmModalSave">
+            ${esc(o.guardar || "Guardar")}
+          </button>`}
       </div>
     </div>`;
   document.body.appendChild(m);
@@ -202,7 +171,7 @@ function modal_(o) {
   m.addEventListener("click", (e) => { if (e.target === m) cerrar(); });
 
   const btn = m.querySelector(".rmModalSave");
-  btn.addEventListener("click", async () => {
+  btn?.addEventListener("click", async () => {
     btn.disabled = true;
     let r;
     try { r = await o.alGuardar(box); } finally { btn.disabled = false; }
@@ -210,31 +179,31 @@ function modal_(o) {
   });
 
   o.alAbrir?.(box);
-  setTimeout(() => box.querySelector("input,select,textarea")?.focus(), 90);
+  if (!o.soloLectura) setTimeout(() => box.querySelector("input,select,textarea")?.focus(), 90);
   return { box, cerrar };
-}
-
-/** Confirmación con texto propio — reemplaza a `confirm()`. */
-function confirmar_(titulo, cuerpoHtml, textoBoton, onOk, peligro = true) {
-  modal_({
-    titulo,
-    cuerpo: cuerpoHtml,
-    guardar: textoBoton,
-    peligro,
-    alGuardar: onOk,
-  });
 }
 
 // ─── Carga ───────────────────────────────────────────────────────────
 
-async function cargar_() {
-  if (RM.cargando) return;
-  RM.cargando = true;
-  try {
-    const j = await getJSON("/api/ramales/panel");
+/**
+ * Trae el panel. El poll llama sin `forzar` y se salta la vuelta si ya
+ * hay una en curso; una acción llama con `forzar`, espera la que esté en
+ * vuelo y pide otra — si no, justo después de guardar podría quedarse
+ * con la foto de antes y el reparto no encontraría el día recién creado.
+ */
+async function cargar_({ forzar = false } = {}) {
+  if (RM.enVuelo) {
+    if (!forzar) return;
+    await RM.enVuelo.catch(() => {});
+  }
+  RM.enVuelo = (async () => {
+    const j = await getJSON(forzar ? "/api/ramales/panel?fresh=1" : "/api/ramales/panel");
     if (!j?.ok) throw new Error(j?.error || "Respuesta inesperada del servidor");
     RM.raw = j;
     render_();
+  })();
+  try {
+    await RM.enVuelo;
   } catch (e) {
     if (RM.root) {
       RM.root.innerHTML = `
@@ -248,85 +217,53 @@ async function cargar_() {
         </div>`;
     }
   } finally {
-    RM.cargando = false;
+    RM.enVuelo = null;
   }
 }
 
-// ─── Render: barra de turno ──────────────────────────────────────────
+// ─── Render: cabecera ────────────────────────────────────────────────
 
-function renderTurno_() {
-  const s = RM.raw?.sugerido;
-  const filtrado = RM.raw?.filtrado_por_asistencia;
-
-  const boton = RM.puedeEditar
-    ? `<div class="rmTurno__acciones">
-         <button class="btn3 rmBtn--primary" data-rm="nueva-caja">
-           ${icon("box", 15)} Registrar caja
-         </button>
-       </div>`
-    : "";
-
-  // Sin nadie en rotación el módulo no puede sugerir turno. Se dice qué
-  // falta en vez de mostrar un hueco: el arreglo está a un clic.
-  if (!s) {
-    return `
-      <div class="rmTurno">
-        <div class="rmTurno__cols">
-          <div>
-            <div class="rmTurno__label">Turno de revisión</div>
-            <div class="rmTurno__nombre">Sin ramaleros en rotación</div>
-            <div class="rmTurno__meta">
-              Nadie tiene el módulo RAMALERO activo, o a todos se les sacó del turno.
-            </div>
-          </div>
-        </div>
-        ${boton}
-      </div>`;
-  }
-
+function renderHead_() {
   return `
     <div class="rmTurno">
-      <div class="rmTurno__cols">
-        <div>
-          <div class="rmTurno__label">Le toca la próxima caja</div>
-          <div class="rmTurno__quien">
-            ${avatar_(s.nombre)}
-            <div>
-              <div class="rmTurno__nombre">${esc(s.nombre)}</div>
-              <div class="rmTurno__meta">
-                ${s.veces} turno${s.veces === 1 ? "" : "s"} ·
-                última vez ${s.ultima_vez ? fmtFecha_(s.ultima_vez) : "nunca"}
-              </div>
-            </div>
-          </div>
+      <div>
+        <div class="rmTurno__label">Ramales</div>
+        <div class="rmTurno__nombre">Equipos del día y reparto</div>
+        <div class="rmTurno__meta">
+          Anota lo que se pidió por marca, repártelo y mira cuánto tarda cada uno.
         </div>
-        ${filtrado ? `
-          <div>
-            <div class="rmTurno__label">Criterio</div>
-            <div class="rmChip info">${icon("users", 12)} solo quienes marcaron hoy</div>
-          </div>` : ""}
       </div>
-      ${boton}
+      ${RM.puedeEditar ? `
+        <div class="rmTurno__acciones">
+          <button class="btn3 rmBtn--primary" data-rm="nuevo">
+            ${icon("box", 15)} Ingresar equipos del día
+          </button>
+        </div>` : ""}
     </div>`;
 }
 
-// ─── Render: una caja ────────────────────────────────────────────────
+// ─── Render: un día ──────────────────────────────────────────────────
 
-function chipEstado_(l) {
-  const map = {
-    RECIBIDO:  ["", "Recibida"],
-    REVISANDO: ["warn", "Revisando"],
-    REVISADO:  ["info", "Revisada"],
-    REPARTIDO: ["ok", "Repartida"],
-    CERRADO:   ["", "Cerrada"],
-  };
-  const [cls, txt] = map[l.estado] || ["", l.estado];
-  return `<span class="rmChip ${cls}">${esc(txt)}</span>`;
+/** En qué va el día, en una palabra. Pinta la franja y el chip. */
+function fase_(l) {
+  if (l.estado === "CERRADO") return "cerrado";
+  if (l.sin_repartir > 0) return "repartir";
+  if (l.en_proceso > 0) return "trabajando";
+  return "listo";
+}
+
+function chipFase_(l) {
+  switch (fase_(l)) {
+    case "cerrado":    return `<span class="rmChip">Cerrado</span>`;
+    case "repartir":   return `<span class="rmChip warn">Faltan repartir ${l.sin_repartir}</span>`;
+    case "trabajando": return `<span class="rmChip info">${l.en_proceso} trabajando</span>`;
+    default:           return `<span class="rmChip ok">Todo devuelto</span>`;
+  }
 }
 
 /**
- * La barra es el arqueo dibujado. Si los tres tramos no llenan el ancho,
- * la caja no cuadra — y eso se ve antes de leer un solo número.
+ * La barra es el arqueo dibujado. Si los tramos no llenan el ancho, el
+ * día no cuadra — y eso se ve antes de leer un solo número.
  */
 function renderBarra_(l) {
   const total = Math.max(1, l.cantidad_equipos);
@@ -334,7 +271,7 @@ function renderBarra_(l) {
   const descuadre = Number(l.descuadre) !== 0;
 
   return `
-    <div class="rmBar" title="verde: devuelto · ámbar: en la mesa · gris: sin repartir">
+    <div class="rmBar" title="verde: devuelto · ámbar: trabajando · gris: sin repartir">
       <span class="rmBar__seg rmBar__seg--dev"  style="width:${pct(l.devueltos)}"></span>
       <span class="rmBar__seg rmBar__seg--proc" style="width:${pct(l.en_proceso)}"></span>
       <span class="rmBar__seg rmBar__seg--sin"  style="width:${pct(Math.max(0, l.sin_repartir))}"></span>
@@ -343,15 +280,15 @@ function renderBarra_(l) {
 }
 
 /**
- * Lo que trajo la caja, marca por marca, con lo que falta repartir de
- * cada una. En una caja mixta el total no dice nada: 25 repartidos de 25
- * puede ser 16 Jetour y 9 V3 cuando llegaron 15 y 10.
+ * Lo que se pidió, marca por marca, con lo que falta repartir de cada
+ * una. Con varias marcas el total no dice nada: 32 repartidos de 32 puede
+ * ser 31 Jetour y 1 VW cuando se pidieron 30 y 2.
  */
 function renderMarcas_(loteId) {
   const items = itemsDe_(loteId);
   if (!items.length) {
     return `<div class="rmMarcasLinea rmMarcasLinea--vacia">
-      Sin marcas anotadas · el stock por marca no cuenta esta caja
+      Sin marcas anotadas · el stock por marca no cuenta este día
     </div>`;
   }
 
@@ -361,7 +298,7 @@ function renderMarcas_(loteId) {
         const falta = i.sin_repartir;
         const cls = falta < 0 ? "is-mal" : (falta > 0 ? "is-pend" : "is-ok");
         return `
-          <span class="rmMarcaChip ${cls}" title="${esc(i.tipo_ramal)}: ${i.cantidad} en la caja, ${i.repartidos} repartidos, ${i.devueltos} devueltos">
+          <span class="rmMarcaChip ${cls}" title="${esc(i.tipo_ramal)}: ${i.cantidad} pedidos, ${i.repartidos} repartidos, ${i.devueltos} devueltos">
             <b>${i.cantidad}</b> ${esc(i.tipo_ramal)}
             <i>${falta === 0 ? "repartida" : (falta > 0 ? `faltan ${falta}` : `${-falta} de más`)}</i>
           </span>`;
@@ -378,7 +315,7 @@ function renderArqueo_(l) {
 
   return `
     <div class="rmArqueo">
-      ${item("Equipos", l.cantidad_equipos)}
+      ${item("Pedidos", l.cantidad_equipos)}
       ${item("Repartidos", l.repartidos)}
       ${item("Devueltos", l.devueltos, l.devueltos > 0 ? "is-bien" : "")}
       ${item("Trabajando", l.en_proceso, l.en_proceso > 0 ? "is-warn" : "")}
@@ -390,9 +327,8 @@ function renderArqueo_(l) {
 }
 
 /**
- * Los repartos de la caja, agrupados POR PERSONA. Con marcas, un
- * ramalero tiene varias filas en la base; en pantalla es una persona con
- * su lista — que es como se le habla («Luis, ¿y los tuyos?»).
+ * Los repartos del día, agrupados POR PERSONA — que es como se le habla
+ * («Salomón, ¿y los tuyos?»). Cada línea cerrada dice cuánto tardó.
  */
 function renderRepartosDe_(loteId, cerrado) {
   const reps = (RM.raw?.repartos || []).filter(r => r.lote_id === loteId);
@@ -411,9 +347,8 @@ function renderRepartosDe_(loteId, cerrado) {
     const devueltos = p.filas.reduce((a, f) => a + (f.cantidad_devuelta || 0), 0);
     const rechazados = p.filas.reduce((a, f) => a + (f.cantidad_rechazada || 0), 0);
 
-    // Desde este panel solo recibe el supervisor. El ramalero devuelve lo
-    // suyo desde su propia vista (views/ramales/mi-turno.js), donde ve
-    // únicamente sus repartos.
+    // Desde este panel recibe el supervisor. El ramalero devuelve lo suyo
+    // desde su propia vista (views/ramales/mi-turno.js).
     const puedeRecibir = pendientes.length && !cerrado && RM.puedeEditar;
 
     return `
@@ -421,15 +356,23 @@ function renderRepartosDe_(loteId, cerrado) {
         ${avatar_(p.nombre, true)}
         <span class="rmReparto__nombre">${esc(p.nombre)}</span>
         <span class="rmReparto__cifra">
-          ${p.filas.map(f => `
-            <span class="rmReparto__linea ${f.devuelto_at ? "" : "is-abierta"}">
-              ${f.cantidad_asignada} ${esc(f.tipo_ramal || "s/marca")}${
-                f.devuelto_at ? ` → ${f.cantidad_devuelta}${f.cantidad_rechazada ? ` (${f.cantidad_rechazada} ✕)` : ""}` : ""}
-            </span>`).join("")}
+          ${p.filas.map(f => {
+            const tardo = f.devuelto_at
+              ? (new Date(f.devuelto_at) - new Date(f.asignado_at)) / 60000
+              : null;
+            return `
+              <span class="rmReparto__linea ${f.devuelto_at ? "" : "is-abierta"}">
+                ${f.cantidad_asignada} ${esc(f.tipo_ramal || "s/marca")}${
+                  f.devuelto_at
+                    ? ` → ${f.cantidad_devuelta}${f.cantidad_rechazada ? ` (${f.cantidad_rechazada} ✕)` : ""}` +
+                      ` · ${esc(fmtDuracion(tardo))}`
+                    : ""}
+              </span>`;
+          }).join("")}
         </span>
         <span class="rmReparto__acc">
           ${pendientes.length
-            ? `<span class="rmChip warn">${pendientes.length} sin devolver</span>`
+            ? `<span class="rmChip warn">sin devolver</span>`
             : `<span class="rmChip ok">${devueltos}/${asignados}${rechazados ? ` · ${rechazados} ✕` : ""}</span>`}
           ${puedeRecibir
             ? `<button class="btn3" data-rm="recibir" data-lote="${loteId}" data-user="${p.filas[0].user_id}">
@@ -441,55 +384,27 @@ function renderRepartosDe_(loteId, cerrado) {
 }
 
 function renderLote_(l) {
-  const corriendo = l.estado === "REVISANDO";
   const cerrado = l.estado === "CERRADO";
   const descuadre = Number(l.descuadre) !== 0;
 
-  // El reloj: si corre, el cliente lo anima desde el timestamp del
-  // servidor. Si ya cerró, se muestra el tiempo oficial
-  // (registro de la caja → el supervisor la recibió revisada).
-  const clock = corriendo
-    ? `<span class="rmClock is-corriendo" data-clock="${l.lote_id}">—</span>`
-    : (l.revision_min != null
-        ? `<span class="rmClock" title="Tiempo oficial: de que llegó la caja a que el supervisor la recibió revisada">${fmtMin_(l.revision_min)}</span>`
-        : "");
-
   const acc = [];
-  if (RM.puedeEditar) {
-    if (l.estado === "RECIBIDO") {
-      acc.push(`<button class="btn3 rmBtn--primary" data-rm="iniciar" data-id="${l.lote_id}">${icon("timer", 14)} Arrancar tiempo</button>`);
-    }
-    if (corriendo) {
-      acc.push(`<button class="btn3 rmBtn--primary" data-rm="recibir-caja" data-id="${l.lote_id}">${icon("trayIn", 14)} Recibí la caja revisada</button>`);
-    }
-    if (["REVISADO", "REPARTIDO"].includes(l.estado) && l.sin_repartir > 0) {
+  if (RM.puedeEditar && !cerrado) {
+    if (l.sin_repartir > 0) {
       acc.push(`<button class="btn3 rmBtn--primary" data-rm="repartir" data-id="${l.lote_id}">${icon("users", 14)} Repartir</button>`);
     }
-    if (!cerrado) {
-      acc.push(`<button class="btn3" data-rm="editar-caja" data-id="${l.lote_id}">${icon("listChecks", 14)} Qué trajo</button>`);
-      acc.push(`<button class="btn3" data-rm="cerrar" data-id="${l.lote_id}">${icon("shieldCheck", 14)} Cerrar caja</button>`);
-    }
+    acc.push(`<button class="btn3" data-rm="editar" data-id="${l.lote_id}">${icon("listChecks", 14)} Corregir</button>`);
+    acc.push(`<button class="btn3" data-rm="cerrar" data-id="${l.lote_id}">${icon("shieldCheck", 14)} Cerrar día</button>`);
   }
 
   return `
-    <div class="rmLote ${descuadre ? "is-descuadre" : ""}" data-estado="${l.estado}">
+    <div class="rmLote ${descuadre ? "is-descuadre" : ""}" data-fase="${fase_(l)}">
       <div class="rmLote__head">
-        <span class="rmLote__codigo">${esc(l.codigo || "—")}</span>
-        ${chipEstado_(l)}
-        ${clock}
-        ${corriendo && l.revision_aviso_at
-          ? `<span class="rmChip info" title="El encargado avisó que terminó; el reloj cierra cuando tú recibas la caja">avisó que terminó</span>`
-          : ""}
-        ${l.revision_observados > 0
-          ? `<span class="rmChip warn" title="${esc(l.revision_nota || "")}">${l.revision_observados} observados</span>`
-          : ""}
-        ${l.turno_pisado ? `<span class="rmChip pisado"
-            title="El supervisor eligió a alguien distinto de quien tenía el turno">turno cambiado</span>` : ""}
-
+        <span class="rmLote__codigo">${esc(fmtDia(l.fecha))}</span>
+        ${chipFase_(l)}
         <div class="rmLote__sub">
-          <span>${fmtFecha_(l.fecha)}</span>
+          <span>${l.cantidad_equipos} equipos</span>
           <span>·</span>
-          <span>${l.encargado ? `revisa ${esc(l.encargado)}` : "sin encargado"}</span>
+          <span>${esc(l.codigo || "")}</span>
         </div>
       </div>
 
@@ -509,11 +424,9 @@ function renderLote_(l) {
 
 /**
  * Stock por marca, en tres cifras: TOTAL = TRABAJANDO + DISPONIBLE.
- *
- * «Jetour 30» hacía creer que de esa marca hay 30 en el mundo. En
- * realidad puede haber 80 con 50 en la mesa de alguien. Es la diferencia
- * entre «hay que comprar» y «hay que esperar», que llevan a decisiones
- * opuestas — por eso las tres van juntas y no escondidas en un tooltip.
+ * «Jetour 30» hacía creer que de esa marca hay 30 en el mundo; puede
+ * haber 80 con 50 en la mesa de alguien. Es la diferencia entre «hay que
+ * comprar» y «hay que esperar».
  */
 function renderStock_() {
   const stock = RM.raw?.stock || [];
@@ -564,123 +477,73 @@ function renderStock_() {
     </div>`;
 }
 
-
-// ─── Render: rotación ────────────────────────────────────────────────
-
-function renderRotacion_() {
-  const rot = RM.raw?.rotacion || [];
-  if (!rot.length) {
-    return `<div class="rmEmpty">
-      <span class="rmEmpty__icon">🔁</span>
-      <strong>Nadie en rotación</strong>
-      Dale el módulo RAMALERO a alguien y aparecerá aquí.
-    </div>`;
-  }
-
-  return `
-    <div class="rmTableWrap">
-      <table class="rmTable">
-        <thead>
-          <tr>
-            <th>Ramalero</th><th class="num">Turnos</th><th>Última vez</th>
-            <th>Hoy</th>${RM.puedeEditar ? "<th></th>" : ""}
-          </tr>
-        </thead>
-        <tbody>
-          ${rot.map((r, i) => `
-            <tr class="${i === 0 ? "is-turno" : ""}">
-              <td><div class="who">
-                ${avatar_(r.nombre, true)}${esc(r.nombre)}
-                ${i === 0 ? `<span class="rmChip info">le toca</span>` : ""}
-              </div></td>
-              <td class="num">${r.veces}</td>
-              <td>${r.ultima_vez ? fmtFecha_(r.ultima_vez) : "nunca"}</td>
-              <td>${r.presente === null
-                    ? `<span class="small" style="color:var(--muted)">—</span>`
-                    : (r.presente ? `<span class="rmChip ok">vino</span>`
-                                  : `<span class="rmChip">no marcó</span>`)}</td>
-              ${RM.puedeEditar ? `<td>
-                <button class="btn3" data-rm="rot-off" data-id="${r.user_id}"
-                        data-nombre="${esc(r.nombre)}">Sacar</button>
-              </td>` : ""}
-            </tr>`).join("")}
-        </tbody>
-      </table>
-    </div>
-    <p class="rmNota">
-      El turno no es un círculo fijo: le toca al que menos veces le tocó, y a
-      igualdad al que hace más tiempo que no le toca. Quien faltó se salta sin
-      quedar debiendo — mañana entra primero solo.
-    </p>`;
-}
-
 // ─── Render general ──────────────────────────────────────────────────
 
 function render_() {
   if (!RM.root || !RM.raw) return;
 
   const lotes = RM.raw.lotes || [];
-  const abiertas = lotes.filter(l => l.estado !== "CERRADO");
-  const cerradas = lotes.filter(l => l.estado === "CERRADO");
-  const descuadres = lotes.filter(l => Number(l.descuadre) !== 0);
-  const enProceso = lotes.reduce((a, l) => a + (l.en_proceso || 0), 0);
+  const abiertos = lotes.filter(l => l.estado !== "CERRADO");
+  const cerrados = lotes.filter(l => l.estado === "CERRADO");
+  const porRepartir = abiertos.reduce((a, l) => a + Math.max(0, l.sin_repartir || 0), 0);
+  const trabajando = [...trabajandoPorUser(RM.raw.repartos).values()].reduce((a, n) => a + n, 0);
+  const promedio = tiempoPromedioGrupo(RM.raw.desempeno);
   const stockTotal = (RM.raw.stock || []).reduce((a, s) => a + (s.disponible || 0), 0);
 
   RM.root.innerHTML = `
     <div class="rmRoot">
-      ${renderTurno_()}
+      ${renderHead_()}
 
       <div class="dashGrid" style="margin-bottom:14px;">
         <div class="statTile">
-          <div class="statTile__label">📦 Cajas abiertas</div>
-          <div class="statTile__value">${abiertas.length}</div>
+          <div class="statTile__label">📦 Por repartir</div>
+          <div class="statTile__value" style="${porRepartir > 0 ? "color:var(--warn)" : ""}">${porRepartir}</div>
         </div>
         <div class="statTile">
-          <div class="statTile__label">🔩 Ramales trabajando</div>
-          <div class="statTile__value" style="${enProceso > 0 ? "color:var(--warn)" : ""}">${enProceso}</div>
+          <div class="statTile__label">🔩 Trabajando</div>
+          <div class="statTile__value">${trabajando}</div>
+        </div>
+        <div class="statTile">
+          <div class="statTile__label">⏱ Tiempo promedio por ramal</div>
+          <div class="statTile__value">${promedio == null ? "—" : fmtMinRamal(promedio)}</div>
         </div>
         <div class="statTile">
           <div class="statTile__label">📥 Stock listo</div>
           <div class="statTile__value">${stockTotal}</div>
         </div>
-        <div class="statTile">
-          <div class="statTile__label">⚠️ No cuadran</div>
-          <div class="statTile__value" style="${descuadres.length ? "color:var(--bad,#ef4444)" : ""}">${descuadres.length}</div>
-        </div>
       </div>
 
       <div class="card" style="margin-bottom:12px;">
-        <h3 style="margin:0 0 12px;"><span class="accentBar"></span>Cajas</h3>
-        ${abiertas.length
-          ? abiertas.map(renderLote_).join("")
+        <h3 style="margin:0 0 12px;"><span class="accentBar"></span>Días abiertos</h3>
+        ${abiertos.length
+          ? abiertos.map(renderLote_).join("")
           : `<div class="rmEmpty">
                <span class="rmEmpty__icon">📦</span>
-               <strong>No hay cajas abiertas</strong>
-               Cuando llegue una, regístrala arriba con lo que trae de cada
-               marca: el tiempo del encargado arranca en ese momento y no lo
-               puede tocar él.
+               <strong>No hay nada pendiente</strong>
+               ${RM.puedeEditar
+                 ? "Ingresa los equipos del día con el botón de arriba y repártelos."
+                 : "Cuando el supervisor ingrese los equipos del día, aparecen aquí."}
              </div>`}
 
-        ${cerradas.length ? `
-          <button type="button" class="btn3" style="margin-top:10px;width:100%;" data-rm="ver-cerradas">
-            ${RM.verCerradas ? "Ocultar" : "Ver"} cajas cerradas (${cerradas.length})
+        ${cerrados.length ? `
+          <button type="button" class="btn3" style="margin-top:10px;width:100%;" data-rm="ver-cerrados">
+            ${RM.verCerrados ? "Ocultar" : "Ver"} días cerrados (${cerrados.length})
           </button>
-          <div id="rmCerradas" style="display:${RM.verCerradas ? "block" : "none"};margin-top:10px;">
-            ${cerradas.map(renderLote_).join("")}
+          <div id="rmCerrados" style="display:${RM.verCerrados ? "block" : "none"};margin-top:10px;">
+            ${cerrados.map(renderLote_).join("")}
           </div>` : ""}
       </div>
 
-      <!-- Comportamiento va antes que stock y rotación a propósito: es el
-           parámetro que se quiere medir, no una nota al pie del panel. -->
       <div class="card" style="margin-bottom:12px;">
-        <h3 style="margin:0 0 4px;"><span class="accentBar"></span>Comportamiento</h3>
+        <h3 style="margin:0 0 4px;"><span class="accentBar"></span>Ramaleros</h3>
         <p class="small" style="color:var(--muted);margin:0 0 14px;">
-          Cómo trabaja cada ramalero, medido con lo que el sistema ya registra.
+          Tiempo promedio por ramal: de que se le reparte a que devuelve.
+          Toca un nombre para ver su detalle.
         </p>
-        ${comportamientoHTML(RM.raw)}
+        ${ramalerosHTML(RM.raw)}
       </div>
 
-      <div class="card" style="margin-bottom:12px;">
+      <div class="card">
         <h3 style="margin:0 0 4px;"><span class="accentBar"></span>Stock por marca</h3>
         <p class="small" style="color:var(--muted);margin:0 0 14px;">
           El total de cada marca es lo que está trabajando más lo que hay listo
@@ -692,35 +555,15 @@ function render_() {
           oficina y salen cuando un técnico pide uno en su cola; ese saldo no se
           escribe a mano, es la suma del historial de movimientos.
           <strong>Trabajando</strong> son los que están repartidos y todavía no
-          vuelven. Un reparto sin marca no suma a ninguna de las dos.
+          vuelven.
         </p>
       </div>
-
-      <div class="card">
-        <h3 style="margin:0 0 12px;"><span class="accentBar"></span>Rotación del turno</h3>
-        ${renderRotacion_()}
-      </div>
     </div>`;
-
-  tickClocks_();
 }
 
-// ─── Cronómetros en vivo ─────────────────────────────────────────────
-//  El número que corre es cosmético: el tiempo oficial lo calcula el
-//  servidor con sus propios timestamps. Aquí solo se anima para que
-//  quien mira sepa que la caja sigue abierta.
-function tickClocks_() {
-  for (const el of $$("[data-clock]")) {
-    const l = RM.raw?.lotes?.find(x => x.lote_id === el.dataset.clock);
-    if (!l?.revision_inicio_at) { el.textContent = "—"; continue; }
-    el.textContent = fmtDur_(Date.now() - new Date(l.revision_inicio_at).getTime());
-  }
-}
-
-// ─── Editor de las líneas de una caja ────────────────────────────────
-//  Comparte el registro de caja nueva y la corrección de una existente:
-//  es el mismo gesto («¿qué trae esta caja?») y no tiene por qué
-//  aprenderse dos veces.
+// ─── Editor de las líneas de un día ──────────────────────────────────
+//  Lo comparten «Ingresar equipos del día» y «Corregir»: es el mismo gesto
+//  («¿qué se pidió?») y no tiene por qué aprenderse dos veces.
 
 function filaItem_(tipo = "", cantidad = "") {
   return `
@@ -757,7 +600,6 @@ function engancharItems_(box) {
       s.closest(".rmItemRow").classList.toggle("is-dup", dup);
       if (s.value) vistas.add(s.value);
     }
-    // Con una sola fila, quitarla dejaría la caja sin nada que decir.
     const filas = lista.querySelectorAll(".rmItemRow");
     filas.forEach(f => { f.querySelector(".rmItemDel").disabled = filas.length === 1; });
   };
@@ -793,65 +635,37 @@ function engancharItems_(box) {
 function bloqueItems_(items) {
   const filas = items.length
     ? items.map(i => filaItem_(i.tipo_ramal, i.cantidad)).join("")
-    : filaItem_("", "");
+    : filaItem_("JETOUR", "");
 
   return `
     <div class="rmField">
-      <label>¿Qué trae la caja?</label>
+      <label>Equipos por marca</label>
       <div id="rmItems" class="rmItems">${filas}</div>
       <div class="rmItemsFoot">
         <button type="button" class="btn3" id="rmItemsAdd">＋ Otra marca</button>
         <span class="rmItemsTotal">Total <b id="rmItemsTotal">0</b> equipos</span>
       </div>
-      <span class="rmField__hint">
-        Una caja puede traer varias marcas: 15 Jetour y 10 V3 son una sola
-        caja, no dos. Agrega una línea por marca — el reparto y el stock
-        después salen de aquí.
-      </span>
     </div>`;
 }
 
 // ─── Formularios ─────────────────────────────────────────────────────
 
-function nuevaCaja_() {
-  const rot = RM.raw?.rotacion || [];
-  const sug = RM.raw?.sugerido;
-
-  const optsPersona = rot.map(r => ({
-    v: r.user_id,
-    t: `${r.nombre}${r.user_id === sug?.user_id ? "  ← le toca" : ""}` +
-       `${r.presente === false ? "  (no marcó hoy)" : ""}`,
-  }));
-
+/** Paso 1: «día 13: 30 Jetour, 2 VW». Al guardar abre el reparto. */
+function nuevoDia_() {
   modal_({
-    titulo: "Registrar caja",
-    sub: "Lo que trae y quién la revisa",
-    guardar: "Registrar y arrancar",
+    titulo: "Ingresar equipos del día",
+    guardar: "Guardar y repartir",
     cuerpo: `
+      <div class="rmField">
+        <label for="rmNdFecha">Día</label>
+        <input id="rmNdFecha" type="date" value="${hoyISO_()}" />
+      </div>
+
       ${bloqueItems_([])}
 
       <div class="rmField">
-        <label for="rmNqEnc">Quién revisa la caja</label>
-        <select id="rmNqEnc">${opciones_(optsPersona, sug?.user_id)}</select>
-        <span class="rmField__hint">
-          Viene preseleccionado por turno. Si eliges a otro queda registrado
-          que se cambió — no para reprochar nada, sino para que «se respeta la
-          rotación» sea comprobable.
-        </span>
-      </div>
-
-      <label class="rmCheck">
-        <input type="checkbox" id="rmNqIniciar" checked />
-        <span class="rmCheck__txt">Arrancar el tiempo ahora
-          <small>Es lo normal: el cronómetro lo abres tú al registrar la caja,
-          no el ramalero. Destíldalo solo si la caja llegó pero nadie la va a
-          tocar todavía.</small>
-        </span>
-      </label>
-
-      <div class="rmField">
-        <label for="rmNqNota">Nota (opcional)</label>
-        <input id="rmNqNota" type="text" placeholder="Guía, proveedor, observación…" />
+        <label for="rmNdNota">Nota (opcional)</label>
+        <input id="rmNdNota" type="text" placeholder="Guía, proveedor, observación…" />
       </div>`,
 
     alAbrir: (box) => { box._leerItems = engancharItems_(box); },
@@ -859,125 +673,98 @@ function nuevaCaja_() {
     alGuardar: async (box) => {
       const items = box._leerItems();
       if (!items.length) {
-        toast_("Dile qué trae la caja: al menos una marca con su cantidad.", "bad");
+        toast_("Pon al menos una marca con su cantidad.", "bad");
         return false;
       }
       const j = await accion_("/api/ramales/lote", {
+        fecha: box.querySelector("#rmNdFecha").value,
         items,
-        encargado_user_id: box.querySelector("#rmNqEnc").value || null,
-        nota: box.querySelector("#rmNqNota").value,
-        iniciar: box.querySelector("#rmNqIniciar").checked,
+        nota: box.querySelector("#rmNdNota").value,
       });
       if (!j) return false;
-      const total = items.reduce((a, i) => a + i.cantidad, 0);
-      toast_(`Caja ${j.lote?.codigo || ""} registrada · ${total} equipos.`);
+      // El reparto se abre después de que este modal se cierre, para que
+      // el cierre de este no se lleve el nuevo.
+      const id = j.lote?.id;
+      if (id) setTimeout(() => repartir_(id), 0);
       return true;
     },
   });
 }
 
-/** Corregir lo que trajo una caja ya registrada. */
-function editarCaja_(loteId) {
+/** Corregir los equipos de un día ya ingresado. */
+function editarDia_(loteId) {
   const l = RM.raw?.lotes?.find(x => x.lote_id === loteId);
   if (!l) return;
   const items = itemsDe_(loteId).map(i => ({ tipo_ramal: i.tipo_ramal, cantidad: i.cantidad }));
 
   modal_({
-    titulo: `Qué trajo la caja ${l.codigo}`,
+    titulo: `Corregir ${fmtDia(l.fecha)}`,
     guardar: "Guardar",
     cuerpo: `
-      <div class="rmAviso info">
-        <strong>Se abrió la caja y trae otra cosa</strong>
-        Corrígelo aquí en vez de borrar la caja: lo que ya se repartió sigue
-        firmado. Lo único que no se puede es dejar una marca por debajo de lo
-        que ya se repartió de ella — ahí el error está en el reparto o en el
-        conteo, y cambiar el origen borra la pista de cuál de los dos fue.
-      </div>
-      ${bloqueItems_(items)}`,
+      ${bloqueItems_(items)}
+      <span class="rmField__hint">
+        Lo ya repartido sigue firmado: no se puede dejar una marca por debajo
+        de lo que ya se repartió de ella.
+      </span>`,
 
     alAbrir: (box) => { box._leerItems = engancharItems_(box); },
 
     alGuardar: async (box) => {
       const nuevos = box._leerItems();
       if (!nuevos.length) {
-        toast_("La caja tiene que traer algo.", "bad");
+        toast_("Tiene que haber al menos una marca.", "bad");
         return false;
       }
       const j = await accion_(`/api/ramales/lote/${loteId}/items`, { items: nuevos });
       if (!j) return false;
-      toast_(`Caja actualizada · ${j.cantidad_equipos} equipos.`);
+      toast_(`Actualizado · ${j.cantidad_equipos} equipos.`);
       return true;
     },
   });
 }
 
 /**
- * Reparto: una fila por ramalero, una columna por marca de la caja, y
- * abajo cuánto falta de cada una actualizándose mientras escribes.
- *
- * Antes era un input por persona y una sola cantidad, así que una caja
- * de tres marcas obligaba a abrir el modal tres veces sin saber, dentro
- * de cada pasada, qué se había hecho en la anterior. Con la matriz el
- * reparto entero se ve de un golpe y se corrige donde está el error, que
- * es como se reparte de verdad cuando alguien dice «a mí ponme dos menos».
+ * Paso 2: una fila por ramalero, una columna por marca, y abajo cuánto
+ * falta de cada una actualizándose mientras escribes. Con 30 Jetour y
+ * 2 VW: Salomón 20 | 0, Andy 10 | 0, Gabriel 0 | 2.
  */
 function repartir_(loteId) {
   const l = RM.raw?.lotes?.find(x => x.lote_id === loteId);
   if (!l) return;
 
-  // Una caja sin marcas anotadas (registrada antes de que existieran las
-  // líneas) se reparte igual, en una sola columna sin marca. Lo que
-  // devuelva de ahí no suma a ningún saldo por marca — por eso la
-  // tarjeta empuja a arreglarla con «Qué trajo», pero no se bloquea el
-  // reparto de una caja que ya está sobre la mesa.
+  // Un día sin marcas anotadas (de antes de que existieran las líneas)
+  // se reparte igual, en una sola columna sin marca.
   const lineas = itemsDe_(loteId);
   const items = lineas.length
     ? lineas.filter(i => i.sin_repartir > 0)
     : (l.sin_repartir > 0
         ? [{ tipo_ramal: "", sin_repartir: l.sin_repartir, cantidad: l.cantidad_equipos }]
         : []);
-  if (!items.length) return toast_("Esta caja ya está repartida entera.", "bad");
+  if (!items.length) return toast_("Este día ya está repartido entero.", "bad");
 
-  const rot = RM.raw?.rotacion || [];
-  if (!rot.length) return toast_("No hay ramaleros a quién repartir.", "bad");
+  const gente = ramaleros_();
+  if (!gente.length) return toast_("No hay usuarios con el módulo RAMALERO.", "bad");
 
-  // Lo que cada quien ya tiene de esta caja, por marca: repartir dos
-  // veces el mismo día sin ver la primera vuelta es como se duplica.
-  const yaTiene = new Map();
-  for (const r of (RM.raw?.repartos || []).filter(r => r.lote_id === loteId)) {
-    yaTiene.set(`${r.user_id}|${r.tipo_ramal || ""}`, r.cantidad_asignada);
-  }
+  // Lo que cada quien ya tiene de este día: repartir dos veces sin ver la
+  // primera vuelta es como se duplica.
   const yaTotal = new Map();
-  for (const [k, v] of yaTiene) {
-    const uid = k.split("|")[0];
-    yaTotal.set(uid, (yaTotal.get(uid) || 0) + v);
+  for (const r of (RM.raw?.repartos || []).filter(r => r.lote_id === loteId)) {
+    yaTotal.set(r.user_id, (yaTotal.get(r.user_id) || 0) + (r.cantidad_asignada || 0));
   }
+  const enMano = trabajandoPorUser(RM.raw?.repartos);
 
   const celda = (uid, tipo) => `
     <td>
-      <input type="number" min="0" step="1" class="rmMatriz__in"
-             data-uid="${esc(uid)}" data-tipo="${esc(tipo)}" value="0" />
+      <input type="number" min="0" step="1" class="rmMatriz__in" placeholder="0"
+             data-uid="${esc(uid)}" data-tipo="${esc(tipo)}" value="" />
     </td>`;
 
   modal_({
-    titulo: `Repartir caja ${l.codigo}`,
+    titulo: `Repartir ${fmtDia(l.fecha)}`,
     sub: items.map(i => `${i.sin_repartir} ${i.tipo_ramal || "sin marca"}`).join(" · "),
     guardar: "Repartir",
     ancho: true,
     cuerpo: `
-      <div class="rmAviso info">
-        <strong>Lo que asignes queda firmado a tu nombre</strong>
-        Cada quien solo podrá devolver hasta esa cantidad, y de esa marca.
-      </div>
-
-      <div class="rmMatrizAcc">
-        <button type="button" class="btn3" data-mat="parejo">Repartir parejo</button>
-        <button type="button" class="btn3" data-mat="limpiar">Limpiar</button>
-        <span class="rmMatrizAcc__hint">
-          «Parejo» reparte entre los que marcaron hoy; después lo editas.
-        </span>
-      </div>
-
       <div class="rmMatrizWrap">
         <table class="rmMatriz">
           <thead>
@@ -990,21 +777,25 @@ function repartir_(loteId) {
             </tr>
           </thead>
           <tbody>
-            ${rot.map((r, idx) => `
-              <tr class="${idx === 0 ? "is-turno" : ""} ${r.presente === false ? "is-ausente" : ""}">
-                <th class="rmMatriz__quien">
-                  ${avatar_(r.nombre, true)}
-                  <span>
-                    ${esc(corto_(r.nombre))}
-                    <small>${r.presente === false ? "no marcó hoy"
-                      : (yaTotal.get(r.user_id) ? `ya tiene ${yaTotal.get(r.user_id)}` : `${r.veces} turnos`)}</small>
-                  </span>
-                </th>
-                ${items.map(i => celda(r.user_id, i.tipo_ramal)).join("")}
-                <td class="rmMatriz__tot" data-tot="${esc(r.user_id)}">0</td>
-                <td><button type="button" class="rmMatriz__todo" data-todo="${esc(r.user_id)}"
-                            title="Darle a esta persona todo lo que falta">todo</button></td>
-              </tr>`).join("")}
+            ${gente.map(r => {
+              const sub = yaTotal.get(r.user_id)
+                ? `ya tiene ${yaTotal.get(r.user_id)} de este día`
+                : (enMano.get(r.user_id) ? `${enMano.get(r.user_id)} trabajando` : "");
+              return `
+                <tr>
+                  <th class="rmMatriz__quien">
+                    ${avatar_(r.nombre, true)}
+                    <span>
+                      ${esc(corto_(r.nombre))}
+                      ${sub ? `<small>${esc(sub)}</small>` : ""}
+                    </span>
+                  </th>
+                  ${items.map(i => celda(r.user_id, i.tipo_ramal)).join("")}
+                  <td class="rmMatriz__tot" data-tot="${esc(r.user_id)}">0</td>
+                  <td><button type="button" class="rmMatriz__todo" data-todo="${esc(r.user_id)}"
+                              title="Darle a esta persona todo lo que falta">todo</button></td>
+                </tr>`;
+            }).join("")}
           </tbody>
           <tfoot>
             <tr>
@@ -1017,14 +808,17 @@ function repartir_(loteId) {
             </tr>
           </tfoot>
         </table>
-      </div>`,
+      </div>
+      <span class="rmField__hint">
+        El tiempo de cada uno empieza cuando guardas el reparto, y cada quien
+        solo podrá devolver hasta lo que le diste, de esa marca.
+      </span>`,
 
     alAbrir: (box) => {
       const inputs = [...box.querySelectorAll(".rmMatriz__in")];
       const valor = (i) => Math.max(0, Number(i.value) || 0);
 
       const recalcular = () => {
-        // Falta por marca
         let faltaTotal = 0;
         for (const td of box.querySelectorAll("[data-falta]")) {
           const tipo = td.dataset.falta;
@@ -1038,7 +832,6 @@ function repartir_(loteId) {
         }
         box.querySelector("[data-falta-total]").textContent = faltaTotal;
 
-        // Total por persona
         for (const td of box.querySelectorAll("[data-tot]")) {
           const uid = td.dataset.tot;
           const suma = inputs.filter(i => i.dataset.uid === uid).reduce((a, i) => a + valor(i), 0);
@@ -1052,38 +845,16 @@ function repartir_(loteId) {
       });
 
       box.addEventListener("click", (e) => {
-        const parejo = e.target.closest("[data-mat='parejo']");
-        const limpiar = e.target.closest("[data-mat='limpiar']");
         const todo = e.target.closest("[data-todo]");
-        if (!parejo && !limpiar && !todo) return;
+        if (!todo) return;
         e.preventDefault();
-
-        if (limpiar) {
-          inputs.forEach(i => { i.value = 0; });
-        } else if (parejo) {
-          // Entre quienes vinieron; si no hay asistencia registrada,
-          // entre todos. El resto se le da a los primeros del turno, que
-          // ya vienen ordenados por «a quién le toca antes».
-          const gente = rot.filter(r => r.presente !== false).map(r => r.user_id);
-          const objetivo = gente.length ? gente : rot.map(r => r.user_id);
-          inputs.forEach(i => { i.value = 0; });
-          for (const it of items) {
-            const base = Math.floor(it.sin_repartir / objetivo.length);
-            const resto = it.sin_repartir % objetivo.length;
-            objetivo.forEach((uid, k) => {
-              const inp = inputs.find(i => i.dataset.uid === uid && i.dataset.tipo === it.tipo_ramal);
-              if (inp) inp.value = base + (k < resto ? 1 : 0);
-            });
-          }
-        } else if (todo) {
-          const uid = todo.dataset.todo;
-          for (const it of items) {
-            const otros = inputs
-              .filter(i => i.dataset.tipo === it.tipo_ramal && i.dataset.uid !== uid)
-              .reduce((a, i) => a + valor(i), 0);
-            const inp = inputs.find(i => i.dataset.uid === uid && i.dataset.tipo === it.tipo_ramal);
-            if (inp) inp.value = Math.max(0, it.sin_repartir - otros);
-          }
+        const uid = todo.dataset.todo;
+        for (const it of items) {
+          const otros = inputs
+            .filter(i => i.dataset.tipo === it.tipo_ramal && i.dataset.uid !== uid)
+            .reduce((a, i) => a + valor(i), 0);
+          const inp = inputs.find(i => i.dataset.uid === uid && i.dataset.tipo === it.tipo_ramal);
+          if (inp) inp.value = Math.max(0, it.sin_repartir - otros) || "";
         }
         recalcular();
       });
@@ -1102,14 +873,14 @@ function repartir_(loteId) {
 
       if (!repartos.length) { toast_("No asignaste nada.", "bad"); return false; }
 
-      // Se valida por marca, igual que el servidor: en una caja mixta el
+      // Se valida por marca, igual que el servidor: con varias marcas el
       // total puede cuadrar y una marca estar repartida de más.
       for (const it of items) {
         const suma = repartos
           .filter(r => r.tipo_ramal === it.tipo_ramal)
           .reduce((a, r) => a + r.cantidad, 0);
         if (suma > it.sin_repartir) {
-          toast_(`De ${it.tipo_ramal || "la caja"} estás repartiendo ${suma} y solo quedan ${it.sin_repartir}.`, "bad");
+          toast_(`De ${it.tipo_ramal || "ese día"} estás repartiendo ${suma} y solo quedan ${it.sin_repartir}.`, "bad");
           return false;
         }
       }
@@ -1123,9 +894,8 @@ function repartir_(loteId) {
 }
 
 /**
- * Recibir la devolución de una persona: todas sus marcas abiertas de esa
- * caja en un solo formulario. Antes era un modal por fila de reparto, o
- * sea uno por marca — el ramalero llega una vez con todo.
+ * Recibir la devolución de una persona: todas sus marcas abiertas de ese
+ * día en un solo formulario — el ramalero llega una vez con todo.
  */
 function recibir_(loteId, userId) {
   const filas = (RM.raw?.repartos || [])
@@ -1135,20 +905,14 @@ function recibir_(loteId, userId) {
 
   modal_({
     titulo: `Recibir de ${filas[0].nombre}`,
-    sub: `Caja ${l?.codigo || ""}`,
+    sub: l ? fmtDia(l.fecha) : "",
     guardar: "Recibir",
     cuerpo: `
-      <div class="rmAviso info">
-        <strong>No se puede recibir más de lo que se le firmó</strong>
-        Si trae de más, algo está mal contado antes — y eso es lo que hay que
-        revisar, no el número de aquí.
-      </div>
-
       ${filas.map(f => `
         <div class="rmDevRow" data-rep="${f.id}">
           <div class="rmDevRow__marca">
             ${esc(f.tipo_ramal || "sin marca")}
-            <small>${f.cantidad_asignada} asignados</small>
+            <small>le diste ${f.cantidad_asignada}</small>
           </div>
           <div class="rmField">
             <label>Devuelve</label>
@@ -1166,9 +930,8 @@ function recibir_(loteId, userId) {
         <label for="rmDevNota">Qué pasó con los rechazados</label>
         <textarea id="rmDevNota" placeholder="Obligatorio si rechazas alguno"></textarea>
         <span class="rmField__hint" id="rmDevHint">
-          Solo entran al stock los que pasan, y a la marca con que se firmaron.
-          Los rechazados quedan en el historial del ramalero: es el contrapeso
-          de la velocidad.
+          Solo entran al stock los que pasan. Los rechazados quedan en el
+          historial del ramalero, al lado de su tiempo.
         </span>
       </div>`,
 
@@ -1209,93 +972,39 @@ function recibir_(loteId, userId) {
 
       // Una llamada por marca: cada fila de reparto se cierra contra lo
       // que se le firmó de ESA marca, que es lo que el servidor valida.
-      let alStock = 0;
+      let alStock = 0, cerrado = false;
       for (const e of envios) {
         const j = await accion_(`/api/ramales/reparto/${e.id}/devolver`, {
           cantidad_devuelta: e.devuelta, cantidad_rechazada: e.rechazada, nota,
         });
         if (!j) return false;
         alStock += j.al_stock || 0;
+        cerrado = cerrado || !!j.lote_cerrado;
       }
-      toast_(`${alStock} ramales entraron al stock.`);
+      toast_(`${alStock} ramales entraron al stock.${cerrado ? " El día quedó completo y se cerró." : ""}`);
       return true;
     },
   });
 }
 
-/** El supervisor confirma que recibió la caja revisada: cierra el reloj. */
-function recibirCaja_(loteId) {
-  const l = RM.raw?.lotes?.find(x => x.lote_id === loteId);
-  if (!l) return;
-
-  modal_({
-    titulo: `Recibir la caja ${l.codigo}`,
-    sub: l.encargado ? `Revisada por ${l.encargado}` : "",
-    guardar: "Sí, la tengo",
-    cuerpo: `
-      <div class="rmAviso warn">
-        <strong>Esto cierra el tiempo oficial de la revisión</strong>
-        Confírmalo solo cuando tengas la caja revisada delante. Si el ramalero
-        avisó pero todavía no te la entrega, el reloj tiene que seguir
-        corriendo — es la mitad de la medición que te toca a ti.
-      </div>
-
-      <div class="rmFieldRow">
-        <div class="rmField">
-          <label for="rmRecConf">Equipos conformes</label>
-          <input id="rmRecConf" type="number" min="0" step="1" value="${l.cantidad_equipos}" />
-        </div>
-        <div class="rmField">
-          <label for="rmRecObs">Observados</label>
-          <input id="rmRecObs" type="number" min="0" step="1" value="0" />
-        </div>
-      </div>
-
-      <div class="rmField">
-        <label for="rmRecNota">Qué se observó</label>
-        <textarea id="rmRecNota" placeholder="Obligatorio si hay observados"></textarea>
-        <span class="rmField__hint">
-          Un equipo observado que nadie escribió es un reclamo al proveedor que
-          ya no se puede hacer.
-        </span>
-      </div>`,
-
-    alGuardar: async (box) => {
-      const obs = Number(box.querySelector("#rmRecObs").value) || 0;
-      const nota = box.querySelector("#rmRecNota").value.trim();
-      if (obs > 0 && !nota) {
-        toast_("Escribe qué se observó en esos equipos.", "bad");
-        return false;
-      }
-      const j = await accion_(`/api/ramales/lote/${loteId}/recibir`, {
-        conformes: Number(box.querySelector("#rmRecConf").value) || 0,
-        observados: obs,
-        nota,
-      });
-      if (!j) return false;
-      toast_("Caja recibida. Tiempo cerrado.");
-      return true;
-    },
-  });
-}
-
-function cerrarCaja_(loteId) {
+/** Cerrar un día que no se cerró solo (le falta algo o no cuadra). */
+function cerrarDia_(loteId) {
   const l = RM.raw?.lotes?.find(x => x.lote_id === loteId);
   if (!l) return;
   const cuadra = l.en_proceso === 0 && l.sin_repartir === 0;
 
   modal_({
-    titulo: `Cerrar caja ${l.codigo}`,
-    guardar: "Cerrar caja",
+    titulo: `Cerrar ${fmtDia(l.fecha)}`,
+    guardar: "Cerrar día",
     peligro: !cuadra,
     cuerpo: `
       ${cuadra
         ? `<div class="rmAviso info">
-             <strong>La caja cuadra</strong>
-             ${l.cantidad_equipos} equipos, ${l.devueltos} devueltos. Nada pendiente.
+             <strong>El día cuadra</strong>
+             ${l.cantidad_equipos} pedidos, ${l.devueltos} devueltos. Nada pendiente.
            </div>`
         : `<div class="rmAviso warn">
-             <strong>Esta caja no cuadra</strong>
+             <strong>Este día no cuadra</strong>
              ${l.en_proceso} sin devolver · ${l.sin_repartir} sin repartir.<br>
              Si la diferencia es merma (se rompió, se perdió), anótala abajo con
              el motivo. Un descuadre explicado es información; uno borrado es
@@ -1309,13 +1018,13 @@ function cerrarCaja_(loteId) {
         </div>
         <div class="rmField">
           <label for="rmCierreMotivo">Motivo de la merma</label>
-          <textarea id="rmCierreMotivo" placeholder="Obligatorio si hay merma. Di también de qué marca: en una caja mixta el sistema no lo puede adivinar."></textarea>
+          <textarea id="rmCierreMotivo" placeholder="Obligatorio si hay merma. Di también de qué marca."></textarea>
         </div>
         <label class="rmCheck">
           <input type="checkbox" id="rmCierreForzar" />
           <span class="rmCheck__txt">Cerrar igual dejando el descuadre registrado
-            <small>El faltante NO se borra: queda visible en el arqueo y en el
-            historial de la caja para que se pueda investigar después.</small>
+            <small>El faltante NO se borra: queda visible en el arqueo para que
+            se pueda investigar después.</small>
           </span>
         </label>` : ""}`,
 
@@ -1329,20 +1038,43 @@ function cerrarCaja_(loteId) {
         return false;
       }
 
-      // El servidor vuelve a validar el arqueo: si sin `forzar` la caja no
+      // El servidor vuelve a validar el arqueo: si sin `forzar` el día no
       // cierra, responde NO_CUADRA y aquí se dice qué falta marcar.
       const j = await accion_(`/api/ramales/lote/${loteId}/cerrar`,
-        { merma, merma_motivo: motivo || (forzar ? "Cerrada con descuadre" : ""), forzar },
+        { merma, merma_motivo: motivo || (forzar ? "Cerrado con descuadre" : ""), forzar },
         { silencioso: true });
 
       if (!j) {
         toast_("Sigue sin cuadrar: marca la casilla de abajo o ajusta la merma.", "bad");
         return false;
       }
-      toast_(forzar ? "Caja cerrada con descuadre registrado." : "Caja cerrada.");
+      toast_(forzar ? "Día cerrado con descuadre registrado." : "Día cerrado.");
       return true;
     },
   });
+}
+
+/** El detalle de un ramalero: se abre al tocar su fila. */
+async function detalleRamalero_(userId) {
+  const d = (RM.raw?.desempeno || []).find(x => x.user_id === userId);
+  const { box } = modal_({
+    titulo: d?.nombre || "Ramalero",
+    sub: "Tiempos, marcas y cada reparto",
+    ancho: true,
+    soloLectura: true,
+    cuerpo: `<div class="rmSkel" style="height:220px;"></div>`,
+  });
+  const cuerpo = box.querySelector(".rmForm");
+
+  try {
+    const j = await getJSON(`/api/ramales/ramalero/${encodeURIComponent(userId)}`);
+    if (!j?.ok) throw new Error(j?.error || "Respuesta inesperada del servidor");
+    if (box.isConnected) cuerpo.innerHTML = detalleRamaleroHTML(j);
+  } catch (e) {
+    if (box.isConnected) {
+      cuerpo.innerHTML = `<div class="rmAviso bad"><strong>No se pudo cargar el detalle</strong>${esc(String(e?.message || e))}</div>`;
+    }
+  }
 }
 
 function ajusteStock_(tipo) {
@@ -1424,40 +1156,19 @@ function onClick_(e) {
   const id = btn.dataset.id;
 
   switch (btn.dataset.rm) {
-    case "nueva-caja":   nuevaCaja_(); break;
-    case "editar-caja":  editarCaja_(id); break;
-    case "repartir":     repartir_(id); break;
-    case "recibir":      recibir_(btn.dataset.lote, btn.dataset.user); break;
-    case "recibir-caja": recibirCaja_(id); break;
-    case "cerrar":       cerrarCaja_(id); break;
-    case "stock":        ajusteStock_(btn.dataset.tipo); break;
+    case "nuevo":     nuevoDia_(); break;
+    case "editar":    editarDia_(id); break;
+    case "repartir":  repartir_(id); break;
+    case "recibir":   recibir_(btn.dataset.lote, btn.dataset.user); break;
+    case "cerrar":    cerrarDia_(id); break;
+    case "stock":     ajusteStock_(btn.dataset.tipo); break;
+    case "ramalero":  detalleRamalero_(id); break;
 
-    case "iniciar":
-      accion_(`/api/ramales/lote/${id}/iniciar`).then(j => j && toast_("Tiempo corriendo."));
-      break;
-
-    case "rot-off":
-      confirmar_(
-        "Sacar del turno",
-        `<div class="rmAviso warn">
-           <strong>${esc(btn.dataset.nombre || "Esta persona")} dejará de recibir turnos</strong>
-           No se borra su historial ni sus cajas anteriores. Puedes volver a
-           meterla ejecutando de nuevo el bloque de rotación, o desde la base.
-         </div>`,
-        "Sacar del turno",
-        async () => {
-          const j = await accion_("/api/ramales/rotacion", { user_id: id, activo: false });
-          if (!j) return false;
-          toast_("Fuera de la rotación.");
-        },
-      );
-      break;
-
-    case "ver-cerradas": {
-      RM.verCerradas = !RM.verCerradas;
-      const box = RM.root.querySelector("#rmCerradas");
-      if (box) box.style.display = RM.verCerradas ? "block" : "none";
-      btn.textContent = `${RM.verCerradas ? "Ocultar" : "Ver"} cajas cerradas`;
+    case "ver-cerrados": {
+      RM.verCerrados = !RM.verCerrados;
+      const box = RM.root.querySelector("#rmCerrados");
+      if (box) box.style.display = RM.verCerrados ? "block" : "none";
+      btn.textContent = `${RM.verCerrados ? "Ocultar" : "Ver"} días cerrados`;
       break;
     }
   }
@@ -1492,14 +1203,11 @@ export function mountRamalesPanel(container) {
 
   cargar_();
   startPoll("RAMALES_PANEL", cargar_, { immediate: false, cfgKey: "POLL_RAMALES_MS" });
-  RM.clockTimer = setInterval(tickClocks_, 1000);
 }
 
-/** Desmonta: para los timers, cierra el modal y suelta el DOM. */
+/** Desmonta: para el poll, cierra el modal y suelta el DOM. */
 export function unmountRamalesPanel() {
   stopPoll("RAMALES_PANEL");
-  if (RM.clockTimer) clearInterval(RM.clockTimer);
-  RM.clockTimer = null;
   document.getElementById("rmModal")?.remove();
   RM.root?.removeEventListener("click", onClick_);
   RM.root = null;

@@ -2,42 +2,23 @@
 // public/js/views/ramales/mi-turno.js
 // Panel compacto del RAMALERO dentro de su propia vista.
 //
-// Aquí el ramalero solo ve —y solo puede tocar— lo suyo:
-//   · si le toca el turno de la próxima caja
-//   · la caja que está revisando ahora, con su tiempo corriendo
-//   · los ramales que le repartieron y todavía no devuelve
+// Solo ve —y solo puede tocar— lo suyo: los ramales que le repartieron y
+// todavía no devuelve. Devuelve contra lo que el supervisor le firmó,
+// marca por marca: no puede devolver más de lo que le dieron ni cambiarle
+// la marca a lo que trae.
 //
-// LO QUE ESTE PANEL A PROPÓSITO NO PUEDE HACER
-// ────────────────────────────────────────────
-// No arranca ni para el cronómetro oficial. El botón «ya terminé» manda
-// un AVISO al supervisor; el reloj lo cierra él cuando tiene la caja
-// revisada delante. Si el ramalero pudiera cerrar su propio tiempo, la
-// medición volvería a ser una declaración — que es justo el problema
-// que este módulo existe para resolver.
-//
-// Devolver ramales sí lo hace él, pero contra la cantidad que el
-// supervisor le firmó, marca por marca: no puede devolver más de lo que
-// le asignaron ni cambiarle la marca a lo que trae.
+// Su tiempo corre de que le reparten a que devuelve. Se le dice aquí,
+// porque un reloj que el medido no conoce no mejora a nadie.
 // =========================
 
 import { getJSON, postJSON, escapeHtml, getEmail } from "../../core/core.js";
 import { startPoll, stopPoll } from "../../core/poll.js";
 import { icon } from "../../core/icons.js";
+import { fmtDia } from "./comportamiento.js";
 
-const MT = { root: null, raw: null, clockTimer: null, email: "" };
+const MT = { root: null, raw: null, email: "" };
 
 const esc = escapeHtml;
-
-function fmtDur_(ms) {
-  if (!Number.isFinite(ms) || ms < 0) return "—";
-  const seg = Math.floor(ms / 1000);
-  const h = Math.floor(seg / 3600);
-  const m = Math.floor((seg % 3600) / 60);
-  const s = seg % 60;
-  return h > 0
-    ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
-    : `${m}:${String(s).padStart(2, "0")}`;
-}
 
 function toast_(msg, tipo = "ok") {
   const el = document.createElement("div");
@@ -69,9 +50,9 @@ async function cargar_() {
 }
 
 /**
- * Un reparto pendiente. La marca va escrita al lado del número porque
- * de una misma caja se pueden tener dos marcas abiertas, y devolver 8
- * sin saber de cuál es exactamente el error que el stock no perdona.
+ * Un reparto pendiente. La marca va escrita al lado del número porque de
+ * un mismo día se pueden tener dos marcas, y devolver 8 sin saber de cuál
+ * es exactamente el error que el stock no perdona.
  */
 function renderPendiente_(p) {
   return `
@@ -79,7 +60,7 @@ function renderPendiente_(p) {
       <span class="rmSplit__nom">
         ${esc(p.tipo_ramal || "Sin marca")}
         <span class="rmSplit__sub">
-          caja ${esc(p.codigo || "—")} · ${p.cantidad_asignada} asignados
+          día ${esc(fmtDia(p.fecha || p.asignado_at))} · te dieron ${p.cantidad_asignada}
         </span>
       </span>
       <input type="number" min="0" step="1" max="${p.cantidad_asignada}"
@@ -93,22 +74,18 @@ function renderPendiente_(p) {
 
 function render_() {
   if (!MT.root || !MT.raw) return;
-  const d = MT.raw;
+  const pendientes = MT.raw.pendientes || [];
   MT.root.style.display = "block";
 
-  const caja = d.mi_caja;
-  const items = d.mis_items || [];
-  const pendientes = d.pendientes || [];
-
-  // Si no le toca nada y no debe nada, el panel no ocupa espacio: una
-  // línea. El ramalero tiene su trabajo de armado al frente y eso es lo
-  // que hace el 90% del día.
-  if (!caja && !pendientes.length && !d.me_toca) {
+  // Sin nada en la mano el panel no ocupa espacio: una línea. El ramalero
+  // tiene su cola de solicitudes al frente y eso es lo que hace casi todo
+  // el día.
+  if (!pendientes.length) {
     MT.root.innerHTML = `
       <div class="rmMio">
         <div class="rmMio__vacio">
-          No tienes ninguna caja abierta. La siguiente le toca a
-          <strong>${esc(d.siguiente_turno || "—")}</strong>.
+          No tienes ramales por devolver. Cuando el supervisor te reparta,
+          aparecen aquí.
         </div>
       </div>`;
     return;
@@ -116,69 +93,17 @@ function render_() {
 
   MT.root.innerHTML = `
     <div class="rmMio">
-      ${d.me_toca && !caja ? `
-        <div class="rmMio__turno is-mio">
-          <strong>📦 Te toca la próxima caja</strong>
-          <div class="rmMio__vacio" style="margin-top:4px;">
-            Cuando llegue el camión, te toca a ti abrirla y revisar lo que
-            trae. El tiempo empieza a correr en cuanto el supervisor la
-            registre — no tienes que apretar nada para arrancarlo.
-          </div>
-        </div>` : ""}
-
-      ${caja ? `
-        <div class="rmMio__turno is-mio">
-          <div class="rmTurno__label">Estás revisando esta caja</div>
-          <div class="rmMio__head">
-            <strong style="font-size:1.1rem;">${esc(caja.codigo)}</strong>
-            <span class="rmChip">${caja.cantidad_equipos} equipos</span>
-            <span class="rmClock is-corriendo" data-mt-clock="1">—</span>
-          </div>
-
-          ${items.length ? `
-            <div class="rmMarcasLinea" style="margin-top:8px;">
-              ${items.map(i => `
-                <span class="rmMarcaChip"><b>${i.cantidad}</b> ${esc(i.tipo_ramal)}</span>
-              `).join("")}
-            </div>` : ""}
-
-          <div class="rmMio__vacio" style="margin-top:6px;">
-            Revisa lo que trae y entrégasela al supervisor cuando termines.
-          </div>
-
-          ${caja.revision_aviso_at ? `
-            <div class="rmAviso info" style="margin-top:10px;">
-              <strong>✓ Ya avisaste</strong>
-              Tu tiempo se cierra cuando el supervisor tenga la caja revisada
-              delante.
-            </div>` : `
-            <button class="btn3 rmBtn--primary" style="margin-top:11px;width:100%;"
-                    data-mt="fin" data-id="${caja.id}">
-              ${icon("trayOut", 14)} Ya terminé — avisar al supervisor
-            </button>`}
-        </div>` : ""}
-
-      ${pendientes.length ? `
-        <div>
-          <div class="rmTurno__label" style="margin-bottom:6px;">
-            Ramales que te dieron para trabajar
-          </div>
-          <div class="rmSplit">${pendientes.map(renderPendiente_).join("")}</div>
-          <div class="rmMio__vacio" style="margin-top:6px;">
-            Cuando termines, pon cuántos traes de vuelta a oficina. Solo los
-            que devuelvas entran al stock que se le entrega a los técnicos.
-          </div>
-        </div>` : ""}
+      <div>
+        <div class="rmTurno__label" style="margin-bottom:6px;">
+          Ramales que te dieron para trabajar
+        </div>
+        <div class="rmSplit">${pendientes.map(renderPendiente_).join("")}</div>
+        <div class="rmMio__vacio" style="margin-top:6px;">
+          Cuando termines, pon cuántos traes de vuelta a oficina. Tu tiempo
+          corre desde que te repartieron hasta que devuelves.
+        </div>
+      </div>
     </div>`;
-
-  tick_();
-}
-
-function tick_() {
-  const el = MT.root?.querySelector("[data-mt-clock]");
-  const d = MT.raw?.mi_caja;
-  if (!el || !d?.revision_inicio_at) return;
-  el.textContent = fmtDur_(Date.now() - new Date(d.revision_inicio_at).getTime());
 }
 
 async function onClick_(e) {
@@ -187,23 +112,21 @@ async function onClick_(e) {
   const id = btn.dataset.id;
 
   try {
-    if (btn.dataset.mt === "fin") {
-      const j = await postJSON(`/api/ramales/lote/${id}/aviso`, { email: MT.email });
-      if (!j?.ok) return toast_(j?.error || "No se pudo avisar.", "bad");
-      toast_("Avisado. El supervisor va por la caja.");
-      await cargar_();
-    } else if (btn.dataset.mt === "devolver") {
+    if (btn.dataset.mt === "devolver") {
       const cant = Number(MT.root.querySelector(`[data-mt-cant="${id}"]`)?.value ?? 0);
+      btn.disabled = true;
       const j = await postJSON(`/api/ramales/reparto/${id}/devolver`, {
         email: MT.email,
         cantidad_devuelta: cant,
         cantidad_rechazada: 0,
       });
+      btn.disabled = false;
       if (!j?.ok) return toast_(j?.error || "No se pudo devolver.", "bad");
       toast_(`${j.al_stock} ramales entregados a oficina.`);
       await cargar_();
     }
   } catch (err) {
+    btn.disabled = false;
     toast_(String(err?.message || err), "bad");
   }
 }
@@ -219,13 +142,10 @@ export function mountMiTurno(container) {
   container.addEventListener("click", onClick_);
   cargar_();
   startPoll("RAMALES_MI_TURNO", cargar_, { immediate: false, cfgKey: "POLL_RAMALES_MS" });
-  MT.clockTimer = setInterval(tick_, 1000);
 }
 
 export function unmountMiTurno() {
   stopPoll("RAMALES_MI_TURNO");
-  if (MT.clockTimer) clearInterval(MT.clockTimer);
-  MT.clockTimer = null;
   MT.root?.removeEventListener("click", onClick_);
   MT.root = null;
   MT.raw = null;
