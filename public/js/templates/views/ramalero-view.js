@@ -124,11 +124,30 @@ export function ramaleroView() {
           width:100%;background:none;border:none;padding:0;color:inherit;cursor:pointer;
           display:flex;align-items:center;gap:8px;text-align:left;
         ">
-          <h3 style="margin:0;flex:1;">📜 Mi historial</h3>
+          <h3 style="margin:0;flex:1;">📜 Mi producción y finalizados</h3>
           <span id="ramalHistChev">▼</span>
         </button>
 
         <div id="ramalHistBody" style="display:none;margin-top:12px;">
+          <!-- Fechas: el ramalero justifica lo que produjo en un día, una
+               semana o un mes. Abre en los últimos RAMALES_RANGO_DIAS días;
+               el texto de ese botón lo pone ramalero-historial.js. -->
+          <div class="rmFiltros" id="ramalHistFechas">
+            <div class="rmFiltros__presets">
+              <button type="button" class="ramFiltro__b" data-hist-preset="hoy">Hoy</button>
+              <button type="button" class="ramFiltro__b is-on" data-hist-preset="semana">Últimos días</button>
+              <button type="button" class="ramFiltro__b" data-hist-preset="mes">Este mes</button>
+            </div>
+            <div class="rmFiltros__fechas">
+              <input type="date" id="ramalHistDesde" aria-label="Desde" />
+              <span>a</span>
+              <input type="date" id="ramalHistHasta" aria-label="Hasta" />
+            </div>
+          </div>
+
+          <!-- Resumen de su producción en esas fechas (lo pinta el historial). -->
+          <div id="ramalHistResumen"></div>
+
           <!-- Filtro por marca: el ramalero quiere ver «cuántos Jetour llevo»,
                y sin esto tenía que contarlos a ojo en una lista mezclada. -->
           <div class="ramFiltro" id="ramalHistFiltro">

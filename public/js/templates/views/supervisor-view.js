@@ -6,13 +6,15 @@ export function supervisorView() {
     <div id="viewSUPERVISOR" class="card" style="display:none;">
       <h3>Supervisor</h3>
 
-      <!-- Pestañas principales: REPORTE / LIVE / CONTROL / INCIDENCIAS / VALIDAR -->
+      <!-- Pestañas principales: REPORTE / LIVE / CONTROL / INCIDENCIAS / RAMALES.
+           VALIDAR (¿está este VIN en el sistema?) se quitó el 2026-09-12: el
+           supervisor no la usaba, y la misma respuesta sale buscando el VIN
+           en OTs. -->
       <div class="sup-tab-row">
         <button type="button" class="btn sup-tab" data-suptab="REPORTE">${icon("chart", 14)} REPORTE</button>
         <button type="button" class="btn sup-tab active" data-suptab="LIVE">${icon("radio", 14)} LIVE</button>
         <button type="button" class="btn sup-tab" data-suptab="CONTROL">${icon("clipboardList", 14)} OTs</button>
         <button type="button" class="btn sup-tab" data-suptab="INCIDENCIAS">${icon("alertTriangle", 14)} INCID.</button>
-        <button type="button" class="btn sup-tab" data-suptab="VALIDAR">${icon("scanSearch", 14)} VALIDAR</button>
         <button type="button" class="btn sup-tab" data-suptab="RAMALES">${icon("box", 14)} RAMALES</button>
       </div>
 
@@ -187,31 +189,7 @@ export function supervisorView() {
       </div>
 
       <!-- ══════════════════════════════════════════════
-           PANEL VALIDAR — Verificar si un VIN está registrado
-      ══════════════════════════════════════════════ -->
-      <div id="supPanelValidar" style="display:none;">
-        <div style="margin-top:10px;">
-          <p class="small muted" style="margin-bottom:12px;">Verifica si un vehículo está registrado en el sistema para conversión.</p>
-
-          <div class="supVinRow">
-            <div class="supVinWrap">
-              <input id="supValidarVin" type="text" placeholder="Buscar VIN…"
-                autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" />
-              <div id="supValidarVinSuggest" class="vinSuggest hidden" role="listbox"></div>
-            </div>
-            <button id="btnSupValidarQr" type="button" title="Escanear QR">${icon("camera", 16)}</button>
-          </div>
-
-          <button id="btnSupValidarBuscar" type="button" class="btn" style="margin-top:10px; width:100%;">
-            ${icon("scanSearch", 15)} Validar VIN
-          </button>
-
-          <div id="supValidarResult" style="margin-top:14px;"></div>
-        </div>
-      </div>
-
-      <!-- ══════════════════════════════════════════════
-           PANEL RAMALES — cajas, turno, reparto y stock
+           PANEL RAMALES — equipos del día, reparto, producción y stock
            El panel lo pinta views/ramales/ramales.js, el mismo que sirve
            la página /ramales: una sola implementación en dos marcos.
       ══════════════════════════════════════════════ -->
@@ -222,28 +200,9 @@ export function supervisorView() {
   `;
 }
 
-// QR modal exclusivo del tab VALIDAR — fuera de viewSUPERVISOR para evitar
-// el bug de WebKit donde position:fixed en un padre display:none infla el scroll
-export function supValidarQrModalTemplate() {
-  return `
-    <div id="supValidarQrModal" class="modal" aria-hidden="true" style="display:none;">
-      <div class="modalBox">
-        <div class="modalHead">
-          <div class="modalTitle">Escanear QR — Validar VIN</div>
-          <button id="btnSupValidarCloseQr" type="button" title="Cerrar">✕</button>
-        </div>
-        <div class="modalBody">
-          <div id="supValidarQrReader"></div>
-          <div id="supValidarQrMsg" class="small" style="margin-top:10px;"></div>
-        </div>
-      </div>
-    </div>
-  `;
-}
-
 // Modal de crear/editar OT del panel CONTROL. Vive fuera de viewSUPERVISOR
-// por el mismo motivo que el QR de VALIDAR: un position:fixed dentro de un
-// padre display:none infla el scroll en WebKit.
+// porque un position:fixed dentro de un padre display:none infla el scroll
+// en WebKit.
 export function supOtControlModal() {
   return `
     <div id="otCtrlModal" class="modal" aria-hidden="true">

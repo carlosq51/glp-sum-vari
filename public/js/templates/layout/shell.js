@@ -9,7 +9,7 @@ import { uploaderView } from "../views/uploader-view.js";
 import { inventarioView } from "../views/inventario-view.js";
 import { ramalesView } from "../views/ramales-view.js";
 import { movilizadorView } from "../views/movilizador-view.js";
-import { supervisorView, supIncModal, liveDetailModal, supValidarQrModalTemplate, supOtControlModal } from "../views/supervisor-view.js";
+import { supervisorView, supIncModal, liveDetailModal, supOtControlModal } from "../views/supervisor-view.js";
 
 import { topbarView } from "./topbar.js";
 import { loadingOverlay } from "./loading-overlay.js";
@@ -64,7 +64,6 @@ export function appShell() {
     ${errorModal()}
     ${supIncModal()}
     ${liveDetailModal()}
-    ${supValidarQrModalTemplate()}
     ${supOtControlModal()}
     ${adminCrudModal()}
   `;

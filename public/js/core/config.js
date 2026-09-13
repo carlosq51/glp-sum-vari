@@ -45,6 +45,10 @@ const DEFAULTS = {
 
   LIM_FINALIZADOS_DIAS:         30,
   LIM_FINALIZADOS:             100,
+  LIM_FINALIZADOS_RANGO:      1000,
+
+  RAMALES_RANGO_DIAS:            7,
+  RAMALES_RANGO_MAX_DIAS:       93,
 };
 
 let _config = { ...DEFAULTS };

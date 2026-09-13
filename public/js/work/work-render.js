@@ -5,7 +5,7 @@
 
 import { CORE, ctx_ } from "../core/state.js";
 import { el_ } from "../core/dom.js";
-import { cssEsc_, escapeHtml, fmtFechaCreacion_, msToHMS_ } from "../core/format.js";
+import { cssEsc_, escapeHtml, fmtFechaCreacion_, msToHMS_, diaPeru_ } from "../core/format.js";
 import { computeLiveMs_ } from "./work-time.js";
 import { buildAsignadoHTML_, buildBotonesByEstado_, buildIncidenciasBtnHTML_ } from "./work-templates.js";
 
@@ -179,8 +179,12 @@ export function renderFinalizados_(avgTopHTML = "") {
         ? `RAMAL: ${tipo || "-"}`
         : vin || "(sin VIN)";
 
+    // `data-tipo` y `data-fin` (día de término en Perú) los usa el historial
+    // del ramalero para filtrar por marca y por fechas sin que este
+    // renderer, que es de todos, sepa de esos filtros.
     out += `
-      <div class="card" style="margin-top:10px;" data-key="${escapeHtml(k)}" data-tipo="${tipo}">
+      <div class="card" style="margin-top:10px;" data-key="${escapeHtml(k)}" data-tipo="${tipo}"
+           data-fin="${escapeHtml(diaPeru_(it.updated_at))}">
         <div><b>${displayTitle}</b> <span class="small">(${rol})</span></div>
         <div class="row space-between" style="margin-top:6px;">
           <div class="small"><b>Estado:</b> ${estado}</div>

@@ -15,22 +15,33 @@ import { initRamaleroHistorial_, aplicarFiltroHistorial_ } from "./ramalero-hist
 let boundActions_ = false;
 
 /**
- * Trae y pinta los ramales terminados de este ramalero.
+ * Trae y pinta los ramales terminados de este ramalero en un rango de
+ * fechas (`{ desde, hasta }`, días de Perú), o la ventana de siempre sin él.
  *
- * La descarga se hace UNA vez por sesión de vista (`_finalizadosLoaded`):
- * abrir y cerrar el historial no vuelve a pedirlos. Lo que sí se repinta
- * siempre es el render, porque el filtro por marca trabaja sobre el DOM
- * ya montado.
+ * Cada rango se descarga UNA vez por sesión de vista: volver a «Hoy» o a
+ * la semana que ya se miró no vuelve a pedirlo. Lo traído se suma al store,
+ * así que puede haber tarjetas de otros rangos: las esconde el filtro del
+ * historial por `data-fin`. Lo que sí se repinta siempre es el render.
+ *
+ * `_finalizadosLoaded` se sigue marcando porque es lo que le dice al sync
+ * que conserve estas tarjetas al reemplazar el store. Si el store se vació
+ * sin conservarlas, el flag vuelve a false y los rangos se piden de nuevo.
  */
-async function cargarFinalizados_() {
+async function cargarFinalizados_(rango = null) {
   await withLock(async () => {
     const c = ctx_();
     c.showFinalizados = true;
 
-    if (!c._finalizadosLoaded) {
+    if (!c._finalizadosLoaded || !c._finalizadosRangos) c._finalizadosRangos = new Set();
+    const clave = rango ? `${rango.desde}|${rango.hasta}` : "*";
+
+    if (!c._finalizadosRangos.has(clave)) {
       let email;
       try { email = requireEmailOrStop(); } catch { return; }
-      const j = await getJSON(`/api/mis-finalizadas?email=${encodeURIComponent(email)}`);
+      const qs = rango
+        ? `&desde=${encodeURIComponent(rango.desde)}&hasta=${encodeURIComponent(rango.hasta)}`
+        : "";
+      const j = await getJSON(`/api/mis-finalizadas?email=${encodeURIComponent(email)}${qs}`);
       if (j?.ok && Array.isArray(j.items)) {
         for (const raw of j.items) {
           const it = normalizeItem_(raw);
@@ -38,6 +49,7 @@ async function cargarFinalizados_() {
         }
         rebuildListsFromStore_();
         c._finalizadosLoaded = true;
+        c._finalizadosRangos.add(clave);
       }
     }
 

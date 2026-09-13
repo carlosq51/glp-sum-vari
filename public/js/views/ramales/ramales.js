@@ -1,6 +1,6 @@
 // =========================
 // public/js/views/ramales/ramales.js
-// Panel de RAMALES — equipos del día, reparto, devolución, métricas y stock.
+// Panel de RAMALES — equipos del día, reparto, producción y stock.
 //
 // Se pinta en dos sitios con el mismo código:
 //   · página propia /ramales (el supervisor entra directo)
@@ -8,26 +8,40 @@
 //
 // EL FLUJO, EN DOS GESTOS
 // ───────────────────────
-//   1. «Día 13: 30 Jetour, 2 VW»               → Ingresar equipos del día
+//   1. «Día 13: 30 Jetour, 2 VW»                  → Ingresar equipos del día
 //   2. «Salomón 20, Andy 10 Jetour, Gabriel 2 VW» → Repartir (se abre solo
-//                                                   al guardar el paso 1)
+//                                                    al guardar el paso 1)
 //
-// Después cada uno devuelve lo que armó y de ahí sale su tiempo: de que
-// se le repartió a que devolvió, dividido entre lo que devolvió. La
-// sección «Ramaleros» lo muestra por persona y un clic abre su detalle
-// (ver comportamiento.js). Un día que queda redondo se cierra solo.
+// Después cada uno devuelve lo que armó. Si el reparto salió mal (otra
+// cantidad, otra persona), «Corregir» lo arregla mientras no se haya
+// devuelto. Un día que queda redondo se cierra solo.
 //
-// Antes había turno rotativo y una revisión cronometrada de la caja antes
-// de poder repartir; se quitó el 2026-09-12 porque el taller no lo usaba
-// y solo alargaba el camino hasta el número que sí se quiere mirar.
+// LO QUE SE MIRA, Y CON QUÉ FILTRO
+// ────────────────────────────────
+// Arriba, un rango de fechas (hoy, últimos días, este mes o a mano) y un
+// buscador por nombre. Debajo, en este orden:
+//   · cuatro cifras del rango: armados, tiempo por ramal, lo que está en la
+//     mano ahora y lo que falta repartir;
+//   · los días abiertos, que es donde se actúa. Entran siempre, sea cual
+//     sea el rango: son trabajo pendiente;
+//   · producción por ramalero y por día (ver comportamiento.js);
+//   · el stock.
+//
+// El buscador de nombre filtra la producción, no los días ni el stock:
+// esos son del taller, no de una persona.
+//
+// La cabecera y la barra de filtros se pintan UNA vez al montar; el poll y
+// el SSE solo repintan lo de debajo (#rmDatos). Si no, cada refresco le
+// quitaría el foco a quien está escribiendo un nombre.
 // =========================
 
 import { getJSON, postJSON, escapeHtml, CORE } from "../../core/core.js";
 import { startPoll, stopPoll } from "../../core/poll.js";
+import { cfg } from "../../core/config.js";
 import { icon } from "../../core/icons.js";
 import {
-  ramalerosHTML, detalleRamaleroHTML, trabajandoPorUser, tiempoPromedioGrupo,
-  fmtDia, fmtDuracion, fmtMinRamal,
+  ramalerosHTML, produccionDiariaHTML, detalleRamaleroHTML, trabajandoPorUser, resumen,
+  rangoPreset, fmtRango, diasEntre, corto, fmtDia, fmtDuracion, fmtMinRamal,
 } from "./comportamiento.js";
 
 // Espejo del enum `tipo_ramal` (supabase/schema.sql).
@@ -37,10 +51,16 @@ const TIPOS_RAMAL = ["JETOUR", "VOLKSWAGEN", "KYC V3", "KYC V5", "KYC V7", "KYC 
 const RM = {
   raw: null,
   root: null,
+  datos: null,          // #rmDatos: lo único que se repinta
   puedeEditar: false,   // SUPERVISOR o ADMIN
   email: "",
   enVuelo: null,        // la carga en curso, para no pisarse con el poll
   verCerrados: false,   // sobrevive al re-render del poll
+  // Filtro. `preset` es el atajo encendido; null = fechas puestas a mano.
+  preset: "semana",
+  desde: "",
+  hasta: "",
+  nombre: "",
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────
@@ -53,11 +73,6 @@ function avatar_(nombre, sm = false) {
   return `<span class="rmInicial${sm ? " rmInicial--sm" : ""}">${esc(ini)}</span>`;
 }
 
-/** Primer nombre — en la cabecera de una matriz «Juan Carlos» no cabe. */
-function corto_(nombre) {
-  return String(nombre || "").trim().split(/\s+/)[0] || "—";
-}
-
 function opciones_(arr, sel) {
   return arr.map(o =>
     `<option value="${esc(o.v)}"${o.v === sel ? " selected" : ""}>${esc(o.t)}</option>`,
@@ -66,8 +81,12 @@ function opciones_(arr, sel) {
 
 /** Hoy en hora local, como lo quiere un <input type="date">. */
 function hoyISO_() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return rangoPreset("hoy").hasta;
+}
+
+/** Sin tildes ni mayúsculas: «salomon» encuentra a «SALOMÓN». */
+function norm_(s) {
+  return String(s || "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().trim();
 }
 
 /** Las líneas de un día, tal como las devuelve el panel. */
@@ -75,10 +94,19 @@ function itemsDe_(loteId) {
   return (RM.raw?.items || []).filter(i => i.lote_id === loteId);
 }
 
-/** La gente a quien se reparte: todo usuario con el módulo RAMALERO. */
+/**
+ * La gente a quien se reparte: todo usuario con el módulo RAMALERO que no
+ * sea de los que reparten (el servidor ya los quita, ver routes/ramales.js).
+ */
 function ramaleros_() {
-  return [...(RM.raw?.desempeno || [])]
+  return [...(RM.raw?.ramaleros || [])]
     .sort((a, b) => String(a.nombre).localeCompare(String(b.nombre)));
+}
+
+/** Los ramaleros que deja ver el buscador de nombre. */
+function ramalerosVisibles_() {
+  const q = norm_(RM.nombre);
+  return ramaleros_().filter(r => !q || norm_(r.nombre).includes(q));
 }
 
 /** Aviso flotante — mismo gesto que usa el inventario. */
@@ -186,27 +214,35 @@ function modal_(o) {
 // ─── Carga ───────────────────────────────────────────────────────────
 
 /**
- * Trae el panel. El poll llama sin `forzar` y se salta la vuelta si ya
- * hay una en curso; una acción llama con `forzar`, espera la que esté en
- * vuelo y pide otra — si no, justo después de guardar podría quedarse
- * con la foto de antes y el reparto no encontraría el día recién creado.
+ * Trae el panel del rango puesto. El poll llama sin `forzar` y se salta la
+ * vuelta si ya hay una en curso; una acción o un cambio de rango llaman
+ * con `forzar`, esperan la que esté en vuelo y piden otra — si no, justo
+ * después de guardar podría quedarse con la foto de antes.
+ *
+ * `fresco` salta el cache del servidor. Lo pide una acción (acaba de
+ * escribir y quiere verlo); un cambio de rango no lo necesita.
  */
-async function cargar_({ forzar = false } = {}) {
+async function cargar_({ forzar = false, fresco = forzar } = {}) {
   if (RM.enVuelo) {
     if (!forzar) return;
     await RM.enVuelo.catch(() => {});
   }
-  RM.enVuelo = (async () => {
-    const j = await getJSON(forzar ? "/api/ramales/panel?fresh=1" : "/api/ramales/panel");
+  const rango = `desde=${RM.desde}&hasta=${RM.hasta}`;
+  const p = (async () => {
+    const j = await getJSON(`/api/ramales/panel?${rango}${fresco ? "&fresh=1" : ""}`);
     if (!j?.ok) throw new Error(j?.error || "Respuesta inesperada del servidor");
+    // Si mientras tanto se cambió el rango, esta respuesta es de otro: la
+    // carga que pidió el rango nuevo es la que pinta.
+    if (rango !== `desde=${RM.desde}&hasta=${RM.hasta}`) return;
     RM.raw = j;
     render_();
   })();
+  RM.enVuelo = p;
   try {
-    await RM.enVuelo;
+    await p;
   } catch (e) {
-    if (RM.root) {
-      RM.root.innerHTML = `
+    if (RM.datos) {
+      RM.datos.innerHTML = `
         <div class="card" style="padding:22px;">
           <h3 style="margin:0 0 6px;">No se pudo cargar el panel de ramales</h3>
           <p class="small" style="color:var(--muted);">${esc(String(e?.message || e))}</p>
@@ -217,21 +253,18 @@ async function cargar_({ forzar = false } = {}) {
         </div>`;
     }
   } finally {
-    RM.enVuelo = null;
+    if (RM.enVuelo === p) RM.enVuelo = null;
   }
 }
 
-// ─── Render: cabecera ────────────────────────────────────────────────
+// ─── Filtro de fechas y nombre ───────────────────────────────────────
 
-function renderHead_() {
+function headHTML_() {
   return `
     <div class="rmTurno">
       <div>
         <div class="rmTurno__label">Ramales</div>
-        <div class="rmTurno__nombre">Equipos del día y reparto</div>
-        <div class="rmTurno__meta">
-          Anota lo que se pidió por marca, repártelo y mira cuánto tarda cada uno.
-        </div>
+        <div class="rmTurno__nombre">Equipos, reparto y producción</div>
       </div>
       ${RM.puedeEditar ? `
         <div class="rmTurno__acciones">
@@ -240,6 +273,61 @@ function renderHead_() {
           </button>
         </div>` : ""}
     </div>`;
+}
+
+function filtrosHTML_() {
+  const b = (p, t) =>
+    `<button type="button" class="ramFiltro__b" data-rm-preset="${p}">${t}</button>`;
+  return `
+    <div class="rmFiltros">
+      <div class="rmFiltros__presets">
+        ${b("hoy", "Hoy")}
+        ${b("semana", `Últimos ${cfg("RAMALES_RANGO_DIAS")} días`)}
+        ${b("mes", "Este mes")}
+      </div>
+      <div class="rmFiltros__fechas">
+        <input type="date" id="rmDesde" aria-label="Desde" />
+        <span>a</span>
+        <input type="date" id="rmHasta" aria-label="Hasta" />
+      </div>
+      <input type="search" id="rmNombre" class="rmFiltros__nombre"
+             placeholder="Buscar ramalero…" autocomplete="off" />
+    </div>`;
+}
+
+/** Deja la barra de filtros como dice el estado. */
+function syncFiltros_() {
+  if (!RM.root) return;
+  const d = RM.root.querySelector("#rmDesde");
+  const h = RM.root.querySelector("#rmHasta");
+  if (d) d.value = RM.desde;
+  if (h) h.value = RM.hasta;
+  for (const b of RM.root.querySelectorAll("[data-rm-preset]")) {
+    b.classList.toggle("is-on", b.dataset.rmPreset === RM.preset);
+  }
+}
+
+/**
+ * Cambia el rango y recarga. Un rango más largo que RAMALES_RANGO_MAX_DIAS
+ * se rechaza aquí con el mismo número que usa el servidor, para no hacer
+ * un viaje que ya se sabe que vuelve con error.
+ */
+function ponerRango_(desde, hasta, preset = null) {
+  if (!desde || !hasta) return;
+  if (desde > hasta) [desde, hasta] = [hasta, desde];
+  const max = cfg("RAMALES_RANGO_MAX_DIAS");
+  if (diasEntre(desde, hasta) > max) {
+    toast_(`Elige un rango de hasta ${max} días.`, "bad");
+    syncFiltros_();
+    return;
+  }
+  RM.desde = desde;
+  RM.hasta = hasta;
+  RM.preset = preset;
+  syncFiltros_();
+  if (RM.datos) RM.datos.classList.add("is-cargando");
+  cargar_({ forzar: true, fresco: false })
+    .finally(() => RM.datos?.classList.remove("is-cargando"));
 }
 
 // ─── Render: un día ──────────────────────────────────────────────────
@@ -347,9 +435,9 @@ function renderRepartosDe_(loteId, cerrado) {
     const devueltos = p.filas.reduce((a, f) => a + (f.cantidad_devuelta || 0), 0);
     const rechazados = p.filas.reduce((a, f) => a + (f.cantidad_rechazada || 0), 0);
 
-    // Desde este panel recibe el supervisor. El ramalero devuelve lo suyo
-    // desde su propia vista (views/ramales/mi-turno.js).
-    const puedeRecibir = pendientes.length && !cerrado && RM.puedeEditar;
+    // Desde este panel recibe y corrige el supervisor. El ramalero devuelve
+    // lo suyo desde su propia vista (views/ramales/mi-turno.js).
+    const puedeTocar = pendientes.length && !cerrado && RM.puedeEditar;
 
     return `
       <div class="rmReparto ${pendientes.length ? "is-pendiente" : ""}">
@@ -374,10 +462,14 @@ function renderRepartosDe_(loteId, cerrado) {
           ${pendientes.length
             ? `<span class="rmChip warn">sin devolver</span>`
             : `<span class="rmChip ok">${devueltos}/${asignados}${rechazados ? ` · ${rechazados} ✕` : ""}</span>`}
-          ${puedeRecibir
-            ? `<button class="btn3" data-rm="recibir" data-lote="${loteId}" data-user="${p.filas[0].user_id}">
-                 ${icon("trayIn", 13)} Recibir
-               </button>` : ""}
+          ${puedeTocar ? `
+            <button class="btn3" data-rm="corregir" data-lote="${loteId}" data-user="${p.filas[0].user_id}"
+                    title="Cambiar la cantidad o pasárselo a otra persona">
+              ${icon("listChecks", 13)} Corregir
+            </button>
+            <button class="btn3" data-rm="recibir" data-lote="${loteId}" data-user="${p.filas[0].user_id}">
+              ${icon("trayIn", 13)} Recibir
+            </button>` : ""}
         </span>
       </div>`;
   }).join("")}</div>`;
@@ -392,7 +484,7 @@ function renderLote_(l) {
     if (l.sin_repartir > 0) {
       acc.push(`<button class="btn3 rmBtn--primary" data-rm="repartir" data-id="${l.lote_id}">${icon("users", 14)} Repartir</button>`);
     }
-    acc.push(`<button class="btn3" data-rm="editar" data-id="${l.lote_id}">${icon("listChecks", 14)} Corregir</button>`);
+    acc.push(`<button class="btn3" data-rm="editar" data-id="${l.lote_id}">${icon("listChecks", 14)} Corregir equipos</button>`);
     acc.push(`<button class="btn3" data-rm="cerrar" data-id="${l.lote_id}">${icon("shieldCheck", 14)} Cerrar día</button>`);
   }
 
@@ -479,91 +571,93 @@ function renderStock_() {
 
 // ─── Render general ──────────────────────────────────────────────────
 
-function render_() {
-  if (!RM.root || !RM.raw) return;
+function tile_(label, valor, estilo = "") {
+  return `
+    <div class="statTile">
+      <div class="statTile__label">${label}</div>
+      <div class="statTile__value" style="${estilo}">${valor}</div>
+    </div>`;
+}
 
+function render_() {
+  if (!RM.datos || !RM.raw) return;
+
+  const { desde, hasta } = RM.raw;
   const lotes = RM.raw.lotes || [];
   const abiertos = lotes.filter(l => l.estado !== "CERRADO");
   const cerrados = lotes.filter(l => l.estado === "CERRADO");
+
+  // Producción: los repartos de los días del RANGO (los de días abiertos
+  // más viejos también vienen, para pintar su tarjeta, pero no cuentan
+  // como producción de estas fechas) y de la gente que deja ver el buscador.
+  const gente = ramalerosVisibles_();
+  const filtrado = !!norm_(RM.nombre);
+  const ids = new Set(gente.map(g => g.user_id));
+  const deGente = (r) => !filtrado || ids.has(r.user_id);
+  const reps = (RM.raw.repartos || [])
+    .filter(r => r.fecha && r.fecha >= desde && r.fecha <= hasta && deGente(r));
+
+  const s = resumen(reps);
+  const manoPorUser = trabajandoPorUser(RM.raw.abiertos);
+  const enMano = [...manoPorUser].reduce((a, [uid, n]) => a + (deGente({ user_id: uid }) ? n : 0), 0);
   const porRepartir = abiertos.reduce((a, l) => a + Math.max(0, l.sin_repartir || 0), 0);
-  const trabajando = [...trabajandoPorUser(RM.raw.repartos).values()].reduce((a, n) => a + n, 0);
-  const promedio = tiempoPromedioGrupo(RM.raw.desempeno);
-  const stockTotal = (RM.raw.stock || []).reduce((a, s) => a + (s.disponible || 0), 0);
+  const rango = fmtRango(desde, hasta);
 
-  RM.root.innerHTML = `
-    <div class="rmRoot">
-      ${renderHead_()}
+  RM.datos.innerHTML = `
+    <div class="dashGrid" style="margin-bottom:14px;">
+      ${tile_(`🔩 Armados · ${esc(rango)}`, s.armados)}
+      ${tile_("⏱ Tiempo por ramal", fmtMinRamal(s.tiempo))}
+      ${tile_("🛠 En la mano ahora", enMano, enMano > 0 ? "color:var(--warn)" : "")}
+      ${tile_("📦 Por repartir", porRepartir, porRepartir > 0 ? "color:var(--warn)" : "")}
+    </div>
 
-      <div class="dashGrid" style="margin-bottom:14px;">
-        <div class="statTile">
-          <div class="statTile__label">📦 Por repartir</div>
-          <div class="statTile__value" style="${porRepartir > 0 ? "color:var(--warn)" : ""}">${porRepartir}</div>
-        </div>
-        <div class="statTile">
-          <div class="statTile__label">🔩 Trabajando</div>
-          <div class="statTile__value">${trabajando}</div>
-        </div>
-        <div class="statTile">
-          <div class="statTile__label">⏱ Tiempo promedio por ramal</div>
-          <div class="statTile__value">${promedio == null ? "—" : fmtMinRamal(promedio)}</div>
-        </div>
-        <div class="statTile">
-          <div class="statTile__label">📥 Stock listo</div>
-          <div class="statTile__value">${stockTotal}</div>
-        </div>
-      </div>
+    <div class="card" style="margin-bottom:12px;">
+      <h3 style="margin:0 0 12px;"><span class="accentBar"></span>Días abiertos</h3>
+      ${abiertos.length
+        ? abiertos.map(renderLote_).join("")
+        : `<div class="rmEmpty">
+             <span class="rmEmpty__icon">📦</span>
+             <strong>No hay nada pendiente</strong>
+             ${RM.puedeEditar
+               ? "Ingresa los equipos del día con el botón de arriba y repártelos."
+               : "Cuando el supervisor ingrese los equipos del día, aparecen aquí."}
+           </div>`}
 
-      <div class="card" style="margin-bottom:12px;">
-        <h3 style="margin:0 0 12px;"><span class="accentBar"></span>Días abiertos</h3>
-        ${abiertos.length
-          ? abiertos.map(renderLote_).join("")
-          : `<div class="rmEmpty">
-               <span class="rmEmpty__icon">📦</span>
-               <strong>No hay nada pendiente</strong>
-               ${RM.puedeEditar
-                 ? "Ingresa los equipos del día con el botón de arriba y repártelos."
-                 : "Cuando el supervisor ingrese los equipos del día, aparecen aquí."}
-             </div>`}
+      ${cerrados.length ? `
+        <button type="button" class="btn3" style="margin-top:10px;width:100%;" data-rm="ver-cerrados">
+          ${RM.verCerrados ? "Ocultar" : "Ver"} días cerrados de estas fechas (${cerrados.length})
+        </button>
+        <div id="rmCerrados" style="display:${RM.verCerrados ? "block" : "none"};margin-top:10px;">
+          ${cerrados.map(renderLote_).join("")}
+        </div>` : ""}
+    </div>
 
-        ${cerrados.length ? `
-          <button type="button" class="btn3" style="margin-top:10px;width:100%;" data-rm="ver-cerrados">
-            ${RM.verCerrados ? "Ocultar" : "Ver"} días cerrados (${cerrados.length})
-          </button>
-          <div id="rmCerrados" style="display:${RM.verCerrados ? "block" : "none"};margin-top:10px;">
-            ${cerrados.map(renderLote_).join("")}
-          </div>` : ""}
-      </div>
+    <div class="card" style="margin-bottom:12px;">
+      <h3 style="margin:0 0 4px;"><span class="accentBar"></span>Producción por ramalero</h3>
+      <p class="small" style="color:var(--muted);margin:0 0 14px;">
+        ${esc(rango)} · armados = devueltos que pasaron. Toca un nombre para ver cada reparto.
+      </p>
+      ${ramalerosHTML({ ramaleros: gente, repartos: reps, enMano: manoPorUser, filtrado })}
+    </div>
 
-      <div class="card" style="margin-bottom:12px;">
-        <h3 style="margin:0 0 4px;"><span class="accentBar"></span>Ramaleros</h3>
-        <p class="small" style="color:var(--muted);margin:0 0 14px;">
-          Tiempo promedio por ramal: de que se le reparte a que devuelve.
-          Toca un nombre para ver su detalle.
-        </p>
-        ${ramalerosHTML(RM.raw)}
-      </div>
+    <div class="card" style="margin-bottom:12px;">
+      <h3 style="margin:0 0 12px;"><span class="accentBar"></span>Producción por día</h3>
+      ${produccionDiariaHTML({ ramaleros: gente, repartos: reps })}
+    </div>
 
-      <div class="card">
-        <h3 style="margin:0 0 4px;"><span class="accentBar"></span>Stock por marca</h3>
-        <p class="small" style="color:var(--muted);margin:0 0 14px;">
-          El total de cada marca es lo que está trabajando más lo que hay listo
-          para entregar.
-        </p>
-        ${renderStock_()}
-        <p class="rmNota">
-          <strong>Disponibles</strong> son los que entraron al devolverse a
-          oficina y salen cuando un técnico pide uno en su cola; ese saldo no se
-          escribe a mano, es la suma del historial de movimientos.
-          <strong>Trabajando</strong> son los que están repartidos y todavía no
-          vuelven.
-        </p>
-      </div>
+    <div class="card">
+      <h3 style="margin:0 0 4px;"><span class="accentBar"></span>Stock por marca</h3>
+      <p class="small" style="color:var(--muted);margin:0 0 14px;">
+        Total = trabajando (repartido, sin devolver) + disponibles (en oficina,
+        listos para un técnico). El saldo sale del historial; se corrige con «Ajustar».
+      </p>
+      ${renderStock_()}
     </div>`;
 }
 
 // ─── Editor de las líneas de un día ──────────────────────────────────
-//  Lo comparten «Ingresar equipos del día» y «Corregir»: es el mismo gesto
-//  («¿qué se pidió?») y no tiene por qué aprenderse dos veces.
+//  Lo comparten «Ingresar equipos del día» y «Corregir equipos»: es el
+//  mismo gesto («¿qué se pidió?») y no tiene por qué aprenderse dos veces.
 
 function filaItem_(tipo = "", cantidad = "") {
   return `
@@ -698,13 +792,14 @@ function editarDia_(loteId) {
   const items = itemsDe_(loteId).map(i => ({ tipo_ramal: i.tipo_ramal, cantidad: i.cantidad }));
 
   modal_({
-    titulo: `Corregir ${fmtDia(l.fecha)}`,
+    titulo: `Corregir equipos · ${fmtDia(l.fecha)}`,
     guardar: "Guardar",
     cuerpo: `
       ${bloqueItems_(items)}
       <span class="rmField__hint">
-        Lo ya repartido sigue firmado: no se puede dejar una marca por debajo
-        de lo que ya se repartió de ella.
+        No se puede dejar una marca por debajo de lo que ya se repartió de
+        ella. Si lo que está mal es el reparto, corrígelo en la fila de esa
+        persona.
       </span>`,
 
     alAbrir: (box) => { box._leerItems = engancharItems_(box); },
@@ -751,7 +846,7 @@ function repartir_(loteId) {
   for (const r of (RM.raw?.repartos || []).filter(r => r.lote_id === loteId)) {
     yaTotal.set(r.user_id, (yaTotal.get(r.user_id) || 0) + (r.cantidad_asignada || 0));
   }
-  const enMano = trabajandoPorUser(RM.raw?.repartos);
+  const enMano = trabajandoPorUser(RM.raw?.abiertos);
 
   const celda = (uid, tipo) => `
     <td>
@@ -786,7 +881,7 @@ function repartir_(loteId) {
                   <th class="rmMatriz__quien">
                     ${avatar_(r.nombre, true)}
                     <span>
-                      ${esc(corto_(r.nombre))}
+                      ${esc(corto(r.nombre))}
                       ${sub ? `<small>${esc(sub)}</small>` : ""}
                     </span>
                   </th>
@@ -810,8 +905,8 @@ function repartir_(loteId) {
         </table>
       </div>
       <span class="rmField__hint">
-        El tiempo de cada uno empieza cuando guardas el reparto, y cada quien
-        solo podrá devolver hasta lo que le diste, de esa marca.
+        El tiempo de cada uno empieza cuando guardas el reparto. Si te
+        equivocas, se corrige desde la fila de esa persona mientras no devuelva.
       </span>`,
 
     alAbrir: (box) => {
@@ -888,6 +983,90 @@ function repartir_(loteId) {
       const j = await accion_(`/api/ramales/lote/${loteId}/repartir`, { repartos });
       if (!j) return false;
       toast_(`Repartidos ${repartos.reduce((a, r) => a + r.cantidad, 0)} ramales.`);
+      return true;
+    },
+  });
+}
+
+/**
+ * Corregir el reparto de una persona en un día: cuántos de cada marca y a
+ * quién. Solo lo que todavía no devolvió — lo devuelto ya entró al stock.
+ *
+ * «0» se lo quita. Cambiar la persona le pasa esa línea a otro (si ese
+ * otro ya tenía de esa marca ese día, se le suma). El reloj no se toca:
+ * el ramal salió de oficina cuando salió.
+ */
+function corregirReparto_(loteId, userId) {
+  const filas = (RM.raw?.repartos || [])
+    .filter(r => r.lote_id === loteId && r.user_id === userId && !r.devuelto_at);
+  if (!filas.length) return;
+  const l = RM.raw?.lotes?.find(x => x.lote_id === loteId);
+
+  // Quien tiene el reparto entra en la lista aunque ya no figure como
+  // ramalero: si no, el desplegable lo cambiaría solo al abrirlo.
+  const gente = ramaleros_();
+  if (!gente.some(g => g.user_id === userId)) gente.unshift({ user_id: userId, nombre: filas[0].nombre });
+  const opcionesGente = (sel) => opciones_(gente.map(g => ({ v: g.user_id, t: g.nombre })), sel);
+
+  modal_({
+    titulo: `Corregir reparto de ${filas[0].nombre}`,
+    sub: l ? fmtDia(l.fecha) : "",
+    guardar: "Guardar cambios",
+    cuerpo: `
+      ${filas.map(f => `
+        <div class="rmDevRow" data-rep="${f.id}" data-cant="${f.cantidad_asignada}" data-uid="${esc(userId)}">
+          <div class="rmDevRow__marca">
+            ${esc(f.tipo_ramal || "sin marca")}
+            <small>le diste ${f.cantidad_asignada}</small>
+          </div>
+          <div class="rmField">
+            <label>Cantidad</label>
+            <input type="number" min="0" step="1" class="rmCorCant" value="${f.cantidad_asignada}" />
+          </div>
+          <div class="rmField">
+            <label>Es de</label>
+            <select class="rmCorQuien">${opcionesGente(userId)}</select>
+          </div>
+        </div>`).join("")}
+      <span class="rmField__hint" id="rmCorHint">
+        Pon 0 para quitárselo. Lo que quites queda libre para volver a repartir.
+      </span>`,
+
+    alAbrir: (box) => {
+      const hint = box.querySelector("#rmCorHint");
+      const base = hint.textContent;
+      box.addEventListener("input", () => {
+        const cambios = [...box.querySelectorAll(".rmDevRow")].filter(row =>
+          Number(row.querySelector(".rmCorCant").value) !== Number(row.dataset.cant) ||
+          row.querySelector(".rmCorQuien").value !== row.dataset.uid).length;
+        hint.textContent = cambios ? `${cambios} ${cambios === 1 ? "línea cambia" : "líneas cambian"}.` : base;
+      });
+    },
+
+    alGuardar: async (box) => {
+      const cambios = [...box.querySelectorAll(".rmDevRow")]
+        .map(row => ({
+          id: row.dataset.rep,
+          cantidad: Number(row.querySelector(".rmCorCant").value),
+          user_id: row.querySelector(".rmCorQuien").value,
+          antes: Number(row.dataset.cant),
+          uid: row.dataset.uid,
+        }))
+        .filter(c => c.cantidad !== c.antes || c.user_id !== c.uid);
+
+      if (!cambios.length) return true;
+      if (cambios.some(c => !Number.isInteger(c.cantidad) || c.cantidad < 0)) {
+        toast_("Las cantidades tienen que ser números enteros, 0 o más.", "bad");
+        return false;
+      }
+
+      for (const c of cambios) {
+        const j = await accion_(`/api/ramales/reparto/${c.id}/editar`, {
+          cantidad: c.cantidad, user_id: c.user_id,
+        });
+        if (!j) return false;
+      }
+      toast_("Reparto corregido.");
       return true;
     },
   });
@@ -1054,12 +1233,12 @@ function cerrarDia_(loteId) {
   });
 }
 
-/** El detalle de un ramalero: se abre al tocar su fila. */
+/** El detalle de un ramalero en el rango puesto: se abre al tocar su fila. */
 async function detalleRamalero_(userId) {
-  const d = (RM.raw?.desempeno || []).find(x => x.user_id === userId);
+  const d = (RM.raw?.ramaleros || []).find(x => x.user_id === userId);
   const { box } = modal_({
     titulo: d?.nombre || "Ramalero",
-    sub: "Tiempos, marcas y cada reparto",
+    sub: `Producción · ${fmtRango(RM.desde, RM.hasta)}`,
     ancho: true,
     soloLectura: true,
     cuerpo: `<div class="rmSkel" style="height:220px;"></div>`,
@@ -1067,9 +1246,12 @@ async function detalleRamalero_(userId) {
   const cuerpo = box.querySelector(".rmForm");
 
   try {
-    const j = await getJSON(`/api/ramales/ramalero/${encodeURIComponent(userId)}`);
+    const j = await getJSON(
+      `/api/ramales/ramalero/${encodeURIComponent(userId)}?desde=${RM.desde}&hasta=${RM.hasta}`,
+    );
     if (!j?.ok) throw new Error(j?.error || "Respuesta inesperada del servidor");
-    if (box.isConnected) cuerpo.innerHTML = detalleRamaleroHTML(j);
+    const enMano = trabajandoPorUser(RM.raw?.abiertos).get(userId) || 0;
+    if (box.isConnected) cuerpo.innerHTML = detalleRamaleroHTML(j, enMano);
   } catch (e) {
     if (box.isConnected) {
       cuerpo.innerHTML = `<div class="rmAviso bad"><strong>No se pudo cargar el detalle</strong>${esc(String(e?.message || e))}</div>`;
@@ -1151,6 +1333,13 @@ function ajusteStock_(tipo) {
 // ─── Delegación de eventos ───────────────────────────────────────────
 
 function onClick_(e) {
+  const pre = e.target.closest("[data-rm-preset]");
+  if (pre && RM.root?.contains(pre)) {
+    const r = rangoPreset(pre.dataset.rmPreset, cfg("RAMALES_RANGO_DIAS"));
+    ponerRango_(r.desde, r.hasta, pre.dataset.rmPreset);
+    return;
+  }
+
   const btn = e.target.closest("[data-rm]");
   if (!btn || !RM.root?.contains(btn)) return;
   const id = btn.dataset.id;
@@ -1159,6 +1348,7 @@ function onClick_(e) {
     case "nuevo":     nuevoDia_(); break;
     case "editar":    editarDia_(id); break;
     case "repartir":  repartir_(id); break;
+    case "corregir":  corregirReparto_(btn.dataset.lote, btn.dataset.user); break;
     case "recibir":   recibir_(btn.dataset.lote, btn.dataset.user); break;
     case "cerrar":    cerrarDia_(id); break;
     case "stock":     ajusteStock_(btn.dataset.tipo); break;
@@ -1166,12 +1356,25 @@ function onClick_(e) {
 
     case "ver-cerrados": {
       RM.verCerrados = !RM.verCerrados;
-      const box = RM.root.querySelector("#rmCerrados");
-      if (box) box.style.display = RM.verCerrados ? "block" : "none";
-      btn.textContent = `${RM.verCerrados ? "Ocultar" : "Ver"} días cerrados`;
+      render_();
       break;
     }
   }
+}
+
+/** Fechas a mano: el atajo se apaga porque el rango ya no es ninguno de ellos. */
+function onChange_(e) {
+  if (e.target.id !== "rmDesde" && e.target.id !== "rmHasta") return;
+  const desde = RM.root.querySelector("#rmDesde")?.value;
+  const hasta = RM.root.querySelector("#rmHasta")?.value;
+  ponerRango_(desde, hasta, null);
+}
+
+/** El nombre filtra lo que ya está cargado: no pide nada al servidor. */
+function onInput_(e) {
+  if (e.target.id !== "rmNombre") return;
+  RM.nombre = e.target.value;
+  render_();
 }
 
 // ─── API pública ─────────────────────────────────────────────────────
@@ -1192,14 +1395,26 @@ export function mountRamalesPanel(container) {
     String(perfil?.rol || "").toUpperCase(),
   );
 
+  // Cada vez que se entra, el rango de partida (últimos N días) y sin nombre.
+  const r = rangoPreset("semana", cfg("RAMALES_RANGO_DIAS"));
+  Object.assign(RM, { preset: "semana", desde: r.desde, hasta: r.hasta, nombre: "", verCerrados: false });
+
   // Esqueleto en vez de un texto: la vista no salta de altura al cargar.
   container.innerHTML = `
     <div class="rmRoot">
-      <div class="rmSkel" style="height:86px;margin-bottom:14px;"></div>
-      <div class="rmSkel" style="height:74px;margin-bottom:14px;"></div>
-      <div class="rmSkel" style="height:190px;"></div>
+      ${headHTML_()}
+      ${filtrosHTML_()}
+      <div id="rmDatos">
+        <div class="rmSkel" style="height:74px;margin-bottom:14px;"></div>
+        <div class="rmSkel" style="height:190px;"></div>
+      </div>
     </div>`;
+  RM.datos = container.querySelector("#rmDatos");
+  syncFiltros_();
+
   container.addEventListener("click", onClick_);
+  container.addEventListener("change", onChange_);
+  container.addEventListener("input", onInput_);
 
   cargar_();
   startPoll("RAMALES_PANEL", cargar_, { immediate: false, cfgKey: "POLL_RAMALES_MS" });
@@ -1210,6 +1425,9 @@ export function unmountRamalesPanel() {
   stopPoll("RAMALES_PANEL");
   document.getElementById("rmModal")?.remove();
   RM.root?.removeEventListener("click", onClick_);
+  RM.root?.removeEventListener("change", onChange_);
+  RM.root?.removeEventListener("input", onInput_);
   RM.root = null;
+  RM.datos = null;
   RM.raw = null;
 }

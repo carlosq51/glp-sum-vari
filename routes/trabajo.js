@@ -13,7 +13,7 @@ import { bloqueosDeFotos, fusionarStatus } from "../lib/fin-prerequisites.js";
 import { pendingSuggestions_ } from "../lib/ml-state.js";
 import { emitEvent_ } from "../lib/events.js";
 import { getConfig_ } from "../lib/config.js";
-import { esOtDeUnSoloRol_, estadoGeneralDeAsignacion_ } from "../lib/utils.js";
+import { esOtDeUnSoloRol_, estadoGeneralDeAsignacion_, inicioDiaPeruISO_ } from "../lib/utils.js";
 import { dispararMotor_, despachoReparteAhora_, apoyosPorPuesto_, duplaDeTrabajoDe_, zonasDeVins_ } from "./despacho.js";
 import { jornadaFecha_ } from "../lib/despacho.js";
 import {
@@ -366,16 +366,33 @@ router.get("/api/mis-finalizadas", async (req, res) => {
     // Mismos límites que la ruta directa a Supabase del navegador
     // (public/js/core/supabase-client.js): si divergieran, el técnico vería una
     // lista distinta según si Supabase está configurado o no.
-    const { LIM_FINALIZADOS_DIAS, LIM_FINALIZADOS } = await getConfig_();
-    const dias  = Math.max(1, Number(LIM_FINALIZADOS_DIAS) || 30);
-    const tope  = Math.max(1, Number(LIM_FINALIZADOS) || 100);
-    const desde = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString();
+    const { LIM_FINALIZADOS_DIAS, LIM_FINALIZADOS, LIM_FINALIZADOS_RANGO } = await getConfig_();
+
+    // ?desde=&hasta= (YYYY-MM-DD, días de Perú): el que pide ELIGE qué días
+    // quiere ver — el ramalero justificando su producción. Ahí el rango ya
+    // acota, y el tope sube para no cortarle el mes a la mitad. Sin rango,
+    // la ventana móvil de siempre.
+    const RE_DIA = /^\d{4}-\d{2}-\d{2}$/;
+    const pedidos = [req.query.desde, req.query.hasta].map(String).filter(f => RE_DIA.test(f)).sort();
+    let filtroFecha, tope;
+    if (pedidos.length) {
+      const lo = pedidos[0], hi = pedidos[pedidos.length - 1];
+      filtroFecha =
+        `updated_at=gte.${encodeURIComponent(inicioDiaPeruISO_(lo))}` +
+        `&updated_at=lt.${encodeURIComponent(inicioDiaPeruISO_(hi, 1))}`;
+      tope = Math.max(1, Number(LIM_FINALIZADOS_RANGO) || 1000);
+    } else {
+      const dias  = Math.max(1, Number(LIM_FINALIZADOS_DIAS) || 30);
+      const desde = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString();
+      filtroFecha = `updated_at=gte.${encodeURIComponent(desde)}`;
+      tope = Math.max(1, Number(LIM_FINALIZADOS) || 100);
+    }
 
     // Sin `order` aquí: fetchAsignacionesByUser_ ya lo añade (updated_at.desc),
     // y dos parámetros `order` en la misma URL de PostgREST no son idempotentes.
     const items = await fetchAsignacionesByUser_(
       finalUserId, tecnicoEmail,
-      `estado_actual=eq.FINALIZADO&updated_at=gte.${encodeURIComponent(desde)}&limit=${tope}`,
+      `estado_actual=eq.FINALIZADO&${filtroFecha}&limit=${tope}`,
     );
     const duration = Date.now() - t1;
 

@@ -3,7 +3,7 @@
 // Vista SUPERVISOR (entry): init/enter/exit + fetch + pipeline render
 // =========================
 
-import { CORE, getJSON_user, escapeHtml, fmtShort_, createVinSuggest_, getEmail } from "../../core/core.js";
+import { CORE, getJSON_user, escapeHtml, fmtShort_, getEmail } from "../../core/core.js";
 
 import {
   avgRobustWithContextPrior_,
@@ -37,7 +37,6 @@ import { bindSupLive_, enterLive_, exitLive_ } from "./sup-live.js";
 import { bindSupOtControl_, enterOtControl_, exitOtControl_ } from "./sup-ot-control.js";
 import { bindSupIncidenciasReport_, enterIncReport_, exitIncReport_ } from "./sup-incidencias-report.js";
 
-import { createScanner } from "../../core/qr-scanner.js";
 import { openDrilldown } from "../../core/drilldown.js";
 import { fmtDur_ } from "../../core/format.js";
 
@@ -113,37 +112,6 @@ function bindSupDrill_() {
     if (!t || !t.closest("#supAvgCard")) return;
     openSupDrill_(t.dataset.drill);
   });
-}
-
-// ── Scanner exclusivo de VALIDAR (no comparte qrReader con sup/conv) ─────────
-const supValidarScanner_ = createScanner("supValidarQrReader");
-
-async function openSupValidarQr_() {
-  const modal = document.getElementById("supValidarQrModal");
-  if (!modal) return;
-  modal.style.display = "flex";
-  modal.classList.add("show");
-  const msg = document.getElementById("supValidarQrMsg");
-  try {
-    await supValidarScanner_.start({
-      mode: "QR",
-      msgEl: msg,
-      onDecoded: async (code) => {
-        await closeSupValidarQr_();
-        const inp = document.getElementById("supValidarVin");
-        if (inp) inp.value = code;
-        fetchVinValidar_();
-      },
-    });
-  } catch { /* mensaje ya mostrado en msgEl */ }
-}
-
-async function closeSupValidarQr_() {
-  await supValidarScanner_.stop().catch(() => {});
-  const modal = document.getElementById("supValidarQrModal");
-  if (!modal) return;
-  modal.classList.remove("show");
-  modal.style.display = "none";
 }
 
 function setSupTrack_(t) {
@@ -489,13 +457,11 @@ export function init() {
       const panelLive        = document.getElementById("supPanelLive");
       const panelControl     = document.getElementById("supPanelOtControl");
       const panelIncidencias = document.getElementById("supPanelIncidencias");
-      const panelValidar     = document.getElementById("supPanelValidar");
       const panelRamales     = document.getElementById("supPanelRamales");
       if (panelReporte)     panelReporte.style.display     = tab === "REPORTE"     ? "" : "none";
       if (panelLive)        panelLive.style.display        = tab === "LIVE"        ? "" : "none";
       if (panelControl)     panelControl.style.display     = tab === "CONTROL"     ? "" : "none";
       if (panelIncidencias) panelIncidencias.style.display = tab === "INCIDENCIAS" ? "" : "none";
-      if (panelValidar)     panelValidar.style.display     = tab === "VALIDAR"     ? "" : "none";
       if (panelRamales)     panelRamales.style.display     = tab === "RAMALES"     ? "" : "none";
 
       // El panel de ramales tiene cronómetros y poll propios: se desmonta
@@ -514,10 +480,6 @@ export function init() {
         exitLive_();
         exitOtControl_();
         enterIncReport_();
-      } else if (tab === "VALIDAR") {
-        exitLive_();
-        exitOtControl_();
-        exitIncReport_();
       } else if (tab === "RAMALES") {
         exitLive_();
         exitOtControl_();
@@ -575,114 +537,6 @@ export function init() {
   bindSupOtControl_();
   bindSupIncidenciasReport_({ getJSON_user, escapeHtml });
   bindSupDrill_(); // píldoras del avg-card → drill-down
-
-  // ── VALIDAR VIN ──────────────────────────────────────────────────────
-  const supValidarInp = document.getElementById("supValidarVin");
-  const supValidarBox = document.getElementById("supValidarVinSuggest");
-
-  createVinSuggest_({
-    input: "supValidarVin", box: "supValidarVinSuggest",
-    min: 2, debounce: 220, limit: 8,
-    onPick: item => {
-      if (supValidarInp) supValidarInp.value = item.vin;
-      fetchVinValidar_();
-    },
-  }).bind();
-  supValidarInp?.addEventListener("keydown", e => {
-    if (e.key === "Enter" && !e.defaultPrevented) fetchVinValidar_();
-  });
-
-  document.getElementById("btnSupValidarBuscar")?.addEventListener("click", fetchVinValidar_);
-
-  document.getElementById("btnSupValidarQr")?.addEventListener("click", () =>
-    openSupValidarQr_().catch(() => {})
-  );
-  document.getElementById("btnSupValidarCloseQr")?.addEventListener("click", () =>
-    closeSupValidarQr_().catch(() => {})
-  );
-  document.getElementById("supValidarQrModal")?.addEventListener("click", e => {
-    if (e.target === document.getElementById("supValidarQrModal"))
-      closeSupValidarQr_().catch(() => {});
-  });
-}
-
-// ── VALIDAR VIN ──────────────────────────────────────────────────────────────
-
-async function fetchVinValidar_() {
-  const vin = String(document.getElementById("supValidarVin")?.value || "").trim().toUpperCase();
-  const box = document.getElementById("supValidarResult");
-  if (!box) return;
-  if (!vin) { box.innerHTML = `<div class="small muted">Ingresa un VIN para validar.</div>`; return; }
-  box.innerHTML = `<div class="small muted">Buscando…</div>`;
-  try {
-    const j = await getJSON_user(`/api/vin-validar?vin=${encodeURIComponent(vin)}`, "Validando VIN…");
-    renderVinValidar_(j);
-  } catch (e) {
-    box.innerHTML = `<div class="small" style="color:var(--danger);">⚠️ ${escapeHtml(e.message)}</div>`;
-  }
-}
-
-function renderVinValidar_(j) {
-  const box = document.getElementById("supValidarResult");
-  if (!box) return;
-
-  if (!j?.ok) {
-    box.innerHTML = `<div class="small" style="color:var(--danger);">⚠️ ${escapeHtml(j?.error || "Error")}</div>`;
-    return;
-  }
-
-  if (!j.found) {
-    box.innerHTML = `
-      <div style="text-align:center; padding:28px 0;">
-        <div style="font-size:2.6rem;">❌</div>
-        <div style="font-weight:900; margin-top:10px; color:#f87171; font-size:1.05em;">VIN NO REGISTRADO</div>
-        <div class="small muted" style="margin-top:6px;">Este vehículo no está en el sistema de conversión.</div>
-      </div>`;
-    return;
-  }
-
-  const v = j.vin;
-  const wos = j.workOrders || [];
-
-  const woHtml = wos.length
-    ? wos.map(wo => {
-        const asgs = (wo.asignaciones || []).filter(a => a.activo);
-        const estadoPill = estado => {
-          const s = String(estado || "").toUpperCase();
-          const color = s === "FINALIZADO" ? "#4ade80" : s === "TRABAJANDO" ? "#60a5fa" : s === "PAUSADO" ? "#fbbf24" : "#94a3b8";
-          return `<span style="font-size:.72em;font-weight:900;color:${color};">${escapeHtml(estado || "—")}</span>`;
-        };
-        return `
-          <div style="margin-top:8px;padding:8px 10px;background:rgba(255,255,255,.04);border-radius:10px;border:1px solid rgba(255,255,255,.10);">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
-              <span style="font-weight:900;font-size:.85em;">${escapeHtml(wo.tipo_ot || "OT")}</span>
-              <span class="small muted">${wo.fecha_creacion ? new Date(wo.fecha_creacion).toLocaleDateString("es-PE") : ""}</span>
-            </div>
-            ${asgs.length
-              ? asgs.map(a => `
-                  <div class="small" style="padding:2px 0;opacity:.85;">
-                    <b>${escapeHtml(a.rol_trabajo || "")}</b> — ${escapeHtml(a.usuarios?.nombre || "?")} ${estadoPill(a.estado_actual)}
-                  </div>`).join("")
-              : `<div class="small muted">Sin asignaciones activas.</div>`}
-          </div>`;
-      }).join("")
-    : `<div class="small muted" style="margin-top:8px;">Sin órdenes de trabajo.</div>`;
-
-  box.innerHTML = `
-    <div style="text-align:center;padding:14px 0 8px;">
-      <div style="font-size:2.6rem;">✅</div>
-      <div style="font-weight:900;margin-top:6px;color:#4ade80;font-size:1.05em;">VIN REGISTRADO</div>
-    </div>
-    <div style="background:rgba(74,222,128,.07);border:1px solid rgba(74,222,128,.25);border-radius:14px;padding:14px 16px;margin-top:4px;">
-      <div style="font-family:monospace;font-size:1.1em;font-weight:900;letter-spacing:.05em;">${escapeHtml(v.vin)}</div>
-      ${v.modelo   ? `<div class="small" style="margin-top:5px;opacity:.75;">Modelo: <b>${escapeHtml(v.modelo)}</b></div>` : ""}
-      ${v.cliente  ? `<div class="small" style="opacity:.75;">Cliente: <b>${escapeHtml(v.cliente)}</b></div>` : ""}
-      ${v.reductor_asignado ? `<div class="small" style="opacity:.75;">Reductor: <b>${escapeHtml(v.reductor_asignado)}</b></div>` : ""}
-      ${v.tanque_asignado   ? `<div class="small" style="opacity:.75;">Tanque: <b>${escapeHtml(v.tanque_asignado)}</b></div>` : ""}
-    </div>
-    <div style="margin-top:14px;font-weight:900;font-size:.76em;opacity:.55;letter-spacing:.6px;">ÓRDENES DE TRABAJO</div>
-    ${woHtml}
-  `;
 }
 
 export function enter() {
@@ -702,13 +556,11 @@ export function enter() {
   const panelLive        = document.getElementById("supPanelLive");
   const panelControl     = document.getElementById("supPanelOtControl");
   const panelIncidencias = document.getElementById("supPanelIncidencias");
-  const panelValidar     = document.getElementById("supPanelValidar");
   const panelRamales     = document.getElementById("supPanelRamales");
   if (panelReporte)     panelReporte.style.display     = "none";
   if (panelLive)        panelLive.style.display        = "";
   if (panelControl)     panelControl.style.display     = "none";
   if (panelIncidencias) panelIncidencias.style.display = "none";
-  if (panelValidar)     panelValidar.style.display     = "none";
   if (panelRamales)     panelRamales.style.display     = "none";
   enterLive_();
 }

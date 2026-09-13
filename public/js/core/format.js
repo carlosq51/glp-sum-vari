@@ -30,6 +30,20 @@ export function fmtShort_(iso) {
   }).format(d);
 }
 
+/**
+ * "YYYY-MM-DD" del día en Perú de un instante. Es el día con que se filtra
+ * por fechas (historial del ramalero): a las 21:00 de Lima ya es mañana en
+ * UTC, y cortar por el ISO crudo corría un día cada noche.
+ */
+export function diaPeru_(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Lima", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(d);
+}
+
 export function fmtFechaCreacion_(iso) {
   if (!iso) return "-";
   const d = new Date(iso);

@@ -1072,7 +1072,7 @@
 .rmGente { display: grid; gap: 7px; }
 .rmGente__row {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) minmax(120px, 190px) 70px 14px;
+  grid-template-columns: auto minmax(0, 1fr) minmax(110px, 180px) 84px 64px 14px;
   align-items: center;
   gap: 12px;
   width: 100%;
@@ -1098,6 +1098,7 @@
   white-space: nowrap;
 }
 .rmGente__quien small,
+.rmGente__prod small,
 .rmGente__tiempo small,
 .rmGente__rech small {
   display: block;
@@ -1106,9 +1107,16 @@
   color: var(--muted);
 }
 
-.rmGente__tiempo b {
-  font-size: 1.15rem;
+/* Lo que armó es el número grande; el tiempo va al lado, más chico. */
+.rmGente__prod b {
+  font-size: 1.25rem;
   font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.rmGente__tiempo b {
+  font-size: .95rem;
+  font-weight: 800;
   font-variant-numeric: tabular-nums;
   line-height: 1.1;
 }
@@ -1147,6 +1155,97 @@
 .rmHist__v { font-weight: 800; font-variant-numeric: tabular-nums; }
 
 @media (max-width: 620px) {
-  .rmGente__row { grid-template-columns: auto minmax(0, 1fr) auto 14px; }
+  .rmGente__row { grid-template-columns: auto minmax(0, 1fr) auto auto 14px; }
   .rmGente__rech { display: none; }
+}
+
+/* =====================================================================
+   18. FILTROS · rango de fechas y nombre
+   ---------------------------------------------------------------------
+   Los usan el panel del supervisor y el historial del ramalero. Los
+   atajos (Hoy / Últimos días / Este mes) reusan la píldora .ramFiltro__b.
+   ===================================================================== */
+.rmFiltros {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  border-radius: var(--radiusSm, 12px);
+  background: var(--surface2);
+  border: var(--border-w) solid var(--surfaceLine);
+}
+.rmFiltros__presets { display: flex; gap: 6px; flex-wrap: wrap; }
+.rmFiltros__fechas {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: .78rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+.rmFiltros input {
+  padding: 7px 10px;
+  border-radius: var(--radiusSm, 10px);
+  background: var(--surface);
+  border: 1px solid var(--surfaceLine);
+  color: var(--text);
+  font: inherit;
+  font-size: .82rem;
+  font-weight: 700;
+}
+.rmFiltros input:focus { outline: none; border-color: var(--accent, #3b82f6); }
+.rmFiltros__nombre { flex: 1 1 180px; min-width: 0; }
+
+/* Mientras llega otro rango, lo de antes se atenúa en vez de desaparecer. */
+#rmDatos { transition: opacity var(--dur, .18s) ease; }
+#rmDatos.is-cargando { opacity: .55; pointer-events: none; }
+
+/* Producción por día: armados en la celda, lo que sigue en la mano al lado. */
+.rmDia tfoot th,
+.rmDia tfoot td { border-top: 1px solid var(--surfaceLine); border-bottom: none; }
+.rmDia__mano { color: var(--warn); font-weight: 800; font-size: .72rem; }
+.rmDia__cero { color: var(--muted); opacity: .6; }
+
+/* Producción del ramalero, arriba de sus tarjetas terminadas. */
+.ramProd {
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  border-radius: var(--radiusSm, 12px);
+  background: var(--surface2);
+  border: var(--border-w) solid var(--surfaceLine);
+}
+.ramProd__titulo {
+  font-size: .68rem;
+  font-weight: 800;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.ramProd__cifras { display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 10px; }
+.ramProd__c {
+  display: flex;
+  flex-direction: column;
+  font-size: .66rem;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.ramProd__c b {
+  font-size: 1.5rem;
+  font-weight: 900;
+  letter-spacing: 0;
+  line-height: 1.1;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.ramProd__c.is-mal b  { color: var(--bad, #ef4444); }
+.ramProd__c.is-warn b { color: var(--warn); }
+
+@media (max-width: 620px) {
+  .rmFiltros__fechas { width: 100%; }
+  .rmFiltros__fechas input { flex: 1; min-width: 0; }
 }

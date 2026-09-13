@@ -1,25 +1,31 @@
 // =========================
 // public/js/views/ramales/comportamiento.js
-// MÉTRICAS DE LOS RAMALEROS — la lista con el tiempo promedio de cada uno
-// y el detalle que se abre al tocar un nombre.
+// MÉTRICAS DE LOS RAMALEROS — producción por persona y por día dentro de
+// un rango de fechas, y el detalle que se abre al tocar un nombre.
 //
-// QUÉ ES «TIEMPO PROMEDIO»
-// ────────────────────────
-// Minutos por ramal: de que el supervisor le repartió a que devolvió,
-// dividido entre los ramales que devolvió. Se mide por ramal y no por
-// reparto porque a uno le tocan 20 y a otro 2 — comparar horas crudas
-// premiaría al que recibe menos.
+// LAS TRES CIFRAS QUE SE MIRAN
+// ────────────────────────────
+//   · ARMADOS  lo que devolvió a oficina y pasó (devueltos − rechazados).
+//              Es la producción: lo que entró al stock.
+//   · TIEMPO   minutos por ramal: el tiempo de reloj de sus repartos
+//              cerrados (de que se le repartió a que devolvió) entre lo
+//              que devolvió. Por ramal y no por reparto porque a uno le
+//              tocan 20 y a otro 2 — comparar horas crudas premiaría al que
+//              recibe menos.
+//   · RECHAZO  % de lo devuelto que no pasó. Va siempre al lado del tiempo:
+//              medir solo velocidad consigue velocidad, y peores ramales.
 //
-// Es tiempo de reloj, no de mesa: un reparto que pasa la noche sin
-// devolverse suma la noche. Por eso el detalle muestra cada reparto con
-// su duración, para que un número raro se explique mirando su fila.
+// El tiempo es TOTAL ENTRE TOTAL (Σ minutos / Σ devueltos), en la lista, en
+// el detalle y en el promedio del taller: así el que armó 200 pesa más que
+// el que armó 2, y las tres cifras cuadran entre sí.
 //
-// La cuenta es la misma que hace `v_ramal_desempeno` (promedio de los
-// minutos por ramal de cada reparto cerrado), así que la cifra de la
-// lista y la del detalle coinciden.
+// Todo cuenta por el DÍA DEL LOTE, el que anotó el supervisor, que es como
+// se habla en el taller: «lo del 13». Un reparto del 13 devuelto el 14 es
+// producción del 13.
 //
-// Va siempre al lado del % de rechazo: medir solo velocidad consigue
-// velocidad, y peores ramales.
+// Es tiempo de reloj, no de mesa: un reparto que pasa la noche suma la
+// noche. Por eso el detalle muestra cada reparto con su duración, para que
+// un número raro se explique mirando su fila.
 // =========================
 
 import { escapeHtml } from "../../core/core.js";
@@ -30,7 +36,7 @@ const esc = escapeHtml;
 // cosa que el trío verde/ámbar/rojo de estado no hace.
 const C1 = "var(--dv-1)";
 
-// ─── Formatos (los usa también ramales.js y mi-turno.js) ─────────────
+// ─── Formatos (los usa también ramales.js, mi-turno.js y el historial) ──
 
 function num_(v, def = 0) {
   const n = Number(v);
@@ -70,9 +76,51 @@ export function fmtMinRamal(min) {
 }
 
 function fmtPct_(v) {
-  const n = num_(v);
+  const n = Math.round(num_(v) * 10) / 10;
   return Number.isInteger(n) ? `${n}%` : `${n.toFixed(1)}%`;
 }
+
+/** Primer nombre — en la cabecera de una tabla «Juan Carlos» no cabe. */
+export function corto(nombre) {
+  return String(nombre || "").trim().split(/\s+/)[0] || "—";
+}
+
+// ─── Fechas del filtro ───────────────────────────────────────────────
+
+/** "YYYY-MM-DD" de una fecha local. El taller y sus celulares están en Lima. */
+function iso_(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** Hoy, como lo quiere un <input type="date">. */
+export function hoyISO() {
+  return iso_(new Date());
+}
+
+/** Días entre dos fechas "YYYY-MM-DD", contando las dos. */
+export function diasEntre(desde, hasta) {
+  return Math.round((Date.parse(hasta) - Date.parse(desde)) / 86_400_000) + 1;
+}
+
+/**
+ * Los atajos del filtro. `semana` son los últimos `dias` contando hoy (el
+ * número viene de RAMALES_RANGO_DIAS); `mes` arranca el día 1.
+ */
+export function rangoPreset(preset, dias) {
+  const hoy = new Date();
+  if (preset === "hoy") return { desde: iso_(hoy), hasta: iso_(hoy) };
+  if (preset === "mes") return { desde: iso_(new Date(hoy.getFullYear(), hoy.getMonth(), 1)), hasta: iso_(hoy) };
+  const ini = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - (Math.max(1, dias) - 1));
+  return { desde: iso_(ini), hasta: iso_(hoy) };
+}
+
+/** «hoy», «sáb 13 sep» o «7 sep – 13 sep». */
+export function fmtRango(desde, hasta) {
+  if (desde === hasta) return desde === hoyISO() ? "hoy" : fmtDia(desde);
+  return `${fmtDia(desde, false)} – ${fmtDia(hasta, false)}`;
+}
+
+// ─── Cuentas ─────────────────────────────────────────────────────────
 
 /** Minutos que tardó un reparto, o null si sigue abierto. */
 function duracionMin_(r) {
@@ -80,17 +128,41 @@ function duracionMin_(r) {
   return (new Date(r.devuelto_at) - new Date(r.asignado_at)) / 60000;
 }
 
-/** Minutos por ramal de un reparto cerrado; null si no hay qué dividir. */
-function minPorRamal_(r) {
-  const d = duracionMin_(r);
-  return d != null && r.cantidad_devuelta > 0 ? d / r.cantidad_devuelta : null;
+/** Lo que pasó de un reparto cerrado. */
+function buenos_(r) {
+  return r.devuelto_at ? Math.max(0, (r.cantidad_devuelta || 0) - (r.cantidad_rechazada || 0)) : 0;
 }
 
-function promedio_(arr) {
-  return arr.length ? arr.reduce((a, v) => a + v, 0) / arr.length : null;
+/** Minutos por ramal de un conjunto de repartos: su tiempo total entre lo que devolvieron. */
+export function minPorRamal(repartos) {
+  let min = 0, n = 0;
+  for (const r of repartos || []) {
+    const d = duracionMin_(r);
+    if (d == null || !(r.cantidad_devuelta > 0)) continue;
+    min += d;
+    n += r.cantidad_devuelta;
+  }
+  return n ? min / n : null;
 }
 
-// ─── Lo que tiene cada uno en la mano ahora ──────────────────────────
+/**
+ * Las cifras de un conjunto de repartos (de una persona, de un día, del
+ * taller entero): armados, devueltos, rechazados, días con producción y
+ * tiempo por ramal.
+ */
+export function resumen(repartos) {
+  const out = { armados: 0, devueltos: 0, rechazados: 0, dias: new Set() };
+  for (const r of repartos || []) {
+    if (!r.devuelto_at) continue;
+    out.devueltos += r.cantidad_devuelta || 0;
+    out.rechazados += r.cantidad_rechazada || 0;
+    out.armados += buenos_(r);
+    if (r.fecha) out.dias.add(r.fecha);
+  }
+  out.tiempo = minPorRamal(repartos);
+  out.pctRechazo = out.devueltos ? (100 * out.rechazados) / out.devueltos : 0;
+  return out;
+}
 
 /** user_id → ramales repartidos y todavía sin devolver. */
 export function trabajandoPorUser(repartos) {
@@ -103,86 +175,145 @@ export function trabajandoPorUser(repartos) {
   return m;
 }
 
-/**
- * Tiempo promedio del grupo, pesado por lo que devolvió cada uno: el que
- * armó 200 pesa más que el que armó 2, que es lo que se espera de un
- * «promedio del taller».
- */
-export function tiempoPromedioGrupo(desempeno) {
-  let suma = 0, peso = 0;
-  for (const d of desempeno || []) {
-    if (d.armado_min_por_ramal == null) continue;
-    const w = num_(d.ramales_devueltos);
-    if (w <= 0) continue;
-    suma += num_(d.armado_min_por_ramal) * w;
-    peso += w;
+function porUser_(repartos) {
+  const m = new Map();
+  for (const r of repartos || []) {
+    const arr = m.get(r.user_id) || [];
+    arr.push(r);
+    m.set(r.user_id, arr);
   }
-  return peso ? suma / peso : null;
+  return m;
 }
 
-// ─── Lista de ramaleros ──────────────────────────────────────────────
+// ─── Producción por ramalero ─────────────────────────────────────────
 
 /**
- * Una fila por ramalero, tocable. El número grande es su tiempo promedio;
- * la barra lo pone contra el más lento del grupo para que la comparación
- * se lea sin hacer cuentas. Al lado, el rechazo.
+ * Una fila por ramalero, tocable, ordenada por lo que armó en el rango. El
+ * número grande es su producción, con una barra contra el que más armó
+ * para que la comparación se lea sin cuentas; al lado su tiempo y su
+ * rechazo.
  *
- * @param {object} raw respuesta de /api/ramales/panel
+ * @param {object}   o
+ * @param {object[]} o.ramaleros  [{ user_id, nombre }] ya filtrados por nombre
+ * @param {object[]} o.repartos   los del rango
+ * @param {Map}      o.enMano     user_id → ramales en la mano ahora
+ * @param {boolean}  o.filtrado   hay un filtro de nombre puesto
  */
-export function ramalerosHTML(raw) {
-  const filas = raw?.desempeno || [];
-  if (!filas.length) {
-    return `<div class="rmEmpty">
-      <span class="rmEmpty__icon">👷</span>
-      <strong>No hay ramaleros</strong>
-      Dale el módulo RAMALERO a alguien y aparecerá aquí.
-    </div>`;
+export function ramalerosHTML({ ramaleros, repartos, enMano, filtrado }) {
+  if (!ramaleros.length) {
+    return filtrado
+      ? `<div class="rmEmpty"><span class="rmEmpty__icon">🔎</span>Ningún ramalero coincide con ese nombre.</div>`
+      : `<div class="rmEmpty">
+           <span class="rmEmpty__icon">👷</span>
+           <strong>No hay ramaleros</strong>
+           Dale el módulo RAMALERO a alguien y aparecerá aquí.
+         </div>`;
   }
 
-  const trab = trabajandoPorUser(raw?.repartos);
-  const tiempos = filas.map(f => f.armado_min_por_ramal).filter(v => v != null).map(Number);
-  const max = Math.max(1, ...tiempos);
-
-  // Primero los que ya tienen tiempo medido, por lo que han armado; los
-  // que todavía no devolvieron nada van al final, por nombre.
-  const orden = [...filas].sort((a, b) => {
-    const ta = a.armado_min_por_ramal != null, tb = b.armado_min_por_ramal != null;
-    if (ta !== tb) return ta ? -1 : 1;
-    return num_(b.ramales_devueltos) - num_(a.ramales_devueltos)
-      || String(a.nombre).localeCompare(String(b.nombre));
-  });
+  const reps = porUser_(repartos);
+  const filas = ramaleros.map(p => ({
+    p,
+    s: resumen(reps.get(p.user_id)),
+    mano: enMano.get(p.user_id) || 0,
+  }));
+  const max = Math.max(1, ...filas.map(f => f.s.armados));
+  filas.sort((a, b) => b.s.armados - a.s.armados
+    || b.mano - a.mano
+    || String(a.p.nombre).localeCompare(String(b.p.nombre)));
 
   return `
     <div class="rmGente">
-      ${orden.map(d => {
-        const t = d.armado_min_por_ramal;
-        const enMano = trab.get(d.user_id) || 0;
-        const rech = num_(d.pct_rechazo);
+      ${filas.map(({ p, s, mano }) => {
         const sub = [
-          `${num_(d.ramales_devueltos)} armados`,
-          enMano ? `${enMano} trabajando` : "",
+          s.dias.size ? `${s.dias.size} ${s.dias.size === 1 ? "día" : "días"}` : "sin devoluciones",
+          mano ? `${mano} en la mano` : "",
         ].filter(Boolean).join(" · ");
 
         return `
-          <button type="button" class="rmGente__row" data-rm="ramalero" data-id="${esc(d.user_id)}">
-            <span class="rmInicial rmInicial--sm">${esc(String(d.nombre || "?").trim().charAt(0).toUpperCase())}</span>
+          <button type="button" class="rmGente__row" data-rm="ramalero" data-id="${esc(p.user_id)}">
+            <span class="rmInicial rmInicial--sm">${esc(String(p.nombre || "?").trim().charAt(0).toUpperCase())}</span>
             <span class="rmGente__quien">
-              <b>${esc(d.nombre)}</b>
+              <b>${esc(p.nombre)}</b>
               <small>${esc(sub)}</small>
             </span>
-            <span class="rmGente__tiempo">
-              <b>${t == null ? "—" : fmtMinRamal(t)}</b>
-              <small>${t == null ? "sin devoluciones" : "por ramal"}</small>
-              <span class="rmGente__bar" aria-hidden="true">${
-                t == null ? "" : `<i style="width:${(num_(t) / max) * 100}%;background:${C1}"></i>`}</span>
+            <span class="rmGente__prod">
+              <b>${s.armados}</b><small>armados</small>
+              <span class="rmGente__bar" aria-hidden="true"><i style="width:${(s.armados / max) * 100}%;background:${C1}"></i></span>
             </span>
-            <span class="rmGente__rech ${rech >= 10 ? "is-alto" : ""}">
-              ${fmtPct_(rech)}<small>rechazo</small>
+            <span class="rmGente__tiempo">
+              <b>${fmtMinRamal(s.tiempo)}</b>
+              <small>por ramal</small>
+            </span>
+            <span class="rmGente__rech ${s.pctRechazo >= 10 ? "is-alto" : ""}">
+              ${s.devueltos ? fmtPct_(s.pctRechazo) : "—"}<small>rechazo</small>
             </span>
             <span class="rmGente__ir" aria-hidden="true">›</span>
           </button>`;
       }).join("")}
     </div>`;
+}
+
+// ─── Producción por día ──────────────────────────────────────────────
+
+/**
+ * Días en filas, ramaleros en columnas, armados en cada celda. Es la tabla
+ * con que se contesta «¿cuánto sacó Andy el martes?» sin abrir a nadie. Lo
+ * que ese día se repartió y todavía no vuelve va al lado en pequeño, para
+ * que un cero no parezca un día sin trabajo.
+ */
+export function produccionDiariaHTML({ ramaleros, repartos }) {
+  const ids = new Set(ramaleros.map(r => r.user_id));
+  const reps = (repartos || []).filter(r => ids.has(r.user_id) && r.fecha);
+  if (!reps.length) {
+    return `<div class="rmEmpty"><span class="rmEmpty__icon">📅</span>No se repartió nada en estas fechas.</div>`;
+  }
+
+  // Solo las columnas de quien tuvo algo en el rango: una columna de ceros
+  // ocupa sitio y no dice nada.
+  const conAlgo = new Set(reps.map(r => r.user_id));
+  const gente = ramaleros.filter(r => conAlgo.has(r.user_id));
+  const dias = [...new Set(reps.map(r => r.fecha))].sort().reverse();
+
+  const celda = new Map();   // "fecha|uid" → { armados, abiertos }
+  for (const r of reps) {
+    const k = `${r.fecha}|${r.user_id}`;
+    const c = celda.get(k) || { armados: 0, abiertos: 0 };
+    c.armados += buenos_(r);
+    if (!r.devuelto_at) c.abiertos += (r.cantidad_asignada || 0) - (r.cantidad_devuelta || 0);
+    celda.set(k, c);
+  }
+  const txt = (c) => !c ? `<span class="rmDia__cero">—</span>`
+    : `${c.armados || (c.abiertos ? 0 : "—")}${c.abiertos ? ` <small class="rmDia__mano">+${c.abiertos}</small>` : ""}`;
+  const totDia = (f) => gente.reduce((a, g) => a + (celda.get(`${f}|${g.user_id}`)?.armados || 0), 0);
+  const totUser = (uid) => dias.reduce((a, f) => a + (celda.get(`${f}|${uid}`)?.armados || 0), 0);
+
+  return `
+    <div class="rmTableWrap">
+      <table class="rmTable rmDia">
+        <thead><tr>
+          <th>Día</th>
+          ${gente.map(g => `<th class="num" title="${esc(g.nombre)}">${esc(corto(g.nombre))}</th>`).join("")}
+          <th class="num">Total</th>
+        </tr></thead>
+        <tbody>
+          ${dias.map(f => `
+            <tr>
+              <td><b>${esc(fmtDia(f))}</b></td>
+              ${gente.map(g => `<td class="num">${txt(celda.get(`${f}|${g.user_id}`))}</td>`).join("")}
+              <td class="num"><b>${totDia(f)}</b></td>
+            </tr>`).join("")}
+        </tbody>
+        <tfoot><tr>
+          <th>Total</th>
+          ${gente.map(g => `<td class="num"><b>${totUser(g.user_id)}</b></td>`).join("")}
+          <td class="num"><b>${dias.reduce((a, f) => a + totDia(f), 0)}</b></td>
+        </tr></tfoot>
+      </table>
+    </div>
+    <span class="rmField__hint">
+      Cada celda son los armados de ese día (lo devuelto que pasó).
+      <small class="rmDia__mano">+n</small> es lo que se le repartió ese día y todavía no devuelve.
+    </span>`;
 }
 
 // ─── Detalle de un ramalero ──────────────────────────────────────────
@@ -196,55 +327,48 @@ function tile_(label, valor, estilo = "") {
 }
 
 /**
- * El detalle que se abre al tocar un nombre: cuatro cifras, el tiempo
- * por marca (un Jetour y un VW no se arman igual, y mezclarlos esconde
- * eso) y cada reparto con lo que tardó.
+ * El detalle que se abre al tocar un nombre: cuatro cifras del rango, el
+ * tiempo por marca (un Jetour y un VW no se arman igual, y mezclarlos
+ * esconde eso) y cada reparto con lo que tardó.
  *
- * @param {object} j respuesta de /api/ramales/ramalero/:id
+ * @param {object} j        respuesta de /api/ramales/ramalero/:id
+ * @param {number} enMano   lo que tiene en la mano ahora, de cualquier día
  */
-export function detalleRamaleroHTML(j) {
+export function detalleRamaleroHTML(j, enMano = 0) {
   const reps = j?.repartos || [];
   if (!reps.length) {
     return `<div class="rmEmpty">
       <span class="rmEmpty__icon">📭</span>
-      <strong>Todavía no se le ha repartido nada</strong>
-      Su tiempo aparece cuando devuelva su primer reparto.
+      <strong>No se le repartió nada en estas fechas</strong>
+      Cambia el rango arriba para ver otros días.
     </div>`;
   }
 
-  const cerrados = reps.filter(r => r.devuelto_at);
-  const conTiempo = cerrados.map(minPorRamal_).filter(v => v != null);
-  const prom = promedio_(conTiempo);
-  const armados = cerrados.reduce((a, r) => a + (r.cantidad_devuelta || 0), 0);
-  const rechazados = cerrados.reduce((a, r) => a + (r.cantidad_rechazada || 0), 0);
-  const pctRech = armados ? (100 * rechazados) / armados : 0;
-  const enMano = reps
-    .filter(r => !r.devuelto_at)
-    .reduce((a, r) => a + (r.cantidad_asignada || 0) - (r.cantidad_devuelta || 0), 0);
+  const s = resumen(reps);
 
-  // Por marca, con la misma cuenta que el promedio general.
+  // Por marca, con la misma cuenta que el total.
   const porMarca = new Map();
-  for (const r of cerrados) {
+  for (const r of reps.filter(x => x.devuelto_at)) {
     const k = r.tipo_ramal || "Sin marca";
-    const g = porMarca.get(k) || { armados: 0, tiempos: [], repartos: 0 };
-    g.armados += r.cantidad_devuelta || 0;
-    g.repartos += 1;
-    const t = minPorRamal_(r);
-    if (t != null) g.tiempos.push(t);
-    porMarca.set(k, g);
+    const arr = porMarca.get(k) || [];
+    arr.push(r);
+    porMarca.set(k, arr);
   }
-  const marcas = [...porMarca].sort((a, b) => b[1].armados - a[1].armados);
+  const marcas = [...porMarca]
+    .map(([k, arr]) => [k, arr, resumen(arr)])
+    .sort((a, b) => b[2].armados - a[2].armados);
 
-  const maxT = Math.max(1, ...conTiempo);
+  const tiempos = reps.map(r => minPorRamal([r])).filter(v => v != null);
+  const maxT = Math.max(1, ...tiempos);
   const ahora = Date.now();
 
   return `
     <div class="dashGrid">
-      ${tile_("⏱ Tiempo promedio", prom == null ? "—" : fmtMinRamal(prom))}
-      ${tile_("🔩 Armados", armados)}
-      ${tile_("🛠 Trabajando ahora", enMano, enMano > 0 ? "color:var(--warn)" : "")}
-      ${tile_("↩️ Rechazo", fmtPct_(Math.round(pctRech * 10) / 10),
-              pctRech >= 10 ? "color:var(--bad,#ef4444)" : "")}
+      ${tile_("🔩 Armados", s.armados)}
+      ${tile_("⏱ Tiempo por ramal", fmtMinRamal(s.tiempo))}
+      ${tile_("↩️ Rechazo", s.devueltos ? fmtPct_(s.pctRechazo) : "—",
+              s.pctRechazo >= 10 ? "color:var(--bad,#ef4444)" : "")}
+      ${tile_("🛠 En la mano ahora", enMano, enMano > 0 ? "color:var(--warn)" : "")}
     </div>
 
     ${marcas.length ? `
@@ -253,16 +377,17 @@ export function detalleRamaleroHTML(j) {
         <div class="rmTableWrap">
           <table class="rmTable">
             <thead><tr>
-              <th>Marca</th><th class="num">Repartos</th>
-              <th class="num">Armados</th><th class="num">Tiempo por ramal</th>
+              <th>Marca</th><th class="num">Repartos</th><th class="num">Armados</th>
+              <th class="num">Rechazados</th><th class="num">Tiempo por ramal</th>
             </tr></thead>
             <tbody>
-              ${marcas.map(([k, g]) => `
+              ${marcas.map(([k, arr, m]) => `
                 <tr>
                   <td><b>${esc(k)}</b></td>
-                  <td class="num">${g.repartos}</td>
-                  <td class="num">${g.armados}</td>
-                  <td class="num">${fmtMinRamal(promedio_(g.tiempos))}</td>
+                  <td class="num">${arr.length}</td>
+                  <td class="num">${m.armados}</td>
+                  <td class="num">${m.rechazados || "—"}</td>
+                  <td class="num">${fmtMinRamal(m.tiempo)}</td>
                 </tr>`).join("")}
             </tbody>
           </table>
@@ -280,7 +405,7 @@ export function detalleRamaleroHTML(j) {
           <tbody>
             ${reps.map(r => {
               const abierto = !r.devuelto_at;
-              const t = minPorRamal_(r);
+              const t = minPorRamal([r]);
               const dur = abierto
                 ? (ahora - new Date(r.asignado_at)) / 60000
                 : duracionMin_(r);
