@@ -1,7 +1,7 @@
 // =========================
 // public/js/views/admin/inventario.js
 // Sub-módulo ADMIN · Inventario de herramientas
-//   4 vistas: Inventario por técnico · Totales · Kits estándar · Catálogo
+//   5 vistas: Por técnico · Existencias · Resumen · Kits estándar · Catálogo
 // Además: traspaso entre técnicos, asignación masiva y búsqueda por
 // código de empresa / número de serie (SN).
 // CRUD directo contra Supabase (mismo patrón que el resto del admin).
@@ -55,6 +55,12 @@ const INV = {
   //   "alertas" → lo agotado, bajo mínimo o descuadrado (qué reponer)
   //   "taller"  → lo malogrado y lo descontinuado (qué sacar de circulación)
   stockVista: "todo",
+  // Resumen: filtro y vista de la tabla, y la proyección de técnicos nuevos.
+  resFiltro: "",
+  resVista: "todo",      // "todo" | "libres" | "falla"
+  kitItems: [],          // inventario_kit_items (todos los kits)
+  proy: {},              // kit_id → técnicos nuevos proyectados
+  proyReponer: false,    // ¿sumar la reposición de los técnicos actuales?
 };
 
 const ESTADOS = ["OK", "FALTA", "MAL", "NO_STOCK"];
@@ -563,7 +569,7 @@ export async function renderInventarioTab(wrap) {
 const SUBS_ = [
   { id: "tecnico",  icon: "users",         label: "Por técnico" },
   { id: "stock",    icon: "trayIn",        label: "Existencias" },
-  { id: "totales",  icon: "chart",         label: "Totales" },
+  { id: "totales",  icon: "chart",         label: "Resumen" },
   { id: "kits",     icon: "box",           label: "Kits" },
   { id: "catalogo", icon: "clipboardList", label: "Catálogo" },
 ];
@@ -3194,99 +3200,442 @@ async function exportarStockXls_() {
 
 
 // =====================================================================
-//  SUB-VISTA · TOTALES (contador global de herramientas)
-//  Cuántas unidades hay de cada herramienta en la calle, en manos de
-//  cuántos técnicos y en qué estado. Más la bitácora de movimientos.
+//  SUB-VISTA · RESUMEN
+//  Tres preguntas, en el orden en que se hacen:
+//    1. ¿Qué hay?  con técnicos (en uso) · libres · faltan · malogradas
+//    2. ¿A cuántos técnicos más alcanza lo libre?   (capacidad por kit)
+//    3. ¿Qué hay que pedir para N técnicos nuevos?  (solicitud)
+//  Más la bitácora de movimientos al pie.
+//
+//  «Con técnicos» cuenta SOLO lo que está en estado OK. Una herramienta
+//  marcada Falta o Malo figura en la hoja pero no trabaja: sumarla como
+//  asignada haría que el resumen diera por equipado al taller justo en lo
+//  que hay que reponer.
 // =====================================================================
-async function renderTotalesSub_(filtro = "", recargar = true) {
+
+// Estados de la hoja que significan «debería tenerla y no la tiene en la
+// mano»: Falta (se perdió) y No stock (nunca se le llegó a entregar).
+const ESTADOS_FALTA_ = ["FALTA", "NO_STOCK"];
+
+// Una fila por herramienta con lo que hay en cada pila. Entra lo que está
+// en alguna hoja y también lo del catálogo que solo está en el almacén.
+// Los ítems de texto libre no tienen almacén: sus libres quedan en null.
+function resumenPorHerr_() {
+  const userByHoja = new Map(INV.hojas.map(h => [h.id, h.user_id]));
+  const map = new Map();
+  const fila_ = (key, h, nombre) => {
+    let g = map.get(key);
+    if (!g) {
+      g = { key, h, nombre, asignadas: 0, faltan: 0, malTec: 0,
+            libres: h ? 0 : null, malAlm: 0, tecnicos: new Set() };
+      map.set(key, g);
+    }
+    return g;
+  };
+  INV.todosItems.forEach(it => {
+    const h = it.herramienta_id ? INV.catMap.get(it.herramienta_id) : null;
+    const g = fila_(claveItem_(it), h, nombreItem(it));
+    const n = cantidadDe_(it);
+    if (it.estado === "OK") {
+      g.asignadas += n;
+      const uid = userByHoja.get(it.inventario_id);
+      if (uid) g.tecnicos.add(uid);
+    } else if (it.estado === "MAL") g.malTec += n;
+    else if (ESTADOS_FALTA_.includes(it.estado)) g.faltan += n;
+  });
+  INV.catalogo.forEach(h => {
+    const libres = libresDe_(h.id), malAlm = malogradasDe_(h.id);
+    if (!libres && !malAlm && !map.has(h.id)) return;
+    const g = fila_(h.id, h, h.nombre);
+    g.libres = libres;
+    g.malAlm = malAlm;
+  });
+  return [...map.values()].map(g => {
+    g.malogradas = g.malTec + g.malAlm;
+    g.operativas = g.asignadas + Math.max(0, g.libres || 0);
+    return g;
+  });
+}
+
+function kitsActivos_() {
+  return INV.kits.filter(k => k.activo !== false).sort((a, b) =>
+    (a.especialidad || "").localeCompare(b.especialidad || "") || a.nombre.localeCompare(b.nombre));
+}
+function nuevosDeKit_(kitId) {
+  return Math.max(0, Math.floor(Number(INV.proy[kitId]) || 0));
+}
+
+// Lo que necesita UN técnico de ese kit: herramienta_id → cantidad.
+// Las descontinuadas no cuentan: ya no se entregan aunque sigan en el kit.
+function necesidadKit_(kitId) {
+  const out = new Map();
+  INV.kitItems.forEach(ki => {
+    if (ki.kit_id !== kitId) return;
+    const h = INV.catMap.get(ki.herramienta_id);
+    if (!h || descontinuada_(h)) return;
+    const q = Math.max(1, Number(ki.cantidad_esperada) || 1);
+    out.set(ki.herramienta_id, (out.get(ki.herramienta_id) || 0) + q);
+  });
+  return out;
+}
+
+// ¿A cuántos técnicos de este kit alcanza lo libre? El kit se completa
+// hasta que se acaba la herramienta más escasa, así que es el mínimo
+// herramienta por herramienta. Y dice qué faltaría para equipar a uno más.
+function capacidadKit_(kitId) {
+  const nec = necesidadKit_(kitId);
+  if (!nec.size) return null;
+  const libre_ = hid => Math.max(0, libresDe_(hid));
+  let cap = Infinity;
+  nec.forEach((q, hid) => { cap = Math.min(cap, Math.floor(libre_(hid) / q)); });
+  const faltanUnoMas = [];
+  nec.forEach((q, hid) => {
+    const deficit = (cap + 1) * q - libre_(hid);
+    if (deficit > 0) faltanUnoMas.push({ h: INV.catMap.get(hid), deficit });
+  });
+  faltanUnoMas.sort((a, b) => b.deficit - a.deficit || a.h.nombre.localeCompare(b.h.nombre));
+  return { cap, herramientas: nec.size, faltanUnoMas };
+}
+
+// Solicitud: lo que piden los técnicos nuevos (kit × cuántos) más, si se
+// marcó, la reposición de lo que a los actuales les falta o se les rompió.
+// Se cubre primero con lo libre del almacén; lo que no alcanza se pide.
+function calcularSolicitud_() {
+  const map = new Map();
+  const sumar_ = (hid, campo, n) => {
+    const h = INV.catMap.get(hid);
+    if (!h || descontinuada_(h) || !n) return;
+    let e = map.get(hid);
+    if (!e) { e = { h, nuevos: 0, reposicion: 0 }; map.set(hid, e); }
+    e[campo] += n;
+  };
+  kitsActivos_().forEach(k => {
+    const n = nuevosDeKit_(k.id);
+    if (n) necesidadKit_(k.id).forEach((q, hid) => sumar_(hid, "nuevos", q * n));
+  });
+  if (INV.proyReponer) {
+    INV.todosItems.forEach(it => {
+      if (it.herramienta_id && it.estado !== "OK") sumar_(it.herramienta_id, "reposicion", cantidadDe_(it));
+    });
+  }
+  return [...map.values()].map(e => {
+    const necesarias = e.nuevos + e.reposicion;
+    const libres = Math.max(0, libresDe_(e.h.id));
+    return { ...e, necesarias, libres, pedir: Math.max(0, necesarias - libres) };
+  }).sort((a, b) => b.pedir - a.pedir ||
+    (a.h.categoria || "").localeCompare(b.h.categoria || "") || a.h.nombre.localeCompare(b.h.nombre));
+}
+
+async function renderTotalesSub_(recargar = true) {
   const box = $id("invSubContent");
   if (!box) return;
   if (recargar) {
-    box.innerHTML = `<div class="small muted" style="padding:12px;">Calculando totales…</div>`;
-    await cargarSnapshot_();
+    box.innerHTML = `<div class="invLoading">${icon("chart", 20)} Armando el resumen…</div>`;
+    const [, kitItems] = await Promise.all([
+      cargarSnapshot_(),
+      supabaseGet("inventario_kit_items").catch(() => []),
+    ]);
+    INV.kitItems = kitItems || [];
   }
 
-  const userByHoja = new Map(INV.hojas.map(h => [h.id, h.user_id]));
+  const filas = resumenPorHerr_();
+  const suma_ = f => filas.reduce((n, g) => n + f(g), 0);
+  const asignadas  = suma_(g => g.asignadas);
+  const libres     = suma_(g => Math.max(0, g.libres || 0));
+  const faltan     = suma_(g => g.faltan);
+  const malogradas = suma_(g => g.malogradas);
+  const tecEquipados = new Set(filas.flatMap(g => [...g.tecnicos])).size;
+  const conFalla = filas.filter(g => g.faltan || g.malogradas).length;
+  const conLibres = filas.filter(g => g.libres > 0).length;
 
-  // Agrupar TODOS los ítems de TODAS las hojas por herramienta.
-  const grupos = new Map();
-  INV.todosItems.forEach(it => {
-    const key = claveItem_(it);
-    if (!grupos.has(key)) {
-      const h = it.herramienta_id ? INV.catMap.get(it.herramienta_id) : null;
-      grupos.set(key, {
-        nombre: nombreItem(it),
-        categoria: h?.categoria || (it.herramienta_id ? "" : "LIBRE"),
-        unidades: 0, tecnicos: new Set(), conCodigo: 0,
-        porEstado: {},
-      });
-    }
-    const g = grupos.get(key);
-    g.unidades += cantidadDe_(it);
-    const uid = userByHoja.get(it.inventario_id);
-    if (uid) g.tecnicos.add(uid);
-    if (tieneCodigo_(it)) g.conCodigo++;
-    g.porEstado[it.estado] = (g.porEstado[it.estado] || 0) + cantidadDe_(it);
-  });
-
-  const q = filtro.trim().toLowerCase();
-  const lista = [...grupos.values()]
-    .filter(g => !q || `${g.categoria} ${g.nombre}`.toLowerCase().includes(q))
-    .sort((a, b) => b.unidades - a.unidades || a.nombre.localeCompare(b.nombre));
-
-  const totalUnidades = INV.todosItems.reduce((s, it) => s + cantidadDe_(it), 0);
-  const conteoEstado = ESTADOS.reduce((acc, e) => {
-    acc[e] = INV.todosItems.filter(it => it.estado === e).reduce((s, it) => s + cantidadDe_(it), 0);
-    return acc;
-  }, {});
-  const identificadas = INV.todosItems.filter(tieneCodigo_).length;
-
-  const filas = lista.map(g => `
-    <tr>
-      <td>${esc(g.nombre)}${g.categoria ? `<span class="invSearchCat" style="margin-left:6px;">${esc(g.categoria)}</span>` : ""}</td>
-      <td style="text-align:center;"><strong>${g.unidades}</strong></td>
-      <td style="text-align:center;">${g.tecnicos.size}</td>
-      <td style="text-align:center;">${g.conCodigo || `<span class="small muted">—</span>`}</td>
-      <td>${ESTADOS.filter(e => g.porEstado[e]).map(e =>
-        `${estadoBadge(e)}<span class="invEstadoN">×${g.porEstado[e]}</span>`).join(" ")}</td>
-    </tr>`).join("");
+  const kits = kitsActivos_();
+  const kitsHtml = kits.map(k => {
+    const c = capacidadKit_(k.id);
+    const n = nuevosDeKit_(k.id);
+    return `
+      <div class="invProyKit">
+        <div class="invProyKitHead">
+          <div class="invItemText">
+            <span class="invItemLabel">${esc(k.nombre)}</span>
+            <div class="invItemMeta">
+              <span>${esc(k.especialidad || "")}</span>
+              <span>${c ? `${c.herramientas} herramienta(s) por técnico` : "kit vacío"}</span>
+            </div>
+          </div>
+          <label class="invProyInput" title="Cuántos técnicos nuevos de este kit vienen">
+            <span>Nuevos</span>
+            <input type="number" min="0" step="1" inputmode="numeric" class="invProyN"
+              data-kid="${esc(k.id)}" value="${n || ""}" placeholder="0">
+          </label>
+        </div>
+        ${c ? `
+          <div class="invProyCap">
+            <span class="invProyCapN${c.cap ? "" : " invProyCapN--cero"}">${c.cap}</span>
+            <span>técnico(s) se pueden equipar hoy con el kit completo, solo con lo libre</span>
+          </div>
+          ${c.faltanUnoMas.length ? `
+            <div class="invProyFalta">
+              <span>Para ${c.cap ? "uno más" : "el primero"} falta:</span>
+              ${c.faltanUnoMas.slice(0, 5).map(f =>
+                `<span class="invProyChip">${esc(f.h.nombre)} <strong>×${f.deficit}</strong></span>`).join("")}
+              ${c.faltanUnoMas.length > 5 ? `<span>y ${c.faltanUnoMas.length - 5} más</span>` : ""}
+            </div>` : ""}`
+        : `<p class="invProyVacio">Agrégale herramientas en la pestaña Kits para poder proyectar.</p>`}
+      </div>`;
+  }).join("");
 
   box.innerHTML = `
-    <p class="small muted">Todo lo entregado, sumado por herramienta. Sirve para saber cuántas hay en la calle y en qué estado.</p>
-    <div class="invResumen">
-      <span class="invResumenChip">Unidades totales <strong>${totalUnidades}</strong></span>
-      <span class="invResumenChip">Herramientas distintas <strong>${grupos.size}</strong></span>
-      <span class="invResumenChip">Técnicos con hoja <strong>${INV.hojas.length}</strong></span>
-      <span class="invResumenChip">Con código/SN <strong>${identificadas}</strong></span>
-      ${ESTADOS.map(e => `<span class="invResumenChip">${ESTADO_LABEL[e]} <strong>${conteoEstado[e]}</strong></span>`).join("")}
-    </div>
-    <div class="invCatToolbar" style="margin-top:12px;">
-      <div class="adminSearchWrap" style="flex:1;min-width:200px;">
-        <span class="adminSearchIcon" aria-hidden="true">${icon("search", 16)}</span>
-        <input id="invTotFiltro" type="text" placeholder="Filtrar herramienta…" autocomplete="off" value="${esc(filtro)}">
+    <section class="invPanel">
+      <header class="invPanelHead">
+        <div>
+          <h3 class="invPanelTitle">${icon("chart", 18)} Resumen de herramientas</h3>
+          <p class="invPanelSub">
+            <strong>Con técnicos</strong> son las que el técnico tiene y funcionan (OK).
+            <strong>Libres</strong> son las sanas del almacén, listas para entregar.
+            Lo marcado como <strong>Falta</strong> / No stock o <strong>Malo</strong> no cuenta en ninguna de las dos.
+          </p>
+        </div>
+        <div class="invPanelActions">
+          <button id="invTotExcel" class="invBtn">${icon("download", 15)} Excel general</button>
+          <button id="invTotRefresh" class="invBtn invBtn--icon" title="Actualizar">${icon("refresh", 15)}</button>
+        </div>
+      </header>
+
+      <div class="invKpis">
+        ${kpiHtml_(asignadas + libres, "Operativas", "total", "Con técnicos + libres: todo lo que sirve hoy")}
+        ${kpiHtml_(asignadas, "Con técnicos", "asig", `En uso (estado OK) · ${tecEquipados} técnico(s)`)}
+        ${kpiHtml_(libres, "Libres", "libre", "Sanas en el almacén, listas para entregar")}
+        ${kpiHtml_(faltan, "Faltan", faltan ? "danger" : "", "Marcadas Falta o No stock en las hojas: el técnico no las tiene")}
+        ${kpiHtml_(malogradas, "Malogradas", malogradas ? "mal" : "", "Marcadas Malo en las hojas + rotas en el almacén")}
+        ${kpiHtml_(INV.hojas.length, "Técnicos con hoja", "", "Técnicos que tienen inventario registrado")}
       </div>
-      <button id="invTotExcel" class="adminBtnGhost">${icon("download", 14)} Excel general</button>
-      <button id="invTotRefresh" class="adminBtnGhost">${icon("refresh", 14)} Actualizar</button>
-    </div>
-    <div class="adminTableScroll">
-      <table class="adminTable">
-        <thead><tr><th>Herramienta</th><th style="text-align:center;">Unidades</th><th style="text-align:center;">Técnicos</th><th style="text-align:center;">Con código</th><th>Estados</th></tr></thead>
-        <tbody>${filas || `<tr><td colspan="5" class="small muted" style="padding:12px;">Sin herramientas entregadas.</td></tr>`}</tbody>
-      </table>
-    </div>
-    <div id="invMovBox" style="margin-top:18px;"></div>
+
+      ${stockDisponible_() ? "" : `<div class="invNota invNota--warn">
+        ${icon("alertTriangle", 15)}
+        <span>Existencias todavía no está activo, así que las <strong>libres</strong> salen en 0 y la
+        proyección no puede contar con el almacén. Ejecuta <code>supabase/inventario-stock.sql</code>.</span>
+      </div>`}
+
+      <div class="invToolbar">
+        <div class="invSegmented" role="tablist">
+          <button class="invSeg invResSeg${INV.resVista === "todo" ? " invSegOn" : ""}" data-vista="todo">
+            Todo <span class="invSegN">${filas.length}</span>
+          </button>
+          <button class="invSeg invResSeg${INV.resVista === "libres" ? " invSegOn" : ""}" data-vista="libres"
+            title="Las que tienen unidades libres para entregar">
+            Con libres <span class="invSegN">${conLibres}</span>
+          </button>
+          <button class="invSeg invResSeg${INV.resVista === "falla" ? " invSegOn" : ""}" data-vista="falla"
+            title="Las que tienen unidades que faltan o están malogradas">
+            Faltan o malogradas <span class="invSegN">${conFalla}</span>
+          </button>
+        </div>
+        <div class="invSearch">
+          <span class="invSearchIcon" aria-hidden="true">${icon("search", 16)}</span>
+          <input id="invTotFiltro" type="text" autocomplete="off" value="${esc(INV.resFiltro)}"
+            placeholder="Filtrar herramienta o categoría…">
+        </div>
+      </div>
+      <div id="invResTabla"></div>
+    </section>
+
+    <section class="invPanel">
+      <header class="invPanelHead">
+        <div>
+          <h3 class="invPanelTitle">${icon("users", 18)} Técnicos nuevos</h3>
+          <p class="invPanelSub">
+            Cada kit dice a cuántos técnicos más alcanza lo <strong>libre</strong> de hoy. Escribe cuántos
+            técnicos nuevos vienen en cada kit y abajo sale qué hay que <strong>solicitar</strong>.
+            Si dos kits comparten herramientas, cada tarjeta las cuenta como propias: la solicitud sí las combina.
+          </p>
+        </div>
+      </header>
+      ${kits.length
+        ? `<div class="invProyKits">${kitsHtml}</div>`
+        : `<div class="invNota">${icon("box", 15)}<span>No hay kits estándar. Créalos en la pestaña Kits para proyectar.</span></div>`}
+      <label class="invCheck">
+        <input type="checkbox" id="invProyReponer"${INV.proyReponer ? " checked" : ""}>
+        <span>Sumar también la reposición de los técnicos actuales (lo marcado Falta, No stock o Malo)</span>
+      </label>
+      <div id="invSolBox"></div>
+    </section>
+
+    <div id="invMovBox" class="invPanel invPanel--flush"></div>
   `;
+
+  pintarResumenTabla_(filas);
+  pintarSolicitud_();
 
   const filtroEl = $id("invTotFiltro");
   filtroEl?.addEventListener("input", e => {
-    // Re-render sobre el snapshot ya cargado (sin ir a la red por tecla).
-    renderTotalesSub_(e.target.value, false);
-    const nuevo = $id("invTotFiltro");
-    if (nuevo) { nuevo.focus(); nuevo.setSelectionRange(nuevo.value.length, nuevo.value.length); }
+    // Sobre el snapshot ya cargado: sin ir a la red por tecla.
+    INV.resFiltro = e.target.value;
+    pintarResumenTabla_(filas);
+  });
+  box.querySelectorAll(".invResSeg").forEach(b => b.addEventListener("click", () => {
+    INV.resVista = b.dataset.vista;
+    box.querySelectorAll(".invResSeg").forEach(x => x.classList.toggle("invSegOn", x === b));
+    pintarResumenTabla_(filas);
+  }));
+  box.querySelectorAll(".invProyN").forEach(inp => inp.addEventListener("input", () => {
+    INV.proy[inp.dataset.kid] = inp.value;
+    pintarSolicitud_();
+  }));
+  $id("invProyReponer")?.addEventListener("change", e => {
+    INV.proyReponer = e.target.checked;
+    pintarSolicitud_();
   });
   $id("invTotExcel")?.addEventListener("click", exportarGeneralXls_);
-  $id("invTotRefresh")?.addEventListener("click", () => renderTotalesSub_(filtroEl?.value || ""));
+  $id("invTotRefresh")?.addEventListener("click", () => renderTotalesSub_());
   pintarMovimientos_();
+}
+
+function pintarResumenTabla_(filas) {
+  const box = $id("invResTabla");
+  if (!box) return;
+  const q = (INV.resFiltro || "").trim().toLowerCase();
+  const lista = filas
+    .filter(g => INV.resVista === "libres" ? g.libres > 0
+               : INV.resVista === "falla"  ? (g.faltan > 0 || g.malogradas > 0)
+               : true)
+    .filter(g => !q || `${g.h?.categoria || ""} ${g.nombre}`.toLowerCase().includes(q))
+    .sort((a, b) => b.operativas - a.operativas || a.nombre.localeCompare(b.nombre));
+
+  const filaHtml_ = g => {
+    const h = g.h || { nombre: g.nombre, categoria: "Texto libre" };
+    const libresTd = g.libres === null
+      ? `<td class="invTdNum invTdZero" title="Texto libre: no está en el catálogo, no tiene almacén">—</td>`
+      : numCell_(g.libres, g.libres < 0 ? "invNumFalta" : "invNumOk");
+    const malTd = g.malogradas
+      ? `<td class="invTdNum" title="${g.malTec} en hojas de técnicos · ${g.malAlm} en el almacén"><span class="invNumMal">${g.malogradas}</span></td>`
+      : numCell_(0);
+    return `
+      <tr class="invRow${g.faltan ? " invRow--bajo" : ""}">
+        <td class="invTdMain">
+          <div class="invItemName">
+            ${tileHtml_(h)}
+            <div class="invItemText">
+              <div class="invItemTop">
+                <span class="invItemLabel">${esc(g.h ? detalleDe_(g.h) : g.nombre)}</span>
+                ${g.h && descontinuada_(g.h) ? `<span class="invBadge invBadge--muted">Descontinuada</span>` : ""}
+              </div>
+              <div class="invItemMeta"><span>${esc(h.categoria || "")}</span></div>
+            </div>
+          </div>
+        </td>
+        ${numCell_(g.asignadas)}
+        ${libresTd}
+        ${numCell_(g.faltan, "invNumFalta")}
+        ${malTd}
+        ${numCell_(g.tecnicos.size)}
+      </tr>`;
+  };
+
+  box.innerHTML = `
+    <div class="invTableWrap">
+      <table class="invTable">
+        <thead><tr>
+          <th class="invThMain">Herramienta</th>
+          <th class="invThNum" title="En manos de técnicos y en estado OK">Con técnicos</th>
+          <th class="invThNum" title="Sanas en el almacén, listas para entregar">Libres</th>
+          <th class="invThNum" title="Marcadas Falta o No stock en las hojas">Faltan</th>
+          <th class="invThNum" title="Marcadas Malo en las hojas + rotas en el almacén">Malog.</th>
+          <th class="invThNum" title="Cuántos técnicos la tienen en uso">Técnicos</th>
+        </tr></thead>
+        <tbody>${lista.map(filaHtml_).join("") || filaVaciaHtml_(6, q
+          ? `Ninguna herramienta coincide con “${esc(INV.resFiltro)}”.`
+          : "No hay herramientas en esta vista.")}</tbody>
+      </table>
+    </div>
+    <p class="invTableFoot">Mostrando <strong>${lista.length}</strong> de ${filas.length} herramientas.</p>`;
+}
+
+function pintarSolicitud_() {
+  const box = $id("invSolBox");
+  if (!box) return;
+  const lista = calcularSolicitud_();
+  const nuevos = kitsActivos_().reduce((n, k) => n + nuevosDeKit_(k.id), 0);
+  if (!lista.length) {
+    box.innerHTML = `<div class="invTableEmpty invSolVacio">
+      ${nuevos || INV.proyReponer
+        ? "No hay nada que pedir: los kits elegidos no tienen herramientas o no hay faltantes que reponer."
+        : "Escribe cuántos técnicos nuevos vienen en cada kit y aquí sale la lista de lo que hay que solicitar."}
+    </div>`;
+    return;
+  }
+  const tot_ = f => lista.reduce((n, e) => n + f(e), 0);
+  const necesarias = tot_(e => e.necesarias);
+  const pedir = tot_(e => e.pedir);
+  const cubiertas = necesarias - pedir;
+  const aPedir = lista.filter(e => e.pedir > 0).length;
+  const para = [
+    nuevos ? `${nuevos} técnico(s) nuevo(s)` : "",
+    INV.proyReponer ? "la reposición de los actuales" : "",
+  ].filter(Boolean).join(" y ");
+
+  box.innerHTML = `
+    <div class="invSolHead">
+      <p>Para <strong>${esc(para)}</strong> se necesitan <strong>${necesarias}</strong> unidad(es) de
+        ${lista.length} herramienta(s). Con lo libre se cubren <strong>${cubiertas}</strong>;
+        ${pedir ? `hay que solicitar <strong class="invNumFalta">${pedir}</strong> de ${aPedir} herramienta(s).`
+                : `<strong class="invNumOk">alcanza con lo que hay</strong>, no hace falta pedir nada.`}</p>
+      <button id="invSolExcel" class="invBtn invBtn--primary">${icon("download", 15)} Excel de solicitud</button>
+    </div>
+    <div class="invTableWrap">
+      <table class="invTable">
+        <thead><tr>
+          <th class="invThMain">Herramienta</th>
+          <th class="invThNum" title="Kit × técnicos nuevos">Nuevos</th>
+          ${INV.proyReponer ? `<th class="invThNum" title="Falta, No stock o Malo en las hojas actuales">Reposición</th>` : ""}
+          <th class="invThNum">Necesarias</th>
+          <th class="invThNum" title="Sanas en el almacén">Libres hoy</th>
+          <th class="invThNum">A solicitar</th>
+        </tr></thead>
+        <tbody>${lista.map(e => `
+          <tr class="invRow${e.pedir ? " invRow--agotado" : ""}">
+            <td class="invTdMain">
+              <div class="invItemName">
+                ${tileHtml_(e.h)}
+                <div class="invItemText">
+                  <span class="invItemLabel">${esc(detalleDe_(e.h))}</span>
+                  <div class="invItemMeta"><span>${esc(e.h.categoria || "")}</span></div>
+                </div>
+              </div>
+            </td>
+            ${numCell_(e.nuevos)}
+            ${INV.proyReponer ? numCell_(e.reposicion) : ""}
+            <td class="invTdNum"><strong>${e.necesarias}</strong></td>
+            ${numCell_(e.libres, "invNumOk")}
+            <td class="invTdNum">${e.pedir
+              ? `<span class="invNumPedir">${e.pedir}</span>`
+              : `<span class="invBadge invBadge--ok">Cubierto</span>`}</td>
+          </tr>`).join("")}</tbody>
+      </table>
+    </div>`;
+  $id("invSolExcel")?.addEventListener("click", exportarSolicitudXls_);
+}
+
+function exportarSolicitudXls_() {
+  const lista = calcularSolicitud_();
+  if (!lista.length) { invMsg("No hay nada que solicitar todavía.", true); return; }
+  const partes = kitsActivos_().filter(k => nuevosDeKit_(k.id))
+    .map(k => `${nuevosDeKit_(k.id)} × ${k.nombre}`);
+  if (INV.proyReponer) partes.push("reposición de técnicos actuales");
+  const tot_ = f => lista.reduce((n, e) => n + f(e), 0);
+  exportXls_({
+    filename: `solicitud_herramientas_${fechaArchivo_()}.xls`,
+    sheets: [{
+      nombre: "Solicitud",
+      titulo: `Solicitud de herramientas · ${fechaArchivo_()} · ${partes.join(" + ")}`,
+      headers: ["Herramienta", "Categoría", "A solicitar", "Necesarias", "Para nuevos", "Reposición", "Libres hoy"],
+      rows: [
+        ...lista.map(e => [e.h.nombre, e.h.categoria || "", e.pedir, e.necesarias, e.nuevos, e.reposicion, e.libres]),
+        [],
+        ["TOTAL", "", tot_(e => e.pedir), tot_(e => e.necesarias), tot_(e => e.nuevos), tot_(e => e.reposicion), ""],
+      ],
+    }],
+  });
+  invMsg("Excel de solicitud descargado.");
 }
 
 // Bitácora: últimos traspasos/asignaciones. Si la tabla no existe todavía
