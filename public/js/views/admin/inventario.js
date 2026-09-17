@@ -3776,35 +3776,37 @@ function exportarTecnicoXls_(user, inv) {
 async function exportarGeneralXls_() {
   invMsg("Armando el Excel general…");
   try {
-    await cargarSnapshot_();
+    const [, kitItems] = await Promise.all([
+      cargarSnapshot_(),
+      supabaseGet("inventario_kit_items").catch(() => []),
+    ]);
+    INV.kitItems = kitItems || [];
     const itemsByHoja = new Map();
     INV.todosItems.forEach(it => {
       if (!itemsByHoja.has(it.inventario_id)) itemsByHoja.set(it.inventario_id, []);
       itemsByHoja.get(it.inventario_id).push(it);
     });
 
-    // 1) Resumen: cuántas unidades de cada herramienta hay en la calle.
-    const porHerr = new Map();
-    INV.todosItems.forEach(it => {
-      const key = claveItem_(it);
-      if (!porHerr.has(key)) {
-        porHerr.set(key, {
-          nombre: nombreItem(it),
-          categoria: it.herramienta_id ? (INV.catMap.get(it.herramienta_id)?.categoria || "") : "Libre",
-          unidades: 0, tecnicos: new Set(), conCodigo: 0, porEstado: {},
-        });
-      }
-      const g = porHerr.get(key);
-      g.unidades += cantidadDe_(it);
-      const hoja = INV.hojas.find(h => h.id === it.inventario_id);
-      if (hoja) g.tecnicos.add(hoja.user_id);
-      if (tieneCodigo_(it)) g.conCodigo++;
-      g.porEstado[it.estado] = (g.porEstado[it.estado] || 0) + cantidadDe_(it);
+    // 1) Resumen: el mismo criterio que la pestaña Resumen — con técnicos
+    //    es solo lo OK; Falta/No stock y Malo van en sus columnas.
+    const resumen = resumenPorHerr_()
+      .sort((a, b) => b.operativas - a.operativas || a.nombre.localeCompare(b.nombre))
+      .map(g => [
+        g.nombre, g.h ? (g.h.categoria || "") : "Libre",
+        g.asignadas, g.libres === null ? "" : g.libres, g.operativas,
+        g.faltan, g.malogradas, g.tecnicos.size,
+      ]);
+
+    // 1b) A cuántos técnicos más alcanza lo libre, kit por kit.
+    const capacidad = kitsActivos_().map(k => {
+      const c = capacidadKit_(k.id);
+      return [
+        k.nombre, k.especialidad || "",
+        c ? c.herramientas : 0,
+        c ? c.cap : "",
+        c ? c.faltanUnoMas.map(f => `${f.h.nombre} ×${f.deficit}`).join(" · ") : "Kit vacío",
+      ];
     });
-    const resumen = [...porHerr.values()]
-      .sort((a, b) => b.unidades - a.unidades || a.nombre.localeCompare(b.nombre))
-      .map(g => [g.nombre, g.categoria, g.unidades, g.tecnicos.size, g.conCodigo,
-        ...ESTADOS.map(e => g.porEstado[e] || 0)]);
 
     // 2) Una fila por técnico (quién tiene cuánto y en qué estado).
     const porTecnico = INV.usuarios.map(u => {
@@ -3832,9 +3834,15 @@ async function exportarGeneralXls_() {
       {
         nombre: "Resumen",
         titulo: `Inventario general de herramientas · ${fechaArchivo_()}`,
-        headers: ["Herramienta", "Categoría", "Unidades", "Técnicos", "Con código/SN",
-          ...ESTADOS.map(e => ESTADO_LABEL[e])],
+        headers: ["Herramienta", "Categoría", "Con técnicos (OK)", "Libres", "Operativas",
+          "Faltan (Falta + No stock)", "Malogradas", "Técnicos que la usan"],
         rows: resumen,
+      },
+      {
+        nombre: "Capacidad por kit",
+        titulo: "A cuántos técnicos alcanza lo libre hoy (cada kit por separado)",
+        headers: ["Kit", "Especialidad", "Herramientas por técnico", "Técnicos que alcanzan", "Para uno más falta"],
+        rows: capacidad,
       },
       {
         nombre: "Por técnico",
