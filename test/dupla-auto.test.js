@@ -135,6 +135,29 @@ describe("pareoCarroExtra_ · formación", () => {
   });
 });
 
+// El interruptor de Admin (DESPACHO_DUPLA_AUTO) apaga la regla pasando meta 0.
+// Lo que NO puede apagar es la limpieza: si al apagarla a media jornada dejara
+// de deshacer las que ya están vivas, el ayudante se quedaría atado al carro de
+// otro para siempre — sin carro propio, sin botón de avanzar y sin nada en
+// pantalla que lo explicara.
+describe("pareoCarroExtra_ · la regla apagada (meta 0) sigue limpiando", () => {
+  const activa = { id: "d1", lider_user_id: "franz", miembros: ["franz", "ana"], motivo: motivoDuplaAuto_("VIN3") };
+
+  it("deshace la dupla cuyo carro ya se cerró, aunque no forme ninguna", () => {
+    const { formar, disolver } = pareoCarroExtra_(base({
+      meta: 0, duplasVivas: [activa], abiertas: new Map(),
+    }));
+    expect(formar).toEqual([]);
+    expect(disolver.map(d => d.id)).toEqual(["d1"]);
+  });
+
+  it("no rompe la que sigue trabajando su carro", () => {
+    const { formar, disolver } = pareoCarroExtra_(base({ meta: 0, duplasVivas: [activa] }));
+    expect(formar).toEqual([]);
+    expect(disolver).toEqual([]);
+  });
+});
+
 describe("pareoCarroExtra_ · disolución", () => {
   const activa = { id: "d1", lider_user_id: "franz", miembros: ["franz", "ana"], motivo: motivoDuplaAuto_("VIN3") };
 

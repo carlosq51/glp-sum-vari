@@ -1525,10 +1525,22 @@ async function crearDuplaAuto_(fecha, { rol, anclaId, ayudanteId, vin }, { manua
  * real, la única forma de saber si la regla funciona sería esperar a que
  * pasara: no habría dónde mirarla antes de encender el modo REAL.
  *
- * → { formar, disolver } · null si la regla está apagada.
+ * → { formar, disolver }. Con la regla apagada, `formar` viene vacío pero
+ *   `disolver` no: ver el comentario de dentro.
  */
 async function planDuplasAuto_(fecha, cfg, t) {
-  if (String(cfg.DESPACHO_DUPLA_AUTO ?? "1") !== "1") return null;
+  // Apagada NO es lo mismo que "no hagas nada".
+  //
+  // De aquí salen dos listas: las duplas que se forman y las que se deshacen
+  // porque el carro que las justificaba ya se cerró. Si al apagar el interruptor
+  // se devolviera null, se irían las dos — y el ayudante que estaba en el carro
+  // de otro se quedaría atado a él para siempre: sin carro propio, sin botón de
+  // avanzar y sin nada en pantalla que lo explicara. El interruptor es para
+  // apagar la regla A MEDIA JORNADA, así que ese caso es el normal, no el raro.
+  //
+  // Apagada = deja de FORMAR. La limpieza sigue corriendo, y se consigue con la
+  // meta en cero, que es la misma puerta que ya tenía pareoCarroExtra_.
+  const encendida = String(cfg.DESPACHO_DUPLA_AUTO ?? "1") === "1";
 
   // Todas las de la jornada, incluidas las ya deshechas: son las que dicen
   // quién agotó su turno de emparejarse hoy.
@@ -1545,7 +1557,7 @@ async function planDuplasAuto_(fecha, cfg, t) {
     yaParearon:  new Set(historicas.filter(esDuplaApoyo_).flatMap(d => d.miembros)),
     abiertas:    t.abiertas,
     creditos:    t.ctx.creditosHoy,
-    meta:        Number(cfg.META_CARROS_TEC) || 2,
+    meta:        encendida ? (Number(cfg.META_CARROS_TEC) || 2) : 0,
     // El mismo TTL que usa el reparto: una invitación caducada no bloquea aquí
     // a quien allá ya volvió a la cola.
     ttlPendienteMin: Number(cfg.DESPACHO_TTL_DUPLA_MIN) || 10,
