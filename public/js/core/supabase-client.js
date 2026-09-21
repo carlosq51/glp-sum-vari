@@ -447,7 +447,11 @@ export async function getMisFinalizadas(email) {
 
   // 🚀 Query REST con embedded resource (JOIN) a work_orders
   const select = "id,work_order_id,tipo_ot,rol_trabajo,estado_actual,running_since,tiempo_trab_ms,updated_at,last_nota,work_orders(id,vin,tipo_ramal,estado_general,tanque_registrado,reductor_registrado,fecha_creacion,vins(reductor_asignado,tanque_asignado))";
-  const url = `${SUPABASE_CONFIG.URL}/rest/v1/asignaciones?user_id=eq.${userId}&estado_actual=eq.FINALIZADO` +
+  // El gemelo de esta consulta vive en routes/trabajo.js (/api/finalizadas) y
+  // el comentario de allá avisa de lo que pasa si divergen: el técnico vería
+  // una lista distinta según si Supabase está configurado o no. `activo` va en
+  // las dos.
+  const url = `${SUPABASE_CONFIG.URL}/rest/v1/asignaciones?user_id=eq.${userId}&activo=eq.true&estado_actual=eq.FINALIZADO` +
     `&updated_at=gte.${encodeURIComponent(desde)}` +
     `&select=${encodeURIComponent(select)}&order=updated_at.desc&limit=${tope}`;
 

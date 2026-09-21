@@ -588,7 +588,9 @@ async function armarLiveSupervisor_() {
     let url1 = `${SUPABASE_URL}/rest/v1/asignaciones?select=${selectFields}&activo=eq.true&fecha_asignacion=gte.${hoy00}&order=updated_at.desc`;
 
     // Q2: Trabajos empezados días anteriores pero finalizados HOY (cuentan como carro de hoy)
-    let url2 = `${SUPABASE_URL}/rest/v1/asignaciones?select=${selectFields}&estado_actual=eq.FINALIZADO&updated_at=gte.${hoy00}&fecha_asignacion=lt.${hoy00}&order=updated_at.desc`;
+    // `activo=eq.true` igual que Q1: sin él, un carro anulado que se cerró hoy
+    // entraba por esta puerta aunque Q1 lo estuviera excluyendo.
+    let url2 = `${SUPABASE_URL}/rest/v1/asignaciones?select=${selectFields}&activo=eq.true&estado_actual=eq.FINALIZADO&updated_at=gte.${hoy00}&fecha_asignacion=lt.${hoy00}&order=updated_at.desc`;
 
     // Q3: Todos los usuarios activos con rol técnico (para mostrar DESCONECTADO)
     const url3 = `${SUPABASE_URL}/rest/v1/usuarios?select=id,nombre,email,rol,especialidad&activo=eq.true&rol=in.(TECNICO,CALIDAD,RAMALERO)&order=nombre.asc`;
@@ -636,6 +638,7 @@ async function armarLiveSupervisor_() {
     let recentAsg = [];
     if (idsAmbos.length) {
       const url4 = `${SUPABASE_URL}/rest/v1/asignaciones?select=user_id,rol_trabajo,updated_at` +
+        `&activo=eq.true` +
         `&fecha_asignacion=gte.${hace30d00}&user_id=in.(${idsAmbos.join(",")})` +
         `&order=updated_at.desc&limit=${cfg.LIM_ASG_RECIENTES}`;
       recentAsg = await fetch(url4, { method: "GET", headers })

@@ -188,7 +188,10 @@ router.get("/api/movilizador/status", async (req, res) => {
         const respuestas = await Promise.all(trozos.map(trozo =>
           fetch(
             `${SUPABASE_URL}/rest/v1/asignaciones?work_order_id=in.(${trozo.join(",")})` +
-            `&estado_actual=eq.FINALIZADO&select=work_order_id,updated_at`,
+            // Una asignación anulada no fija la fecha de fin del carro: si es
+            // la única, la OT cae a su fecha_creacion, que es el fallback que
+            // este cálculo ya tenía previsto.
+            `&activo=eq.true&estado_actual=eq.FINALIZADO&select=work_order_id,updated_at`,
             { method: "GET", headers }
           ).then(r => (r.ok ? r.json() : [])).catch(() => [])
         ));

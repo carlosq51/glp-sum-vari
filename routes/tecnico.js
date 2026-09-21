@@ -159,7 +159,10 @@ async function armarEquipoStats_(esp) {
     // Fetch with updated_at so we can count distinct working days per tech
     const { LIM_STATS_SEMANA } = await getConfig_();
     const rFin = await fetch(
-      `${SUPABASE_URL}/rest/v1/asignaciones?rol_trabajo=eq.${esp}&estado_actual=eq.FINALIZADO&updated_at=gte.${encodeURIComponent(mondaySince)}&select=user_id,updated_at&limit=${LIM_STATS_SEMANA}`,
+      // `activo=eq.true`: una asignación anulada no cuenta como carro de la
+      // semana. Sin esto, al técnico al que le quitaron un carro le seguía
+      // figurando en su promedio — y solo aquí, no en los reportes.
+      `${SUPABASE_URL}/rest/v1/asignaciones?rol_trabajo=eq.${esp}&activo=eq.true&estado_actual=eq.FINALIZADO&updated_at=gte.${encodeURIComponent(mondaySince)}&select=user_id,updated_at&limit=${LIM_STATS_SEMANA}`,
       { method: "GET", headers: supabaseHeaders_() }
     );
     const finRows = rFin.ok ? await rFin.json() : [];

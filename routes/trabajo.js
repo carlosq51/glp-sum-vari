@@ -92,7 +92,8 @@ function mapAsignacion_(asg, tecnicoEmail) {
 }
 
 // Consulta asignaciones y normaliza el resultado.
-// filtro: string que va directo en la querystring de Supabase (ej. "estado_actual=eq.FINALIZADO&limit=5000")
+// filtro: string que va directo en la querystring de Supabase
+// (ej. "activo=eq.true&estado_actual=eq.FINALIZADO&limit=5000")
 async function fetchAsignaciones_(filtro, tecnicoEmail = "") {
   const SUPABASE_URL = process.env.SUPABASE_URL;
   const headers = supabaseHeaders_();
@@ -390,9 +391,12 @@ router.get("/api/mis-finalizadas", async (req, res) => {
 
     // Sin `order` aquí: fetchAsignacionesByUser_ ya lo añade (updated_at.desc),
     // y dos parámetros `order` en la misma URL de PostgREST no son idempotentes.
+    // `activo=eq.true`: el carro que se le quitó a alguien deja de estar en
+    // SU lista. Sin esto, el técnico seguía viendo como suyo un carro que los
+    // reportes ya no le contaban, que es la peor de las dos mentiras posibles.
     const items = await fetchAsignacionesByUser_(
       finalUserId, tecnicoEmail,
-      `estado_actual=eq.FINALIZADO&${filtroFecha}&limit=${tope}`,
+      `activo=eq.true&estado_actual=eq.FINALIZADO&${filtroFecha}&limit=${tope}`,
     );
     const duration = Date.now() - t1;
 

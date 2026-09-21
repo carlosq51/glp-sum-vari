@@ -1101,7 +1101,9 @@ async function contextoDelTaller_(cfg, fecha) {
       : null,
     // Carros cerrados en la jornada: acotado por fecha, no por un límite ciego.
     fetch(`${SB()}/rest/v1/asignaciones?tipo_ot=eq.CONVERSION&estado_actual=eq.FINALIZADO` +
-      `&updated_at=gte.${desde.toISOString()}&select=work_order_id,user_id,updated_at`, { headers: h }),
+      // `activo` filtra las asignaciones anuladas: un carro que se le quitó a
+      // alguien no puede seguir contando para su meta del día.
+      `&activo=eq.true&updated_at=gte.${desde.toISOString()}&select=work_order_id,user_id,updated_at`, { headers: h }),
   ]);
 
   const wos    = woRes  && woRes.ok  ? await woRes.json()  : [];

@@ -320,6 +320,9 @@ async function cargarHistorico_() {
   for (let offset = 0; offset < MAX_FILAS; offset += PAGINA) {
     const r = await fetch(
       `${SUPABASE_URL}/rest/v1/asignaciones?estado_actual=eq.FINALIZADO` +
+      // Las anuladas (`activo=false`) no son trabajo: entrenar con ellas le
+      // enseña al modelo ritmos de carros que nadie hizo.
+      `&activo=eq.true` +
       `&select=user_id,updated_at,tiempo_trab_ms,work_order_id,rol_trabajo` +
       `&order=updated_at.desc&limit=${PAGINA}&offset=${offset}`,
       { method: "GET", headers: supabaseHeaders_() }
