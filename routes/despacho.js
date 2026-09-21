@@ -30,6 +30,7 @@ import {
   motivoDuplaAuto_, motivoAyudaManual_, vinDeDuplaApoyo_, validarAyudante_,
 } from "../lib/despacho.js";
 import { construirPool_, generarPropuestas_, puntuar_, ESPERA_TOPE_MIN } from "../lib/despacho-motor.js";
+import { estadoGeneralDeConversion_ } from "../lib/utils.js";
 
 // El modelo de emparejamiento vive donde lo deja routes/ml.js al entrenar.
 const PAIRING_MODEL_PATH = "./pairing-model.json";
@@ -2759,10 +2760,37 @@ router.post("/api/despacho/puesto/liberar", requireModoActivo_,
       if (!r.ok) throw new Error((await r.text()).slice(0, 200));
     }
 
+    // Quitar un puesto puede cambiar el estado de la OT, y hasta ahora no lo
+    // cambiaba nadie: la regla "una conversión la hacen dos" solo se aplicaba
+    // cuando un técnico finalizaba su parte. Un carro al que se le quitaba el
+    // tanquero después de cerrado se quedaba en FINALIZADO con medio trabajo
+    // sin hacer, y solo se notaba contando a mano.
+    let estadoOt = null;
+    if (wo.length) {
+      const vivas = await fetch(
+        `${SB()}/rest/v1/asignaciones?work_order_id=eq.${wo[0].id}&activo=eq.true` +
+        `&select=rol_trabajo,estado_actual`,
+        { headers: h },
+      ).then(x => x.ok ? x.json() : []).catch(() => []);
+
+      estadoOt = estadoGeneralDeConversion_(vivas);
+      await fetch(`${SB()}/rest/v1/work_orders?id=eq.${wo[0].id}`, {
+        method: "PATCH",
+        headers: { ...h, Prefer: "return=minimal" },
+        // `fecha_sin_calidad` es "cuándo terminó el último técnico". Si la OT
+        // deja de estar terminada, esa fecha es mentira; cuando el puesto se
+        // vuelva a cubrir y cierre, el registro de eventos la reescribe.
+        body: JSON.stringify(estadoOt === "FINALIZADO"
+          ? { estado_general: estadoOt }
+          : { estado_general: estadoOt, fecha_sin_calidad: null }),
+      }).catch(() => {});
+    }
+
     emitEvent_("despacho", { tipo: "PUESTO_LIBERADO" });
     emitEvent_("asignaciones", { accion: "PUESTO_LIBERADO" });
+    emitEvent_("work_orders", { accion: "PUESTO_LIBERADO" });
     repartirTrasEvento_("puesto liberado por supervisión");
-    res.json({ ok: true, liberado: !!asg });
+    res.json({ ok: true, liberado: !!asg, estadoOt });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }

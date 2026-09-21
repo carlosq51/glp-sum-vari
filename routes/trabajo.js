@@ -13,7 +13,9 @@ import { bloqueosDeFotos, fusionarStatus } from "../lib/fin-prerequisites.js";
 import { pendingSuggestions_ } from "../lib/ml-state.js";
 import { emitEvent_ } from "../lib/events.js";
 import { getConfig_ } from "../lib/config.js";
-import { esOtDeUnSoloRol_, estadoGeneralDeAsignacion_, inicioDiaPeruISO_ } from "../lib/utils.js";
+import {
+  esOtDeUnSoloRol_, estadoGeneralDeAsignacion_, estadoGeneralDeConversion_, inicioDiaPeruISO_,
+} from "../lib/utils.js";
 import { dispararMotor_, despachoReparteAhora_, apoyosPorPuesto_, duplaDeTrabajoDe_, zonasDeVins_ } from "./despacho.js";
 import { jornadaFecha_ } from "../lib/despacho.js";
 import {
@@ -843,17 +845,11 @@ router.post("/api/evento", async (req, res) => {
           work_order_id: workOrderId,
           activo: true,
         });
-        let motor = null, tanque = null;
-        for (const a of (allAsg || [])) {
-          const rol = String(a.rol_trabajo || "").toUpperCase();
-          const est = String(a.estado_actual || "").toUpperCase();
-          if (rol === "MOTOR") motor = est;
-          if (rol === "TANQUE") tanque = est;
-        }
-        // Requiere AMBAS asignaciones finalizadas
-        const estadoGeneral = (motor === "FINALIZADO" && tanque === "FINALIZADO")
-          ? "FINALIZADO"
-          : (motor || tanque) ? "EN PROCESO" : "PENDIENTE";
+        // La regla (hacen falta LOS DOS puestos) vive en lib/utils.js: aquí se
+        // aplicaba al finalizar, y en ningún sitio más. Al quitarle un puesto a
+        // un carro nadie la volvía a evaluar y la OT se quedaba en FINALIZADO
+        // con medio trabajo sin hacer.
+        const estadoGeneral = estadoGeneralDeConversion_(allAsg || []);
 
         const woPatch = { estado_general: estadoGeneral };
         // Registrar fecha en que el último técnico (motor o tanque) finalizó.
