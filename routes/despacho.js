@@ -613,8 +613,21 @@ router.get("/api/despacho/companeros", requireModoActivo_, async (req, res) => {
 });
 
 // POST /api/despacho/dupla/proponer  { email, socioUserId, rol? }
-// Queda PENDIENTE hasta que el compañero confirme desde su celular: nadie
-// debe poder inscribir a otro en una dupla que le afecta su crédito.
+//
+// Nace ACTIVA. El otro NO tiene que confirmar: la deshace si no quiere.
+//
+// Antes quedaba PENDIENTE, y el argumento era bueno sobre el papel —nadie
+// inscribe a otro en algo que le toca el crédito—, pero en el taller pasaba
+// esto: mientras la invitación estaba en el aire, el motor no le daba carro a
+// NINGUNO de los dos. El invitado está bajo un carro, no mira el celular, y los
+// dos se quedan parados. Como estar parado no es una opción, cada uno se iba a
+// buscar carro por su cuenta y terminaban con DOS carros abiertos — justo lo
+// que la dupla venía a evitar.
+//
+// Invitar primero y deshacer después invierte el costo: el caso normal (los dos
+// ya acordaron trabajar juntos, uno lo teclea) cuesta cero taps, y el caso raro
+// (me sumaron sin avisar) cuesta uno, el de deshacer. El crédito de la dupla
+// alterna, así que un minuto mal emparejado no le quita un carro a nadie.
 router.post("/api/despacho/dupla/proponer", requireModoActivo_, async (req, res) => {
   try {
     const { email, socioUserId, rol } = req.body || {};
@@ -622,7 +635,7 @@ router.post("/api/despacho/dupla/proponer", requireModoActivo_, async (req, res)
     if (!yo) return res.status(403).json({ ok: false, error: "Usuario no encontrado" });
 
     const sr = await fetch(
-      `${SB()}/rest/v1/usuarios?id=eq.${encodeURIComponent(socioUserId || "")}&select=id,nombre,especialidad,activo&limit=1`,
+      `${SB()}/rest/v1/usuarios?id=eq.${encodeURIComponent(socioUserId || "")}&select=id,nombre,email,especialidad,activo&limit=1`,
       { headers: supabaseHeaders_() },
     );
     const socio = sr.ok ? (await sr.json())[0] : null;
@@ -635,9 +648,30 @@ router.post("/api/despacho/dupla/proponer", requireModoActivo_, async (req, res)
     const v = validarDupla_(yo, socio, { yaEnDupla: enDupla });
     if (!v.ok) return res.status(409).json({ ok: false, error: v.error });
 
+    // Freno al ping-pong: si el otro acaba de deshacer ESTA misma pareja, ya
+    // contestó. Sin esto, insistir es un botón, y el que dijo que no se lo
+    // encuentra otra vez encima cada treinta segundos.
+    const cfg = await getConfig_();
+    const espera = Number(cfg.DESPACHO_COOLDOWN_DUPLA_MIN) || 0;
+    const rota = espera > 0 ? await duplaDeshechaReciente_(fecha, yo.id, socio.id, espera) : null;
+    if (rota) {
+      return res.status(409).json({
+        ok: false,
+        error: `${primerNombre_(socio.nombre)} deshizo esta dupla hace un momento. Háblalo con él antes de volver a armarla.`,
+      });
+    }
+
     const rolFinal = v.rol || String(rol || "").toUpperCase();
     if (!rolFinal || !["MOTOR", "TANQUE"].includes(rolFinal)) {
-      return res.status(400).json({ ok: false, error: "Indica el rol de la dupla (MOTOR o TANQUE)" });
+      // Los dos son AMBOS: el rol no se deduce, hay que preguntarlo. Va con
+      // bandera y opciones —no solo un texto— para que la app pueda ofrecer los
+      // dos botones en vez de dejar al técnico frente a un error sin salida.
+      return res.status(400).json({
+        ok: false,
+        necesitaRol: true,
+        opciones: v.opciones || ["MOTOR", "TANQUE"],
+        error: "Indica el rol de la dupla (MOTOR o TANQUE)",
+      });
     }
 
     const dr = await fetch(`${SB()}/rest/v1/despacho_duplas`, {
@@ -645,33 +679,86 @@ router.post("/api/despacho/dupla/proponer", requireModoActivo_, async (req, res)
       headers: { ...supabaseHeaders_(), Prefer: "return=representation" },
       body: JSON.stringify({
         jornada_fecha: fecha, rol_trabajo: rolFinal,
-        lider_user_id: yo.id, estado: "PENDIENTE",
+        lider_user_id: yo.id, estado: "ACTIVA",
+        confirmada_at: new Date().toISOString(),
       }),
     });
     if (!dr.ok) throw new Error((await dr.text()).slice(0, 200));
     const dupla = (await dr.json())[0];
 
-    // activa=false hasta que confirme: así el índice único no bloquea a nadie
-    // por una propuesta que quizá se rechace.
     const mr = await fetch(`${SB()}/rest/v1/despacho_dupla_miembros`, {
       method: "POST",
       headers: { ...supabaseHeaders_(), Prefer: "return=minimal" },
       body: JSON.stringify([
-        { dupla_id: dupla.id, user_id: yo.id,    jornada_fecha: fecha, activa: false },
-        { dupla_id: dupla.id, user_id: socio.id, jornada_fecha: fecha, activa: false },
+        { dupla_id: dupla.id, user_id: yo.id,    jornada_fecha: fecha, activa: true },
+        { dupla_id: dupla.id, user_id: socio.id, jornada_fecha: fecha, activa: true },
       ]),
     });
-    if (!mr.ok) throw new Error((await mr.text()).slice(0, 200));
+    if (!mr.ok) {
+      const txt = await mr.text();
+      // Alguien entró en otra dupla entre la lectura y el insert. La cabecera
+      // huérfana se borra: viva contaría como dupla del día sin serlo.
+      await fetch(`${SB()}/rest/v1/despacho_duplas?id=eq.${dupla.id}`, {
+        method: "DELETE", headers: supabaseHeaders_(),
+      }).catch(() => {});
+      if (/duplicate key|23505/.test(txt)) {
+        return res.status(409).json({ ok: false, error: "Uno de los dos ya entró en otra dupla hoy" });
+      }
+      throw new Error(txt.slice(0, 200));
+    }
 
-    emitEvent_("despacho", { tipo: "DUPLA_PROPUESTA", dupla_id: dupla.id });
+    // El invitado tiene que enterarse AHORA, no cuando le llegue un carro que
+    // no esperaba: es su única señal de que hay algo que deshacer.
+    await sendPushToEmails_([socio.email].filter(Boolean), {
+      title: `🤝 ${primerNombre_(yo.nombre)} te sumó a su dupla`,
+      body: `${rolFinal} · reciben un carro entre los dos. Si no es así, deshazla en Mi asistencia.`,
+    }).catch(() => {});
+
+    emitEvent_("despacho", {
+      tipo: "DUPLA_ACTIVA", dupla_id: dupla.id, user_ids: [yo.id, socio.id],
+    });
+    // Ya son una unidad asignable: repartir ya, o los dos esperan al siguiente
+    // intervalo del motor mirando el techo.
+    repartirTrasEvento_(`dupla ${dupla.id} ACTIVA (invitación)`);
+
     res.json({
       ok: true, duplaId: dupla.id, rol: rolFinal,
-      esperandoA: socio.nombre,
+      estado: "ACTIVA",
+      companero: socio.nombre,
     });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }
 });
+
+/**
+ * ¿Estos dos deshicieron su dupla hace menos de `min` minutos?
+ *
+ * Solo mira las de HOY entre EXACTAMENTE estos dos: que A haya salido de una
+ * dupla con C no dice nada sobre si quiere trabajar con B.
+ */
+async function duplaDeshechaReciente_(fecha, aId, bId, min) {
+  const limite = new Date(Date.now() - min * 60000).toISOString();
+  const r = await fetch(
+    `${SB()}/rest/v1/despacho_duplas?jornada_fecha=eq.${fecha}` +
+    `&estado=in.(RECHAZADA,DISUELTA)&disuelta_at=gte.${limite}&select=id,disuelta_at`,
+    { headers: supabaseHeaders_() },
+  );
+  const rotas = r.ok ? await r.json() : [];
+  if (!rotas.length) return null;
+
+  const ids = rotas.map(d => d.id).join(",");
+  const mr = await fetch(
+    `${SB()}/rest/v1/despacho_dupla_miembros?dupla_id=in.(${encodeURIComponent(ids)})&select=dupla_id,user_id`,
+    { headers: supabaseHeaders_() },
+  );
+  const miembros = mr.ok ? await mr.json() : [];
+
+  return rotas.find(d => {
+    const suyos = miembros.filter(m => m.dupla_id === d.id).map(m => m.user_id);
+    return suyos.includes(aId) && suyos.includes(bId);
+  }) || null;
+}
 
 // POST /api/despacho/dupla/crear  { email, aUserId, bUserId, rol? }
 // La misma dupla, armada desde la consola del taller. Nace ACTIVA sin esperar
@@ -764,6 +851,12 @@ router.post("/api/despacho/dupla/crear", requireModoActivo_,
 
 // POST /api/despacho/dupla/confirmar  { email, duplaId }
 // Solo el compañero invitado puede confirmar — no el que propuso.
+//
+// ⚠️ Camino heredado: las invitaciones nacen ACTIVAS y ya no hay nada que
+// confirmar. Sigue aquí para las PENDIENTE que estuvieran vivas al desplegar y
+// para los celulares que todavía tengan la pantalla vieja en caché — un técnico
+// con la app cacheada tocando "Aceptar" sobre una dupla real no puede recibir
+// un 404.
 router.post("/api/despacho/dupla/confirmar", requireModoActivo_, async (req, res) => {
   try {
     const { email, duplaId } = req.body || {};
@@ -850,7 +943,22 @@ router.post("/api/despacho/dupla/disolver", requireModoActivo_, async (req, res)
       }),
     });
 
-    emitEvent_("despacho", { tipo: "DUPLA_DISUELTA", dupla_id: dupla.id });
+    // El OTRO tiene que enterarse, y ahora más que antes: la dupla se armó sin
+    // pedirle permiso a nadie, así que deshacerla tampoco lo pide — pero el que
+    // se queda solo no puede enterarse por no recibir un carro que esperaba
+    // entre dos.
+    const otros = dupla.miembros.filter(id => id !== yo.id);
+    if (otros.length) {
+      const correos = await emailsDe_(otros);
+      await sendPushToEmails_(otros.map(id => correos.get(id)).filter(Boolean), {
+        title: "🙋 Vuelves a trabajar solo",
+        body: `${primerNombre_(yo.nombre)} deshizo la dupla. Desde ahora cada uno recibe su carro.`,
+      }).catch(() => {});
+    }
+
+    emitEvent_("despacho", {
+      tipo: "DUPLA_DISUELTA", dupla_id: dupla.id, user_ids: dupla.miembros,
+    });
     // Al deshacerse la dupla sus dos miembros vuelven a la cola por separado.
     repartirTrasEvento_(`dupla ${dupla.id} disuelta`);
     res.json({ ok: true, estado: nuevoEstado });

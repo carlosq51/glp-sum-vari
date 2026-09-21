@@ -3,6 +3,72 @@
 // Template HTML: uploader GLP (parámetros, fallas, calidad, conformidad)
 // =========================
 
+/**
+ * tarjetaFoto_ — una tarjeta, una foto, una subida.
+ *
+ * Antes cada slot repetía estas veinte líneas a mano, y las cuatro tomas de
+ * compresión (y las cuatro de calidad) compartían UNA tarjeta con un solo
+ * botón: la foto caía en "el primer casillero libre". Cuando la cuarta fallaba
+ * —que es lo normal en el taller, con el celular colgado de una barra de
+ * señal— el casillero seguía ocupado por la foto que no subió, el siguiente
+ * disparo iba a parar a otro cilindro, y la única salida limpia era "Borrar",
+ * que limpiaba las cuatro. Cuatro fotos de nuevo por una que falló.
+ *
+ * Con una tarjeta por foto, el reintento es de ESA foto y con EL MISMO archivo:
+ * el técnico no tiene que volver a abrir el capó.
+ */
+function tarjetaFoto_({ slot, label, nota = "", vacio = "Sin foto", mini = false }) {
+  const idc = `up_${slot}`;
+  return `
+    <div class="slotCard${mini ? " slotCard--mini" : ""}" data-slot="${slot}">
+      <label>${label}${nota ? ` <span class="upNota">${nota}</span>` : ""}</label>
+
+      <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" capture="environment" id="${idc}_cam">
+      <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" id="${idc}_file">
+
+      <div class="slotActions upActions">
+        <button class="btnUp" type="button" data-pick="cam" data-slot="${slot}">
+          <span class="ico">📷</span><span>Foto</span>
+        </button>
+        <button class="btnUp" type="button" data-pick="file" data-slot="${slot}">
+          <span class="ico">📁</span><span>Cargar</span>
+        </button>
+        <button class="btnUp btnUp-retry" type="button" data-retry="1" data-slot="${slot}">
+          <span class="ico">🔁</span><span>Reintentar</span>
+        </button>
+        <button class="btnUp btnUp-danger" type="button" data-clear="1" data-slot="${slot}">
+          <span class="ico">🗑️</span><span>Borrar</span>
+        </button>
+      </div>
+
+      <div class="upMini">
+        <div class="thumb upFoto" id="${idc}_previewBox"><span class="small">${vacio}</span></div>
+        <div class="miniInfo" id="${idc}_meta">Ningún archivo seleccionado.</div>
+      </div>
+    </div>`;
+}
+
+/**
+ * grupoFotos_ — varias tarjetas que el técnico lee como UN paso.
+ *
+ * La prueba de compresión son cuatro tomas de un mismo paso: nombrarlas
+ * "Cilindro 1..4" bajo un título común es lo que hace que "falta el 3" sea una
+ * frase con sentido. El pie (`#up_<id>_grupoMeta`) lleva la cuenta del grupo,
+ * que es lo que antes hacía el `comp_meta` compartido.
+ */
+function grupoFotos_({ id, label, nota = "", slots = [], pie = "" }) {
+  return `
+    <div class="slotGroup" data-grupo="${id}">
+      <label class="slotGroupLabel" id="up_${id}_grupoLabel">${label}${
+        nota ? ` <span class="upNota">${nota}</span>` : ""
+      }</label>
+      <div class="upSlotsGrid">
+        ${slots.map(tarjetaFoto_).join("")}
+      </div>
+      <div class="miniInfo" id="up_${id}_grupoMeta">${pie}</div>
+    </div>`;
+}
+
 export function uploaderView() {
   return `
     <!-- =========================
@@ -127,161 +193,26 @@ export function uploaderView() {
 
           <div class="box grid">
 
-            <!-- 1) VIN -->
-            <div class="slotCard" data-slot="vin">
-              <label>1 · Foto del VIN</label>
+            ${tarjetaFoto_({ slot: "vin", label: "1 · Foto del VIN" })}
 
-              <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" capture="environment" id="up_vin_cam">
-              <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" id="up_vin_file">
+            ${grupoFotos_({
+              id: "comp",
+              label: "2 · Compresión",
+              nota: "(4 tomas)",
+              pie: "0/4 tomas guardadas.",
+              slots: [1, 2, 3, 4].map((n) => ({
+                slot: `comp_${n}`,
+                label: `Cilindro ${n}`,
+                vacio: String(n),
+                mini: true,
+              })),
+            })}
 
-              <div class="slotActions upActions">
-                <button class="btnUp" type="button" data-pick="cam" data-slot="vin">
-                  <span class="ico">📷</span><span>Foto</span>
-                </button>
-                <button class="btnUp" type="button" data-pick="file" data-slot="vin">
-                  <span class="ico">📁</span><span>Cargar</span>
-                </button>
-                <button class="btnUp btnUp-danger" type="button" data-clear="1" data-slot="vin">
-                  <span class="ico">🗑️</span><span>Borrar</span>
-                </button>
-              </div>
+            ${tarjetaFoto_({ slot: "corr_pre",   label: "3 · Amperaje antes" })}
+            ${tarjetaFoto_({ slot: "corr_post",  label: "4 · Amperaje después" })}
+            ${tarjetaFoto_({ slot: "voltaje",    label: "5 · Voltaje" })}
+            ${tarjetaFoto_({ slot: "scan_carro", label: "6 · Scan del carro" })}
 
-              <div class="upMini">
-                <div class="thumb upFoto" id="up_vin_previewBox"><span class="small">Sin foto</span></div>
-                <div class="miniInfo" id="up_vin_meta">Ningún archivo seleccionado.</div>
-              </div>
-            </div>
-
-            <!-- 2) COMPRESIÓN: 4 fotos -->
-            <div class="slotCard" data-slot="comp">
-              <label>2 · Compresión <span class="upNota">(4 tomas)</span></label>
-
-              <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" capture="environment" id="up_comp_cam">
-              <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" id="up_comp_file" multiple>
-
-              <div class="slotActions upActions">
-                <button class="btnUp" type="button" data-pick="cam" data-slot="comp">
-                  <span class="ico">📷</span><span>Foto</span>
-                </button>
-                <button class="btnUp" type="button" data-pick="file" data-slot="comp">
-                  <span class="ico">📁</span><span>Cargar</span>
-                </button>
-                <button class="btnUp btnUp-danger" type="button" data-clear="1" data-slot="comp">
-                  <span class="ico">🗑️</span><span>Borrar</span>
-                </button>
-              </div>
-
-              <div class="upGridFotos">
-                <div class="thumb upFoto" id="up_comp_p1"><span class="small">1</span></div>
-                <div class="thumb upFoto" id="up_comp_p2"><span class="small">2</span></div>
-                <div class="thumb upFoto" id="up_comp_p3"><span class="small">3</span></div>
-                <div class="thumb upFoto" id="up_comp_p4"><span class="small">4</span></div>
-              </div>
-
-              <div class="miniInfo" id="up_comp_meta" style="margin-top:10px;">
-                Ningún archivo seleccionado.
-              </div>
-            </div>
-
-            <!-- 6) Corriente antes -->
-            <div class="slotCard" data-slot="corr_pre">
-              <label>3 · Amperaje antes</label>
-
-              <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" capture="environment" id="up_corr_pre_cam">
-              <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" id="up_corr_pre_file">
-
-              <div class="slotActions upActions">
-                <button class="btnUp" type="button" data-pick="cam" data-slot="corr_pre">
-                  <span class="ico">📷</span><span>Foto</span>
-                </button>
-                <button class="btnUp" type="button" data-pick="file" data-slot="corr_pre">
-                  <span class="ico">📁</span><span>Cargar</span>
-                </button>
-                <button class="btnUp btnUp-danger" type="button" data-clear="1" data-slot="corr_pre">
-                  <span class="ico">🗑️</span><span>Borrar</span>
-                </button>
-              </div>
-
-              <div class="upMini">
-                <div class="thumb upFoto" id="up_corr_pre_previewBox"><span class="small">Sin foto</span></div>
-                <div class="miniInfo" id="up_corr_pre_meta">Ningún archivo seleccionado.</div>
-              </div>
-            </div>
-
-            <!-- 7) Corriente después -->
-            <div class="slotCard" data-slot="corr_post">
-              <label>4 · Amperaje después</label>
-
-              <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" capture="environment" id="up_corr_post_cam">
-              <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" id="up_corr_post_file">
-
-              <div class="slotActions upActions">
-                <button class="btnUp" type="button" data-pick="cam" data-slot="corr_post">
-                  <span class="ico">📷</span><span>Foto</span>
-                </button>
-                <button class="btnUp" type="button" data-pick="file" data-slot="corr_post">
-                  <span class="ico">📁</span><span>Cargar</span>
-                </button>
-                <button class="btnUp btnUp-danger" type="button" data-clear="1" data-slot="corr_post">
-                  <span class="ico">🗑️</span><span>Borrar</span>
-                </button>
-              </div>
-
-              <div class="upMini">
-                <div class="thumb upFoto" id="up_corr_post_previewBox"><span class="small">Sin foto</span></div>
-                <div class="miniInfo" id="up_corr_post_meta">Ningún archivo seleccionado.</div>
-              </div>
-            </div>
-
-            <!-- 8) Voltaje -->
-            <div class="slotCard" data-slot="voltaje">
-              <label>5 · Voltaje</label>
-
-              <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" capture="environment" id="up_voltaje_cam">
-              <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" id="up_voltaje_file">
-
-              <div class="slotActions upActions">
-                <button class="btnUp" type="button" data-pick="cam" data-slot="voltaje">
-                  <span class="ico">📷</span><span>Foto</span>
-                </button>
-                <button class="btnUp" type="button" data-pick="file" data-slot="voltaje">
-                  <span class="ico">📁</span><span>Cargar</span>
-                </button>
-                <button class="btnUp btnUp-danger" type="button" data-clear="1" data-slot="voltaje">
-                  <span class="ico">🗑️</span><span>Borrar</span>
-                </button>
-              </div>
-
-              <div class="upMini">
-                <div class="thumb upFoto" id="up_voltaje_previewBox"><span class="small">Sin foto</span></div>
-                <div class="miniInfo" id="up_voltaje_meta">Ningún archivo seleccionado.</div>
-              </div>
-            </div>
-
-            <!-- 9) Scan del carro -->
-            <div class="slotCard" data-slot="scan_carro">
-              <label>6 · Scan del carro</label>
-
-              <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" capture="environment" id="up_scan_carro_cam">
-              <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" id="up_scan_carro_file">
-
-              <div class="slotActions upActions">
-                <button class="btnUp" type="button" data-pick="cam" data-slot="scan_carro">
-                  <span class="ico">📷</span><span>Foto</span>
-                </button>
-                <button class="btnUp" type="button" data-pick="file" data-slot="scan_carro">
-                  <span class="ico">📁</span><span>Cargar</span>
-                </button>
-                <button class="btnUp btnUp-danger" type="button" data-clear="1" data-slot="scan_carro">
-                  <span class="ico">🗑️</span><span>Borrar</span>
-                </button>
-              </div>
-
-              <div class="upMini">
-                <div class="thumb upFoto" id="up_scan_carro_previewBox"><span class="small">Sin foto</span></div>
-                <div class="miniInfo" id="up_scan_carro_meta">Ningún archivo seleccionado.</div>
-              </div>
-            </div>
 
           </div>
 
@@ -400,39 +331,27 @@ export function uploaderView() {
               <input id="up_qcDate" type="date" />
             </div>
 
-            <!-- data-slot="qc" es lo que ata calidad_1..4 a esta tarjeta:
-                 las cuatro fotos comparten una sola, y sin el atributo su
-                 estado de subida no se pintaba en ninguna parte. -->
-            <div class="slotCard" data-slot="qc" style="margin-top:10px;">
-              <label>Fotos de Calidad (mín 3, máx 4)</label>
+            ${grupoFotos_({
+              id: "qc",
+              label: "Fotos de calidad",
+              nota: "(mín 3, máx 4)",
+              pie: "0/4 guardadas. Cada foto se sube sola al tomarla.",
+              slots: [1, 2, 3, 4].map((n) => ({
+                slot: `calidad_${n}`,
+                label: `Foto ${n}`,
+                vacio: String(n),
+                mini: true,
+              })),
+            })}
 
-              <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" capture="environment" id="up_qc_cam">
-              <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" id="up_qc_file" multiple>
-
-              <div class="slotActions upActions">
-                <button class="btnUp" type="button" id="up_btnQcCam">
-                  <span class="ico">📷</span><span>Foto</span>
-                </button>
-                <button class="btnUp" type="button" id="up_btnQcFile">
-                  <span class="ico">📁</span><span>Cargar</span>
-                </button>
-                <button class="btnUp btnUp-danger" type="button" id="up_btnQcClear">
-                  <span class="ico">🗑️</span><span>Borrar</span>
-                </button>
-              </div>
-
-              <div class="upGridFotos">
-                <div class="thumb upFoto" id="up_qc_p1"><span class="small">1</span></div>
-                <div class="thumb upFoto" id="up_qc_p2"><span class="small">2</span></div>
-                <div class="thumb upFoto" id="up_qc_p3"><span class="small">3</span></div>
-                <div class="thumb upFoto" id="up_qc_p4"><span class="small">4</span></div>
-              </div>
-
-              <div class="miniInfo" id="up_qc_meta" style="margin-top:10px;">0/4 seleccionadas.</div>
-            </div>
-
+            <!-- Ya no hay "ENVIAR CALIDAD": cada foto se subía sola al tomarla
+                 Y ADEMÁS el botón las volvía a mandar las cuatro en un lote a
+                 la misma ruta de R2. Subía todo dos veces, y si el lote fallaba
+                 (bastaba una foto) el mensaje decía que no se había guardado
+                 nada, cuando en realidad ya estaba todo arriba. Este botón solo
+                 comprueba que estén las mínimas y cierra la pantalla. -->
             <div class="row">
-              <button class="btnPrimaryBig" id="up_btnQcUpload">⬆️ ENVIAR CALIDAD</button>
+              <button class="btnPrimaryBig" id="up_btnQcListo">✅ TERMINAR CALIDAD</button>
             </div>
           </div>
 
@@ -572,105 +491,11 @@ export function uploaderView() {
 
           <div class="box grid">
 
-            <!-- 1) Sensor de nivel ANTES -->
-            <div class="slotCard" data-slot="sold_sensor_antes">
-              <label>1) Sensor de nivel <span class="small">ANTES (ver soldadura)</span></label>
+            ${tarjetaFoto_({ slot: "sold_sensor_antes", label: "1 · Sensor de nivel", nota: "ANTES (ver soldadura)" })}
+            ${tarjetaFoto_({ slot: "sold_sensor_post",  label: "2 · Sensor de nivel", nota: "DESPUÉS (con termocontraíble)" })}
+            ${tarjetaFoto_({ slot: "sold_cabina_antes", label: "3 · Cabina", nota: "ANTES" })}
+            ${tarjetaFoto_({ slot: "sold_cabina_post",  label: "4 · Cabina", nota: "DESPUÉS" })}
 
-              <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" capture="environment" id="up_sold_sensor_antes_cam">
-              <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" id="up_sold_sensor_antes_file">
-
-              <div class="slotActions upActions">
-                <button class="btnUp" type="button" data-pick="cam" data-slot="sold_sensor_antes">
-                  <span class="ico">📷</span><span>Foto</span>
-                </button>
-                <button class="btnUp" type="button" data-pick="file" data-slot="sold_sensor_antes">
-                  <span class="ico">📁</span><span>Cargar</span>
-                </button>
-                <button class="btnUp btnUp-danger" type="button" data-clear="1" data-slot="sold_sensor_antes">
-                  <span class="ico">🗑️</span><span>Borrar</span>
-                </button>
-              </div>
-
-              <div class="upMini">
-                <div class="thumb upFoto" id="up_sold_sensor_antes_previewBox"><span class="small">Sin foto</span></div>
-                <div class="miniInfo" id="up_sold_sensor_antes_meta">Ningún archivo seleccionado.</div>
-              </div>
-            </div>
-
-            <!-- 2) Sensor de nivel DESPUÉS -->
-            <div class="slotCard" data-slot="sold_sensor_post">
-              <label>2) Sensor de nivel <span class="small">DESPUÉS (con termocontraíble)</span></label>
-
-              <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" capture="environment" id="up_sold_sensor_post_cam">
-              <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" id="up_sold_sensor_post_file">
-
-              <div class="slotActions upActions">
-                <button class="btnUp" type="button" data-pick="cam" data-slot="sold_sensor_post">
-                  <span class="ico">📷</span><span>Foto</span>
-                </button>
-                <button class="btnUp" type="button" data-pick="file" data-slot="sold_sensor_post">
-                  <span class="ico">📁</span><span>Cargar</span>
-                </button>
-                <button class="btnUp btnUp-danger" type="button" data-clear="1" data-slot="sold_sensor_post">
-                  <span class="ico">🗑️</span><span>Borrar</span>
-                </button>
-              </div>
-
-              <div class="upMini">
-                <div class="thumb upFoto" id="up_sold_sensor_post_previewBox"><span class="small">Sin foto</span></div>
-                <div class="miniInfo" id="up_sold_sensor_post_meta">Ningún archivo seleccionado.</div>
-              </div>
-            </div>
-
-            <!-- 3) Cabina ANTES -->
-            <div class="slotCard" data-slot="sold_cabina_antes">
-              <label>3) Cabina <span class="small">ANTES</span></label>
-
-              <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" capture="environment" id="up_sold_cabina_antes_cam">
-              <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" id="up_sold_cabina_antes_file">
-
-              <div class="slotActions upActions">
-                <button class="btnUp" type="button" data-pick="cam" data-slot="sold_cabina_antes">
-                  <span class="ico">📷</span><span>Foto</span>
-                </button>
-                <button class="btnUp" type="button" data-pick="file" data-slot="sold_cabina_antes">
-                  <span class="ico">📁</span><span>Cargar</span>
-                </button>
-                <button class="btnUp btnUp-danger" type="button" data-clear="1" data-slot="sold_cabina_antes">
-                  <span class="ico">🗑️</span><span>Borrar</span>
-                </button>
-              </div>
-
-              <div class="upMini">
-                <div class="thumb upFoto" id="up_sold_cabina_antes_previewBox"><span class="small">Sin foto</span></div>
-                <div class="miniInfo" id="up_sold_cabina_antes_meta">Ningún archivo seleccionado.</div>
-              </div>
-            </div>
-
-            <!-- 4) Cabina DESPUÉS -->
-            <div class="slotCard" data-slot="sold_cabina_post">
-              <label>4) Cabina <span class="small">DESPUÉS</span></label>
-
-              <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" capture="environment" id="up_sold_cabina_post_cam">
-              <input class="hiddenInput" type="file" accept="image/*,.heic,.heif" id="up_sold_cabina_post_file">
-
-              <div class="slotActions upActions">
-                <button class="btnUp" type="button" data-pick="cam" data-slot="sold_cabina_post">
-                  <span class="ico">📷</span><span>Foto</span>
-                </button>
-                <button class="btnUp" type="button" data-pick="file" data-slot="sold_cabina_post">
-                  <span class="ico">📁</span><span>Cargar</span>
-                </button>
-                <button class="btnUp btnUp-danger" type="button" data-clear="1" data-slot="sold_cabina_post">
-                  <span class="ico">🗑️</span><span>Borrar</span>
-                </button>
-              </div>
-
-              <div class="upMini">
-                <div class="thumb upFoto" id="up_sold_cabina_post_previewBox"><span class="small">Sin foto</span></div>
-                <div class="miniInfo" id="up_sold_cabina_post_meta">Ningún archivo seleccionado.</div>
-              </div>
-            </div>
 
           </div>
 

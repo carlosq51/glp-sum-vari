@@ -15,6 +15,7 @@ import { CORE } from "../../core/core.js";
 import { getJSON, postJSON } from "../../core/api.js";
 import { escapeHtml } from "../../core/format.js";
 import { createScanner } from "../../core/qr-scanner.js";
+import { createSuggest_ } from "../../core/suggest.js";
 import { renderAvance_, limpiarAvance_ } from "./tec-avance.js";
 import { apoyoHTML_ } from "./tec-apoyo.js";
 
@@ -199,11 +200,24 @@ function limpiarDupla_() {
   limpiarAvance_("tecAvanceAsis");
 }
 
+/** Candidatos cacheados de la última carga: la lupa filtra sobre esto. */
+let candidatos_ = [];
+let suggestSocio_ = null;
+
+const marcoDupla_ = (cuerpo) => `
+  <h4 class="tecAsisDuplaH">¿Trabajas en dupla hoy?</h4>
+  <div class="tecAsisDuplaBody">${cuerpo}</div>`;
+
 async function cargarDupla_() {
   const box = $("tecAsisDupla");
   if (!box) return;
   const email = emailActual_();
   if (!email) return;
+
+  // Un buscador abierto de la carga anterior se queda escuchando al documento
+  // y pintando dentro de un contenedor que ya no existe.
+  suggestSocio_?.destroy();
+  suggestSocio_ = null;
 
   let d;
   try { d = await getJSON(`/api/despacho/duplas?email=${encodeURIComponent(email)}`); }
@@ -217,20 +231,15 @@ async function cargarDupla_() {
   const mia = (d.duplas || []).find(x => x.miembros?.includes(miUserId_));
   const otroDe = m => m.miembrosNombres?.find((_, i) => m.miembros[i] !== miUserId_) || "tu compañero";
 
-  const marco = cuerpo => `
-    <h4 class="tecAsisDuplaH">¿Trabajas en dupla hoy?</h4>
-    <div class="tecAsisDuplaBody">${cuerpo}</div>`;
-
-  // Mientras la invitación está en el aire, NINGUNO de los dos recibe carro:
-  // si el motor le diera uno al que propuso, el otro aceptaría y se lo
-  // encontraría ya metido en un carro. Decirlo aquí evita la lectura fácil y
-  // equivocada ("el sistema me tiene olvidado") y empuja a resolverla ya.
+  // ── Restos del modelo viejo (la invitación que había que confirmar) ───────
+  // Ya no se crean: la dupla nace ACTIVA. Estas dos ramas están para las filas
+  // que quedaran a medias en el momento del despliegue; sin ellas esos dos
+  // técnicos verían "sin dupla" mientras el motor los sigue teniendo atados.
   const avisoBloqueo = `<div class="tecAsisAviso tecAsisAviso--warn">
     ⏸ Mientras se decide, ninguno de los dos recibe carros nuevos.</div>`;
 
-  // Me invitaron y falta que yo confirme.
   if (mia?.estado === "PENDIENTE" && mia.lider_user_id !== miUserId_) {
-    box.innerHTML = marco(`
+    box.innerHTML = marcoDupla_(`
       <div class="tecAsisAviso"><b>${escapeHtml(otroDe(mia))}</b> quiere trabajar en dupla contigo.
         Reciben un carro a la vez y el crédito alterna: uno para cada uno.</div>
       ${avisoBloqueo}
@@ -241,9 +250,8 @@ async function cargarDupla_() {
     return;
   }
 
-  // Propuse yo y espero respuesta.
   if (mia?.estado === "PENDIENTE") {
-    box.innerHTML = marco(`
+    box.innerHTML = marcoDupla_(`
       <div class="tecAsisAviso">Esperando que <b>${escapeHtml(otroDe(mia))}</b> acepte.</div>
       ${avisoBloqueo}
       <button id="tecAsisDupNo" class="tecAsisBtn sec" type="button">Cancelar</button>`);
@@ -252,10 +260,9 @@ async function cargarDupla_() {
   }
 
   // Dupla del carro extra (la que arma la regla sola): la misma tarjeta que en
-  // Mi OT, desde el mismo módulo — dos copias del texto
-  // se desincronizan a la primera corrección. Sin "Deshacer": no la armó él, y
-  // para salirse está el supervisor. El botón de avanzar tampoco aplica (lo
-  // cierra el servidor).
+  // Mi OT, desde el mismo módulo — dos copias del texto se desincronizan a la
+  // primera corrección. Sin "Deshacer": no la armó él, y para salirse está el
+  // supervisor. El botón de avanzar tampoco aplica (lo cierra el servidor).
   if (mia?.auto && mia.estado === "ACTIVA") {
     // Sin el marco "¿Trabajas en dupla hoy?": esa pregunta ofrece elegir, y
     // esto no se eligió — se lo asignaron.
@@ -263,51 +270,129 @@ async function cargarDupla_() {
     return;
   }
 
-  // Dupla activa.
+  // Dupla activa. Al que lo sumaron se le dice quién fue y cómo salirse: es
+  // todo lo que cambió respecto del modelo de confirmar, y tiene que estar a
+  // la vista en la misma pantalla donde le apareció.
   if (mia?.estado === "ACTIVA") {
-    box.innerHTML = marco(`
-      <div class="tecAsisAviso">Trabajando en dupla con <b>${escapeHtml(otroDe(mia))}</b>
-        (${escapeHtml(mia.rol_trabajo || "")}). Reciben un carro a la vez.</div>
+    const meSumaron = mia.lider_user_id && mia.lider_user_id !== miUserId_;
+    box.innerHTML = marcoDupla_(`
+      <div class="tecAsisAviso">${
+        meSumaron
+          ? `<b>${escapeHtml(otroDe(mia))}</b> te sumó a su dupla
+             (${escapeHtml(mia.rol_trabajo || "")}). Reciben un carro a la vez y el
+             crédito alterna. Si no es así, deshazla.`
+          : `Trabajando en dupla con <b>${escapeHtml(otroDe(mia))}</b>
+             (${escapeHtml(mia.rol_trabajo || "")}). Reciben un carro a la vez.`
+      }</div>
+      <div class="tecAsisNota small muted">Los carros que ya tengan abiertos se
+        terminan por separado; la dupla rige desde el siguiente.</div>
       <button id="tecAsisDupNo" class="tecAsisBtn sec" type="button">Deshacer dupla</button>`);
     $("tecAsisDupNo").onclick = () => accionDupla_("disolver", mia.id);
     return;
   }
 
-  // Sin dupla: ofrecer armarla con quien ya marcó asistencia.
-  let cands = [];
+  // ── Sin dupla: buscar compañero ──────────────────────────────────────────
+  // Era un <select> con todos los presentes de su rol. En un celular eso es
+  // abrir la rueda del sistema, girarla y confirmar, con los nombres en un
+  // orden que no es el que el técnico tiene en la cabeza. La lupa es una lista
+  // que se filtra con tres letras — y al tocar el nombre la dupla YA está
+  // hecha, sin un segundo botón que pulsar.
   try {
     const c = await getJSON(`/api/despacho/companeros?email=${encodeURIComponent(email)}`);
-    cands = c?.candidatos || [];
-  } catch { /* sin candidatos */ }
+    candidatos_ = c?.candidatos || [];
+  } catch { candidatos_ = []; }
 
-  if (!cands.length) {
-    box.innerHTML = marco(`<div class="tecAsisAviso">No hay compañeros de tu rol
+  if (!candidatos_.length) {
+    box.innerHTML = marcoDupla_(`<div class="tecAsisAviso">No hay compañeros de tu rol
       que ya hayan marcado asistencia.</div>`);
     return;
   }
 
-  box.innerHTML = marco(`
-    <select id="tecAsisSocio" class="tecAsisSelect">
-      <option value="">Trabajo solo</option>
-      ${cands.map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.nombre)}</option>`).join("")}
-    </select>
-    <button id="tecAsisProp" class="tecAsisBtn" type="button">Proponer dupla</button>`);
+  box.innerHTML = marcoDupla_(`
+    <div class="tecAsisBuscar">
+      <span class="tecAsisLupa" aria-hidden="true">🔍</span>
+      <input id="tecAsisSocio" class="tecAsisInput" type="text" autocomplete="off"
+             inputmode="search" placeholder="Busca a tu compañero…"
+             aria-label="Buscar compañero de dupla" />
+      <div id="tecAsisSocioBox" class="nameSuggest hidden" role="listbox"></div>
+    </div>
+    <div class="small muted">${candidatos_.length} compañero(s) de tu rol ya marcaron
+      ingreso. Al tocar un nombre quedan en dupla; él puede deshacerla.</div>`);
 
-  $("tecAsisProp").onclick = async () => {
-    const socioUserId = $("tecAsisSocio").value;
-    if (!socioUserId) { limpiarDupla_(); return; }
-    const b = $("tecAsisProp");
-    b.disabled = true;
-    b.textContent = "Enviando…";
-    try {
-      const r = await postJSON("/api/despacho/dupla/proponer", { email, socioUserId });
-      if (!r?.ok) throw new Error(r?.error);
-      box.innerHTML = marco(`<div class="tecAsisAviso">Listo. Esperando que
-        <b>${escapeHtml(r.esperandoA || "tu compañero")}</b> acepte desde su celular.</div>`);
-    } catch (e) {
-      box.innerHTML = marco(`<div class="tecAsisAviso">${escapeHtml(e?.message || "No se pudo proponer")}</div>`);
+  suggestSocio_ = createSuggest_({
+    input: "tecAsisSocio",
+    box: "tecAsisSocioBox",
+    // Sin mínimo y abriendo al enfocar: tocar el buscador tiene que ENSEÑAR la
+    // lista, no pedir que adivine cómo se escribe el apellido del compañero.
+    min: 0,
+    abrirEnFoco: true,
+    debounce: 80,
+    fetchFn: (q, lim) => candidatos_
+      .filter(c => !q || String(c.nombre || "").toUpperCase().includes(q))
+      .slice(0, lim),
+    renderItem: (item, i, activo) => `
+      <div class="nsItem${activo ? " active" : ""}" data-sug-idx="${i}" role="option"
+           aria-selected="${activo}">
+        <div class="nsName">${escapeHtml(item.nombre || "")}</div>
+        ${item.especialidad ? `<div class="nsEmail">${escapeHtml(item.especialidad)}</div>` : ""}
+      </div>`,
+    onPick: (item) => armarDupla_(item),
+  });
+  suggestSocio_.bind();
+}
+
+/**
+ * armarDupla_ — un tap y la dupla existe.
+ *
+ * Ya no hay "proponer y esperar": mientras se esperaba, el motor no le daba
+ * carro a ninguno de los dos, y como quedarse parado no es opción, cada uno se
+ * iba a buscar el suyo — dos carros abiertos, que es justo lo que la dupla
+ * venía a evitar. El otro se entera por push y la deshace si no era eso.
+ */
+async function armarDupla_(socio, rol = "") {
+  const box = $("tecAsisDupla");
+  const email = emailActual_();
+  if (!box || !socio?.id) return;
+
+  suggestSocio_?.hide();
+  box.innerHTML = marcoDupla_(`<div class="tecAsisAviso">Armando la dupla con
+    <b>${escapeHtml(socio.nombre || "")}</b>…</div>`);
+
+  try {
+    const r = await postJSON("/api/despacho/dupla/proponer",
+      { email, socioUserId: socio.id, ...(rol ? { rol } : {}) });
+
+    // Los dos son técnicos "AMBOS": el servidor no puede saber si hoy trabajan
+    // de MOTOR o de TANQUE, y sin eso la dupla no se puede crear. Se pregunta
+    // aquí en vez de devolverle un error del que no se sale.
+    if (!r?.ok && r?.necesitaRol) {
+      const opciones = (r.opciones || ["MOTOR", "TANQUE"]);
+      box.innerHTML = marcoDupla_(`
+        <div class="tecAsisAviso">Los dos pueden trabajar de MOTOR o de TANQUE.
+          ¿Qué van a hacer hoy con <b>${escapeHtml(socio.nombre || "")}</b>?</div>
+        ${opciones.map(o => `<button class="tecAsisBtn" type="button"
+            data-rol="${escapeHtml(o)}">${escapeHtml(o)}</button>`).join("")}
+        <button id="tecAsisDupCancelar" class="tecAsisBtn sec" type="button">Cancelar</button>`);
+      box.querySelectorAll("button[data-rol]").forEach(b => {
+        b.onclick = () => armarDupla_(socio, b.getAttribute("data-rol"));
+      });
+      $("tecAsisDupCancelar").onclick = () => cargarDupla_();
+      return;
     }
-  };
+
+    if (!r?.ok) throw new Error(r?.error);
+  } catch (e) {
+    box.innerHTML = marcoDupla_(
+      `<div class="tecAsisAviso">${escapeHtml(e?.message || "No se pudo armar la dupla")}</div>
+       <button id="tecAsisDupReintentar" class="tecAsisBtn sec" type="button">Volver a intentar</button>`);
+    $("tecAsisDupReintentar").onclick = () => cargarDupla_();
+    return;
+  }
+
+  // La tarjeta definitiva la pinta cargarDupla_ con lo que diga el servidor: si
+  // entre medias alguien más se emparejó con él, el texto tiene que ser el del
+  // estado real y no el que acabamos de suponer.
+  cargarDupla_();
 }
 
 async function accionDupla_(accion, duplaId) {
@@ -320,3 +405,22 @@ async function accionDupla_(accion, duplaId) {
 export async function stopTecAsistencia_() {
   await detenerScanner_();
 }
+
+// ─── En vivo ───
+// La dupla ahora se arma desde el celular del OTRO y sin pedir permiso: si esta
+// pantalla solo se refrescara al abrirla, el compañero estaría en dupla sin
+// enterarse hasta que le llegara un carro que no esperaba. El push avisa cuando
+// la app está cerrada; esto, cuando está abierta y mirándola.
+window.addEventListener("glp:live", (ev) => {
+  const msg = ev?.detail;
+  if (msg?.topic !== "despacho") return;
+  if (!String(msg?.tipo || "").startsWith("DUPLA_")) return;
+
+  // Solo si el panel está a la vista: repintar uno oculto es una consulta a
+  // Supabase por cada dupla que se arme en el taller, en todos los celulares.
+  const panel = $("tecPanelAsistencia");
+  if (!panel || panel.style.display === "none") return;
+  if (!miUserId_) return;
+
+  cargarDupla_().catch(() => {});
+});

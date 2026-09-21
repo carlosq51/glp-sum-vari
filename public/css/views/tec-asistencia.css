@@ -126,7 +126,33 @@
   font-weight: 600;
   font-size: .9rem;
 }
-.tecAsisSelect {
+
+
+/* ── Buscador de compañero (lupa + namesuggest) ─────────────────────────────
+   Reemplaza al <select> de compañeros. En el celular, un select nativo abre
+   una rueda con los nombres en un orden que no es el que el técnico tiene en
+   la cabeza, y hay que girarla y confirmar antes de poder proponer nada.
+   Aquí escribe tres letras —o solo toca, y sale la lista entera— y al elegir
+   el nombre la dupla ya está armada.
+──────────────────────────────────────────────────────────────────────────── */
+.tecAsisBuscar {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  margin-bottom: 10px;
+}
+
+.tecAsisLupa {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 1.05rem;
+  opacity: .75;
+  pointer-events: none;   /* el tap tiene que caer en el input, no en el icono */
+}
+
+.tecAsisInput {
   width: 100%;
   background: var(--surface);
   border: var(--border-w) solid var(--surfaceLine);
@@ -134,6 +160,24 @@
   color: var(--text);
   font-weight: 700;
   font-size: 1rem;
-  padding: 14px 12px;
-  margin-bottom: 10px;
+  /* 16px reales en el input: por debajo de eso, iOS hace zoom al enfocar y la
+     tarjeta se sale de la pantalla. */
+  padding: 14px 12px 14px 40px;
+}
+
+.tecAsisInput:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* El desplegable se posiciona contra .tecAsisBuscar, que es el único relative
+   de la tarjeta. */
+.tecAsisBuscar .nameSuggest { top: calc(100% + 6px); }
+
+/* Nota al pie de la tarjeta de dupla activa: dice qué pasa con los carros ya
+   abiertos. Apagada a propósito — si pesara como el aviso de arriba, la
+   tarjeta tendría dos titulares y no se leería ninguno. */
+.tecAsisNota {
+  margin: -4px 0 10px;
+  line-height: 1.35;
 }

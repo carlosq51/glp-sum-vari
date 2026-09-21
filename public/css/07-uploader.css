@@ -300,21 +300,46 @@
 
 .uploader-shell .upMini { margin-top: var(--gap); }
 
-/* Las cuatro tomas de compresión (y las de calidad).
-   En 2×2 y no en fila de cuatro: repartidas a lo ancho de un celular, cada
-   una quedaba en 60 px y las cuatro se veían igual de negras. */
-.uploader-shell .upGridFotos {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: var(--gap);
+/* ─── Grupos de fotos: compresión (4 cilindros) y calidad (4 tomas) ─────────
+   Antes las cuatro tomas eran cuatro CAJAS dentro de una sola tarjeta con un
+   botón para las cuatro. Ahora cada una es su propia tarjeta —con su estado,
+   su reintento y su borrado— y lo que las agrupa es el título, que es como el
+   técnico las piensa: "la compresión", cuatro tomas de un mismo paso.
+────────────────────────────────────────────────────────────────────────────*/
+.uploader-shell .slotGroup {
   margin-top: var(--gap);
 }
 
-.uploader-shell .upGridFotos .upFoto { aspect-ratio: 1 / 1; }
+.uploader-shell .slotGroupLabel {
+  display: block;
+  font-weight: var(--fw-extrabold);
+  font-size: var(--fs-md);
+  margin-bottom: var(--gap-xs);
+}
 
-/* En pantalla ancha caben las cuatro en fila sin encogerse. */
+/* En 2×2 y no en fila de cuatro: repartidas a lo ancho de un celular, cada
+   tarjeta quedaría en 60 px y las cuatro fotos se verían igual de negras. */
+.uploader-shell .upSlotsGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--gap);
+}
+
+.uploader-shell .upSlotsGrid .slotCard { margin-top: 0; }
+
+/* La tarjeta chica aprieta lo que puede sin comerse la foto: en 2×2 no caben
+   tres botones con etiqueta, así que se quedan con el icono. */
+.uploader-shell .slotCard--mini { padding: 10px; }
+.uploader-shell .slotCard--mini label { font-size: var(--fs-sm); }
+.uploader-shell .slotCard--mini .upFoto { aspect-ratio: 1 / 1; }
+.uploader-shell .slotCard--mini .btnUp { padding: 0 10px; height: 34px; }
+.uploader-shell .slotCard--mini .btnUp span:last-child { display: none; }
+.uploader-shell .slotCard--mini .btnUp .ico { width: auto; }
+.uploader-shell .slotCard--mini .btnUp-danger { margin-left: auto; }
+
+/* En pantalla ancha caben las cuatro en fila, y ahí sí con etiqueta. */
 @media (min-width: 640px) {
-  .uploader-shell .upGridFotos { grid-template-columns: repeat(4, 1fr); }
+  .uploader-shell .upSlotsGrid { grid-template-columns: repeat(4, 1fr); }
 }
 
 /* La foto se ve entera, sin recortar: en una toma de un manómetro o de una
@@ -390,6 +415,24 @@
   .btnUp-danger span:last-child { display: none; }
   .btnUp-danger { padding: 0 12px; }
 }
+
+
+/* Reintentar: solo existe cuando hay algo que reintentar.
+   Un botón permanente que el 95% del tiempo no hace nada es ruido en una
+   tarjeta que ya tiene tres; y que aparezca justo cuando la franja se pone
+   roja es lo que hace obvio qué se espera del técnico. */
+.uploader-shell .btnUp-retry { display: none; }
+
+.uploader-shell .slotCard[data-estado="error"] .btnUp-retry {
+  display: inline-flex;
+  border-color: var(--warn);
+  color: var(--warn);
+  background: linear-gradient(160deg, var(--warnBg) 0%, var(--surface) 100%);
+}
+
+/* En la tarjeta chica el reintento SÍ lleva etiqueta: es el único botón que
+   el técnico tiene que encontrar rápido y con el pulgar sucio. */
+.uploader-shell .slotCard--mini .btnUp-retry span:last-child { display: inline; }
 
 
 /* ─────────────────────────────────────────────────

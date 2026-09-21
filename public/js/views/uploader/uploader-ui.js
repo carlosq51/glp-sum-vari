@@ -11,7 +11,6 @@ import {
   getStatus,
   uploadOne,
   uploadFalla,
-  uploadCalidadBatch,
   uploadConformidad,
   deleteSlot,
 } from "./uploader-api.js";
@@ -27,10 +26,12 @@ export function initUploaderUI(root, options = {}) {
   // =========================
   // Estado local UI
   // =========================
+  // El archivo elegido de cada slot se guarda hasta que el servidor confirme
+  // que lo tiene. Es lo que hace posible "Reintentar" sin volver a tomar la
+  // foto: el que falla es el envío, no la toma, y hacer bajar otra vez al
+  // técnico bajo el carro por un error de red no arregla nada.
   const selectedFilesBySlot = {};
-  let compFilesVisual = [null, null, null, null];
   let fallaFiles = [];
-  let qcFiles = [null, null, null, null];
   let confFile = null;
 
   const scannerParams = createScanner("up_qrReader_params");
@@ -41,10 +42,14 @@ export function initUploaderUI(root, options = {}) {
 
   const slotLabels = {
     vin: "Foto del VIN",
-    comp_1: "Compresión",
-    comp_2: "Compresión",
-    comp_3: "Compresión",
-    comp_4: "Compresión",
+    comp_1: "Cilindro 1",
+    comp_2: "Cilindro 2",
+    comp_3: "Cilindro 3",
+    comp_4: "Cilindro 4",
+    calidad_1: "Calidad 1",
+    calidad_2: "Calidad 2",
+    calidad_3: "Calidad 3",
+    calidad_4: "Calidad 4",
     corr_pre: "Corriente antes",
     corr_post: "Corriente después",
     voltaje: "Voltaje",
@@ -84,20 +89,13 @@ export function initUploaderUI(root, options = {}) {
   // y el <pre> queda como bitácora de la pantalla completa.
   // =========================
 
-  /**
-   * Slots que no tienen tarjeta propia porque comparten una.
-   * `comp_1..4` son las cuatro tomas de la prueba de compresión y viven en una
-   * sola tarjeta con cuatro miniaturas; `calidad_1..4`, igual. Sin este mapa,
-   * el estado de esas subidas no se pintaba en ningún lado.
-   */
-  function claveDeTarjeta(slot) {
-    if (/^comp_\d$/.test(slot)) return "comp";
-    if (/^calidad_\d$/.test(slot)) return "qc";
-    return slot;
-  }
-
+  // Ya no hay slots sin tarjeta propia: cada foto —incluidos los cuatro
+  // cilindros de la compresión y las cuatro de calidad— tiene la suya, con su
+  // estado, su archivo y su reintento. Mientras compartían una sola tarjeta,
+  // el error de UNA se pintaba encima de las cuatro y no había forma de
+  // reintentar solo la que falló.
   function tarjetaSlot(slot) {
-    return shell.querySelector(`.slotCard[data-slot="${claveDeTarjeta(slot)}"]`);
+    return shell.querySelector(`.slotCard[data-slot="${slot}"]`);
   }
 
   /**
@@ -113,11 +111,11 @@ export function initUploaderUI(root, options = {}) {
       else card.removeAttribute("data-estado");
 
       const ocupado = estado === "trabajando";
-      card.querySelectorAll("button[data-pick], button[data-clear]").forEach((b) => {
+      card.querySelectorAll("button[data-pick], button[data-clear], button[data-retry]").forEach((b) => {
         b.disabled = ocupado;
       });
     }
-    if (texto != null) setText(`${claveDeTarjeta(slot)}_meta`, texto);
+    if (texto != null) setText(`${slot}_meta`, texto);
   }
 
   /**
@@ -166,11 +164,11 @@ export function initUploaderUI(root, options = {}) {
     if (el) el.classList.add("active");
     stopAllScanners().catch(() => {});
 
-    // Refresh previews when entering params screen (comp thumbnails may not be populated yet)
-    if (name === "params") {
-      const vin = ($("vinText")?.value || "").trim();
-      if (vin) refreshStatus().catch(() => {});
-    }
+    // Al entrar, la pantalla pregunta al servidor qué tiene ya guardado: las
+    // miniaturas y el verde de las tarjetas salen de ahí, no de la memoria de
+    // esta sesión.
+    if (name === "params"  && ($("vinText")?.value || "").trim()) refreshStatus().catch(() => {});
+    if (name === "calidad" && ($("qcVin")?.value   || "").trim()) refreshQcStatus().catch(() => {});
   }
 
   function openBackControl() {
@@ -291,34 +289,6 @@ export function initUploaderUI(root, options = {}) {
     box.appendChild(img);
   }
 
-  function setRemoteCompPreview(idx1to4, p) {
-    const box = $(`comp_p${idx1to4}`);
-    if (!box || !p) return;
-
-    const src1 = p.thumbUrl || "";
-    const src2 = p.imgUrl || "";
-
-    const img = document.createElement("img");
-    img.alt = "foto guardada";
-    img.loading = "eager";
-    img.referrerPolicy = "no-referrer";
-    img.style.width = "100%";
-    img.style.height = "100%";
-    img.style.objectFit = "cover";
-    img.style.display = "block";
-    img.src = src1 || src2;
-
-    img.onerror = () => {
-      if (src2 && img.src !== src2) {
-        img.src = src2;
-      } else {
-        box.innerHTML = `<span class="small">${idx1to4}</span>`;
-      }
-    };
-
-    box.innerHTML = "";
-    box.appendChild(img);
-  }
 
   // =========================
   // Status (parámetros)
@@ -340,6 +310,29 @@ export function initUploaderUI(root, options = {}) {
 
   const TOTAL_REGISTRO = PASOS_REGISTRO.reduce((a, p) => a + p.slots.length, 0);
 
+  /** Todos los slots de la pantalla de parámetros, en orden de tarjeta. */
+  const SLOTS_PARAMS = PASOS_REGISTRO.flatMap((p) => p.slots);
+
+  /** Las cuatro de calidad viven en su propia pantalla, con su propio VIN. */
+  const SLOTS_CALIDAD = ["calidad_1", "calidad_2", "calidad_3", "calidad_4"];
+  const MIN_CALIDAD = 3;
+
+  const SLOTS_SOLDADURA = [
+    "sold_sensor_antes", "sold_sensor_post", "sold_cabina_antes", "sold_cabina_post",
+  ];
+
+  /**
+   * pieDeGrupo — la cuenta del grupo, bajo sus cuatro tarjetas.
+   * Sustituye al `comp_meta` compartido, que antes servía a la vez de cuenta
+   * del grupo y de estado de la última subida: cuando una foto fallaba, el
+   * mensaje de error borraba la cuenta y viceversa.
+   */
+  function pieDeGrupo(id, slots, estado = {}, sufijo = "") {
+    const listas = slots.filter((sl) => estado[sl]).length;
+    setText(`${id}_grupoMeta`, `${listas}/${slots.length} guardadas.${sufijo}`);
+    return listas;
+  }
+
   /**
    * marcarObligatorias — pone el distintivo en las tarjetas que bloquean el
    * cierre de la OT.
@@ -354,11 +347,18 @@ export function initUploaderUI(root, options = {}) {
     for (const paso of PASOS_REGISTRO) {
       if (!paso.slots.every((sl) => SLOTS_REGISTRO.includes(sl))) continue;
 
-      const card = tarjetaSlot(paso.slots[0]);
-      const label = card?.querySelector("label");
-      if (!card || !label || label.querySelector(".upObligatoria")) continue;
+      // Cada foto obligatoria marca SU tarjeta: son las que se pueden quedar
+      // sin subir una por una.
+      for (const slot of paso.slots) tarjetaSlot(slot)?.setAttribute("data-obligatorio", "si");
 
-      card.setAttribute("data-obligatorio", "si");
+      // El distintivo, en cambio, va una sola vez por paso: cuatro etiquetas
+      // "obligatoria" apiladas en las cuatro tarjetas de compresión no dicen
+      // nada que el título del grupo no diga mejor.
+      const label = paso.slots.length > 1
+        ? $(`${idDeGrupo(paso.slots[0])}_grupoLabel`)
+        : tarjetaSlot(paso.slots[0])?.querySelector("label");
+      if (!label || label.querySelector(".upObligatoria")) continue;
+
       const tag = document.createElement("span");
       tag.className = "upObligatoria";
       tag.textContent = paso.slots.length > 1 ? "obligatorias" : "obligatoria";
@@ -366,6 +366,11 @@ export function initUploaderUI(root, options = {}) {
       label.appendChild(document.createTextNode(" "));
       label.appendChild(tag);
     }
+  }
+
+  /** El grupo al que pertenece un slot (`comp_3` → `comp`), o "" si va solo. */
+  function idDeGrupo(slot) {
+    return tarjetaSlot(slot)?.closest(".slotGroup")?.getAttribute("data-grupo") || "";
   }
 
   /**
@@ -396,15 +401,26 @@ export function initUploaderUI(root, options = {}) {
     const caja = $("resumen");
     if (caja) caja.setAttribute("data-completo", faltan.length ? "no" : "si");
 
-    // Las tarjetas también se pintan desde lo que dice el servidor, no solo
-    // desde las subidas de esta sesión. Un técnico que vuelve a un carro que
-    // dejó a medias veía todas las tarjetas en gris aunque la mitad estuviera
-    // guardada, y el distintivo de "obligatoria" seguía en ámbar para siempre.
-    for (const paso of PASOS_REGISTRO) {
-      const card = tarjetaSlot(paso.slots[0]);
-      if (!card || card.getAttribute("data-estado") === "trabajando") continue;
-      const completo = paso.slots.every((sl) => estado[sl]);
-      if (completo) card.setAttribute("data-estado", "ok");
+    pintarTarjetas(SLOTS_PARAMS, estado);
+    pieDeGrupo("comp", ["comp_1", "comp_2", "comp_3", "comp_4"], estado);
+  }
+
+  /**
+   * pintarTarjetas — el verde de cada tarjeta sale de lo que dice el servidor,
+   * no solo de las subidas de esta sesión: un técnico que vuelve a un carro a
+   * medio registrar las veía todas en gris aunque la mitad estuviera guardada.
+   *
+   * Una tarjeta en error se respeta: es la foto que el técnico tiene pendiente
+   * de reintentar y borrarle el aviso sería perderle el rastro.
+   */
+  function pintarTarjetas(slots, estado = {}) {
+    for (const slot of slots) {
+      const card = tarjetaSlot(slot);
+      if (!card) continue;
+      const trabajando = card.getAttribute("data-estado") === "trabajando";
+      const enError = card.getAttribute("data-estado") === "error";
+      if (trabajando || enError) continue;
+      if (estado[slot]) card.setAttribute("data-estado", "ok");
       else card.removeAttribute("data-estado");
     }
   }
@@ -453,22 +469,34 @@ export function initUploaderUI(root, options = {}) {
       }
 
       renderStatus(j);
-
-      if (j.previews) {
-        ["vin", "corr_pre", "corr_post", "voltaje", "scan_carro"].forEach((slot) => {
-          const p = j.previews[slot];
-          if (p) setRemotePreview(slot, p);
-        });
-
-        ["comp_1", "comp_2", "comp_3", "comp_4"].forEach((slot, i) => {
-          const p = j.previews[slot];
-          if (p) setRemoteCompPreview(i + 1, p);
-        });
-      }
+      pintarPreviewsRemotos(SLOTS_PARAMS, j);
     } catch (e) {
       setText("out", `❌ Error getStatus: ${e}`);
     }
   }
+
+  /**
+   * pintarPreviewsRemotos — lo que el servidor ya tiene, en su tarjeta.
+   * Una sola función para todas las pantallas: antes las compresiones tenían
+   * su propia copia (`setRemoteCompPreview`) porque sus miniaturas no eran
+   * tarjetas sino cuatro cajas sueltas.
+   */
+  function pintarPreviewsRemotos(slots, j) {
+    if (!j?.previews) return;
+    for (const slot of slots) {
+      const p = j.previews[slot];
+      if (p) setRemotePreview(slot, p);
+    }
+  }
+
+  // Una foto que no sube casi nunca es una foto mala: es el taller, con una
+  // barra de señal y un socket que se corta a media subida. Reintentar solo
+  // cuando el envío revienta (no cuando el servidor contesta "no") evita que
+  // el técnico tenga que tocar nada en el caso más común.
+  const REINTENTOS_AUTO = 2;
+  const ESPERA_REINTENTO_MS = 1500;
+
+  const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
 
   async function uploadOneClient(slot, file, outId = "out", vinOverride = "", dateOverride = "") {
     const vin = String(vinOverride || $("vinText")?.value || "").trim();
@@ -480,117 +508,52 @@ export function initUploaderUI(root, options = {}) {
       return { ok: false, error: "Falta VIN" };
     }
 
+    // El archivo se recuerda ANTES de intentar: si la subida muere a mitad,
+    // "Reintentar" tiene de dónde agarrarlo.
+    selectedFilesBySlot[slot] = file;
     marcarSlot(slot, "trabajando", ETAPAS.decodificando);
 
-    try {
-      const j = await uploadOne({
-        vin,
-        dateStr,
-        slot,
-        file,
-        apsUrl: options.apsUrl,
-        onProgress: (p) => marcarSlot(slot, "trabajando", ETAPAS[p.phase] || "Procesando…"),
-      });
+    for (let intento = 1; intento <= 1 + REINTENTOS_AUTO; intento++) {
+      try {
+        const j = await uploadOne({
+          vin,
+          dateStr,
+          slot,
+          file,
+          apsUrl: options.apsUrl,
+          onProgress: (p) => marcarSlot(slot, "trabajando", ETAPAS[p.phase] || "Procesando…"),
+        });
 
-      if (!j.ok) {
-        marcarSlot(slot, "error", `No se pudo subir: ${j.error || "error"}`);
-        setText(outId, `❌ uploadOne(${slot}): ${j.error}`);
-        return j;
-      }
-
-      if (j.preview) {
-        if (slot.startsWith("comp_")) {
-          const idx = Number(slot.split("_")[1] || "0");
-          if (idx >= 1 && idx <= 4) setRemoteCompPreview(idx, j.preview);
-        } else {
-          setRemotePreview(slot, j.preview);
+        if (!j.ok) {
+          // El servidor contestó y dijo que no: reintentar daría el mismo no.
+          marcarSlot(slot, "error", `No se pudo subir: ${j.error || "error"}`);
+          setText(outId, `❌ uploadOne(${slot}): ${j.error}`);
+          return j;
         }
+
+        if (j.preview) setRemotePreview(slot, j.preview);
+
+        // Confirmada por el servidor: ya no hace falta retenerla en memoria.
+        delete selectedFilesBySlot[slot];
+
+        // El ahorro se muestra en la tarjeta: es la única señal de que la foto
+        // de 4 MB del iPhone no se fue entera por los datos del técnico.
+        marcarSlot(slot, "ok", `✅ Guardada · ${ahorroLegible(j.foto)}`);
+        setText(outId, `✅ Guardado: ${slot} (${ahorroLegible(j.foto)})`);
+        return j;
+      } catch (e) {
+        const quedan = 1 + REINTENTOS_AUTO - intento;
+        if (quedan > 0) {
+          marcarSlot(slot, "trabajando", `Sin señal — reintentando (${intento}/${REINTENTOS_AUTO})…`);
+          await esperar(ESPERA_REINTENTO_MS * intento);
+          continue;
+        }
+        marcarSlot(slot, "error", `No salió del teléfono: ${e?.message || e}. Toca Reintentar.`);
+        setText(outId, `❌ Error ${slot}: ${e}`);
+        return { ok: false, error: String(e) };
       }
-
-      // El ahorro se muestra en la tarjeta: es la única señal de que la foto
-      // de 4 MB del iPhone no se fue entera por los datos del técnico.
-      marcarSlot(slot, "ok", `✅ Guardada · ${ahorroLegible(j.foto)}`);
-      setText(outId, `✅ Guardado: ${slot} (${ahorroLegible(j.foto)})`);
-      return j;
-    } catch (e) {
-      marcarSlot(slot, "error", `Error: ${e?.message || e}`);
-      setText(outId, `❌ Error ${slot}: ${e}`);
-      return { ok: false, error: String(e) };
     }
-  }
-
-  // =========================
-  // Compresión (4 fotos)
-  // =========================
-  function clearComp() {
-    compFilesVisual = [null, null, null, null];
-    ["comp_p1", "comp_p2", "comp_p3", "comp_p4"].forEach((id, idx) => {
-      const box = $(id);
-      if (box) box.innerHTML = `<span class="small">${idx + 1}</span>`;
-    });
-    setText("comp_meta", "Ningún archivo seleccionado.");
-
-    const c1 = $("comp_cam");
-    const c2 = $("comp_file");
-    if (c1) c1.value = "";
-    if (c2) c2.value = "";
-  }
-
-  function renderCompPreviews() {
-    const ids = ["comp_p1", "comp_p2", "comp_p3", "comp_p4"];
-
-    ids.forEach((id, idx) => {
-      const box = $(id);
-      const f = compFilesVisual[idx];
-      if (!box) return;
-
-      miniatura(box, f, { alt: `compresión ${idx + 1}`, vacio: String(idx + 1) });
-    });
-
-    const chosen = compFilesVisual.filter(Boolean);
-    const totalSize = chosen.reduce((a, f) => a + (f.size || 0), 0);
-    setText(
-      "comp_meta",
-      chosen.length ? `${chosen.length}/4 seleccionadas • ${humanBytes(totalSize)}` : "Ningún archivo seleccionado."
-    );
-  }
-
-  async function addCompOne(file) {
-    if (!file) return;
-
-    let idx0 = compFilesVisual.findIndex((x) => !x);
-    if (idx0 === -1) idx0 = 3; // reemplaza la 4ta si ya está lleno
-
-    compFilesVisual[idx0] = file;
-    renderCompPreviews();
-
-    const slot = `comp_${idx0 + 1}`;
-    await uploadOneClient(slot, file, "out");
-
-    try {
-      await refreshStatus();
-    } catch {}
-  }
-
-  async function onPickCompCam(fileList) {
-    const f = fileList?.[0] || null;
-    if (!f) return;
-    await addCompOne(f);
-    const el = $("comp_cam");
-    if (el) el.value = "";
-  }
-
-  async function onPickCompFiles(fileList) {
-    const arr = Array.from(fileList || []);
-    if (!arr.length) return;
-
-    const take = arr.slice(-4);
-    for (const f of take) {
-      await addCompOne(f);
-    }
-
-    const el = $("comp_file");
-    if (el) el.value = "";
+    return { ok: false, error: "Sin intentos" };
   }
 
   // =========================
@@ -638,80 +601,6 @@ export function initUploaderUI(root, options = {}) {
     if (!arr.length) return;
     fallaFiles.push(...arr);
     renderFalla();
-  }
-
-  // =========================
-  // Calidad (3-4 fotos)
-  // =========================
-  function clearQc() {
-    qcFiles = [null, null, null, null];
-    ["qc_p1", "qc_p2", "qc_p3", "qc_p4"].forEach((id, idx) => {
-      const box = $(id);
-      if (box) box.innerHTML = `<span class="small">${idx + 1}</span>`;
-    });
-    setText("qc_meta", "0/4 seleccionadas.");
-
-    const c1 = $("qc_cam");
-    const c2 = $("qc_file");
-    if (c1) c1.value = "";
-    if (c2) c2.value = "";
-  }
-
-  function renderQc() {
-    const ids = ["qc_p1", "qc_p2", "qc_p3", "qc_p4"];
-    ids.forEach((id, idx) => {
-      const box = $(id);
-      const f = qcFiles[idx];
-      if (!box) return;
-
-      miniatura(box, f, { alt: `calidad ${idx + 1}`, vacio: String(idx + 1) });
-    });
-
-    const chosen = qcFiles.filter(Boolean);
-    const total = chosen.reduce((a, f) => a + (f.size || 0), 0);
-    setText("qc_meta", `${chosen.length}/4 seleccionadas • ${humanBytes(total)} (mín 3)`);
-  }
-
-  async function addQcOne(file) {
-    if (!file) return;
-
-    // desplaza y mete al final
-    qcFiles[0] = qcFiles[1];
-    qcFiles[1] = qcFiles[2];
-    qcFiles[2] = qcFiles[3];
-    qcFiles[3] = file;
-
-    renderQc();
-
-    const chosen = qcFiles.filter(Boolean);
-    const idx = chosen.length; // 1..4
-    const slot = `calidad_${idx}`;
-
-    const vin = ($("qcVin")?.value || "").trim();
-    const dateStr = $("qcDate")?.value || todayYYYYMMDD();
-
-    await uploadOneClient(slot, file, "outQc", vin, dateStr);
-  }
-
-  async function onPickQcCam(fileList) {
-    const f = fileList?.[0] || null;
-    if (!f) return;
-    await addQcOne(f);
-    const el = $("qc_cam");
-    if (el) el.value = "";
-  }
-
-  async function onPickQcFiles(fileList) {
-    const arr = Array.from(fileList || []);
-    if (!arr.length) return;
-
-    const take = arr.slice(-4);
-    for (const f of take) {
-      await addQcOne(f);
-    }
-
-    const el = $("qc_file");
-    if (el) el.value = "";
   }
 
   // =========================
@@ -773,7 +662,10 @@ export function initUploaderUI(root, options = {}) {
       scanner: scannerQc,
       box: "qrBox_qc", stop: "btnStop_qc",
       msg: "scanMsg_qc", mode: "scanMode_qc",
-      setVin: (v) => { if ($("qcVin")) $("qcVin").value = v; },
+      setVin: (v) => {
+        if ($("qcVin")) $("qcVin").value = v;
+        refreshQcStatus().catch(() => {});
+      },
     },
     conf: {
       scanner: scannerConf,
@@ -902,18 +794,49 @@ export function initUploaderUI(root, options = {}) {
       const j = await getStatus({ vin, dateStr, apsUrl: options.apsUrl });
       if (!j.ok) return;
 
-      const soldSlots = ["sold_sensor_antes", "sold_sensor_post", "sold_cabina_antes", "sold_cabina_post"];
-      soldSlots.forEach((slot) => {
-        const p = j.previews && j.previews[slot];
-        if (p) setRemotePreview(slot, p);
-      });
+      pintarPreviewsRemotos(SLOTS_SOLDADURA, j);
+      pintarTarjetas(SLOTS_SOLDADURA, j.status || {});
 
-      const done = soldSlots.filter((s) => j.status && j.status[s]).length;
-      setText("outSold", done === 4 ? "✅ 4/4 fotos registradas." : `📷 ${done}/4 fotos registradas.`);
+      const done = SLOTS_SOLDADURA.filter((s) => j.status && j.status[s]).length;
+      setText("outSold", done === SLOTS_SOLDADURA.length
+        ? `✅ ${done}/${SLOTS_SOLDADURA.length} fotos registradas.`
+        : `📷 ${done}/${SLOTS_SOLDADURA.length} fotos registradas.`);
     } catch (e) {
       setText("outSold", `❌ Error: ${e}`);
     }
   }
+
+  // =========================
+  // Status (calidad)
+  // ---------------------------------------------------------------------
+  // La pantalla de calidad no tenía estado remoto: al volver a un VIN ya
+  // inspeccionado salía en blanco, como si no hubiera nada subido, y el
+  // inspector repetía las cuatro fotos.
+  // =========================
+  async function refreshQcStatus() {
+    const vin     = ($("qcVin")?.value || "").trim();
+    const dateStr = $("qcDate")?.value || todayYYYYMMDD();
+    if (!vin) return;
+
+    try {
+      const j = await getStatus({ vin, dateStr, apsUrl: options.apsUrl });
+      if (!j.ok) return;
+
+      pintarPreviewsRemotos(SLOTS_CALIDAD, j);
+      pintarTarjetas(SLOTS_CALIDAD, j.status || {});
+      pintarPieCalidad(j.status || {});
+    } catch (e) {
+      setText("outQc", `❌ Error: ${e}`);
+    }
+  }
+
+  function pintarPieCalidad(estado = {}) {
+    const listas = pieDeGrupo("qc", SLOTS_CALIDAD, estado,
+      listasDeCalidad(estado) < MIN_CALIDAD ? ` Mínimo ${MIN_CALIDAD}.` : " Listo ✅");
+    return listas;
+  }
+
+  const listasDeCalidad = (estado = {}) => SLOTS_CALIDAD.filter((sl) => estado[sl]).length;
 
   // =========================
   // Wire events
@@ -981,108 +904,94 @@ export function initUploaderUI(root, options = {}) {
     $("vinText")?.addEventListener("change", refreshStatus);
     $("dateStr")?.addEventListener("change", refreshStatus);
 
-    // Delegación tomar/subir/quitar (slots normales + comp)
+    // ─── Una tarjeta = una foto: tomar / reintentar / borrar ───────────────
+    // Cada pantalla tiene su VIN, su fecha y su bitácora. Antes esto se decidía
+    // con un `if (slot.startsWith("sold_"))` repetido en cada rama; ahora la
+    // pantalla del slot se pregunta una vez.
+    const PANTALLA_DE_SLOT = {};
+    const registrarSlots = (slots, ctx) => slots.forEach((sl) => (PANTALLA_DE_SLOT[sl] = ctx));
+
+    registrarSlots(SLOTS_PARAMS, {
+      vinId: "vinText", dateId: "dateStr", outId: "out", refrescar: () => refreshStatus(),
+    });
+    registrarSlots(SLOTS_SOLDADURA, {
+      vinId: "soldVin", dateId: "soldDate", outId: "outSold", refrescar: () => refreshSoldStatus(),
+    });
+    registrarSlots(SLOTS_CALIDAD, {
+      vinId: "qcVin", dateId: "qcDate", outId: "outQc", refrescar: () => refreshQcStatus(),
+    });
+
+    const ctxDe = (slot) => PANTALLA_DE_SLOT[slot] || PANTALLA_DE_SLOT.vin;
+    const vinDe = (slot) => ($(ctxDe(slot).vinId)?.value || "").trim();
+    const fechaDe = (slot) => $(ctxDe(slot).dateId)?.value || todayYYYYMMDD();
+
+    /** Sube un archivo a su slot y deja la pantalla al día. */
+    async function subirASlot(slot, file) {
+      const ctx = ctxDe(slot);
+      setPreview(slot, file);
+
+      const j = await uploadOneClient(slot, file, ctx.outId, vinDe(slot), fechaDe(slot));
+      if (j && j.ok) {
+        const cam = $(`${slot}_cam`);
+        const fil = $(`${slot}_file`);
+        if (cam) cam.value = "";
+        if (fil) fil.value = "";
+        try { await ctx.refrescar(); } catch { /* el estado local ya quedó en verde */ }
+      }
+      return j;
+    }
+
     shell.addEventListener("click", (ev) => {
       const btn = ev.target.closest("button");
       if (!btn) return;
 
       const slot = btn.getAttribute("data-slot");
-      if (!slot) return;
+      if (!slot || !PANTALLA_DE_SLOT[slot]) return;
 
-      if (btn.getAttribute("data-pick") === "cam") {
-        if (slot === "comp") $("comp_cam")?.click();
-        else $(`${slot}_cam`)?.click();
-      }
+      if (btn.getAttribute("data-pick") === "cam")  $(`${slot}_cam`)?.click();
+      if (btn.getAttribute("data-pick") === "file") $(`${slot}_file`)?.click();
 
-      if (btn.getAttribute("data-pick") === "file") {
-        if (slot === "comp") $("comp_file")?.click();
-        else $(`${slot}_file`)?.click();
+      // Reintentar con el archivo que ya está en el teléfono. Este botón es
+      // toda la diferencia: la foto que falló se reenvía sola, sin volver a
+      // tomarla y sin tocar las otras tres.
+      if (btn.getAttribute("data-retry") === "1") {
+        const f = selectedFilesBySlot[slot];
+        if (!f) {
+          marcarSlot(slot, "error", "No queda la foto en el teléfono: vuelve a tomarla.");
+          return;
+        }
+        subirASlot(slot, f).catch(() => {});
       }
 
       if (btn.getAttribute("data-clear") === "1") {
-        if (slot === "comp") {
-          clearComp();
-        } else {
-          // Borrar del backend (R2) si hay VIN disponible
-          const isSold = slot.startsWith("sold_");
-          const vinToDel = isSold
-            ? ($(`soldVin`)?.value || "").trim()
-            : ($(`vinText`)?.value || "").trim();
-          const dateToDel = isSold
-            ? ($(`soldDate`)?.value || todayYYYYMMDD())
-            : ($(`dateStr`)?.value || todayYYYYMMDD());
-          if (vinToDel) {
-            deleteSlot({ vin: vinToDel, dateStr: dateToDel, slot, apsUrl: options.apsUrl })
-              .then(() => {
-                // Confirmar que R2 ya no tiene el archivo
-                if (isSold) refreshSoldStatus().catch(() => {});
-                else       refreshStatus().catch(() => {});
-              })
-              .catch(() => {});
-          }
-          delete selectedFilesBySlot[slot];
-          setPreview(slot, null);
-          const cam = $(`${slot}_cam`);
-          const fil = $(`${slot}_file`);
-          if (cam) cam.value = "";
-          if (fil) fil.value = "";
+        // Borrar del backend (R2) si hay VIN disponible
+        const ctx = ctxDe(slot);
+        const vinToDel = vinDe(slot);
+        if (vinToDel) {
+          deleteSlot({ vin: vinToDel, dateStr: fechaDe(slot), slot, apsUrl: options.apsUrl })
+            .then(() => ctx.refrescar())          // confirmar que R2 ya no lo tiene
+            .catch(() => {});
         }
+        delete selectedFilesBySlot[slot];
+        setPreview(slot, null);
+        const cam = $(`${slot}_cam`);
+        const fil = $(`${slot}_file`);
+        if (cam) cam.value = "";
+        if (fil) fil.value = "";
       }
     });
 
-    // Slots normales (suben al toque)
-    const normalSlots = ["vin", "corr_pre", "corr_post", "voltaje", "scan_carro"];
-    normalSlots.forEach((slot) => {
+    // Cada slot sube al toque, en su propia tarjeta. La pantalla de parámetros,
+    // la de soldadura y la de calidad se cablean igual: no hay motivo para que
+    // una foto de compresión se comporte distinto a una de soldadura.
+    [...SLOTS_PARAMS, ...SLOTS_SOLDADURA, ...SLOTS_CALIDAD].forEach((slot) => {
       const cam = $(`${slot}_cam`);
       const fil = $(`${slot}_file`);
 
       const onPick = async (e) => {
         const f = e.target?.files?.[0];
         if (!f) return;
-
-        setPreview(slot, f);
-
-        const j = await uploadOneClient(slot, f, "out");
-        if (j && j.ok) {
-          if (cam) cam.value = "";
-          if (fil) fil.value = "";
-          delete selectedFilesBySlot[slot];
-          try {
-            await refreshStatus();
-          } catch {}
-        } else {
-          selectedFilesBySlot[slot] = f;
-        }
-      };
-
-      if (cam) cam.addEventListener("change", onPick);
-      if (fil) fil.addEventListener("change", onPick);
-      setPreview(slot, null);
-    });
-
-    // Soldadura slots (suben al toque, VIN desde #up_soldVin)
-    const soldSlots = ["sold_sensor_antes", "sold_sensor_post", "sold_cabina_antes", "sold_cabina_post"];
-    soldSlots.forEach((slot) => {
-      const cam = $(`${slot}_cam`);
-      const fil = $(`${slot}_file`);
-
-      const onPick = async (e) => {
-        const f = e.target?.files?.[0];
-        if (!f) return;
-
-        setPreview(slot, f);
-
-        const vin = ($("soldVin")?.value || "").trim();
-        const dateStr = $("soldDate")?.value || todayYYYYMMDD();
-        const j = await uploadOneClient(slot, f, "outSold", vin, dateStr);
-        if (j && j.ok) {
-          if (cam) cam.value = "";
-          if (fil) fil.value = "";
-          delete selectedFilesBySlot[slot];
-          try { await refreshSoldStatus(); } catch {}
-        } else {
-          selectedFilesBySlot[slot] = f;
-        }
+        await subirASlot(slot, f);
       };
 
       if (cam) cam.addEventListener("change", onPick);
@@ -1099,11 +1008,6 @@ export function initUploaderUI(root, options = {}) {
     $("btnStop_sold")?.addEventListener("click", () => stopScanner("sold"));
 
     marcarObligatorias();
-
-    // Compresión (4)
-    $("comp_cam")?.addEventListener("change", (e) => onPickCompCam(e.target.files));
-    $("comp_file")?.addEventListener("change", (e) => onPickCompFiles(e.target.files));
-    clearComp();
 
     // Scanners
     $("btnScanQR_params")?.addEventListener("click", () => startScanner("params", "QR"));
@@ -1192,69 +1096,49 @@ export function initUploaderUI(root, options = {}) {
 
     renderFalla();
 
-    // Calidad files
-    $("btnQcCam")?.addEventListener("click", () => $("qc_cam")?.click());
-    $("btnQcFile")?.addEventListener("click", () => $("qc_file")?.click());
-    $("btnQcClear")?.addEventListener("click", clearQc);
+    // ─── Calidad ───────────────────────────────────────────────────────────
+    // Las cuatro fotos ya suben una por una, cada una a su tarjeta. El botón
+    // de abajo no vuelve a mandarlas (antes sí: las subía DOS veces, y si el
+    // lote fallaba decía que no se había guardado nada cuando ya estaba todo
+    // arriba). Solo comprueba contra el servidor que estén las mínimas.
+    $("qcVin")?.addEventListener("change", () => refreshQcStatus().catch(() => {}));
+    $("qcDate")?.addEventListener("change", () => refreshQcStatus().catch(() => {}));
 
-    $("qc_cam")?.addEventListener("change", (e) => onPickQcCam(e.target.files));
-    $("qc_file")?.addEventListener("change", (e) => onPickQcFiles(e.target.files));
-    clearQc();
-
-    $("btnQcUpload")?.addEventListener("click", async () => {
-      await conBotonOcupado($("btnQcUpload"), "⏳ ENVIANDO…", async () => {
+    $("btnQcListo")?.addEventListener("click", async () => {
+      await conBotonOcupado($("btnQcListo"), "⏳ Comprobando…", async () => {
         const vin = ($("qcVin")?.value || "").trim();
-        const dateStr = $("qcDate")?.value || todayYYYYMMDD();
-
         if (!vin) {
           setText("outQc", "❌ Falta VIN.");
           return;
         }
 
-        const chosen = qcFiles.filter(Boolean);
-        if (chosen.length < 3) {
-          setText("outQc", "⚠️ Debes subir mínimo 3 fotos de calidad.");
+        const dateStr = $("qcDate")?.value || todayYYYYMMDD();
+        let j;
+        try {
+          j = await getStatus({ vin, dateStr, apsUrl: options.apsUrl });
+        } catch (e) {
+          setText("outQc", `❌ No se pudo comprobar: ${e}`);
+          return;
+        }
+        if (!j?.ok) {
+          setText("outQc", `❌ No se pudo comprobar: ${j?.error || "error"}`);
           return;
         }
 
-        const items = [];
-        for (let i = 0; i < 4; i++) {
-          const f = qcFiles[i];
-          if (!f) continue;
-          items.push({ slot: `calidad_${i + 1}`, file: f });
+        pintarPreviewsRemotos(SLOTS_CALIDAD, j);
+        pintarTarjetas(SLOTS_CALIDAD, j.status || {});
+        const listas = pintarPieCalidad(j.status || {});
+
+        if (listas < MIN_CALIDAD) {
+          const faltan = SLOTS_CALIDAD
+            .filter((sl) => !j.status?.[sl])
+            .map((sl) => slotLabels[sl] || sl);
+          setText("outQc", `⚠️ Van ${listas} de ${MIN_CALIDAD} mínimas. Falta: ${faltan.join(", ")}`);
+          return;
         }
 
-        try {
-          const j = await uploadCalidadBatch({
-            vin,
-            dateStr,
-            items,
-            apsUrl: options.apsUrl,
-            onProgress: (p) => {
-              if (p.phase === "prepare") {
-                setText("outQc", `Comprimiendo foto ${p.index}/${p.total}…\n`);
-              } else if (p.phase === "upload") {
-                setText("outQc", `Enviando CALIDAD: ${p.total} foto(s) · ${humanBytes(p.bytes)}\n`);
-              }
-            },
-          });
-
-          if (!j.ok) {
-            setText("outQc", "❌ uploadCalidad: " + (j.error || "Error"));
-            return;
-          }
-
-          setText(
-            "outQc",
-            `✅ Calidad registrada.\nCarpeta: ${j.carFolderName}/CALIDAD\nGuardados: ${
-              Array.isArray(j.saved) ? j.saved.length : items.length
-            }`
-          );
-
-          clearQc();
-        } catch (e) {
-          setText("outQc", `❌ Error CALIDAD: ${e}`);
-        }
+        setText("outQc", `✅ Calidad completa: ${listas} foto(s) guardadas en el servidor.`);
+        showScreen("menu");
       });
     });
 

@@ -11,11 +11,18 @@ import { escapeHtml } from "./format.js";
  * @param {Function}      opts.renderItem   — (item, i, isActive) => html string
  * @param {Function}      opts.onPick       — (item) => void
  * @param {Function}      [opts.guard]      — () => bool; return false to suppress
- * @param {number}        [opts.min=1]      — min chars before fetch
+ * @param {number}        [opts.min=1]      — min chars before fetch. Con 0, la
+ *                                            lista se puede abrir sin escribir
+ *                                            nada (lupa: "enséñame quién hay").
  * @param {number}        [opts.debounce=200]
  * @param {number}        [opts.limit=12]
+ * @param {boolean}       [opts.abrirEnFoco] — abrir al enfocar el input. Solo
+ *                                            tiene sentido con min:0, y es lo
+ *                                            que convierte el widget en un
+ *                                            buscador con lista visible en vez
+ *                                            de un adivina-y-escribe.
  */
-export function createSuggest_({ input, box, fetchFn, renderItem, onPick, guard, min = 1, debounce = 200, limit = 12 }) {
+export function createSuggest_({ input, box, fetchFn, renderItem, onPick, guard, min = 1, debounce = 200, limit = 12, abrirEnFoco = false }) {
   let timer = null, items = [], idx = -1, open = false, lastQ = "";
 
   const inp_ = () => typeof input === "string" ? document.getElementById(input) : input;
@@ -50,7 +57,7 @@ export function createSuggest_({ input, box, fetchFn, renderItem, onPick, guard,
     if (guard && !guard()) return;
     const q = String(inp_()?.value || "").trim().toUpperCase();
     lastQ = q;
-    if (!q || q.length < min) { hide(); return; }
+    if (q.length < min || (min > 0 && !q)) { hide(); return; }
     clearTimeout(timer);
     timer = setTimeout(async () => {
       try {
@@ -93,6 +100,7 @@ export function createSuggest_({ input, box, fetchFn, renderItem, onPick, guard,
     const inp = inp_();
     const b = box_();
     if (inp) { inp.addEventListener("input", onInput); inp.addEventListener("keydown", onKeyDown); }
+    if (inp && abrirEnFoco) inp.addEventListener("focus", onInput);
     b?.addEventListener("mousedown", onBoxMouseDown);
     document.addEventListener("click", onDocClick);
   }
@@ -101,13 +109,20 @@ export function createSuggest_({ input, box, fetchFn, renderItem, onPick, guard,
     clearTimeout(timer);
     const inp = inp_();
     const b = box_();
-    if (inp) { inp.removeEventListener("input", onInput); inp.removeEventListener("keydown", onKeyDown); }
+    if (inp) {
+      inp.removeEventListener("input", onInput);
+      inp.removeEventListener("keydown", onKeyDown);
+      inp.removeEventListener("focus", onInput);
+    }
     b?.removeEventListener("mousedown", onBoxMouseDown);
     document.removeEventListener("click", onDocClick);
     hide();
   }
 
-  return { bind, hide, destroy, isOpen: () => open };
+  /** Abrir sin que el técnico escriba: es lo que hace la lupa. */
+  const abrir = () => onInput();
+
+  return { bind, hide, destroy, abrir, isOpen: () => open };
 }
 
 // ── VIN suggest ───────────────────────────────────────────────────────────────

@@ -99,35 +99,11 @@ export async function uploadFalla({
   return { ...j, fotos };
 }
 
-export async function uploadCalidadBatch({
-  vin,
-  dateStr,
-  items = [], // [{ slot, file }]
-  onProgress,
-  apsUrl = APS_URL,
-}) {
-  const validos = items.filter((it) => it?.file && it?.slot);
-
-  const fotos = await comprimirVarias(validos.map((it) => it.file), {
-    // Sin `slot` a propósito: con dos compresiones en vuelo, la que termina
-    // no tiene por qué ser la que le toca al contador, y nombrar la foto
-    // equivocada confunde más de lo que informa. La cuenta sí es exacta.
-    onProgreso: ({ listas, total }) =>
-      onProgress?.({ phase: "prepare", index: listas, total }),
-  });
-
-  const files = fotos.map((f, i) => ({
-    slot: validos[i].slot,
-    mimeType: f.mimeType,
-    b64: f.b64,
-  }));
-
-  const bytes = fotos.reduce((a, f) => a + (f.bytes || 0), 0);
-  onProgress?.({ phase: "upload", total: files.length, bytes });
-
-  const j = await callAPS({ action: "uploadCalidad", vin, dateStr, files }, apsUrl);
-  return { ...j, fotos };
-}
+// uploadCalidadBatch se fue: mandaba las cuatro fotos de calidad en un lote a
+// las MISMAS rutas de R2 a las que cada foto ya había subido sola al tomarla.
+// Subía todo dos veces y, como el lote es todo-o-nada, una foto caída hacía
+// que el mensaje dijera "no se guardó" con las cuatro ya en el bucket. La
+// acción "uploadCalidad" del servidor sigue existiendo para Apps Script.
 
 export async function uploadConformidad({
   tipo,
