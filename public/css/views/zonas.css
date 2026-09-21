@@ -4,6 +4,18 @@
    estados vivos (pulso/insignias) y carretera animada. Amigable + dinámico.
    ===================================================================== */
 
+/* ── Colores de estado ─────────────────────────────────────────────────────
+   Van en :root y no dentro de .zonasMapaWrap como el resto: la hoja de
+   acciones (.zonasActionSheet) se cuelga de <body>, fuera del mapa, y ahí una
+   variable declarada en .zonasMapaWrap no resuelve — la propiedad se anula y
+   el chip de estado acaba del color del texto. No dependen del tema.
+──────────────────────────────────────────────────────────────────────────── */
+:root {
+  --st-wait: #f59e0b;
+  --st-conv: #3b82f6;
+  --st-done: #22c55e;
+}
+
 /* ── Variables locales del mapa (theme-aware) ── */
 .zonasMapaWrap {
   --lot-bg:     #171a20;                 /* asfalto (noche) */
@@ -18,10 +30,6 @@
   --wheel:      #0b0d12;
   --glass-car:  rgba(0,0,0,.34);         /* parabrisas */
   --car-ink:    #ffffff;
-  --st-wait:    #f59e0b;
-  --st-conv:    #3b82f6;
-  --st-done:    #22c55e;
-
   padding: 4px 0 8px;
   user-select: none;
   -webkit-user-select: none;
@@ -688,4 +696,157 @@
 @media (prefers-reduced-motion: reduce) {
   .zonasFinChip, .zonaCard--en_conversion::after, .zonasPasilloArrowDown,
   .zonasPasilloArrowUp, .zonasPasilloLine, .zonaCard--tec-verde { animation: none; }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   DESPACHO DENTRO DE LA HOJA DE ZONA (solo supervisión)
+   ---------------------------------------------------------------------------
+   Los dos puestos del carro —delantero y tanquero— con sus acciones. Antes
+   esto solo existía en la consola de despacho, una pantalla aparte pensada
+   para el monitor del taller: en un celular había que salir de la app, entrar
+   ahí y volver a buscar la misma zona que ya se tenía tocada.
+──────────────────────────────────────────────────────────────────────────── */
+.zdBloque:empty { display: none; }
+
+.zdBloque {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 0 4px;
+  border-top: 1px solid var(--surfaceLine);
+}
+
+.zdTitulo {
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-extrabold);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .1em;
+}
+
+.zdPuesto {
+  background: var(--glass);
+  border: 1px solid var(--surfaceLine);
+  border-radius: var(--radiusSm);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Un puesto vacío no es un error, pero sí es lo único de la hoja que pide una
+   acción: el borde punteado lo dice sin gritar. */
+.zdPuesto--libre { border-style: dashed; }
+
+.zdPuestoTop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.zdRol {
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-extrabold);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  padding: 3px 9px;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+/* Mismo idioma de color que la TV y el mapa: arriba el delantero, abajo el
+   tanquero. Cambiarlo aquí obligaría a volver a aprenderse la pantalla. */
+.zdRol--MOTOR  { background: rgba(59,130,246,.18); color: var(--st-conv); }
+.zdRol--TANQUE { background: rgba(245,158,11,.18); color: var(--st-wait); }
+
+.zdNombre {
+  font-weight: var(--fw-extrabold);
+  font-size: var(--fs-md);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.zdNombre--libre { color: var(--muted); font-weight: var(--fw-bold); }
+
+.zdEstado, .zdNota {
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+  font-weight: var(--fw-bold);
+}
+
+.zdRazon {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.zdAcciones, .zdPausas, .zdForm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.zdForm { margin-top: 2px; }
+
+.zdSelect {
+  flex: 1 1 140px;
+  min-width: 0;
+  background: var(--inputBg);
+  border: 1px solid var(--inputLine);
+  border-radius: var(--radiusSm);
+  color: var(--text);
+  /* 16px reales: por debajo, iOS hace zoom al abrir el desplegable y la hoja
+     se sale de la pantalla. */
+  font-size: var(--fs-md);
+  font-weight: var(--fw-bold);
+  padding: 10px 10px;
+}
+
+.zdBtn {
+  /* 40px de alto: es un botón de pulgar sucio, no de ratón. */
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: var(--radiusSm);
+  border: 1px solid var(--surfaceLine);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-extrabold);
+  cursor: pointer;
+}
+
+.zdBtn:active   { transform: scale(.98); }
+.zdBtn:disabled { opacity: .5; cursor: progress; }
+
+.zdBtn--pri  { border-color: var(--accent); color: var(--accent); }
+.zdBtn--rev  { border-color: rgba(248,113,113,.35); color: var(--danger); background: var(--dangerBg); }
+.zdBtn--ancho { width: 100%; }
+
+.zdAyuda {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-top: 8px;
+  border-top: 1px dashed var(--surfaceLine);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+}
+
+.zdError:empty { display: none; }
+.zdError { color: var(--danger); font-weight: var(--fw-bold); }
+
+.zdCargando { padding: 4px 0; }
+
+/* El enlace a la consola se ve como los demás botones de la hoja: es la misma
+   fila de opciones, aunque este abra otra pantalla. */
+.zonasActionLink {
+  text-decoration: none;
+  display: block;
 }

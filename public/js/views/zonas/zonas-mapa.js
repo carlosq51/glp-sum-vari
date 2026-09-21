@@ -8,6 +8,7 @@ import { escapeHtml, postJSON, createVinSuggest_ } from "../../core/core.js";
 import { createScanner } from "../../core/qr-scanner.js";
 import { startPoll, stopPoll } from "../../core/poll.js";
 import { zonaCardHTML_, zonasGridHTML_ } from "./zonas-layout.js";
+import { puedeDespachar_, montarPuestos_, CONSOLA_DESPACHO } from "./zonas-despacho.js";
 
 const ESTADO_LABEL = {
   LIBRE:          "Libre",
@@ -108,6 +109,11 @@ function openActionSheet_(zona, onRefresh) {
   const hasVin  = !!zona.vin;
   const zonaNom = zona.zona_id === 16 ? "Zona Libre" : `Zona ${zona.zona_id}`;
 
+  // Mover técnicos es cosa de supervisión. Para el movilizador la hoja sigue
+  // siendo exactamente la de antes: asignar carro y liberar plaza.
+  const supervision = puedeDespachar_();
+  const despacho    = hasVin && supervision;
+
   const sheet = document.createElement("div");
   sheet.className = "zonasActionSheet";
   sheet.innerHTML = `
@@ -120,15 +126,26 @@ function openActionSheet_(zona, onRefresh) {
         <button class="zonasPickerClose" id="zonasActionCloseBtn" type="button">✕</button>
       </div>
       <span class="zonasActionEstado zonasActionEstado--${css}">${label}</span>
+
+      <!-- Los técnicos del carro van ARRIBA de los botones de la plaza: quien
+           abre esta hoja con un carro dentro viene casi siempre a mirar o a
+           mover gente, no a sacar el carro. El hueco se llena aparte porque el
+           despacho es otra llamada y no puede hacer esperar a la hoja. -->
+      <div id="zonasActionPuestos" class="zdBloque"></div>
+
       <div class="zonasActionBtns">
         <button class="zonasActionBtn" id="zonasActionAsignarBtn" type="button">
           Asignar carro a esta zona
         </button>
         ${hasVin ? `
           <button class="zonasActionBtn zonasActionBtn--danger" id="zonasActionLiberarBtn" type="button">
-            Liberar zona
+            Liberar zona <span class="zdNota">(saca el carro de la plaza)</span>
           </button>
         ` : ""}
+        ${supervision ? `
+          <a class="zonasActionBtn zonasActionLink" href="${CONSOLA_DESPACHO}" target="_blank" rel="noopener">
+            Consola de despacho ↗ <span class="zdNota">duplas, cola y carros sin plaza</span>
+          </a>` : ""}
       </div>
     </div>`;
 
@@ -137,6 +154,19 @@ function openActionSheet_(zona, onRefresh) {
 
   sheet.addEventListener("click", e => { if (e.target === sheet) closeActionSheet_(); });
   sheet.querySelector("#zonasActionCloseBtn").addEventListener("click", closeActionSheet_);
+
+  if (despacho) {
+    montarPuestos_(
+      sheet.querySelector("#zonasActionPuestos"),
+      { zonaId: zona.zona_id, vin: zona.vin },
+      {
+        // El mapa de atrás tiene que reflejar el cambio: el color de la plaza
+        // sale de cuántos puestos están cubiertos.
+        onCambio: onRefresh ? () => onRefresh() : null,
+        confirmar: (msg) => window.confirm(msg),
+      },
+    ).catch(() => {});
+  }
 
   sheet.querySelector("#zonasActionAsignarBtn").addEventListener("click", () => {
     closeActionSheet_();
