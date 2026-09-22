@@ -52,7 +52,7 @@ export function abrirInformeOt_(it) {
   pintarCabecera_({ cargando: true });
   m.classList.add("show");
   m.setAttribute("aria-hidden", "false");
-  $("iotPlaca")?.focus();
+  $("iotOtFisica")?.focus();
 
   // Quiénes trabajaron el carro y desde cuándo lo salen del sistema, no del
   // técnico: él ya tiene bastante con medir la batería.
@@ -122,7 +122,7 @@ function miParte_() {
     // dos salen del sistema. Si sigue abierto, el fin lo pone la impresión.
     inicio: yo?.inicio || null,
     fin: yo?.fin || null,
-    comun: { placa: val("iotPlaca").toUpperCase() },
+    comun: { ot: val("iotOtFisica") },
     tareas: marcados("tarea", DETALLE_TAREAS.length),
     marcados: marcados("punto", CHEQUEO_PUNTOS.length),
     observaciones: $("iotObs")?.value || "",
@@ -141,9 +141,9 @@ async function enviar_() {
   if (enviando_) return;                       // doble tap en el celular
   const parte = miParte_();
 
-  if (!parte.comun.placa) {
-    msg_("Falta la placa. Es el único dato del carro que el sistema no tiene.", true);
-    $("iotPlaca")?.focus();
+  if (!parte.comun.ot) {
+    msg_("Falta el número de OT. Es el de la orden en papel, el único dato que el sistema no tiene.", true);
+    $("iotOtFisica")?.focus();
     return;
   }
   if (!otActual_?.ot) {
@@ -160,8 +160,8 @@ async function enviar_() {
     const r = await postJSON("/api/informes", {
       email: CORE.state.currentProfile?.email || CORE.state.email || "",
       nombre: CORE.state.currentProfile?.nombre || "",
-      work_order_id: otActual_.ot,
-      placa: parte.comun.placa,
+      work_order_id: otActual_.ot,     // UUID de la asignación
+      ot_fisica: parte.comun.ot,       // el número de la orden en papel
       rol: otActual_.rol,
       parte,
     });

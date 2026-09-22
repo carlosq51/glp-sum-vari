@@ -111,3 +111,18 @@ CREATE TRIGGER informes_taller_touch
 -- el backend con la service key, nunca desde el navegador. Dejar RLS
 -- deshabilitado aquí es lo mismo que ya se hace en push_subscriptions.
 ALTER TABLE informes_taller DISABLE ROW LEVEL SECURITY;
+
+-- ────────────────────────────────────────────
+--  OT FÍSICA  (añadido 2026-09-21)
+-- ────────────────────────────────────────────
+-- El papel lleva un campo "OT :" que NO es el work_order_id del sistema:
+-- ese es un UUID y en una hoja impresa no le sirve a nadie. Es el número
+-- de la orden de trabajo FÍSICA, el que el taller maneja en papel. Lo
+-- escribe el técnico y es lo que se busca cuando alguien pregunta por una.
+--
+-- Va en columna propia, no dentro del jsonb, porque se busca por ella.
+ALTER TABLE informes_taller ADD COLUMN IF NOT EXISTS ot_fisica text NOT NULL DEFAULT '';
+
+CREATE INDEX IF NOT EXISTS informes_taller_ot_fisica_idx
+  ON informes_taller (ot_fisica)
+  WHERE ot_fisica <> '';

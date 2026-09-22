@@ -56,8 +56,9 @@ export function informeOtModal() {
           <div class="iotSec">Datos del carro</div>
           <div class="iotGrid iotGrid1">
             <label class="iotCampo">
-              <span>Placa</span>
-              <input id="iotPlaca" placeholder="ABC-123" autocomplete="off" autocapitalize="characters">
+              <span>N.º de OT</span>
+              <input id="iotOtFisica" placeholder="Ej. 9801" autocomplete="off" inputmode="numeric">
+              <small>El número de la orden de trabajo en papel, no el del sistema.</small>
             </label>
           </div>
 

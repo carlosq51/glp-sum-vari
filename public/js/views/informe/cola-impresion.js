@@ -45,7 +45,7 @@ function fila_(it, lista) {
   return `
     <div class="ciFila${lista ? "" : " is-incompleta"}">
       <div class="ciDatos">
-        <div class="ciOt">OT ${escapeHtml(it.work_order_id)}</div>
+        <div class="ciOt">OT ${escapeHtml(it.ot_fisica || "—")}</div>
         <div class="ciSub">
           ${it.placa ? `<b>${escapeHtml(it.placa)}</b>` : ""}
           ${it.vin ? `<span class="ciVin">${escapeHtml(it.vin)}</span>` : ""}
@@ -126,7 +126,7 @@ async function cargar_() {
 async function anular_(id) {
   // Descartar un informe borra trabajo de un técnico: se pregunta.
   const it = [...items_, ...incompletos_].find(x => x.id === id);
-  if (!confirm(`¿Descartar el informe de la OT ${it?.work_order_id || ""}?\n\nEl técnico tendría que volver a mandarlo.`)) return;
+  if (!confirm(`¿Descartar el informe de la OT ${it?.ot_fisica || ""}?\n\nEl técnico tendría que volver a mandarlo.`)) return;
   try {
     const r = await postJSON(`/api/informes/${id}/anular`, { email: email_() });
     if (!r?.ok) throw new Error(r?.error || "No se pudo anular.");

@@ -25,12 +25,64 @@
 // =========================
 
 import { Router } from "express";
-import { supabaseGet_, supabasePost_, supabasePatch_ } from "../lib/supabase.js";
+import { supabaseHeaders_ } from "../lib/supabase.js";
 import { requireRol_ } from "../lib/authz.js";
 import { emitEvent_ } from "../lib/events.js";
 import { fusionarInforme_, aplanarInforme_ } from "../lib/informes.js";
 
 const router = Router();
+
+// ── Acceso a Supabase ────────────────────────────────────────────────────
+// No se usa supabaseGet_ de lib/supabase.js: ese helper antepone "eq." a
+// TODOS los valores del filtro, así que sirve para igualdades simples pero
+// rompe cualquier consulta con select, order, limit o un operador que no
+// sea eq — convertía select=id,vin en select=eq.id,vin y Supabase devolvía
+// un 400. Aquí las URLs se escriben en PostgREST directo, igual que en
+// routes/ramales.js.
+const SB = () => process.env.SUPABASE_URL;
+
+async function sbGet_(path) {
+  const h = supabaseHeaders_();
+  if (!h) throw new Error("Supabase no configurado (.env)");
+  const r = await fetch(`${SB()}/rest/v1/${path}`, { headers: h });
+  if (!r.ok) {
+    const t = await r.text().catch(() => "");
+    throw new Error(`Supabase GET ${path.split("?")[0]}: ${r.status} ${t.slice(0, 200)}`);
+  }
+  return r.json();
+}
+
+async function sbPost_(table, data) {
+  const h = supabaseHeaders_();
+  if (!h) throw new Error("Supabase no configurado (.env)");
+  const r = await fetch(`${SB()}/rest/v1/${table}`, {
+    method: "POST",
+    headers: { ...h, Prefer: "return=representation" },
+    body: JSON.stringify(data),
+  });
+  if (!r.ok) {
+    const t = await r.text().catch(() => "");
+    throw new Error(`Supabase POST ${table}: ${r.status} ${t.slice(0, 200)}`);
+  }
+  const rows = await r.json();
+  return Array.isArray(rows) ? rows[0] : rows;
+}
+
+async function sbPatch_(table, filtro, data) {
+  const h = supabaseHeaders_();
+  if (!h) throw new Error("Supabase no configurado (.env)");
+  const r = await fetch(`${SB()}/rest/v1/${table}?${filtro}`, {
+    method: "PATCH",
+    headers: { ...h, Prefer: "return=representation" },
+    body: JSON.stringify(data),
+  });
+  if (!r.ok) {
+    const t = await r.text().catch(() => "");
+    throw new Error(`Supabase PATCH ${table}: ${r.status} ${t.slice(0, 200)}`);
+  }
+  const rows = await r.json();
+  return Array.isArray(rows) ? rows[0] : rows;
+}
 
 const TABLA = "informes_taller";
 
@@ -38,7 +90,7 @@ const TABLA = "informes_taller";
 // entero y en una lista de 30 filas serían cientos de KB para pintar
 // cuatro columnas.
 const CAMPOS_COLA =
-  "id,work_order_id,vin,placa,estado,creado_por,creado_nombre,created_at,updated_at,impreso_por,impreso_at";
+  "id,work_order_id,ot_fisica,vin,placa,estado,creado_por,creado_nombre,created_at,updated_at,impreso_por,impreso_at";
 
 const s_ = (v) => String(v ?? "").trim();
 
@@ -60,12 +112,10 @@ router.get("/api/informes/contexto", async (req, res) => {
     const ot = s_(req.query.work_order_id);
     if (!ot) return res.status(400).json({ ok: false, error: "Falta la OT." });
 
-    const asgs = await supabaseGet_("asignaciones", {
-      select: "id,rol_trabajo,estado_actual,fecha_asignacion,updated_at,tiempo_trab_ms,usuarios(nombre,email)",
-      work_order_id: `eq.${ot}`,
-      activo: "eq.true",
-      tipo_ot: "eq.CONVERSION",
-    }, { useCache: false });
+    const asgs = await sbGet_(
+      "asignaciones?select=id,rol_trabajo,estado_actual,fecha_asignacion,updated_at,tiempo_trab_ms,usuarios(nombre,email)"
+      + `&work_order_id=eq.${encodeURIComponent(ot)}&activo=eq.true&tipo_ot=eq.CONVERSION`
+    );
 
     const personas = (asgs || []).map(a => {
       const u = Array.isArray(a.usuarios) ? a.usuarios[0] : a.usuarios;
@@ -84,7 +134,7 @@ router.get("/api/informes/contexto", async (req, res) => {
       };
     });
 
-    const wos = await supabaseGet_("work_orders", { select: "id,vin", id: `eq.${ot}`, limit: 1 }, { useCache: false });
+    const wos = await sbGet_(`work_orders?select=id,vin&id=eq.${encodeURIComponent(ot)}&limit=1`);
 
     res.json({ ok: true, ot, vin: s_(wos?.[0]?.vin), personas });
   } catch (err) {
@@ -107,29 +157,22 @@ router.post("/api/informes", async (req, res) => {
     if (!ot) return res.status(400).json({ ok: false, error: "Falta la OT del carro." });
 
     // El VIN sale de la OT, nunca del navegador.
-    const wos = await supabaseGet_("work_orders", {
-      select: "id,vin",
-      id: `eq.${ot}`,
-      limit: 1,
-    }, { useCache: false });
+    const wos = await sbGet_(`work_orders?select=id,vin&id=eq.${encodeURIComponent(ot)}&limit=1`);
 
     if (!wos?.[0]) return res.status(404).json({ ok: false, error: `La OT ${ot} no existe.` });
     const vin = s_(wos[0].vin);
 
-    // La placa es el único dato del carro que no está en el sistema: la
-    // escribe el técnico y sin ella el papel no sirve.
+    // El número de OT FÍSICA es el único dato del papel que no está en
+    // ninguna tabla: lo escribe el técnico. Sin él, la hoja sale con el
+    // campo "OT :" en blanco y no se puede cruzar con la orden de papel.
+    const otFisica = s_(req.body?.ot_fisica);
+    if (!otFisica) return res.status(400).json({ ok: false, error: "Falta el número de OT." });
     const placa = s_(req.body?.placa).toUpperCase();
-    if (!placa) return res.status(400).json({ ok: false, error: "Falta la placa." });
 
 
     // ¿Ya hay uno vivo para esta OT? El índice único de la tabla lo
     // impediría igual, pero el error de Postgres no le dice nada a nadie.
-    const vivos = await supabaseGet_(TABLA, {
-      select: "id,estado",
-      work_order_id: `eq.${ot}`,
-      estado: "in.(BORRADOR,ENVIADO)",
-      limit: 1,
-    }, { useCache: false });
+    const vivos = await sbGet_(`${TABLA}?select=id,estado&work_order_id=eq.${encodeURIComponent(ot)}&estado=in.(BORRADOR,ENVIADO)&limit=1`);
 
     // EL INFORME ES COLABORATIVO: lo llenan el delantero (MOTOR) y el
     // tanquero (TANQUE) al acabar, cada uno su mitad. Por eso se FUSIONA
@@ -140,7 +183,7 @@ router.post("/api/informes", async (req, res) => {
     const parte = req.body?.parte && typeof req.body.parte === "object" ? req.body.parte : {};
 
     if (vivos?.[0]) {
-      const actuales = await supabaseGet_(TABLA, { select: "id,datos", id: `eq.${vivos[0].id}`, limit: 1 }, { useCache: false });
+      const actuales = await sbGet_(`${TABLA}?select=id,datos&id=eq.${vivos[0].id}&limit=1`);
       const datos = fusionarInforme_(actuales?.[0]?.datos, rol, parte);
 
       // Un informe NO entra en la cola hasta que están las dos mitades: en
@@ -148,7 +191,8 @@ router.post("/api/informes", async (req, res) => {
       // queda en BORRADOR, que la cola muestra aparte y sin poder imprimir.
       const faltan = aplanarInforme_(datos).faltan;
 
-      const actualizado = await supabasePatch_(TABLA, { id: `eq.${vivos[0].id}` }, {
+      const actualizado = await sbPatch_(TABLA, `id=eq.${vivos[0].id}`, {
+        ot_fisica: otFisica || s_(datos.comun.ot),
         placa: placa || s_(datos.comun.placa),
         datos,
         estado: faltan.length ? "BORRADOR" : "ENVIADO",
@@ -159,14 +203,15 @@ router.post("/api/informes", async (req, res) => {
     }
 
     const datos = fusionarInforme_(null, rol, parte);
-    datos.comun.ot = ot;
+    datos.comun.ot = otFisica;          // el del papel, no el UUID
     datos.comun.vin = vin;
     datos.comun.placa = placa;
 
     const faltan = aplanarInforme_(datos).faltan;
 
-    const creado = await supabasePost_(TABLA, {
-      work_order_id: ot,
+    const creado = await sbPost_(TABLA, {
+      work_order_id: ot,               // UUID del sistema, para cruzar datos
+      ot_fisica: otFisica,             // el número que va impreso en la hoja
       vin,
       placa,
       estado: faltan.length ? "BORRADOR" : "ENVIADO",
@@ -195,15 +240,12 @@ router.get("/api/informes", requireRol_("ADMIN", "SUPERVISOR"), async (req, res)
     // si no se vieran, un informe cuyo compañero nunca envía quedaría
     // invisible y en la oficina no sabrían a quién ir a buscar.
     const estado = s_(req.query.estado).toUpperCase() || "COLA";
-    const filtro = {
-      select: CAMPOS_COLA,
-      order: "created_at.desc",
-      limit: Math.min(Number(req.query.limit) || 100, 300),
-    };
-    if (estado === "COLA") filtro.estado = "in.(ENVIADO,BORRADOR)";
-    else if (estado !== "TODOS") filtro.estado = `eq.${estado}`;
+    const limite = Math.min(Number(req.query.limit) || 100, 300);
+    let filtro = `select=${CAMPOS_COLA}&order=created_at.desc&limit=${limite}`;
+    if (estado === "COLA") filtro += "&estado=in.(ENVIADO,BORRADOR)";
+    else if (estado !== "TODOS") filtro += `&estado=eq.${encodeURIComponent(estado)}`;
 
-    const items = await supabaseGet_(TABLA, filtro, { useCache: false });
+    const items = await sbGet_(`${TABLA}?${filtro}`);
     res.json({
       ok: true,
       items: (items || []).filter(i => i.estado === "ENVIADO"),
@@ -220,7 +262,7 @@ router.get("/api/informes", requireRol_("ADMIN", "SUPERVISOR"), async (req, res)
 // ─────────────────────────────────────────────────────────────────────────
 router.get("/api/informes/:id", requireRol_("ADMIN", "SUPERVISOR"), async (req, res) => {
   try {
-    const filas = await supabaseGet_(TABLA, { id: `eq.${s_(req.params.id)}`, limit: 1 }, { useCache: false });
+    const filas = await sbGet_(`${TABLA}?id=eq.${encodeURIComponent(s_(req.params.id))}&limit=1`);
     if (!filas?.[0]) return res.status(404).json({ ok: false, error: "Ese informe no existe." });
     // `plano` es lo que pintan las tres hojas: las dos mitades ya unidas.
     // Va calculado aquí para que la regla de unión viva en un solo sitio.
@@ -243,7 +285,7 @@ async function guardar_(req, res) {
       return res.status(400).json({ ok: false, error: "No mandaste nada que cambiar." });
     }
 
-    const filas = await supabasePatch_(TABLA, { id: `eq.${s_(req.params.id)}` }, cambios);
+    const filas = await sbPatch_(TABLA, `id=eq.${encodeURIComponent(s_(req.params.id))}`, cambios);
     const informe = Array.isArray(filas) ? filas[0] : filas;
     if (!informe) return res.status(404).json({ ok: false, error: "Ese informe no existe." });
 
@@ -269,13 +311,13 @@ router.post("/api/informes/:id/impreso", requireRol_("ADMIN", "SUPERVISOR"), asy
     // Último cierre: el papel tiene que salir completo. Si alguien llega
     // aquí con medio informe —una pestaña vieja, un enlace guardado— se
     // para en seco en vez de dar por bueno un documento a medias.
-    const previas = await supabaseGet_(TABLA, { select: "id,estado,datos", id: `eq.${s_(req.params.id)}`, limit: 1 }, { useCache: false });
+    const previas = await sbGet_(`${TABLA}?select=id,estado,datos&id=eq.${encodeURIComponent(s_(req.params.id))}&limit=1`);
     const faltan = aplanarInforme_(previas?.[0]?.datos).faltan;
     if (faltan.length) {
       const quien = faltan.map(x => x === "MOTOR" ? "el delantero" : "el tanquero").join(" y ");
       return res.status(409).json({ ok: false, error: `Este informe está incompleto: falta la parte de ${quien}.` });
     }
-    const filas = await supabasePatch_(TABLA, { id: `eq.${s_(req.params.id)}` }, {
+    const filas = await sbPatch_(TABLA, `id=eq.${encodeURIComponent(s_(req.params.id))}`, {
       estado: "IMPRESO",
       impreso_por: emailDe_(req),
       impreso_at: new Date().toISOString(),
@@ -296,7 +338,7 @@ router.post("/api/informes/:id/impreso", requireRol_("ADMIN", "SUPERVISOR"), asy
 // ─────────────────────────────────────────────────────────────────────────
 router.post("/api/informes/:id/anular", requireRol_("ADMIN", "SUPERVISOR"), async (req, res) => {
   try {
-    const filas = await supabasePatch_(TABLA, { id: `eq.${s_(req.params.id)}` }, { estado: "ANULADO" });
+    const filas = await sbPatch_(TABLA, `id=eq.${encodeURIComponent(s_(req.params.id))}`, { estado: "ANULADO" });
     const informe = Array.isArray(filas) ? filas[0] : filas;
     if (!informe) return res.status(404).json({ ok: false, error: "Ese informe no existe." });
 

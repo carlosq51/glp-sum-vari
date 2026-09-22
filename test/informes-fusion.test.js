@@ -150,3 +150,26 @@ describe("Informes con la forma vieja", () => {
     expect(p.faltan).toEqual(["MOTOR", "TANQUE"]);
   });
 });
+
+describe("El campo OT del papel es la orden FÍSICA, no el UUID", () => {
+  // La hoja lleva "OT : ____". Poner ahí el work_order_id del sistema
+  // —un UUID de 36 caracteres— daba un papel inservible: nadie puede
+  // cruzarlo con la orden de trabajo que el taller maneja en mano.
+  it("guarda el número que escribe el técnico", () => {
+    const d = fusionarInforme_(null, "MOTOR", { ...parteMotor, comun: { ot: "9801" } });
+    expect(d.comun.ot).toBe("9801");
+    expect(aplanarInforme_(d).ot).toBe("9801");
+  });
+
+  it("el compañero no la borra al mandar su mitad sin ella", () => {
+    let d = fusionarInforme_(null, "MOTOR", { ...parteMotor, comun: { ot: "9801" } });
+    d = fusionarInforme_(d, "TANQUE", parteTanque);
+    expect(d.comun.ot).toBe("9801");
+  });
+
+  it("si el primero la olvidó, el segundo puede ponerla", () => {
+    let d = fusionarInforme_(null, "MOTOR", { ...parteMotor, comun: {} });
+    d = fusionarInforme_(d, "TANQUE", { ...parteTanque, comun: { ot: "9802" } });
+    expect(d.comun.ot).toBe("9802");
+  });
+});
