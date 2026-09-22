@@ -25,7 +25,7 @@
 // =========================
 
 import { Router } from "express";
-import { supabaseHeaders_ } from "../lib/supabase.js";
+import { supabaseServiceHeaders_ } from "../lib/supabase.js";
 import { requireRol_ } from "../lib/authz.js";
 import { emitEvent_ } from "../lib/events.js";
 import { fusionarInforme_, aplanarInforme_ } from "../lib/informes.js";
@@ -33,6 +33,10 @@ import { fusionarInforme_, aplanarInforme_ } from "../lib/informes.js";
 const router = Router();
 
 // ── Acceso a Supabase ────────────────────────────────────────────────────
+// Se usa la clave de SERVICIO, no la anónima. Los informes son datos de
+// backend: el navegador nunca habla con esta tabla, siempre pasa por aquí,
+// y con la clave anónima la RLS rechaza el INSERT con un 401 (42501).
+// Mismo criterio que lib/authz.js y routes/push.js.
 // No se usa supabaseGet_ de lib/supabase.js: ese helper antepone "eq." a
 // TODOS los valores del filtro, así que sirve para igualdades simples pero
 // rompe cualquier consulta con select, order, limit o un operador que no
@@ -42,7 +46,7 @@ const router = Router();
 const SB = () => process.env.SUPABASE_URL;
 
 async function sbGet_(path) {
-  const h = supabaseHeaders_();
+  const h = supabaseServiceHeaders_();
   if (!h) throw new Error("Supabase no configurado (.env)");
   const r = await fetch(`${SB()}/rest/v1/${path}`, { headers: h });
   if (!r.ok) {
@@ -53,7 +57,7 @@ async function sbGet_(path) {
 }
 
 async function sbPost_(table, data) {
-  const h = supabaseHeaders_();
+  const h = supabaseServiceHeaders_();
   if (!h) throw new Error("Supabase no configurado (.env)");
   const r = await fetch(`${SB()}/rest/v1/${table}`, {
     method: "POST",
@@ -69,7 +73,7 @@ async function sbPost_(table, data) {
 }
 
 async function sbPatch_(table, filtro, data) {
-  const h = supabaseHeaders_();
+  const h = supabaseServiceHeaders_();
   if (!h) throw new Error("Supabase no configurado (.env)");
   const r = await fetch(`${SB()}/rest/v1/${table}?${filtro}`, {
     method: "PATCH",

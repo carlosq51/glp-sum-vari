@@ -107,10 +107,18 @@ CREATE TRIGGER informes_taller_touch
 -- ────────────────────────────────────────────
 --  RLS
 -- ────────────────────────────────────────────
--- Igual que el resto de tablas del proyecto: la app entra siempre por
--- el backend con la service key, nunca desde el navegador. Dejar RLS
--- deshabilitado aquí es lo mismo que ya se hace en push_subscriptions.
-ALTER TABLE informes_taller DISABLE ROW LEVEL SECURITY;
+-- RLS ACTIVADA y SIN POLÍTICAS: así nadie llega a esta tabla salvo el
+-- backend, que entra con la service key (y esa salta la RLS por diseño).
+--
+-- El navegador nunca habla con informes_taller: siempre pasa por
+-- routes/informes.js, que además comprueba el rol. Un informe lleva
+-- mediciones y nombres de quién hizo qué, y no tiene por qué ser legible
+-- desde el cliente con la clave anónima, que va incrustada en la web.
+--
+-- Si alguna vez sale un 401 con el código 42501 al escribir aquí, no es
+-- esta línea: es que el código usó supabaseHeaders_() (clave anónima) en
+-- vez de supabaseServiceHeaders_().
+ALTER TABLE informes_taller ENABLE ROW LEVEL SECURITY;
 
 -- ────────────────────────────────────────────
 --  OT FÍSICA  (añadido 2026-09-21)
