@@ -22,6 +22,15 @@ function copyPwaIcons() {
         try { copyFileSync(`${src}/${f}`, `${dst}/${f}`) } catch {}
       }
 
+      // Copiar imagenes propias (logo del Informe de Taller)
+      const imgSrc = resolve(src, 'img')
+      const imgDst = resolve(dst, 'img')
+      try {
+        mkdirSync(imgDst, { recursive: true })
+        readdirSync(imgSrc).forEach(f => {
+          try { copyFileSync(`${imgSrc}/${f}`, `${imgDst}/${f}`) } catch {}
+        })
+      } catch {}
       // Copiar carpeta de avatares
       const avatarsSrc = resolve(src, 'avatars')
       const avatarsDst = resolve(dst, 'avatars')

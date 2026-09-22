@@ -1,0 +1,110 @@
+/* =========================================================================
+   public/css/views/hoja-chequeo.css
+   Hoja 2 de 3 — LISTA DE CHEQUEO. Copia literal de la hoja "CC TECNICO"
+   de CERTIFICADOS GLP.xlsx.
+
+   ── DE DÓNDE SALEN LAS MEDIDAS ─────────────────────────────────────────
+     · 18 columnas B..S.  px = anchoExcel * 7 + 5
+     · mm impresos = px * 25.4/96 * 0.87   ← el 87 es <pageSetup scale="87"/>
+     · Alto de fila: 18pt casi todas (× 0.87 = 15.66pt = 5.52mm).
+       Excepciones: la 29 mide 4.8pt, la 45 mide 15 y la 46 mide 21.
+     · Márgenes: 0.75in arriba y abajo (los del Excel). Los laterales van
+       centrados —27.86mm— en vez de los 0.7in del original.
+     · Bordes: el marco exterior es "medium", todo lo de dentro "thin".
+       Esta hoja SÍ mezcla los dos grosores (el Informe de Taller no).
+     · Fuente: Calibri 14 en los puntos, 11 en los bordes del marco,
+       16 en el bloque de emulación, y un Arial 9 negrita suelto en la
+       casilla de la firma.
+
+   Las clases .c39, .c42, .c127… son los números de estilo del Excel.
+   ========================================================================= */
+
+.cjHoja {
+  width: 210mm;
+  margin: 0 auto;
+  /* Centrado: (210 - 154.28) / 2 = 27.86mm a cada lado. */
+  padding: 19.05mm 27.86mm;
+  background: #fff;
+  color: #000;
+  font-family: Calibri, Carlito, "Segoe UI", sans-serif;
+  font-size: 9.57pt;               /* Calibri 11 × 0.87 */
+  line-height: 1.05;
+  box-shadow: 0 6px 24px rgba(0,0,0,.35);
+}
+.cjHoja * { box-sizing: border-box; }
+
+.cjTabla {
+  width: 154.28mm;                 /* suma de las 18 columnas B..S */
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.cjTabla td {
+  height: 5.52mm;                  /* 18pt × 0.87 */
+  padding: 0 0.5mm;
+  font-size: 12.18pt;              /* Calibri 14 × 0.87 — el cuerpo de la hoja */
+  white-space: nowrap;
+  overflow: hidden;
+  vertical-align: middle;
+}
+
+/* Filas con alto propio en el Excel */
+.cjTabla tr.cR2  td { height: 5.52mm; }
+.cjTabla tr.cSep td { height: 1.47mm; font-size: 0; }   /* fila 29: 4.8pt */
+.cjTabla tr.cR45 td { height: 4.60mm; }                 /* fila 45: 15pt */
+.cjTabla tr.cR46 td { height: 6.44mm; }                 /* fila 46: 21pt */
+
+/* ---- Bordes. t = thin (1px), m = medium (2px) ---- */
+.c37  { border-left: 1px solid #000; border-right: 1px solid #000; border-top: 2px solid #000; border-bottom: 1px solid #000; text-align: center; }
+.c38  { border-left: 1px solid #000; border-right: 2px solid #000; border-top: 2px solid #000; border-bottom: 1px solid #000; }
+.c39  { border-left: 2px solid #000; border-right: 1px solid #000; border-top: 1px solid #000; border-bottom: 1px solid #000; }
+.c40  { border-left: 1px solid #000; border-right: 2px solid #000; border-top: 1px solid #000; border-bottom: 1px solid #000; }
+.c41  { border: 1px solid #000; font-weight: 700; text-align: center; }
+.c42  { border: 1px solid #000; text-align: left; }
+.c43  { border: 1px solid #000; text-align: left; }
+.c44  { border: 1px solid #000; font: 700 7.83pt Arial, sans-serif; text-align: left; }
+.c45  { border-left: 2px solid #000; border-right: 1px solid #000; border-top: 1px solid #000; border-bottom: 2px solid #000; }
+.c46  { border-left: 1px solid #000; border-right: 1px solid #000; border-top: 1px solid #000; border-bottom: 2px solid #000; }
+.c47  { border-left: 1px solid #000; border-right: 2px solid #000; border-top: 1px solid #000; border-bottom: 2px solid #000; }
+.c111 { border: 1px solid #000; font-weight: 700; text-align: center; }
+.c117 { border-left: 2px solid #000; border-right: 1px solid #000; border-top: 2px solid #000; border-bottom: 1px solid #000; text-align: center; }
+.c119 { border: 1px solid #000; font-weight: 700; text-align: left; }
+.c122 { border: 1px solid #000; font-weight: 700; text-align: left; }
+/* El "2" abarca dos filas. En el Excel va alineado a la derecha, pero al
+   lado de los demás números —que van a la izquierda— se ve descolgado.
+   Aquí va a la izquierda como el resto: es una diferencia deliberada. */
+.c125 { border-left: 2px solid #000; border-right: 1px solid #000; border-top: 1px solid #000; border-bottom: 1px solid #000; text-align: left; vertical-align: middle; }
+
+/* La línea de la batería lleva tres trozos: el rótulo, V= y A.i=.
+   space-between los reparte por todo el ancho de la celda, así quedan bien
+   separados SIN contar espacios a mano — y nunca se desbordan, que es lo
+   que pasaría si la separación fuera fija y el técnico midiera 12.45.
+
+   OJO: el flex va en un <div> DENTRO de la celda, nunca en el <td>. Poner
+   display:flex en un td lo saca del layout de tabla: el navegador se
+   inventa celdas anónimas, el colspan deja de valer y la fila se parte.
+   Pasó — el rótulo salía cortado como "PRU".
+
+   El padding derecho despega A.i= del borde para que no quede pegado a la
+   celda de A.f=, que va justo al lado. */
+.cjBateria {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding-right: 10mm;
+}
+.c126 { border: 1px solid #000; text-align: left; }
+.c127 { border: 1px solid #000; text-align: left; }
+
+/* El punto 28 separa "RH" de "FIRMA:" con una tirada de espacios copiada
+   del Excel. `nowrap` los colapsaría a uno y las dos cosas saldrían
+   pegadas; `pre` los respeta y sigue sin partir la línea.
+
+   El selector lleva `.cjTabla td` a propósito: con `.cjPre` a secas perdía
+   contra `.cjTabla td { white-space: nowrap }`, que tiene más peso por
+   llevar clase + elemento. Por eso los espacios se seguían colapsando
+   aunque la clase estuviera puesta. */
+.cjTabla td.cjPre { white-space: pre; }
+.c130 { border-left: 1px solid #000; border-right: 1px solid #000; border-top: 2px solid #000; border-bottom: 1px solid #000; font-size: 13.92pt; font-weight: 700; text-align: center; }
+.c131 { border: 1px solid #000; font-size: 10.44pt; text-align: center; }
+.c132 { border: 1px solid #000; text-align: center; }

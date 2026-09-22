@@ -1,0 +1,131 @@
+/* =========================================================================
+   public/css/views/cola-impresion.css
+   La cola de la oficina: informes que mandaron los técnicos y esperan a
+   que alguien los imprima.
+
+   Se monta igual en ADMIN y en SUPERVISOR, así que no hereda nada de
+   ninguno de los dos: todo cuelga de .ciWrap.
+
+   La pantalla se mira de lejos, en la PC de la impresora, muchas veces al
+   día. Por eso la OT va grande y lo demás pequeño: lo que se busca es
+   "¿está ya el de la OT 12345?".
+   ========================================================================= */
+
+.ciWrap { display: block; }
+
+.ciHead {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 12px; flex-wrap: wrap;
+}
+.ciCuenta { font-weight: 800; font-size: 15px; flex: 1; }
+.ciHead button {
+  background: var(--surface2);
+  border: 1px solid var(--surfaceLine);
+  border-radius: var(--radiusSm);
+  color: var(--text);
+  font: inherit; font-weight: 700;
+  padding: 9px 14px;
+  cursor: pointer;
+}
+
+.ciLista { display: grid; gap: 8px; }
+
+.ciFila {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--surfaceLine);
+  border-radius: var(--radius);
+}
+.ciDatos { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+
+.ciOt { font-size: 17px; font-weight: 900; letter-spacing: .01em; }
+
+.ciSub { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 14px; }
+/* El VIN es largo y casi nunca se lee entero: se corta antes que la placa,
+   que es lo que la oficina compara con el carro que tiene delante. */
+.ciVin {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  max-width: 22ch;
+}
+.ciQuien { font-size: 12px; }
+
+.ciAcciones { display: flex; align-items: center; gap: 8px; flex: none; }
+.ciAbrir {
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radiusSm);
+  color: #1a1206;
+  font: inherit; font-weight: 900;
+  padding: 11px 20px;
+  cursor: pointer;
+}
+.ciAbrir:active { transform: scale(.98); }
+
+/* Descartar borra trabajo de un técnico: se deja discreto para que nadie
+   lo pulse por inercia, y además pide confirmación. */
+.ciAnular {
+  background: transparent;
+  border: 1px solid var(--surfaceLine);
+  border-radius: var(--radiusSm);
+  color: var(--muted);
+  font: inherit;
+  width: 38px; height: 38px;
+  cursor: pointer;
+}
+.ciAnular:hover { color: var(--danger); border-color: var(--danger); }
+
+.ciVacio {
+  padding: 32px 20px;
+  text-align: center;
+  background: var(--surface2);
+  border: 1px dashed var(--surfaceLine);
+  border-radius: var(--radius);
+}
+.ciVacio h4 { margin: 0 0 6px; font-size: 16px; font-weight: 800; }
+.ciVacio p { margin: 0; }
+
+@media (max-width: 560px) {
+  .ciFila { flex-wrap: wrap; }
+  .ciAcciones { width: 100%; }
+  .ciAbrir { flex: 1; }
+}
+
+/* ---------- Informes a medias ----------
+   Se ven pero no se imprimen: falta que el otro técnico mande su parte.
+   Aparecen aparte y apagados para que nadie los confunda con los listos,
+   pero SE VEN — si no, un informe cuyo compañero nunca envía quedaría
+   invisible y en la oficina no sabrían a quién ir a buscar. */
+.ciSeccion {
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 1px dashed var(--surfaceLine);
+}
+.ciSeccionTit {
+  font-size: 12px; font-weight: 800; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--muted);
+  margin-bottom: 4px;
+}
+.ciSeccion > p { margin: 0 0 10px; }
+
+.ciFila.is-incompleta { border-style: dashed; opacity: .82; }
+.ciFalta {
+  margin-top: 3px;
+  font-size: 12px; font-weight: 700;
+  color: var(--danger);
+}
+
+/* "Completar" no es "Abrir": lleva al mismo sitio pero no promete un papel
+   listo, así que no lleva el color de acción principal. */
+.ciCompletar {
+  background: var(--surface2);
+  border: 1px solid var(--surfaceLine);
+  border-radius: var(--radiusSm);
+  color: var(--text);
+  font: inherit; font-weight: 800;
+  padding: 11px 18px;
+  cursor: pointer;
+}

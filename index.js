@@ -20,6 +20,7 @@ import mlRouter, { scheduleAutoRetrain_, loadPairingModelFromSupabase_ } from ".
 import vinsRouter from "./routes/vins.js";
 import zonasRouter from "./routes/zonas.js";
 import profileRouter from "./routes/profile.js";
+import informesRouter from "./routes/informes.js";
 import despachoRouter, { scheduleCierreJornada_, scheduleMotor_ } from "./routes/despacho.js";
 import { sseHandler_ } from "./lib/events.js";
 import { scheduleHorariosPausa_ } from "./lib/pausa-masiva.js";
@@ -95,7 +96,7 @@ app.use(express.static(staticDir, {
 // El botón "Volver" de esa página apunta a "/", que ya sirve express.static.
 // Express no distingue "/inventario" de "/inventario/": una sola ruta cubre
 // las dos formas.
-app.get(["/inventario", "/ramales"], (_req, res) => {
+app.get(["/inventario", "/ramales", "/informe-taller"], (_req, res) => {
   res.sendFile(resolve(staticDir, "index.html"));
 });
 
@@ -113,6 +114,7 @@ app.use(supervisorRouter);
 app.use(trabajoRouter);
 app.use(adminRouter);
 app.use(otsRouter);
+app.use(informesRouter);
 app.use(movilizadorRouter);
 app.use(tecnicoRouter);
 app.use(mlRouter);

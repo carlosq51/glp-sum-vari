@@ -1,0 +1,140 @@
+/* =========================================================================
+   public/css/views/hoja-produccion.css
+   Hoja 3 de 3 — REGISTRO DE TIEMPOS DE PRODUCCION. Copia literal de la
+   hoja "REGISTRO DE HORAS" de CERTIFICADOS GLP.xlsx.
+
+   ── DE DÓNDE SALEN LAS MEDIDAS ─────────────────────────────────────────
+     · Es la única HORIZONTAL de las tres: A4 landscape.
+     · 12 columnas A..L.  px = anchoExcel * 7 + 5
+     · mm impresos = px * 25.4/96   (sin escala: su pageSetup no la trae)
+     · Alto de fila: 14.4pt por defecto (5.08mm). La 4 mide 21pt, las 6-8
+       miden 14.55pt y la 29 mide 17.4pt.
+     · Márgenes: centrada en la hoja. Los del Excel eran 0.7in / 0.75in,
+       pero la hoja va centrada por petición del taller.
+     · Bordes: todos "thin". Fuente Calibri 11, salvo el título en 16.
+     · COMPRESION y SCANNER van con el texto girado 90° (textRotation="90"
+       en el Excel) porque sus columnas son muy angostas.
+
+   Ancho total: 245mm sobre los 261.4mm que deja una A4 apaisada con esos
+   márgenes. Entra, igual que el original.
+   ========================================================================= */
+
+.pdHoja {
+  width: 297mm;                    /* A4 apaisada */
+  margin: 0 auto;
+  /* Centrado en pantalla: (297 - 245) / 2 = 26mm a cada lado.
+     En papel la centra el @page, porque ahi va girada. */
+  padding: 19.05mm 26mm;
+  background: #fff;
+  color: #000;
+  font-family: Calibri, Carlito, "Segoe UI", sans-serif;
+  font-size: 11pt;
+  line-height: 1.05;
+  box-shadow: 0 6px 24px rgba(0,0,0,.35);
+}
+.pdHoja * { box-sizing: border-box; }
+
+.pdTabla {
+  width: 245mm;                    /* suma de las 12 columnas A..L */
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.pdTabla td {
+  height: 5.08mm;                  /* 14.4pt */
+  padding: 0 0.6mm;
+  white-space: nowrap;
+  overflow: hidden;
+  vertical-align: middle;
+}
+
+/* Filas con alto propio en el Excel */
+.pdTabla tr.pR4 td { height: 7.41mm; }                        /* 21pt */
+.pdTabla tr.pR6 td, .pdTabla tr.pR7 td, .pdTabla tr.pR8 td { height: 5.13mm; }  /* 14.55pt */
+
+/* ---- Celdas ---- */
+.p1      { border: 1px solid #000; }
+.pTitulo { border: 1px solid #000; font-size: 16pt; text-align: center; }
+
+/* El OT se sale de su columna, igual que en el Excel: la celda es angosta
+   pero el texto desborda a la derecha sobre celdas vacías. */
+.pOt { overflow: visible; }
+
+.pHead {
+  border: 1px solid #000;
+  text-align: center;
+  vertical-align: middle;
+  white-space: normal;             /* "ARMADO CABLEADO" parte en dos líneas */
+  line-height: 1.05;
+}
+
+/* textRotation="90" en Excel = de abajo hacia arriba. En CSS eso es
+   vertical-rl girado 180°; con vertical-lr el texto sale invertido. */
+.pGirado {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  white-space: nowrap;
+  text-align: center;
+}
+
+/* Los 20 nombres vienen impresos; los 3 huecos del final van en blanco. */
+.pNombre { border: 1px solid #000; text-align: left; }
+.pLibre  { border: 1px solid #000; text-align: left; }
+
+/* =========================================================================
+   IMPRESIÓN — la hoja se gira 90° sobre papel VERTICAL
+
+   Imprimir "A4 horizontal" no gasta un papel distinto: la impresora coge la
+   misma hoja A4 y gira el contenido. Girarlo aquí por CSS da exactamente el
+   mismo papel, pero con una ventaja: las tres hojas pasan a ser verticales
+   y el trabajo de impresión deja de mezclar orientaciones, que es lo que
+   suele salir mal (Firefox no soporta páginas con nombre, y algunos drivers
+   se atragantan con un trabajo de orientación mixta).
+
+   Las cuentas: el contenido mide 245 × 144.72mm. Girado ocupa 144.72 de
+   ancho y 245 de alto, contra los 171.9 × 261.44mm que deja una A4 vertical
+   con estos márgenes. Entra a tamaño real, sin encoger nada.
+
+   Al girar, los márgenes se intercambian: los laterales del contenido pasan
+   a ser el alto del papel. Además el contenido no arranca en la esquina de
+   su caja (lleva 1.28mm y 2mm de separación para que los bordes no caigan
+   en el corte), así que el @page los compensa para que quede centrado.
+   Los números salen en informe-taller.css, en la regla @page produccion.
+
+   En PANTALLA se sigue viendo horizontal, que es como se lee.
+   ========================================================================= */
+@media print {
+  .pdHoja {
+    /* La caja ya con las medidas GIRADAS. Sin esto el navegador reservaría
+       los 297mm del ancho original y sacaría una página en blanco extra.
+
+       Las medidas llevan holgura a propósito. El contenido girado mide
+       144.72 × 244.97mm; si la caja midiera eso exacto, los bordes de 1px
+       de la primera y la última columna caerían justo sobre el corte del
+       overflow y NO SE IMPRIMIRÍAN. Pasó: la línea de HORA FINAL
+       desaparecía con 0.03mm de margen. */
+    width: 150mm !important;
+    height: 250mm !important;
+    padding: 0 !important;
+    position: relative;
+    overflow: hidden;
+  }
+  .pdTabla {
+    position: absolute;
+    top: 0; left: 0;
+    /* Girar sobre la esquina superior izquierda deja la tabla fuera del
+       papel, a la izquierda; el translate la vuelve a meter. El orden se
+       lee de derecha a izquierda: primero rota, después desplaza.
+
+       Los números centran el contenido DENTRO de la caja, que es lo que
+       una tabla en posición absoluta no puede hacer con margin:auto:
+
+         contenido girado = 144.72 × 244.97mm  en una caja de 150 × 250
+         sobra en X = (150 - 144.72) / 2 = 2.64mm  →  X = 2.64 + 144.72
+         sobra en Y = (250 - 244.97) / 2 = 2.52mm  →  Y = 2.52
+
+       De paso, esa holgura despega los bordes de 1px del corte del
+       overflow: pegados al filo no se imprimían. */
+    transform-origin: top left;
+    transform: translate(147.36mm, 2.52mm) rotate(90deg);
+  }
+}

@@ -16,6 +16,7 @@ export function supervisorView() {
         <button type="button" class="btn sup-tab" data-suptab="CONTROL">${icon("clipboardList", 14)} OTs</button>
         <button type="button" class="btn sup-tab" data-suptab="INCIDENCIAS">${icon("alertTriangle", 14)} INCID.</button>
         <button type="button" class="btn sup-tab" data-suptab="RAMALES">${icon("box", 14)} RAMALES</button>
+        <button type="button" class="btn sup-tab" data-suptab="IMPRESIONES">${icon("inbox", 14)} IMPRESIÓN</button>
       </div>
 
       <!-- ══════════════════════════════════════════════
@@ -195,6 +196,15 @@ export function supervisorView() {
       ══════════════════════════════════════════════ -->
       <div id="supPanelRamales" style="display:none;">
         <div id="supRamalesBody" style="margin-top:10px;"></div>
+      </div>
+
+      <!-- ══════════════════════════════════════════════
+           IMPRESIONES — los informes que mandaron los técnicos desde el
+           taller, esperando a que alguien los imprima. Es el mismo módulo
+           que la sección Impresiones del panel de Admin.
+      ══════════════════════════════════════════════ -->
+      <div id="supPanelImpresiones" style="display:none;">
+        <div id="supImpresionesBody" style="margin-top:10px;"></div>
       </div>
     </div>
   `;

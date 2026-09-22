@@ -39,6 +39,7 @@ import { bindSupIncidenciasReport_, enterIncReport_, exitIncReport_ } from "./su
 
 import { openDrilldown } from "../../core/drilldown.js";
 import { fmtDur_ } from "../../core/format.js";
+import { renderColaImpresion } from "../informe/cola-impresion.js";
 
 let supTrack = "CONVERSION";
 let supTimer = null;
@@ -463,10 +464,19 @@ export function init() {
       if (panelControl)     panelControl.style.display     = tab === "CONTROL"     ? "" : "none";
       if (panelIncidencias) panelIncidencias.style.display = tab === "INCIDENCIAS" ? "" : "none";
       if (panelRamales)     panelRamales.style.display     = tab === "RAMALES"     ? "" : "none";
+      const panelImpr    = document.getElementById("supPanelImpresiones");
+      if (panelImpr)        panelImpr.style.display        = tab === "IMPRESIONES" ? "" : "none";
 
       // El panel de ramales tiene cronómetros y poll propios: se desmonta
       // al salir de su pestaña o seguiría corriendo detrás de las demás.
       if (tab !== "RAMALES") unmountRamalesPanel();
+
+      // La cola se recarga cada vez que se entra: la oficina la mira para
+      // saber qué hay AHORA, y una lista vieja mandaría a alguien a buscar
+      // un papel que ya se imprimió.
+      if (tab === "IMPRESIONES") {
+        renderColaImpresion(document.getElementById("supImpresionesBody"));
+      }
 
       if (tab === "LIVE") {
         exitOtControl_();

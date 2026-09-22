@@ -18,6 +18,7 @@ import { enviarEvento } from "../data/conversion-eventos.js";
 import { openIncidenciaModalForKey_ } from "../modals/incidencias.js";
 import { openRFModalForVin_, openRFSoldaduraForVin_ } from "../modals/rf-modal.js";
 import { openRFTecModalForVin_ } from "../modals/rf-tecnico-modal.js";
+import { abrirInformeOt_ } from "../modals/informe-ot.js";
 import { openConformidadModalForKey_ } from "../modals/conformidad.js";
 import { askConfirmFinish_ } from "../modals/confirm-finish.js";
 
@@ -51,6 +52,15 @@ function attachWorkDelegationOnce_(mod) {
       if (actBtn) {
         e.stopPropagation();
         const accion = String(actBtn.dataset.act || "").toUpperCase();
+
+        // El informe no es un evento de trabajo: no mueve el cronómetro ni
+        // el estado de la OT. Abre su modal y se sale antes de que la lógica
+        // de INICIO/PAUSA/FIN toque nada.
+        if (accion === "INFORME") {
+          const it0 = ctx_().itemsByKey.get(card.dataset.key || "");
+          if (it0) abrirInformeOt_(it0);
+          return;
+        }
 
         const c = ctx_();
         const k = card.dataset.key || "";

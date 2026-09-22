@@ -1,0 +1,170 @@
+/* =========================================================================
+   public/css/views/informe-ot.css
+   Modal con el que el técnico manda el informe de su OT, y el botón que lo
+   abre desde la tarjeta de trabajo.
+
+   Está pensado para un celular con una mano ocupada y en un taller: campos
+   grandes, poco que leer, y los dos checklists plegados porque son 39
+   casillas que casi siempre vienen bien.
+   ========================================================================= */
+
+/* ---------- Botón de la tarjeta ---------- */
+.btnInforme {
+  width: 100%;
+  margin-top: 10px;
+  min-height: 52px;
+  background: var(--surface2);
+  border: 1px solid var(--surfaceLine);
+  border-radius: var(--radiusSm);
+  color: var(--text);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+.btnInforme:active { transform: scale(.99); }
+
+/* ---------- Cabecera de solo lectura ----------
+   Lo que el sistema ya sabe. Se enseña ANTES de pedir nada: si la OT no es
+   la que el técnico cree, se da cuenta aquí y no con el papel impreso. */
+.iotCabecera {
+  display: block;                   /* dentro lleva dos bloques: OT/VIN y las personas */
+  padding: 12px;
+  margin-bottom: 4px;
+  background: var(--surface2);
+  border: 1px solid var(--surfaceLine);
+  border-radius: var(--radiusSm);
+}
+.iotCabTop > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.iotCabTop span {
+  font-size: 11px; font-weight: 700; letter-spacing: .05em;
+  text-transform: uppercase; color: var(--muted);
+}
+.iotCabTop b {
+  font-size: 14px; font-weight: 800;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* ---------- Secciones y campos ---------- */
+.iotSec {
+  font-size: 12px; font-weight: 800; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--muted);
+  margin: 16px 0 8px;
+}
+.iotGrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.iotGrid3 { grid-template-columns: repeat(3, 1fr); }
+.iotGrid4 { grid-template-columns: repeat(4, 1fr); }
+
+.iotCampo { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.iotCampo > span {
+  font-size: 11px; font-weight: 700; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--muted);
+}
+.iotCampo input,
+#iotObs {
+  width: 100%;
+  min-height: 46px;
+  background: var(--surface2);
+  border: 1px solid var(--surfaceLine);
+  border-radius: var(--radiusSm);
+  color: var(--text);
+  font: inherit;
+  padding: 10px 12px;
+}
+.iotCampo input:focus,
+#iotObs:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+#iotObs { min-height: 78px; resize: vertical; }
+
+/* ---------- Checklists plegados ---------- */
+.iotPlegable {
+  margin-top: 12px;
+  background: var(--surface2);
+  border: 1px solid var(--surfaceLine);
+  border-radius: var(--radiusSm);
+  overflow: hidden;
+}
+.iotPlegable > summary {
+  padding: 13px 14px;
+  font-weight: 800;
+  cursor: pointer;
+  list-style: none;
+}
+.iotPlegable > summary::-webkit-details-marker { display: none; }
+.iotPlegable > summary::before { content: "▸ "; color: var(--muted); }
+.iotPlegable[open] > summary::before { content: "▾ "; }
+.iotPlegable > summary small { font-weight: 600; color: var(--muted); }
+
+.iotCks {
+  display: grid; gap: 4px;
+  padding: 0 10px 10px;
+  max-height: 46vh;                 /* que el modal no crezca sin fin */
+  overflow-y: auto;
+}
+.iotCk {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 9px 10px;
+  background: var(--surface);
+  border: 1px solid var(--surfaceLine);
+  border-radius: var(--radiusSm);
+  cursor: pointer;
+  line-height: 1.35;
+  font-size: 13px;
+}
+.iotCk input {
+  margin-top: 1px; flex: none;
+  width: 19px; height: 19px;        /* dedo, no ratón */
+  accent-color: var(--ok);
+}
+.iotCk b { color: var(--muted); margin-right: 3px; }
+/* Sin marcar = algo NO se hizo. Es la excepción y tiene que saltar. */
+.iotCk:not(:has(input:checked)) {
+  border-color: var(--danger);
+  background: var(--dangerBg);
+}
+
+/* ---------- Mensajes y envío ---------- */
+.iotMsg {
+  display: none;
+  margin-top: 14px;
+  padding: 11px 13px;
+  border-radius: var(--radiusSm);
+  font-size: 14px; font-weight: 700; line-height: 1.4;
+  background: var(--okBg);
+  border: 1px solid var(--ok);
+}
+.iotMsg.is-error { background: var(--dangerBg); border-color: var(--danger); }
+
+.iotEnviar {
+  margin-top: 14px;
+  width: 100%;
+  height: 62px;
+  font-weight: 1000;
+}
+.iotEnviar:disabled { opacity: .6; cursor: progress; }
+
+/* ---------- Las dos personas de la OT ----------
+   Salen del sistema, no las escribe nadie. Se marcan "tú" y la del
+   compañero para que el técnico sepa de un vistazo qué mitad está
+   mandando y a quién le falta la suya. */
+.iotCabTop {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.iotPersonas { display: grid; gap: 6px; }
+.iotPersona {
+  display: flex; flex-direction: column; gap: 1px;
+  padding: 8px 10px;
+  background: var(--surface);
+  border: 1px solid var(--surfaceLine);
+  border-radius: var(--radiusSm);
+}
+.iotPersona.is-yo { border-color: var(--accent); }
+.iotPersona > span {
+  font-size: 10px; font-weight: 800; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--muted);
+}
+.iotPersona > b { font-size: 14px; font-weight: 800; }
+.iotPersona > small { font-size: 11px; color: var(--muted); }
+
+.iotGrid1 { grid-template-columns: 1fr; }

@@ -31,6 +31,7 @@ import { loadConfig } from "./js/core/config.js";
 import { initLive } from "./js/core/live.js";
 import { initAvatarUpload } from "./js/views/avatar-upload.js";
 import { renderInventarioTab } from "./js/views/admin/inventario.js";
+import { renderInformeTaller } from "./js/views/informe/informe-taller.js";
 import { mountRamalesPanel, unmountRamalesPanel } from "./js/views/ramales/ramales.js";
 
 // Aplicar ajustes guardados (fuente, acento) antes de cualquier render
@@ -55,6 +56,11 @@ const EN_RUTA_INVENTARIO = /^\/inventario\/?$/i.test(location.pathname);
 // directo a su tablero (mi-dominio/ramales) sin pasar por el módulo de
 // supervisión entero. Es el mismo panel que la pestaña RAMALES.
 const EN_RUTA_RAMALES = /^\/ramales\/?$/i.test(location.pathname);
+
+// ---------- RUTA /informe-taller ----------
+// El informe se imprime desde la PC de oficina, la que tiene la impresora.
+// Con URL propia se deja abierta en una pestana fija todo el dia.
+const EN_RUTA_INFORME = /^\/informe-taller\/?$/i.test(location.pathname);
 
 const root = document.getElementById("appRoot");
 if (root) root.innerHTML = appShell();
@@ -121,6 +127,8 @@ async function doLogin(email) {
       openInventarioPage_();
     } else if (EN_RUTA_RAMALES) {
       openRamalesPage_();
+    } else if (EN_RUTA_INFORME) {
+      openInformePage_();
     } else if (mods.length > 1) {
       hideAllModulesUI();
       showHubUI(mods, (m) => openModule(m));
@@ -237,12 +245,37 @@ function openRamalesPage_() {
 
 $("rmPageBack")?.addEventListener("click", () => { window.location.href = "/"; });
 
+// ---------- PÁGINA DE INFORME DE TALLER (/informe-taller) ----------
+function hideInformePage_() {
+  const v = document.getElementById("viewInformeTaller");
+  if (v) v.style.display = "none";
+}
+
+function openInformePage_() {
+  hideUploaderView();
+  hideInventarioPage_();
+  hideRamalesPage_();
+
+  hideAllModulesUI();
+  const hub = $("viewHub");
+  if (hub) hub.style.display = "none";
+
+  const v = document.getElementById("viewInformeTaller");
+  const body = document.getElementById("itPageBody");
+  if (!v || !body) return;
+  v.style.display = "block";
+  CORE.state.currentModule = null;
+
+  renderInformeTaller(body);
+}
+
 // ---------- OPEN MODULE ----------
 function openModule(m) {
   // ✅ oculta uploader por si estaba abierto
   hideUploaderView();
   hideInventarioPage_();
   hideRamalesPage_();
+  hideInformePage_();
 
   // exit view actual
   openView(m);
@@ -284,6 +317,7 @@ $("btnRegistroFallas")?.addEventListener("click", () => {
   // Oculta vistas actuales
   hideInventarioPage_();
   hideRamalesPage_();
+  hideInformePage_();
   hideAllModulesUI();
   $("viewHub") && ($("viewHub").style.display = "none");
 
@@ -304,6 +338,7 @@ $("btnGoHome")?.addEventListener("click", () => {
   hideUploaderView();
   hideInventarioPage_();
   hideRamalesPage_();
+  hideInformePage_();
   hideAllModulesUI();
 
   showHubUI(mods, (m) => openModule(m));
@@ -330,6 +365,7 @@ $("btnLogout")?.addEventListener("click", () => {
   VMovilizador.exit();
   hideInventarioPage_();
   hideRamalesPage_();
+  hideInformePage_();
   hideAllModulesUI();
   $("viewHub").style.display = "none";
   $("btnGoHome")?.classList.add("hidden");

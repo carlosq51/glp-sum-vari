@@ -125,6 +125,10 @@ export function renderActivas_() {
                 : ""
           }
 
+          <button class="btnInforme" data-act="INFORME">
+            Informe de esta OT
+          </button>
+
           <div class="jobNoteBlock">
             <textarea class="notaCard" rows="2" placeholder="Escribe una nota..."></textarea>
             <button class="btnNota" data-act="NOTA" style="margin-top:10px; width:100%; height:66px; font-weight:900; display:none;">

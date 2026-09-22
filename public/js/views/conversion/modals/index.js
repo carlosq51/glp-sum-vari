@@ -10,3 +10,4 @@ export { initRFModalUI_, openRFModalForVin_ } from "./rf-modal.js";
 export { initRFTecModalUI_, openRFTecModalForVin_ } from "./rf-tecnico-modal.js";
 export { initErrorModal, showErrorModal, showVinNotFoundError, showAlreadyAssignedError } from "./error-modal.js";
 export { showIncidenciaAlert, checkPendingAlerts_, getMyNombre_ } from "./incidencia-alert.js";
+export { initInformeOt_, abrirInformeOt_, cerrarInformeOt_ } from "./informe-ot.js";

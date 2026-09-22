@@ -7,6 +7,7 @@ import { calidadView } from "../views/calidad-view.js";
 import { adminView, adminCrudModal } from "../views/admin-view.js";
 import { uploaderView } from "../views/uploader-view.js";
 import { inventarioView } from "../views/inventario-view.js";
+import { informeTallerView } from "../views/informe-taller-view.js";
 import { ramalesView } from "../views/ramales-view.js";
 import { movilizadorView } from "../views/movilizador-view.js";
 import { supervisorView, supIncModal, liveDetailModal, supOtControlModal } from "../views/supervisor-view.js";
@@ -21,6 +22,7 @@ import { rfModal } from "../modals/rf-calidad-modal.js";
 import { rfTecnicoModal } from "../modals/rf-tecnico-modal.js";
 
 import { confirmFinishModal } from "../modals/confirm-finish-modal.js";
+import { informeOtModal } from "../modals/informe-ot-modal.js";
 import { errorModal } from "../modals/error-modal.js";
 
 export function appShell() {
@@ -50,6 +52,9 @@ export function appShell() {
       <!-- Inventario como pagina propia: /inventario -->
       ${inventarioView()}
 
+      <!-- Informe de taller como pagina propia: /informe-taller -->
+      ${informeTallerView()}
+
       <!-- Control de ramales como pagina propia: /ramales -->
       ${ramalesView()}
     </div>
@@ -61,6 +66,7 @@ export function appShell() {
     ${rfModal()}
     ${rfTecnicoModal()}
     ${confirmFinishModal()}
+    ${informeOtModal()}
     ${errorModal()}
     ${supIncModal()}
     ${liveDetailModal()}

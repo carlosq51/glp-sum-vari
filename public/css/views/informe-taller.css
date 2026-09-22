@@ -1,0 +1,297 @@
+/* =========================================================================
+   public/css/views/informe-taller.css
+   Informe de Taller — formulario en pantalla + hoja lista para imprimir.
+
+   Dos mundos en un archivo, a propósito:
+     · .itForm  → UI de la app. Usa tokens (--surface, --line…) y sigue el
+                  tema día/noche como cualquier otra vista.
+     · .itHoja  → el DOCUMENTO. Negro sobre blanco SIEMPRE. No usa tokens:
+                  un papel no tiene modo noche, y si heredara el tema la
+                  impresora escupiría una hoja gris.
+
+   ── DE DÓNDE SALEN LAS MEDIDAS ─────────────────────────────────────────
+   Nada aquí está puesto a ojo. Todo se leyó de la hoja "INFORME TALLER"
+   de CERTIFICADOS GLP.xlsx (xl/worksheets/sheet4.xml + styles.xml):
+
+     · 13 columnas A..M con anchos en unidades Excel. A sale sobrando
+       (ninguna celda la usa), así que la hoja es B..M.
+     · Conversión ancho Excel → píxeles:  px = width * 7 + 5   (Calibri 11)
+     · Conversión píxeles → mm impresos:  mm = px * 25.4/96 * 0.92
+       El 0.92 es el <pageSetup scale="92"/> del Excel: así el papel sale
+       del mismo tamaño que el que imprimen hoy.
+     · Alto de fila: 14.4pt todas (defaultRowHeight), salvo la 3 que es 18.
+     · Márgenes de página: 0.75in arriba y abajo, los del Excel. Los
+       laterales NO: el Excel deja la tabla pegada a su margen izquierdo de
+       1.09in, y aquí va centrada en la hoja (24.16mm a cada lado). Es la
+       única diferencia deliberada con el original, pedida por el taller.
+     · TODOS los bordes son "thin". En el Excel no hay ni uno grueso.
+     · Fuente: Calibri 11 en toda la hoja; 14 en el título; 10 negrita
+       centrada en la columna de los OK.
+
+   Las clases .x1, .x5, .x6… llevan a propósito el número del estilo del
+   Excel (cellXfs). Si mañana alguien compara los dos archivos, el nombre
+   dice exactamente de dónde salió cada borde.
+   ========================================================================= */
+
+/* ---------- Página ---------- */
+.itPage { padding: 16px; max-width: 1100px; margin: 0 auto; }
+.itPageHead {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 16px; flex-wrap: wrap;
+}
+.itPageHead h2 { margin: 0; font-size: 20px; font-weight: 800; }
+.itPageHead .spacer { flex: 1; }
+
+/* ---------- Formulario (UI de app) ---------- */
+.itForm {
+  background: var(--surface);
+  border: 1px solid var(--surfaceLine);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 20px;
+}
+.itGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+}
+.itField { display: flex; flex-direction: column; gap: 6px; }
+.itField > label {
+  font-size: 12px; font-weight: 700; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--muted);
+}
+.itField input, .itField select, .itField textarea {
+  width: 100%;
+  background: var(--surface2);
+  border: 1px solid var(--surfaceLine);
+  border-radius: var(--radiusSm);
+  color: var(--text);
+  font: inherit;
+  padding: 10px 12px;
+}
+.itField input:focus, .itField select:focus, .itField textarea:focus {
+  outline: 2px solid var(--accent); outline-offset: 1px;
+}
+.itField input[readonly] { opacity: .65; cursor: not-allowed; }
+.itField textarea { resize: vertical; min-height: 76px; }
+
+.itSub {
+  font-size: 12px; font-weight: 800; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--muted);
+  margin: 18px 0 8px;
+}
+.itNota {
+  margin: 0 0 12px;
+  font-size: 13px; line-height: 1.45;
+  color: var(--muted);
+}
+
+/* Un bloque por persona en el registro de producción: nombre, sus horas
+   y las etapas que hizo. Separados para que no se mezclen de un vistazo. */
+.itPersona {
+  border: 1px solid var(--surfaceLine);
+  border-radius: var(--radiusSm);
+  padding: 12px;
+  margin-bottom: 10px;
+  background: var(--surface2);
+}
+.itPersonaNom {
+  font-size: 13px; font-weight: 800;
+  margin-bottom: 10px;
+}
+.itEtapas { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.itEtapa {
+  display: flex; align-items: center; gap: 7px;
+  padding: 7px 11px;
+  background: var(--surface);
+  border: 1px solid var(--surfaceLine);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  font-size: 13px;
+}
+.itEtapa input { width: 15px; height: 15px; accent-color: var(--ok); }
+.itEtapa:has(input:checked) { border-color: var(--ok); background: var(--okBg); }
+
+.itChecks { display: grid; gap: 6px; }
+.itCheck {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 9px 11px;
+  background: var(--surface2);
+  border: 1px solid var(--surfaceLine);
+  border-radius: var(--radiusSm);
+  cursor: pointer;
+  line-height: 1.35;
+}
+.itCheck input { margin-top: 2px; width: 17px; height: 17px; accent-color: var(--ok); flex: none; }
+.itCheck span { font-size: 14px; }
+.itCheck:has(input:checked) { border-color: var(--ok); background: var(--okBg); }
+
+/* =========================================================================
+   LO QUE ESCRIBE LA APP — en azul, en las tres hojas
+
+   El formulario impreso va en negro y el dato rellenado en azul, como si lo
+   hubieran puesto a bolígrafo. De un vistazo se sabe qué venía en la hoja y
+   qué se añadió, que es justo lo que se pierde cuando todo sale del mismo
+   color en una impresora.
+
+   print-color-adjust obliga al navegador a mandar el color a la impresora
+   (por defecto "ahorra tinta" y lo tira a negro). Si la impresora es
+   monocroma saldrá en gris, que sigue distinguiéndose del negro.
+   ========================================================================= */
+.dato {
+  color: #0a3bd4;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/* =========================================================================
+   LA HOJA
+   ========================================================================= */
+
+/* Las tres hojas, una debajo de otra, sobre fondo gris como un visor de PDF.
+   En celular se desplazan en horizontal en vez de deformarse. */
+.itHojas {
+  overflow-x: auto;
+  background: #6b7280;
+  padding: 20px;
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* La hoja ES una A4 completa: 210mm de ancho con los márgenes del Excel
+   como padding. Lo que se ve en pantalla es el papel, a tamaño real. */
+.itHoja {
+  width: 210mm;
+  margin: 0 auto;
+  /* Centrado en la hoja: (210 - 161.68) / 2 = 24.16mm a cada lado.
+     El Excel NO centra (no trae printOptions), deja la tabla pegada a su
+     margen izquierdo de 1.09in. Centrarla es una diferencia deliberada. */
+  padding: 19.05mm 24.16mm;
+  background: #fff;
+  color: #000;
+  font-family: Calibri, Carlito, "Segoe UI", sans-serif;
+  font-size: 10.1pt;                          /* Calibri 11 × 0.92 */
+  line-height: 1.1;
+  box-shadow: 0 6px 24px rgba(0,0,0,.35);
+}
+.itHoja * { box-sizing: border-box; }
+
+/* border-collapse es obligatorio: sin él, dos celdas vecinas que ambas
+   dibujan borde pintan una línea doble y la hoja sale sucia. */
+.itTabla {
+  width: 161.68mm;            /* suma de las 12 columnas B..M */
+  border-collapse: collapse;
+  table-layout: fixed;        /* manda el <col>, no el contenido */
+}
+.itTabla td {
+  height: 4.67mm;             /* 14.4pt × 0.92 */
+  padding: 0 0.4mm;
+  overflow: visible;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+.itTabla tr.itR3 td { height: 5.84mm; }   /* la fila del título mide 18pt */
+
+/* ---- Bordes: un thin = 1px negro. El nombre = estilo del Excel ---- */
+.x1   { border: 1px solid #000; }                                   /* caja completa */
+.x5   { border-left: 1px solid #000; border-top: 1px solid #000; border-bottom: 1px solid #000; }
+.x6   { border-bottom: 1px solid #000; }
+.x8   { border-top: 1px solid #000; border-bottom: 1px solid #000; }
+.x9   { border-right: 1px solid #000; border-top: 1px solid #000; border-bottom: 1px solid #000; }
+.x10  { border-left: 1px solid #000; border-top: 1px solid #000; }
+.x11  { border-top: 1px solid #000; }
+.x12  { border-right: 1px solid #000; border-top: 1px solid #000; }
+.x13  { border-left: 1px solid #000; }
+.x14  { border-right: 1px solid #000; }
+.x15  { border-left: 1px solid #000; border-bottom: 1px solid #000; }
+.x16  { border-right: 1px solid #000; border-bottom: 1px solid #000; }
+.x102 { border-top: 1px solid #000; border-bottom: 1px solid #000; text-align: center; }
+.x116 { border-left: 1px solid #000; border-top: 1px solid #000; border-bottom: 1px solid #000; text-align: center; }
+
+/* ---- Fuentes especiales ---- */
+.x7 { font-size: 12.9pt; }                       /* título, Calibri 14 × 0.92 */
+.itOk {                                          /* columna de los OK: Calibri 10 negrita centrada */
+  font-size: 9.2pt; font-weight: 700; text-align: center;
+  padding: 0;
+}
+
+/* El logo va anclado en C1:E5 del Excel, 43mm × 21.6mm (× 0.92) */
+.itLogo { vertical-align: top; padding-top: 3.9mm; }
+.itLogo img { width: 39.5mm; height: auto; display: block; }
+
+/* =========================================================================
+   IMPRESIÓN — salen las TRES hojas de un tirón, y nada más
+
+   El técnico llena un formulario y salen 3 páginas: Informe de Taller,
+   Lista de Chequeo y Registro de Producción.
+
+   LAS TRES SON VERTICALES. La de producción es horizontal en el Excel, pero
+   aquí se gira 90° por CSS sobre papel vertical (ver hoja-produccion.css).
+   El papel sale idéntico —la impresora hace lo mismo cuando le pides
+   "horizontal"— y a cambio el trabajo de impresión es de una sola
+   orientación, que es lo que aguanta cualquier navegador e impresora.
+   ========================================================================= */
+@media print {
+  /* Estos margenes NO centran nada: solo reservan sitio. El centrado lo
+     hace `margin: 0 auto` sobre cada tabla, mas abajo.
+
+     Es a proposito. Las @page con nombre no siempre se aplican —Chrome las
+     ignoro en la vista previa y uso sus 9.5mm por defecto, y la hoja salio
+     pegada a la izquierda—. Con auto-centrado da igual que se apliquen o
+     no: la tabla queda centrada en el area que el navegador decida, y esa
+     area siempre esta centrada en el papel. */
+  @page informe    { size: A4 portrait; margin: 19.05mm 12mm; }
+  @page chequeo    { size: A4 portrait; margin: 19.05mm 12mm; }
+  @page produccion { size: A4 portrait; margin: 12mm; }
+
+  .itHoja { page: informe; }
+  .cjHoja { page: chequeo; }
+  .pdHoja { page: produccion; }
+
+  html, body {
+    background: #fff !important;
+    margin: 0 !important; padding: 0 !important;
+  }
+  /* Oculta todo… */
+  body * { visibility: hidden !important; }
+  /* …menos las tres hojas y lo que llevan dentro. */
+  .itHoja, .itHoja *,
+  .cjHoja, .cjHoja *,
+  .pdHoja, .pdHoja * { visibility: visible !important; }
+
+  .itHojas {
+    position: absolute; inset: 0;
+    background: none !important;
+    padding: 0 !important; margin: 0 !important;
+    overflow: visible !important;
+    border-radius: 0 !important;
+    display: block !important;
+    gap: 0 !important;
+  }
+  /* En papel el margen lo pone @page, así que las hojas van sin padding
+     propio: si no, se sumaría dos veces y el contenido se correría.
+     (La de producción sí conserva ancho fijo — ver hoja-produccion.css.) */
+  .itHoja, .cjHoja, .pdHoja {
+    width: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+  }
+  /* Un salto tras cada hoja, menos tras la última: si no, sale un papel
+     en blanco al final cada vez que imprimen. */
+  .itHoja, .cjHoja { break-after: page; }
+  .pdHoja { break-after: auto; }
+
+  /* EL CENTRADO. Cada tabla tiene ancho fijo; los margenes automaticos la
+     centran en la pagina, aplique o no la @page con nombre. */
+  .itTabla, .cjTabla { margin-left: auto !important; margin-right: auto !important; }
+  .pdHoja { margin-left: auto !important; margin-right: auto !important; }
+
+  .itTabla, .cjTabla, .pdTabla { break-inside: avoid; }
+  /* Sin esto Chrome descarta los bordes al imprimir "sin gráficos de fondo". */
+  .itTabla td, .cjTabla td, .pdTabla td {
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+}
