@@ -174,23 +174,32 @@ describe("El campo OT del papel es la orden FÍSICA, no el UUID", () => {
   });
 });
 
-describe("La línea PLACA del papel lleva el número de OT", () => {
+describe("La línea PLACA del papel lleva el VIN completo", () => {
   // Los carros que se convierten son nuevos y todavía no tienen matrícula,
-  // así que el taller escribe la orden en ese hueco. La etiqueta del papel
-  // no cambia —es el formulario que la empresa firma—, solo el dato.
-  it("sin placa, imprime la OT en su lugar", () => {
-    const d = fusionarInforme_(null, "MOTOR", { ...parteMotor, comun: { ot: "9801" } });
+  // así que el taller los identifica por el VIN. La etiqueta del papel no
+  // cambia —es el formulario que la empresa firma—, solo el dato.
+  it("sin placa, imprime el VIN en su lugar", () => {
+    const d = fusionarInforme_(null, "MOTOR", {
+      ...parteMotor, comun: { ot: "9801", vin: "LVTDB11B1VH513573" },
+    });
     const p = aplanarInforme_(d);
-    expect(p.placa).toBe("9801");
-    expect(p.ot).toBe("9801");
+    expect(p.placa).toBe("LVTDB11B1VH513573");
+    expect(p.ot).toBe("9801");          // la OT sigue en su propia línea
   });
 
-  it("una placa de verdad escrita desde la oficina manda sobre la OT", () => {
-    const d = fusionarInforme_(null, "MOTOR", { ...parteMotor, comun: { ot: "9801", placa: "ABC-123" } });
+  it("el VIN va COMPLETO, sin recortar", () => {
+    const d = fusionarInforme_(null, "MOTOR", { ...parteMotor, comun: { vin: "LVTDB11B1VH513573" } });
+    expect(aplanarInforme_(d).placa).toHaveLength(17);
+  });
+
+  it("una placa de verdad escrita desde la oficina manda sobre el VIN", () => {
+    const d = fusionarInforme_(null, "MOTOR", {
+      ...parteMotor, comun: { vin: "LVTDB11B1VH513573", placa: "ABC-123" },
+    });
     expect(aplanarInforme_(d).placa).toBe("ABC-123");
   });
 
-  it("sin OT ni placa la línea queda vacía, no dice 'undefined'", () => {
+  it("sin VIN ni placa la línea queda vacía, no dice 'undefined'", () => {
     const d = fusionarInforme_(null, "MOTOR", { ...parteMotor, comun: {} });
     expect(aplanarInforme_(d).placa).toBe("");
   });

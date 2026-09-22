@@ -121,7 +121,7 @@ describe("Informe de Taller — contenido", () => {
 // descuadre no se ve hasta que sale el papel.
 // =========================
 
-import { hojaChequeoHtml, CHEQUEO_PUNTOS } from "../public/js/templates/views/hoja-chequeo-view.js";
+import { hojaChequeoHtml, CHEQUEO_PUNTOS, puntosDeRol_ } from "../public/js/templates/views/hoja-chequeo-view.js";
 import { hojaProduccionHtml, PRODUCCION_TECNICOS } from "../public/js/templates/views/hoja-produccion-view.js";
 
 const chequeo = (extra = {}) => hojaChequeoHtml({
@@ -346,5 +346,53 @@ describe("Lista de Chequeo — la línea de la batería", () => {
   it("la fila de la batería sigue cuadrando en 18 columnas", () => {
     const filas = columnasPorFila(chequeo());
     expect(filas.every(n => n === 18)).toBe(true);
+  });
+});
+
+describe("Lista de Chequeo — quién marca cada punto", () => {
+  // El reparto sale del papel: el bloque del tanque va del 21 al 28 y acaba
+  // justo donde el tanquero firma. Enseñar los 32 a los dos hacía fácil
+  // desmarcar por error algo del compañero.
+  it("lo exclusivo del tanquero va del 21 al 28", () => {
+    // puntosDeRol_ incluye a propósito los de AMBOS (3-5), así que aquí se
+    // miran solo los que son suyos y de nadie más.
+    const suyos = puntosDeRol_("TANQUE")
+      .map(i => CHEQUEO_PUNTOS[i])
+      .filter(p => p.rol === "TANQUE")
+      .map(p => p.n);
+    expect(Math.min(...suyos)).toBe(21);
+    expect(Math.max(...suyos)).toBe(28);
+    expect(suyos).toHaveLength(8);
+  });
+
+  it("el delantero ve todo lo demás", () => {
+    const suyos = puntosDeRol_("MOTOR").map(i => CHEQUEO_PUNTOS[i].n);
+    expect(suyos).toContain(6);
+    expect(suyos).toContain(33);
+    expect(suyos).not.toContain(21);
+  });
+
+  it("los puntos 3, 4 y 5 los ven los dos", () => {
+    const m = puntosDeRol_("MOTOR").map(i => CHEQUEO_PUNTOS[i].n);
+    const t = puntosDeRol_("TANQUE").map(i => CHEQUEO_PUNTOS[i].n);
+    for (const n of [3, 4, 5]) {
+      expect(m).toContain(n);
+      expect(t).toContain(n);
+    }
+  });
+
+  it("entre los dos cubren los 32 puntos, sin dejar ninguno huérfano", () => {
+    const todos = new Set([...puntosDeRol_("MOTOR"), ...puntosDeRol_("TANQUE")]);
+    const marcables = CHEQUEO_PUNTOS.filter(p => !p.separador && !p.firmaLinea).length;
+    expect(todos.size).toBe(marcables);
+  });
+
+  it("de los dos puntos 28, el de la FIRMA es del tanquero", () => {
+    // La errata del Excel: hay dos numerados 28. El primero es donde firma
+    // el tanquero; el segundo, instrumentos de tablero, es del delantero.
+    const dos = CHEQUEO_PUNTOS.filter(p => p.n === 28);
+    expect(dos[0].rol).toBe("TANQUE");
+    expect(dos[0].firma).toBe(true);
+    expect(dos[1].rol).toBe("MOTOR");
   });
 });

@@ -23,11 +23,14 @@ import { CHEQUEO_PUNTOS } from "../views/hoja-chequeo-view.js";
 import { DETALLE_TAREAS, DETALLE_POR_DEFECTO } from "../views/informe-taller-view.js";
 
 export function informeOtModal() {
+  // Cada punto lleva su rol en data-iot-rol. El modal los pinta todos y al
+  // abrirse esconde los que no son de quien entra: el delantero ve 24 y el
+  // tanquero 11, en vez de 32 casillas que en su mayoría no le tocan.
   const puntos = CHEQUEO_PUNTOS
     .map((p, i) => ({ p, i }))
     .filter(({ p }) => !p.separador && !p.firmaLinea)
     .map(({ p, i }) => `
-            <label class="iotCk">
+            <label class="iotCk" data-iot-rol="${p.rol}">
               <input type="checkbox" data-iot-punto="${i}" checked>
               <span><b>${p.n}</b> ${escapeHtml(p.t.replace(/\s{2,}FIRMA:.*$/, ""))}</span>
             </label>`).join("");
@@ -88,7 +91,7 @@ export function informeOtModal() {
           </details>
 
           <details class="iotPlegable">
-            <summary>Lista de chequeo <small>(32 puntos · todos marcados)</small></summary>
+            <summary>Lista de chequeo <small id="iotCuenta">· lo que te toca, todo marcado</small></summary>
             <div class="iotCks">${puntos}</div>
           </details>
 

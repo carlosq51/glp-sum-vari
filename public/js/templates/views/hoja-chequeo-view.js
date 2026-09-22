@@ -14,48 +14,67 @@
 import { escapeHtml } from "../../core/format.js";
 
 // Los 32 puntos que se marcan con OK, filas 11 a 44 del Excel.
+//
+// `rol` dice quién lo marca, y con eso cada técnico ve en su modal solo lo
+// suyo en vez de 32 casillas que no le tocan:
+//   · 3-5    AMBOS   — verificaciones previas, las hace quien llegue primero
+//   · 6-20   MOTOR   — ECU, ramal, riel, inyectores, reductor, conmutador…
+//   · 21-28  TANQUE  — tanque toroidal, multiválvula, toma de carga,
+//                      cañerías, repostaje; acaba donde el tanquero firma
+//   · 29-33  MOTOR   — estanqueidad, control final y registros
+//
+// Ojo con los dos puntos numerados 28 (la errata del Excel): el primero
+// —el de la FIRMA— es del tanquero; el segundo, del delantero.
 // `n` es el número impreso, que NO siempre coincide con la posición: en el
 // original hay dos puntos numerados 28 (filas 37 y 39). Es una errata suya
 // y se respeta — el papel tiene que salir igual al que ya archivan.
 export const CHEQUEO_PUNTOS = [
-  { n: 3,  t: "COMPROBAR FUNCIÓN DE CORRECTORES CON ESCANNER" },
-  { n: 4,  t: "VERIFICAR APERTURA DE MALETERA JETOUR AUTOMATICO" },
-  { n: 5,  t: "VERIFICAR ACCESORIOS ORIGINALES EN VEHÍCULO" },
-  { n: 6,  t: "INSTALACIÓN CONTROLADOR STAG QNEXT PLUS - ECU" },
-  { n: 7,  t: "INSTALACIÓN DEL RAMAL PRINCIPAL" },
-  { n: 8,  t: "INSTALACIÓN CONEXIONES ECU" },
-  { n: 9,  t: "INSTALACIÓN DEL RIEL DE INYECTORES (                    )" },
-  { n: 10, t: "PERFORACIÓN E INSTALACIÓN DE BOQUILLAS (2.2MM)" },
-  { n: 11, t: "INSTALACIÓN DEL REDUCTOR R02 - (1.25 BAR PRESIÓN)" },
-  { n: 12, t: "INSTALACIÓN DEL FILTRO DE FASE GASEOSA" },
-  { n: 13, t: "INSTALACIÓN DE MANGUERAS DE GAS - ABRAZADERAS" },
-  { n: 14, t: "INSTALACIÓN DE MANGUERAS DE AGUA - ABRAZADERAS" },
-  { n: 15, t: "INSTALACIÓN CONMUTADOR LED 600" },
-  { n: 16, t: "INSTALACIÓN DEL SENSOR DE PRESIÓN MAP (PS04)" },
-  { n: 17, t: "INSTALACIÓN CONEXIONES OBD" },
-  { n: 18, t: "INSTALACIÓN CONEXIONES RIEL" },
-  { n: 19, t: "INSTALACIÓN CONEXIÓN GENERAL DEL EQUIPO DE GAS" },
-  { n: 20, t: "INSTALACIÓN PORTA FUSIBLES" },
+  { n: 3, rol: "AMBOS", t: "COMPROBAR FUNCIÓN DE CORRECTORES CON ESCANNER" },
+  { n: 4, rol: "AMBOS", t: "VERIFICAR APERTURA DE MALETERA JETOUR AUTOMATICO" },
+  { n: 5, rol: "AMBOS", t: "VERIFICAR ACCESORIOS ORIGINALES EN VEHÍCULO" },
+  { n: 6, rol: "MOTOR", t: "INSTALACIÓN CONTROLADOR STAG QNEXT PLUS - ECU" },
+  { n: 7, rol: "MOTOR", t: "INSTALACIÓN DEL RAMAL PRINCIPAL" },
+  { n: 8, rol: "MOTOR", t: "INSTALACIÓN CONEXIONES ECU" },
+  { n: 9, rol: "MOTOR", t: "INSTALACIÓN DEL RIEL DE INYECTORES (                    )" },
+  { n: 10, rol: "MOTOR", t: "PERFORACIÓN E INSTALACIÓN DE BOQUILLAS (2.2MM)" },
+  { n: 11, rol: "MOTOR", t: "INSTALACIÓN DEL REDUCTOR R02 - (1.25 BAR PRESIÓN)" },
+  { n: 12, rol: "MOTOR", t: "INSTALACIÓN DEL FILTRO DE FASE GASEOSA" },
+  { n: 13, rol: "MOTOR", t: "INSTALACIÓN DE MANGUERAS DE GAS - ABRAZADERAS" },
+  { n: 14, rol: "MOTOR", t: "INSTALACIÓN DE MANGUERAS DE AGUA - ABRAZADERAS" },
+  { n: 15, rol: "MOTOR", t: "INSTALACIÓN CONMUTADOR LED 600" },
+  { n: 16, rol: "MOTOR", t: "INSTALACIÓN DEL SENSOR DE PRESIÓN MAP (PS04)" },
+  { n: 17, rol: "MOTOR", t: "INSTALACIÓN CONEXIONES OBD" },
+  { n: 18, rol: "MOTOR", t: "INSTALACIÓN CONEXIONES RIEL" },
+  { n: 19, rol: "MOTOR", t: "INSTALACIÓN CONEXIÓN GENERAL DEL EQUIPO DE GAS" },
+  { n: 20, rol: "MOTOR", t: "INSTALACIÓN PORTA FUSIBLES" },
   { separador: true },                       // fila 29: separador de 4.8pt
-  { n: 21, t: "INSTALACIÓN TANQUE TOROIDAL 600X200 BE" },
-  { n: 22, t: "INSTALACIÓN MULTIVÁLVULA AT02 200-0° (TOROIDAL)" },
-  { n: 23, t: "INSTALACIÓN SENSOR DE NIVEL / VERIFICAR PERNOS DE FIJACION" },
-  { n: 24, t: "INSTALACIÓN TOMA DE CARGA" },
-  { n: 25, t: "INSTALACIÓN DE LA LÍNEA DE CAÑERIAS 6MM" },
-  { n: 26, t: "INSTALACIÓN DE LA LÍNEA DE CAÑERIAS 8MM" },
-  { n: 27, t: "REPOSTAJE DE GAS" },
+  { n: 21, rol: "TANQUE", t: "INSTALACIÓN TANQUE TOROIDAL 600X200 BE" },
+  { n: 22, rol: "TANQUE", t: "INSTALACIÓN MULTIVÁLVULA AT02 200-0° (TOROIDAL)" },
+  { n: 23, rol: "TANQUE", t: "INSTALACIÓN SENSOR DE NIVEL / VERIFICAR PERNOS DE FIJACION" },
+  { n: 24, rol: "TANQUE", t: "INSTALACIÓN TOMA DE CARGA" },
+  { n: 25, rol: "TANQUE", t: "INSTALACIÓN DE LA LÍNEA DE CAÑERIAS 6MM" },
+  { n: 26, rol: "TANQUE", t: "INSTALACIÓN DE LA LÍNEA DE CAÑERIAS 8MM" },
+  { n: 27, rol: "TANQUE", t: "REPOSTAJE DE GAS" },
   // El punto 28 lleva la firma del tanquero EN SU MISMA LÍNEA, detrás de
   // "FIRMA:". El texto conserva los espacios del Excel, que separan "RH"
   // de "FIRMA:" — por eso esta celda se pinta con white-space: pre.
-  { n: 28, t: "AJUSTE DE NEUMATICO POST RH                       FIRMA:", firma: true },
+  { n: 28, rol: "TANQUE", t: "AJUSTE DE NEUMATICO POST RH                       FIRMA:", firma: true },
   { firmaLinea: true },                      // fila 38: renglón en blanco bajo el punto 28
-  { n: 28, t: "VERIFICAR FUNCIONAMIENTO DE INSTRUMENTOS DE TABLERO" },
-  { n: 29, t: "COMPROBAR ESTANQUEIDAD DE MÚLTIPLE DE ADMISIÓN" },
-  { n: 30, t: "CONTROL FINAL DEL TÉCNICO A CARGO" },
-  { n: 31, t: "VERIFICAR ACCESORIOS ORIGINALES EN VEHÍCULO" },
-  { n: 32, t: "REGISTRO DE DOCUMENTACIÓN OT - TIEMPOS" },
-  { n: 33, t: "REGISTRO DE MANUAL OPERACIÓN GAS" },
+  { n: 28, rol: "MOTOR", t: "VERIFICAR FUNCIONAMIENTO DE INSTRUMENTOS DE TABLERO" },
+  { n: 29, rol: "MOTOR", t: "COMPROBAR ESTANQUEIDAD DE MÚLTIPLE DE ADMISIÓN" },
+  { n: 30, rol: "MOTOR", t: "CONTROL FINAL DEL TÉCNICO A CARGO" },
+  { n: 31, rol: "MOTOR", t: "VERIFICAR ACCESORIOS ORIGINALES EN VEHÍCULO" },
+  { n: 32, rol: "MOTOR", t: "REGISTRO DE DOCUMENTACIÓN OT - TIEMPOS" },
+  { n: 33, rol: "MOTOR", t: "REGISTRO DE MANUAL OPERACIÓN GAS" },
 ];
+
+/** Índices de CHEQUEO_PUNTOS que le toca marcar a un rol (AMBOS incluido). */
+export function puntosDeRol_(rol) {
+  const r = String(rol || "").toUpperCase();
+  return CHEQUEO_PUNTOS
+    .map((p, i) => (p.separador || p.firmaLinea ? -1 : (p.rol === r || p.rol === "AMBOS" ? i : -1)))
+    .filter(i => i >= 0);
+}
 
 // Anchos de las 18 columnas B..S en mm impresos.
 // px = anchoExcel * 7 + 5 ;  mm = px * 25.4/96 * 0.87   (el 87 es pageSetup)

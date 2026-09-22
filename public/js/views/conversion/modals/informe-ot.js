@@ -10,7 +10,7 @@
 import { CORE } from "../../../core/state.js";
 import { getJSON, postJSON } from "../../../core/api.js";
 import { escapeHtml } from "../../../core/format.js";
-import { CHEQUEO_PUNTOS } from "../../../templates/views/hoja-chequeo-view.js";
+import { CHEQUEO_PUNTOS, puntosDeRol_ } from "../../../templates/views/hoja-chequeo-view.js";
 import { DETALLE_TAREAS } from "../../../templates/views/informe-taller-view.js";
 
 const $ = (id) => document.getElementById(id);
@@ -48,6 +48,7 @@ export function abrirInformeOt_(it) {
     rol: String(it.rolTrabajo || "").trim().toUpperCase(),
   };
 
+  filtrarPuntos_();
   msg_("");
   pintarCabecera_({ cargando: true });
   m.classList.add("show");
@@ -57,6 +58,30 @@ export function abrirInformeOt_(it) {
   // Quiénes trabajaron el carro y desde cuándo lo salen del sistema, no del
   // técnico: él ya tiene bastante con medir la batería.
   cargarContexto_();
+}
+
+/**
+ * Esconde los puntos del chequeo que no le tocan a quien abre el modal.
+ *
+ * Los 32 puntos están repartidos: 6-20 y 29-33 son del delantero, 21-28
+ * del tanquero, y 3-5 los hace quien llegue primero. Enseñárselos todos a
+ * los dos obligaba a cada uno a leer 32 líneas para encontrar las suyas, y
+ * hacía fácil desmarcar por error algo del compañero.
+ */
+function filtrarPuntos_() {
+  const rol = otActual_?.rol || "";
+  let mios = 0;
+  document.querySelectorAll("[data-iot-rol]").forEach(el => {
+    const suyo = el.dataset.iotRol === rol || el.dataset.iotRol === "AMBOS";
+    el.style.display = suyo ? "" : "none";
+    // Lo que no se ve tampoco se manda: si quedara marcado, el técnico
+    // estaría firmando puntos que no hizo.
+    const cb = el.querySelector("input");
+    if (cb) cb.checked = suyo;
+    if (suyo) mios++;
+  });
+  const cuenta = $("iotCuenta");
+  if (cuenta) cuenta.textContent = `· ${mios} puntos tuyos, todos marcados`;
 }
 
 /** Los dos técnicos de la OT con sus horas, traídos del sistema. */
@@ -124,7 +149,9 @@ function miParte_() {
     fin: yo?.fin || null,
     comun: { ot: val("iotOtFisica") },
     tareas: marcados("tarea", DETALLE_TAREAS.length),
-    marcados: marcados("punto", CHEQUEO_PUNTOS.length),
+    // Solo los puntos de su rol: los del compañero los manda él.
+    marcados: marcados("punto", CHEQUEO_PUNTOS.length)
+      .filter(i => puntosDeRol_(otActual_?.rol).includes(i)),
     observaciones: $("iotObs")?.value || "",
     bateria: { v: val("iotBatV"), ai: val("iotBatAi"), af: val("iotBatAf") },
     cilindros: [val("iotCil1"), val("iotCil2"), val("iotCil3"), val("iotCil4")],

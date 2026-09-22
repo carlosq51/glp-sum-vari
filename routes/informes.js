@@ -139,11 +139,37 @@ router.get("/api/informes/contexto", async (req, res) => {
       + `&work_order_id=eq.${encodeURIComponent(ot)}&activo=eq.true&tipo_ot=eq.CONVERSION`
     );
 
+    // La hora de FIN sale del evento, no de updated_at de la asignación:
+    // updated_at cambia con cualquier retoque posterior (una nota, una
+    // corrección del supervisor) y el papel acabaría diciendo que el
+    // técnico terminó a una hora a la que ya se había ido.
+    //
+    // Si no marcó FIN, el hueco queda vacío y lo rellena la hora de la
+    // impresión — que es cuando de verdad está acabando.
+    const fines = new Map();
+    try {
+      const evs = await sbGet_(
+        "eventos?select=rol_trabajo,timestamp&accion=eq.FIN"
+        + `&work_order_id=eq.${encodeURIComponent(ot)}&order=timestamp.desc`
+      );
+      // Van ordenados de más nuevo a más viejo: el primero de cada rol es
+      // el último FIN, que es el que vale si reabrieron y volvieron a cerrar.
+      for (const e of evs || []) {
+        const r = s_(e.rol_trabajo).toUpperCase();
+        if (r && !fines.has(r)) fines.set(r, e.timestamp);
+      }
+    } catch (err) {
+      // Sin eventos se sigue adelante: el informe se puede mandar igual y
+      // la hora la pondrá la impresión.
+      console.warn("[informes] no pude leer los FIN:", err.message);
+    }
+
     const personas = (asgs || []).map(a => {
       const u = Array.isArray(a.usuarios) ? a.usuarios[0] : a.usuarios;
-      const fin = a.estado_actual === "FINALIZADO" ? a.updated_at : null;
+      const rol = s_(a.rol_trabajo).toUpperCase();
+      const fin = fines.get(rol) || (a.estado_actual === "FINALIZADO" ? a.updated_at : null);
       return {
-        rol: s_(a.rol_trabajo).toUpperCase(),
+        rol,
         nombre: s_(u?.nombre),
         email: s_(u?.email),
         estado: s_(a.estado_actual),
