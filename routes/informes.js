@@ -324,9 +324,21 @@ router.get("/api/informes/:id", requireRol_("ADMIN", "SUPERVISOR"), async (req, 
   try {
     const filas = await sbGet_(`${TABLA}?id=eq.${encodeURIComponent(s_(req.params.id))}&limit=1`);
     if (!filas?.[0]) return res.status(404).json({ ok: false, error: "Ese informe no existe." });
-    // `plano` es lo que pintan las tres hojas: las dos mitades ya unidas.
-    // Va calculado aquí para que la regla de unión viva en un solo sitio.
-    res.json({ ok: true, informe: filas[0], plano: aplanarInforme_(filas[0].datos) });
+    // El padrón se vuelve a pedir AQUÍ, no se usa el que se guardó.
+    //
+    // Dos razones: los informes mandados antes de que el padrón existiera
+    // no lo llevan dentro —y sin esto saldrían sin el nombre del compañero—,
+    // y si mientras tanto reasignaron el carro a otro técnico, el papel debe
+    // decir quién lo trabajó de verdad, no quién estaba cuando se envió.
+    const datos = { ...(filas[0].datos || {}) };
+    try {
+      const personas = await contextoDeOt_(s_(filas[0].work_order_id));
+      if (personas.length) datos.personas = personas;
+    } catch (err) {
+      console.warn("[informes] sin padrón al abrir:", err.message);
+    }
+
+    res.json({ ok: true, informe: filas[0], plano: aplanarInforme_(datos) });
   } catch (err) {
     console.error("[informes] GET uno:", err.message);
     res.status(500).json({ ok: false, error: mensajeUtil_(err) });

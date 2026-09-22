@@ -47,6 +47,12 @@ function isoDe_(iso) {
   return `${d.getFullYear()}-${mm}-${dd}`;
 }
 
+/** dd-mm-aa — el formato del Registro de Tiempos, que tiene poco ancho. */
+function fechaCorta_(iso) {
+  const larga = fechaPeru_(iso);
+  return larga ? larga.slice(0, 6) + larga.slice(-2) : "";
+}
+
 /** dd-mm-aaaa, que es como se escribe la fecha en estas hojas. */
 function fechaPeru_(iso) {
   // Acepta "aaaa-mm-dd" (lo que da un <input type="date">) y un ISO
@@ -109,7 +115,9 @@ function pintarHojas_() {
   // papel, así que esa ES su hora de fin. Mientras no se imprima va vacía.
   const filasProd = d.prod.map(p => ({
     ...p,
-    fecha: fechaPeru_(p.fecha),
+    // En el Registro de Tiempos la fecha va en DD-MM-AA: su columna es
+    // estrecha y con el año de cuatro cifras el texto se salía.
+    fecha: fechaCorta_(p.fecha),
     fin: p.fin || horaImpresion_,
   }));
 

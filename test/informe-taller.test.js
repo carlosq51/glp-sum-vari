@@ -9,6 +9,7 @@
 // =========================
 
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
 import {
   informeHojaHtml,
   DETALLE_TAREAS,
@@ -394,5 +395,26 @@ describe("Lista de Chequeo — quién marca cada punto", () => {
     expect(dos[0].rol).toBe("TANQUE");
     expect(dos[0].firma).toBe(true);
     expect(dos[1].rol).toBe("MOTOR");
+  });
+});
+
+describe("Registro de Producción — encabezados y fecha", () => {
+  it("los encabezados largos pueden partirse en dos líneas", () => {
+    // No basta la clase .pHead: perdía por especificidad contra
+    // `.pdTabla td { white-space: nowrap }` y el texto se recortaba contra
+    // el borde en vez de usar el alto de la cabecera.
+    const css = readFileSync("public/css/views/hoja-produccion.css", "utf8");
+    expect(css).toMatch(/\.pdTabla td\.pHead\s*\{[^}]*white-space:\s*normal/);
+  });
+
+  it("el giro de COMPRESION y SCANNER también gana al nowrap", () => {
+    const css = readFileSync("public/css/views/hoja-produccion.css", "utf8");
+    expect(css).toMatch(/\.pdTabla td\.pGirado/);
+  });
+
+  it("los dos encabezados largos siguen ahí", () => {
+    const html = hojaProduccionHtml({});
+    expect(html).toContain("ARMADO CABLEADO");
+    expect(html).toContain("CONTROL DE CALIDAD");
   });
 });

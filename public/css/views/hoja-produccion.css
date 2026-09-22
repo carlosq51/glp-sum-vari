@@ -59,17 +59,27 @@
    pero el texto desborda a la derecha sobre celdas vacías. */
 .pOt { overflow: visible; }
 
-.pHead {
+/* El selector lleva `.pdTabla td` a propósito: con `.pHead` a secas perdía
+   contra `.pdTabla td { white-space: nowrap }`, que pesa más por llevar
+   clase + elemento. Resultado: "ARMADO CABLEADO" y "CONTROL DE CALIDAD"
+   nunca se partían en dos líneas — se recortaban contra el borde.
+
+   Al partirse aprovechan el alto de la cabecera, que son dos filas
+   combinadas (rowspan) y da de sobra para dos renglones. */
+.pdTabla td.pHead {
   border: 1px solid #000;
   text-align: center;
   vertical-align: middle;
-  white-space: normal;             /* "ARMADO CABLEADO" parte en dos líneas */
-  line-height: 1.05;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: break-word;       /* por si algún día entra una palabra larga */
+  line-height: 1.12;
+  padding: 0.3mm 0.4mm;
 }
 
 /* textRotation="90" en Excel = de abajo hacia arriba. En CSS eso es
    vertical-rl girado 180°; con vertical-lr el texto sale invertido. */
-.pGirado {
+.pdTabla td.pGirado {
   writing-mode: vertical-rl;
   transform: rotate(180deg);
   white-space: nowrap;
