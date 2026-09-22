@@ -45,9 +45,29 @@ const router = Router();
 // routes/ramales.js.
 const SB = () => process.env.SUPABASE_URL;
 
+/**
+ * Cabeceras con la clave de SERVICIO, o un error que se entiende.
+ *
+ * supabaseServiceHeaders_() cae de vuelta a la clave anónima cuando falta
+ * SUPABASE_SERVICE_KEY, sin decir nada. Con la RLS activa eso se manifiesta
+ * como un 401 42501 en el INSERT —"new row violates row-level security"—
+ * que apunta a la base de datos cuando el problema es la configuración del
+ * servidor. Aquí se corta antes y se dice qué falta.
+ */
+function headers_() {
+  if (!process.env.SUPABASE_SERVICE_KEY) {
+    throw new Error(
+      "Falta SUPABASE_SERVICE_KEY en el servidor. Los informes se escriben " +
+      "con la clave de servicio; con la anónima la RLS los rechaza."
+    );
+  }
+  const cab = supabaseServiceHeaders_();
+  if (!cab) throw new Error("Supabase no configurado (.env)");
+  return cab;
+}
+
 async function sbGet_(path) {
-  const h = supabaseServiceHeaders_();
-  if (!h) throw new Error("Supabase no configurado (.env)");
+  const h = headers_();
   const r = await fetch(`${SB()}/rest/v1/${path}`, { headers: h });
   if (!r.ok) {
     const t = await r.text().catch(() => "");
@@ -57,8 +77,7 @@ async function sbGet_(path) {
 }
 
 async function sbPost_(table, data) {
-  const h = supabaseServiceHeaders_();
-  if (!h) throw new Error("Supabase no configurado (.env)");
+  const h = headers_();
   const r = await fetch(`${SB()}/rest/v1/${table}`, {
     method: "POST",
     headers: { ...h, Prefer: "return=representation" },
@@ -73,8 +92,7 @@ async function sbPost_(table, data) {
 }
 
 async function sbPatch_(table, filtro, data) {
-  const h = supabaseServiceHeaders_();
-  if (!h) throw new Error("Supabase no configurado (.env)");
+  const h = headers_();
   const r = await fetch(`${SB()}/rest/v1/${table}?${filtro}`, {
     method: "PATCH",
     headers: { ...h, Prefer: "return=representation" },
