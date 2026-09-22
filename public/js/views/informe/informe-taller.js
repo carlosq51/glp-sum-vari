@@ -29,9 +29,31 @@ let horaImpresion_ = "";
 // llenarla a mano en la oficina.
 let informeId_ = null;
 
+/** ISO → "HH:MM", que es lo que acepta un <input type="time">. */
+function horaDe_(iso) {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return "";
+  const d = new Date(t);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+/** ISO → "aaaa-mm-dd", que es lo que acepta un <input type="date">. */
+function isoDe_(iso) {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return "";
+  const d = new Date(t);
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
 /** dd-mm-aaaa, que es como se escribe la fecha en estas hojas. */
 function fechaPeru_(iso) {
-  const d = iso ? new Date(`${iso}T00:00:00`) : new Date();
+  // Acepta "aaaa-mm-dd" (lo que da un <input type="date">) y un ISO
+  // completo con hora, que es como vienen las fechas del sistema.
+  const d = !iso ? new Date()
+    : /^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(`${iso}T00:00:00`)
+    : new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
   const dd = String(d.getDate()).padStart(2, "0");
   const mm = String(d.getMonth() + 1).padStart(2, "0");
@@ -192,6 +214,25 @@ function volcar_(d = {}) {
       el.checked = d.tareas.includes(Number(el.dataset.itTarea));
     });
   }
+  // Los tiempos de producción. SIN ESTO no salían: llegaban del servidor
+  // dentro de `prod` y se tiraban, porque las hojas se pintan leyendo el
+  // formulario y nadie los escribía en él.
+  //
+  // El orden de `prod` es delantero, tanquero — el mismo que los bloques
+  // itP1/itP2 del formulario.
+  (d.prod || []).forEach((persona, i) => {
+    const campo = ["itP1", "itP2", "itP3"][i];
+    if (!campo) return;
+    set(`${campo}Fecha`, isoDe_(persona.inicio));
+    set(`${campo}Ini`, horaDe_(persona.inicio));
+    set(`${campo}Fin`, horaDe_(persona.fin));
+    // Las etapas que marcó cada uno.
+    for (const [k, on] of Object.entries(persona.marcas || {})) {
+      const cb = document.querySelector(`[data-it-etapa="${campo}:${k}"]`);
+      if (cb) cb.checked = !!on;
+    }
+  });
+
   // Los puntos del chequeo viajan aparte: el formulario de la oficina no
   // los muestra uno a uno, así que se guardan para pintarlos en la hoja.
   if (Array.isArray(d.marcados)) chequeoMarcados_ = d.marcados;

@@ -28,7 +28,7 @@ import { Router } from "express";
 import { supabaseServiceHeaders_ } from "../lib/supabase.js";
 import { requireRol_ } from "../lib/authz.js";
 import { emitEvent_ } from "../lib/events.js";
-import { fusionarInforme_, aplanarInforme_ } from "../lib/informes.js";
+import { fusionarInforme_, aplanarInforme_, aplicarEdicion_ } from "../lib/informes.js";
 
 const router = Router();
 
@@ -121,67 +121,70 @@ function emailDe_(req) {
   return s_(req.body?.email || req.query?.email || req.get("x-user-email")).toLowerCase();
 }
 
+/**
+ * Quiénes trabajaron el carro, con sus horas. Sale de `asignaciones` y de
+ * los eventos, nunca de lo que escriba el navegador.
+ *
+ * Se usa en dos sitios: el modal al abrirse, y el POST al guardar. Lo
+ * segundo importa — el padrón se guarda CON el informe aunque solo haya
+ * mandado uno de los dos. Así el papel imprime el nombre del tanquero y su
+ * hora de inicio aunque él no haya enviado su mitad todavía: el sistema ya
+ * sabe quién es, no hay razón para dejar el hueco en blanco.
+ */
+async function contextoDeOt_(ot) {
+  const asgs = await sbGet_(
+    "asignaciones?select=id,rol_trabajo,estado_actual,fecha_asignacion,updated_at,tiempo_trab_ms,usuarios(nombre,email)"
+    + `&work_order_id=eq.${encodeURIComponent(ot)}&activo=eq.true&tipo_ot=eq.CONVERSION`
+  );
+
+  // La hora de FIN sale del evento, no de updated_at de la asignación:
+  // updated_at cambia con cualquier retoque posterior (una nota, una
+  // corrección del supervisor) y el papel acabaría diciendo que el técnico
+  // terminó a una hora a la que ya se había ido.
+  const fines = new Map();
+  try {
+    const evs = await sbGet_(
+      "eventos?select=rol_trabajo,timestamp&accion=eq.FIN"
+      + `&work_order_id=eq.${encodeURIComponent(ot)}&order=timestamp.desc`
+    );
+    // Van de más nuevo a más viejo: el primero de cada rol es el último
+    // FIN, que es el que vale si reabrieron y volvieron a cerrar.
+    for (const e of evs || []) {
+      const r = s_(e.rol_trabajo).toUpperCase();
+      if (r && !fines.has(r)) fines.set(r, e.timestamp);
+    }
+  } catch (err) {
+    console.warn("[informes] no pude leer los FIN:", err.message);
+  }
+
+  return (asgs || []).map(a => {
+    const u = Array.isArray(a.usuarios) ? a.usuarios[0] : a.usuarios;
+    const rol = s_(a.rol_trabajo).toUpperCase();
+    return {
+      rol,
+      nombre: s_(u?.nombre),
+      email: s_(u?.email),
+      estado: s_(a.estado_actual),
+      // El inicio es cuando se le asignó el carro, no cuando le dio a
+      // INICIO: es lo que el taller entiende por "desde cuándo lo tiene".
+      inicio: a.fecha_asignacion || null,
+      // Sin FIN va null, y lo rellena la hora de la impresión.
+      fin: fines.get(rol) || (a.estado_actual === "FINALIZADO" ? a.updated_at : null),
+    };
+  });
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 //  GET /api/informes/contexto — quiénes trabajaron el carro y desde cuándo
-//
-//  Lo llama el modal al abrirse. Devuelve las DOS personas de la OT con sus
-//  horas, para que el técnico no teclee nombres ni tiempos que el sistema
-//  ya tiene. El índice único de asignaciones garantiza una MOTOR y una
-//  TANQUE activas por OT, así que aquí salen el delantero y el tanquero.
+//  Lo llama el modal al abrirse, para no pedirle al técnico nada que el
+//  sistema ya sabe.
 // ─────────────────────────────────────────────────────────────────────────
 router.get("/api/informes/contexto", async (req, res) => {
   try {
     const ot = s_(req.query.work_order_id);
     if (!ot) return res.status(400).json({ ok: false, error: "Falta la OT." });
 
-    const asgs = await sbGet_(
-      "asignaciones?select=id,rol_trabajo,estado_actual,fecha_asignacion,updated_at,tiempo_trab_ms,usuarios(nombre,email)"
-      + `&work_order_id=eq.${encodeURIComponent(ot)}&activo=eq.true&tipo_ot=eq.CONVERSION`
-    );
-
-    // La hora de FIN sale del evento, no de updated_at de la asignación:
-    // updated_at cambia con cualquier retoque posterior (una nota, una
-    // corrección del supervisor) y el papel acabaría diciendo que el
-    // técnico terminó a una hora a la que ya se había ido.
-    //
-    // Si no marcó FIN, el hueco queda vacío y lo rellena la hora de la
-    // impresión — que es cuando de verdad está acabando.
-    const fines = new Map();
-    try {
-      const evs = await sbGet_(
-        "eventos?select=rol_trabajo,timestamp&accion=eq.FIN"
-        + `&work_order_id=eq.${encodeURIComponent(ot)}&order=timestamp.desc`
-      );
-      // Van ordenados de más nuevo a más viejo: el primero de cada rol es
-      // el último FIN, que es el que vale si reabrieron y volvieron a cerrar.
-      for (const e of evs || []) {
-        const r = s_(e.rol_trabajo).toUpperCase();
-        if (r && !fines.has(r)) fines.set(r, e.timestamp);
-      }
-    } catch (err) {
-      // Sin eventos se sigue adelante: el informe se puede mandar igual y
-      // la hora la pondrá la impresión.
-      console.warn("[informes] no pude leer los FIN:", err.message);
-    }
-
-    const personas = (asgs || []).map(a => {
-      const u = Array.isArray(a.usuarios) ? a.usuarios[0] : a.usuarios;
-      const rol = s_(a.rol_trabajo).toUpperCase();
-      const fin = fines.get(rol) || (a.estado_actual === "FINALIZADO" ? a.updated_at : null);
-      return {
-        rol,
-        nombre: s_(u?.nombre),
-        email: s_(u?.email),
-        estado: s_(a.estado_actual),
-        // El inicio es cuando se le asignó el carro, no cuando le dio a
-        // INICIO: es lo que el taller entiende por "desde cuándo lo tiene".
-        inicio: a.fecha_asignacion || null,
-        // El fin solo existe si ya cerró. Si sigue abierto va null y lo
-        // rellena la hora de impresión, que es cuando de verdad acabó.
-        fin,
-      };
-    });
-
+    const personas = await contextoDeOt_(ot);
     const wos = await sbGet_(`work_orders?select=id,vin&id=eq.${encodeURIComponent(ot)}&limit=1`);
 
     res.json({ ok: true, ot, vin: s_(wos?.[0]?.vin), personas });
@@ -228,11 +231,19 @@ router.post("/api/informes", async (req, res) => {
     // primero, el papel saldría a medias y nadie lo notaría hasta tenerlo
     // en la mano.
     const rol = s_(req.body?.rol).toUpperCase();
+
+    // El padrón del sistema se guarda SIEMPRE, mande quien mande. Es lo
+    // que permite imprimir el nombre y la hora del compañero aunque él
+    // todavía no haya enviado su mitad.
+    let personas = [];
+    try { personas = await contextoDeOt_(ot); }
+    catch (err) { console.warn("[informes] sin padrón:", err.message); }
     const parte = req.body?.parte && typeof req.body.parte === "object" ? req.body.parte : {};
 
     if (vivos?.[0]) {
       const actuales = await sbGet_(`${TABLA}?select=id,datos&id=eq.${vivos[0].id}&limit=1`);
       const datos = fusionarInforme_(actuales?.[0]?.datos, rol, parte);
+      if (personas.length) datos.personas = personas;
 
       // Un informe NO entra en la cola hasta que están las dos mitades: en
       // la oficina no deben poder imprimir medio papel. Mientras falte una
@@ -251,6 +262,7 @@ router.post("/api/informes", async (req, res) => {
     }
 
     const datos = fusionarInforme_(null, rol, parte);
+    if (personas.length) datos.personas = personas;
     datos.comun.ot = otFisica;          // el del papel, no el UUID
     datos.comun.vin = vin;
     datos.comun.placa = placa;
@@ -327,7 +339,13 @@ router.get("/api/informes/:id", requireRol_("ADMIN", "SUPERVISOR"), async (req, 
 async function guardar_(req, res) {
   try {
     const cambios = {};
-    if (req.body?.datos && typeof req.body.datos === "object") cambios.datos = req.body.datos;
+    // Lo que manda la pantalla de impresión es el informe APLANADO. Si se
+    // guardara tal cual, borraría `porRol` y `personas` — quién marcó qué y
+    // el padrón del sistema. Se aplica como corrección sobre lo guardado.
+    if (req.body?.datos && typeof req.body.datos === "object") {
+      const previas = await sbGet_(`${TABLA}?select=datos&id=eq.${encodeURIComponent(s_(req.params.id))}&limit=1`);
+      cambios.datos = aplicarEdicion_(previas?.[0]?.datos, req.body.datos);
+    }
     if (req.body?.placa !== undefined) cambios.placa = s_(req.body.placa).toUpperCase();
     if (!Object.keys(cambios).length) {
       return res.status(400).json({ ok: false, error: "No mandaste nada que cambiar." });

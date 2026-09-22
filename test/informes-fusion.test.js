@@ -10,7 +10,7 @@
 // =========================
 
 import { describe, it, expect } from "vitest";
-import { fusionarInforme_, aplanarInforme_, informeVacio_ } from "../lib/informes.js";
+import { fusionarInforme_, aplanarInforme_, informeVacio_, aplicarEdicion_ } from "../lib/informes.js";
 
 const parteMotor = {
   nombre: "FRANZ COSTILLA",
@@ -202,5 +202,75 @@ describe("La línea PLACA del papel lleva el VIN completo", () => {
   it("sin VIN ni placa la línea queda vacía, no dice 'undefined'", () => {
     const d = fusionarInforme_(null, "MOTOR", { ...parteMotor, comun: {} });
     expect(aplanarInforme_(d).placa).toBe("");
+  });
+});
+
+describe("El padrón del sistema: quién es quién, lo mande o no", () => {
+  const conPadron = (extra = {}) => {
+    const d = fusionarInforme_(null, "MOTOR", parteMotor);
+    d.personas = [
+      { rol: "MOTOR", nombre: "GROBERT JOEL", inicio: "2026-09-21T16:19:00Z", fin: "2026-09-21T18:40:00Z" },
+      { rol: "TANQUE", nombre: "IVAN ABAD", inicio: "2026-09-21T16:20:00Z", fin: null },
+      ...(extra.personas || []),
+    ];
+    return d;
+  };
+
+  it("imprime el nombre del tanquero aunque él no haya enviado nada", () => {
+    // Es el caso real: el delantero acaba primero y manda; el tanquero sigue
+    // con el carro. El sistema ya sabe quién es, así que el papel no tiene
+    // por qué salir con ese hueco en blanco.
+    const p = aplanarInforme_(conPadron());
+    expect(p.tecnicos).toEqual(["GROBERT JOEL", "IVAN ABAD"]);
+    expect(p.tanquero).toBe("IVAN ABAD");
+  });
+
+  it("y también su hora de inicio", () => {
+    const prod = aplanarInforme_(conPadron()).prod;
+    expect(prod).toHaveLength(2);
+    expect(prod[1].nombre).toBe("IVAN ABAD");
+    expect(prod[1].inicio).toBe("2026-09-21T16:20:00Z");
+  });
+
+  it("sigue diciendo que falta su mitad, aunque salga su nombre", () => {
+    // Tener el nombre no es tener el informe: las casillas las marca él.
+    expect(aplanarInforme_(conPadron()).faltan).toEqual(["TANQUE"]);
+  });
+
+  it("el nombre del padrón manda sobre el que mandó el técnico", () => {
+    // El sistema es la fuente: si el técnico escribió su nombre de otra
+    // forma, el papel debe decir lo mismo que el resto de la app.
+    expect(aplanarInforme_(conPadron()).tecnicos[0]).toBe("GROBERT JOEL");
+  });
+
+  it("sin padrón, se cae al nombre que mandó cada uno", () => {
+    const d = fusionarInforme_(fusionarInforme_(null, "MOTOR", parteMotor), "TANQUE", parteTanque);
+    expect(aplanarInforme_(d).tecnicos).toEqual(["FRANZ COSTILLA", "HENRY LUZA"]);
+  });
+});
+
+describe("La oficina corrige sin destruir el informe", () => {
+  it("guardar desde la pantalla de impresión no borra las mitades", () => {
+    // La pantalla trabaja con el informe aplanado. Guardarlo tal cual
+    // machacaría porRol y personas: se perdería quién marcó qué.
+    const previo = fusionarInforme_(fusionarInforme_(null, "MOTOR", parteMotor), "TANQUE", parteTanque);
+    previo.personas = [{ rol: "MOTOR", nombre: "GROBERT JOEL" }];
+
+    const editado = aplicarEdicion_(previo, aplanarInforme_(previo));
+    expect(Object.keys(editado.porRol).sort()).toEqual(["MOTOR", "TANQUE"]);
+    expect(editado.personas).toHaveLength(1);
+  });
+
+  it("sí recoge lo que la oficina cambió del carro", () => {
+    const previo = fusionarInforme_(null, "MOTOR", parteMotor);
+    const editado = aplicarEdicion_(previo, { ot: "9999", placa: "NUEVA-1" });
+    expect(editado.comun.ot).toBe("9999");
+    expect(editado.comun.placa).toBe("NUEVA-1");
+  });
+
+  it("los puntos que corrige la oficina mandan sobre los de los técnicos", () => {
+    const previo = fusionarInforme_(fusionarInforme_(null, "MOTOR", parteMotor), "TANQUE", parteTanque);
+    const editado = aplicarEdicion_(previo, { marcados: [7] });
+    expect(aplanarInforme_(editado).marcados).toEqual([7]);
   });
 });
