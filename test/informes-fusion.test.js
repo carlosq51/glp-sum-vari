@@ -173,3 +173,25 @@ describe("El campo OT del papel es la orden FÍSICA, no el UUID", () => {
     expect(d.comun.ot).toBe("9802");
   });
 });
+
+describe("La línea PLACA del papel lleva el número de OT", () => {
+  // Los carros que se convierten son nuevos y todavía no tienen matrícula,
+  // así que el taller escribe la orden en ese hueco. La etiqueta del papel
+  // no cambia —es el formulario que la empresa firma—, solo el dato.
+  it("sin placa, imprime la OT en su lugar", () => {
+    const d = fusionarInforme_(null, "MOTOR", { ...parteMotor, comun: { ot: "9801" } });
+    const p = aplanarInforme_(d);
+    expect(p.placa).toBe("9801");
+    expect(p.ot).toBe("9801");
+  });
+
+  it("una placa de verdad escrita desde la oficina manda sobre la OT", () => {
+    const d = fusionarInforme_(null, "MOTOR", { ...parteMotor, comun: { ot: "9801", placa: "ABC-123" } });
+    expect(aplanarInforme_(d).placa).toBe("ABC-123");
+  });
+
+  it("sin OT ni placa la línea queda vacía, no dice 'undefined'", () => {
+    const d = fusionarInforme_(null, "MOTOR", { ...parteMotor, comun: {} });
+    expect(aplanarInforme_(d).placa).toBe("");
+  });
+});
