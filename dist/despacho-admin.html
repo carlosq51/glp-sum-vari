@@ -1,0 +1,1103 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Consola de despacho</title>
+<!--
+  Consola del supervisor.
+
+  El motor auto-publica; esto NO aprueba, CORRIGE. Por eso el diseño no tiene
+  bandeja de pendientes: muestra lo que ya está en la pantalla del taller y
+  deja intervenir sobre ello — quitar, cambiar, o poner a dedo.
+
+  La consola es el MAPA del taller, no una lista. El supervisor no piensa en
+  "propuestas": piensa en "la zona 6 necesita tanquero". Cada plaza se toca y
+  se abren sus DOS puestos por separado — delantero y tanquero — cada uno con
+  su propio poner / cambiar / quitar. Antes esto era una cola de carros: en
+  cuanto alguien tomaba el delantero el carro salía de la cola y el tanquero
+  ya no se podía agregar por ningún lado.
+
+  Pensada para el celular del supervisor, que es donde va a estar.
+
+  El dibujo de las plazas es el mismo de la PWA (public/css/views/zonas.css)
+  reescrito aquí a mano: esta página se sirve suelta, sin pasar por el build
+  de Vite, así que no puede importar esa hoja.
+-->
+<style>
+  :root {
+    --bg0: #0c0e11; --surface: #1e232b; --surface2: #181c23;
+    --line: rgba(255,255,255,.14); --text: #e9eaec; --muted: rgba(233,234,236,.60);
+    --amber: #f59e0b; --ok: #22c55e; --danger: #f87171; --note: #7dd3fc; --warn: #facc15;
+    --font: ui-rounded, Quicksand, Nunito, system-ui, -apple-system, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+    /* Paleta del lote (de zonas.css, tema noche) */
+    --lot-bg: #171a20; --lot-bg2: #12151a;
+    --spot-bg: #262a33; --spot-bg2: #1f232b;
+    --paint: rgba(255,255,255,.50); --paint-soft: rgba(255,255,255,.10);
+    --road-bg: #2c313a; --wheel: #0b0d12; --glass-car: rgba(0,0,0,.34);
+    --st-wait: #f59e0b; --st-conv: #3b82f6; --st-done: #22c55e;
+
+    /* Color del carro — el mismo idioma que la TV (public/tv.html):
+       blanco nadie · amarillo un técnico · azul la dupla · verde el lado que
+       ya cerró (arriba delantero, abajo tanquero). */
+    --car0: #e8ecf2; --car1: #f0a90c; --car2: #3b82f6; --carFin: #16a34a;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg0); color: var(--text); font-family: var(--font);
+    padding: 16px 14px calc(28px + env(safe-area-inset-bottom));
+    max-width: 1040px; margin: 0 auto;
+  }
+  header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; }
+  /* Sin margin-left:auto: .hora ya empuja el bloque derecho, y ponerlo aquí
+     también abriría un hueco entre la hora y el botón. */
+  #motorCorrer { min-height: 32px; padding: 6px 10px; font-size: 12px; }
+  h1 { font-size: 21px; font-weight: 800; }
+  h1 span { color: var(--amber); }
+  .modo {
+    font-size: 12px; font-weight: 800; letter-spacing: .1em;
+    padding: 3px 9px; border-radius: 99px; background: var(--surface); border: 1px solid var(--line);
+  }
+  .modo.REAL   { background: rgba(34,197,94,.18);  border-color: var(--ok);   color: #bbf7d0; }
+  .modo.SOMBRA { background: rgba(125,211,252,.16); border-color: var(--note); color: #bae6fd; }
+  .hora { margin-left: auto; font-size: 15px; font-weight: 800; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+  h2 {
+    font-size: 12px; text-transform: uppercase; letter-spacing: .14em;
+    color: var(--muted); font-weight: 800; margin: 20px 0 8px;
+  }
+
+  .err {
+    background: rgba(248,113,113,.16); border: 1px solid rgba(248,113,113,.5);
+    color: #fecaca; border-radius: 10px; padding: 12px; font-weight: 700; margin-bottom: 12px;
+  }
+
+  button {
+    border: 1px solid var(--line); background: var(--surface2); color: var(--text);
+    font: 800 13px var(--font); padding: 9px 12px; border-radius: 9px; cursor: pointer;
+    min-height: 40px;
+  }
+  button.pri { background: linear-gradient(120deg, var(--amber), #ea7317); color: #14171c; border: 0; }
+  button.rev { border-color: rgba(248,113,113,.5); color: #fecaca; }
+  button:disabled { opacity: .5; }
+  select {
+    background: #12161c; border: 1px solid var(--line); color: var(--text);
+    font: 700 15px var(--font); padding: 11px; border-radius: 9px; width: 100%;
+  }
+
+  /* ── El lote ────────────────────────────────────────────────────────────────
+     Horizontal, igual que la escena 2 de la TV: dos filas (6 zonas arriba,
+     9 abajo) con el pasillo cruzando en medio. Es la misma orientación que ve
+     el taller en la pantalla grande, así el supervisor no tiene que rotar el
+     plano en la cabeza para pasar de una a otra.
+
+     Las dos filas comparten la MISMA rejilla de 9 columnas: así las 6 de
+     arriba miden igual que las 9 de abajo y quedan alineadas a la izquierda,
+     que es como está el taller. En un celular esas 9 columnas no entran, y
+     encogerlas volvería ilegibles los nombres: el lote se desplaza de lado. */
+  .loteScroll { overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px; }
+  .lote {
+    display: grid; grid-template-rows: auto auto auto; gap: 7px;
+    background: radial-gradient(80% 120% at 0% 50%, var(--lot-bg), var(--lot-bg2) 78%);
+    border-radius: 18px; padding: 10px;
+    box-shadow: inset 0 0 0 1px var(--paint-soft);
+    min-width: max-content;
+  }
+  /* Columna de ancho fijo a propósito: con 1fr el ancho lo terminaría fijando
+     el nombre más largo del taller (van en nowrap) y el mapa cambiaría de
+     tamaño solo, según quién esté trabajando ese día. */
+  .fila { display: grid; grid-template-columns: repeat(9, 78px); gap: 6px; }
+  @media (min-width: 820px) {
+    .lote { min-width: 0; }
+    .fila { grid-template-columns: repeat(9, 1fr); }
+  }
+  .pasillo {
+    background: linear-gradient(180deg, var(--lot-bg2), var(--road-bg) 30%, var(--road-bg) 70%, var(--lot-bg2));
+    display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px;
+    padding: 0 8px; height: 26px; border-radius: 4px;
+    color: var(--muted); font-size: 12px; font-weight: 800;
+  }
+  .pasilloLinea {
+    height: 2px;
+    background: repeating-linear-gradient(90deg, var(--paint) 0 12px, transparent 12px 26px);
+  }
+
+  /* ── La plaza ───────────────────────────────────────────────────────────── */
+  .plaza {
+    background: linear-gradient(180deg, var(--spot-bg) 0%, var(--spot-bg2) 100%);
+    border: 1px solid var(--paint-soft);
+    border-left: 3px solid var(--paint); border-right: 3px solid var(--paint);
+    border-radius: 10px; padding: 8px 6px 10px; min-height: 112px;
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    position: relative; overflow: hidden; cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: transform .15s, box-shadow .15s;
+  }
+  .plaza:active { transform: scale(.98); }
+  .plazaNum {
+    font-size: 9px; font-weight: 900; letter-spacing: .08em; color: var(--muted);
+    align-self: flex-start; line-height: 1;
+  }
+  /* La marca de la esquina es para el supervisor: dice qué plaza le pide algo.
+     Un carro sin nadie y uno a medias son trabajo suyo; una dupla completa
+     solo late, y un carro terminado ya no le pide nada. */
+  .plaza::after { position: absolute; top: 6px; right: 6px; font-size: 10px; line-height: 1; z-index: 3; }
+  .plaza--c0::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--st-wait); }
+  .plaza--c1::after { content: "!"; width: 15px; height: 15px; border-radius: 50%;
+    background: var(--st-wait); color: #241300; font-weight: 900; font-size: 10px;
+    display: flex; align-items: center; justify-content: center;
+    animation: falta 1.4s ease-in-out infinite; }
+  .plaza--c2::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--st-conv);
+    box-shadow: 0 0 0 0 var(--st-conv); animation: vivo 1.4s ease-in-out infinite; }
+  .plaza--finArriba.plaza--finAbajo::after {
+    content: "✓"; width: auto; height: auto; background: none; color: var(--carFin);
+    font-weight: 900; font-size: 12px; animation: none; box-shadow: none; }
+  @keyframes vivo  { 0% { box-shadow: 0 0 0 0 rgba(59,130,246,.6); } 70% { box-shadow: 0 0 0 6px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+  @keyframes falta { 0%,100% { box-shadow: 0 0 0 0 rgba(245,158,11,.6); } 60% { box-shadow: 0 0 0 5px transparent; } }
+
+  .plaza--c0 { border-left-color: var(--st-wait); border-right-color: var(--st-wait); }
+  .plaza--c1 { border-left-color: var(--st-wait); border-right-color: var(--st-wait); }
+  .plaza--c2 { border-left-color: var(--st-conv); border-right-color: var(--st-conv);
+    box-shadow: inset 0 0 22px rgba(59,130,246,.14); }
+  .plaza--finArriba.plaza--finAbajo {
+    border-left-color: var(--carFin); border-right-color: var(--carFin);
+    box-shadow: inset 0 0 22px rgba(22,163,74,.16); }
+
+  .plazaP {
+    font-size: 15px; font-weight: 900; color: var(--muted); opacity: .5; margin: auto 0;
+    width: 30px; height: 30px; border-radius: 50%; border: 2px dashed var(--paint-soft);
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  /* El carro */
+  .carroOuter { position: relative; width: 78%; margin: 6px auto 0; filter: drop-shadow(0 3px 5px rgba(0,0,0,.35)); }
+  .carro {
+    width: 100%; min-height: 58px; position: relative;
+    clip-path: polygon(16% 0%, 84% 0%, 100% 12%, 100% 88%, 84% 100%, 16% 100%, 0% 88%, 0% 12%);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 3px; padding: 8px 4px 7px;
+  }
+  .carro::before, .carro::after {
+    content: ""; position: absolute; left: 18%; right: 18%; height: 7px;
+    border-radius: 3px; background: var(--glass-car);
+  }
+  .carro::before { top: 3px; } .carro::after { bottom: 3px; }
+  /* El carro se pinta por mitades: la de arriba es el delantero, la de abajo
+     el tanquero — el mismo orden en que van sus nombres dentro. Con los dos
+     lados del mismo color se lee como un carro entero de ese color. */
+  .carro { background: linear-gradient(180deg,
+    var(--arriba, var(--car0)) 0 50%, var(--abajo, var(--car0)) 50% 100%); }
+  .plaza--c0 { --arriba: var(--car0); --abajo: var(--car0); }
+  .plaza--c1 { --arriba: var(--car1); --abajo: var(--car1); }
+  .plaza--c2 { --arriba: var(--car2); --abajo: var(--car2); }
+  .plaza--finArriba { --arriba: var(--carFin); }
+  .plaza--finAbajo  { --abajo: var(--carFin); }
+
+  .rueda { position: absolute; width: 17px; height: 6px; background: var(--wheel); border-radius: 3px; }
+  .rFL { top: -4px; left: 13%; } .rFR { top: -4px; right: 13%; }
+  .rBL { bottom: -4px; left: 13%; } .rBR { bottom: -4px; right: 13%; }
+
+  .tecLabel {
+    position: relative; z-index: 1; font-size: 8.5px; font-weight: 900; line-height: 1;
+    color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.5); text-transform: uppercase;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 94%;
+  }
+  /* El puesto vacío se DIBUJA. Un hueco en blanco no se lee como "falta
+     alguien", y ese hueco es justo lo que el supervisor viene a llenar. */
+  .tecLabel--falta {
+    color: rgba(255,255,255,.92); border: 1px dashed rgba(255,255,255,.7);
+    border-radius: 4px; padding: 1px 4px; font-size: 7.5px; background: rgba(0,0,0,.18);
+  }
+  /* Sobre las mitades claras —el carro blanco y el amarillo— el texto blanco
+     desaparece. Cada etiqueta se tiñe según SU mitad, no según el carro. */
+  .tecLabel--oscuro { color: #0b1220; text-shadow: 0 1px 0 rgba(255,255,255,.4); }
+  .tecLabel--oscuro.tecLabel--falta {
+    color: rgba(11,18,32,.88); border-color: rgba(11,18,32,.5); background: rgba(255,255,255,.25);
+  }
+  .tecFin { font-size: 8px; }
+  /* El modelo cae justo en la línea de corte: lleva su propio fondo para no
+     depender del color de ninguna de las dos mitades. */
+  .carroModelo {
+    position: relative; z-index: 1; font-size: 7px; font-weight: 800; font-style: italic;
+    line-height: 1; color: #fff; background: rgba(0,0,0,.45);
+    border-radius: 3px; padding: 1px 4px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 90%;
+  }
+  .plazaVin { font-size: 9.5px; font-family: var(--mono); font-weight: 800; margin-top: 5px; }
+  .plazaTime { font-size: 8.5px; color: var(--muted); margin-top: 2px; }
+
+  .leyenda { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin-top: 10px;
+    font-size: 11px; font-weight: 800; color: var(--muted); }
+  .leyenda i { width: 11px; height: 11px; border-radius: 3px; display: inline-block;
+    margin-right: 5px; vertical-align: -1px; border: 1px solid var(--paint-soft); }
+
+  .chip {
+    font-size: 12px; font-weight: 800; padding: 3px 9px; border-radius: 99px;
+    background: rgba(34,197,94,.16); border: 1px solid rgba(34,197,94,.45); color: #bbf7d0;
+  }
+  .chip.off { background: rgba(255,255,255,.06); border-color: var(--line); color: var(--muted); }
+  .caja {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+    padding: 12px; display: flex; flex-wrap: wrap; gap: 6px;
+  }
+  .vacio { color: var(--muted); font-size: 14px; font-weight: 700; padding: 10px 2px; }
+  .sinPlaza {
+    font-size: 12px; font-weight: 800; padding: 6px 10px; border-radius: 99px;
+    background: var(--surface2); border: 1px solid var(--line); cursor: pointer;
+    font-family: var(--mono);
+  }
+
+  /* ── Hoja de la zona ────────────────────────────────────────────────────── */
+  .sheet {
+    position: fixed; inset: 0; background: rgba(0,0,0,.62); z-index: 50;
+    display: flex; align-items: flex-end; justify-content: center;
+  }
+  .sheetBox {
+    background: var(--surface); border: 1px solid var(--line); border-bottom: 0;
+    border-radius: 18px 18px 0 0; width: 100%; max-width: 720px;
+    padding: 16px 14px calc(20px + env(safe-area-inset-bottom));
+    max-height: 92vh; overflow-y: auto;
+  }
+  .sheetHead { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 4px; }
+  .sheetTitulo { font-size: 20px; font-weight: 800; }
+  .sheetSub { font-size: 12px; color: var(--muted); font-weight: 700; font-family: var(--mono); margin-top: 2px; }
+  .sheetX { margin-left: auto; padding: 6px 11px; min-height: 34px; }
+
+  .puesto {
+    border: 1px solid var(--line); border-radius: 12px; padding: 12px;
+    margin-top: 10px; background: var(--surface2);
+  }
+  .puesto--libre { border-style: dashed; }
+  .puestoTop { display: flex; align-items: center; gap: 8px; }
+  .rol {
+    font-size: 11px; font-weight: 800; color: #14171c; border-radius: 4px;
+    padding: 2px 7px; text-transform: uppercase;
+  }
+  .rol.MOTOR { background: var(--note); } .rol.TANQUE { background: var(--warn); }
+  .puestoNombre { font-size: 17px; font-weight: 800; flex: 1; }
+  .puestoNombre.libre { color: var(--muted); font-weight: 700; font-size: 15px; }
+  .estadoOt { font-size: 11px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  .razon { font-size: 12px; color: var(--muted); font-weight: 600; margin-top: 4px; }
+  .acciones { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .pausas { display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    padding-top: 8px; margin-top: 8px; border-top: 1px dashed rgba(255,255,255,.10); }
+  .pausas button { padding: 7px 10px; min-height: 36px; font-size: 12px; }
+  .etq { font-size: 12px; color: var(--muted); font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
+  .restante { font-size: 13px; color: var(--warn); font-weight: 800; }
+  .fila-form { display: grid; gap: 8px; margin-top: 10px; }
+  /* El ayudante cuelga del puesto, no es un puesto: va indentado y con la
+     misma separación punteada que las pausas para que se lea como un detalle
+     del titular y no como una segunda persona a cargo del carro. */
+  .ayuda { padding-top: 8px; margin-top: 8px; border-top: 1px dashed rgba(255,255,255,.10); }
+  .ayudaTop { display: flex; align-items: center; gap: 8px; }
+  .ayudaEtq { font-size: 12px; color: var(--muted); font-weight: 800; }
+  .ayudaNombre { font-size: 15px; font-weight: 800; flex: 1; }
+  .ayudaNota { font-size: 11px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+  .ayuda .acciones { margin-top: 8px; }
+  .sheetErr { color: #fecaca; font-size: 13px; font-weight: 700; margin-top: 10px; min-height: 16px; }
+  /* Duplas: dos desplegables en columna y el botón abajo, para que en el
+     celular del supervisor no queden tres controles apretados en una línea. */
+  .duplaForm { display: grid; gap: 8px; }
+  .duplaFila { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    padding: 8px 0; border-top: 1px dashed rgba(255,255,255,.10); }
+  .duplaFila:first-child { border-top: 0; }
+  .duplaNombres { font-size: 14px; font-weight: 800; flex: 1; min-width: 140px; }
+  .duplaNota { font-size: 11px; color: var(--muted); font-weight: 700;
+    text-transform: uppercase; letter-spacing: .06em; }
+  .duplasErr { color: #fecaca; font-size: 13px; font-weight: 700; margin-top: 8px; min-height: 16px; }
+  /* Los dos tipos de dupla, uno al lado del otro: cuál está activo se ve por el
+     relleno, no por un borde fino — la consola se mira de lejos y de reojo. */
+  .duplaTabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+  .duplaTabs button.on { background: var(--surface); border-color: var(--amber); color: var(--amber); }
+  .duplaAyuda { font-size: 12px; color: var(--muted); font-weight: 700;
+    line-height: 1.45; margin-bottom: 10px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Despacho<span>.</span></h1>
+  <span class="modo" id="modo">—</span>
+  <span class="hora" id="hora">--:--</span>
+  <button class="pri" id="motorCorrer" title="Reparte ahora sin esperar al intervalo">⚡ Repartir ahora</button>
+</header>
+
+<div id="error"></div>
+
+<h2>Taller</h2>
+<div id="mapa"></div>
+<div class="leyenda">
+  <span><i style="background:var(--car0)"></i>Carro sin nadie</span>
+  <span><i style="background:var(--car1)"></i>Falta un puesto</span>
+  <span><i style="background:var(--car2)"></i>Dupla completa</span>
+  <span><i style="background:linear-gradient(180deg,var(--carFin) 0 50%,var(--car2) 50% 100%)"></i>Terminó ese lado</span>
+</div>
+
+<h2>Carros sin plaza</h2>
+<div id="sinPlaza"></div>
+
+<h2>Técnicos</h2>
+<div id="tecnicos"></div>
+
+<h2>Duplas</h2>
+<div id="duplas"></div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? "").replace(/[&<>"]/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  // Layout físico del taller en horizontal, el mismo orden que la TV.
+  const FILA_ARRIBA = [10, 11, 12, 13, 14, 15];
+  const FILA_ABAJO  = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+
+  const ROL_LABEL   = { MOTOR: "Delantero", TANQUE: "Tanquero" };
+  const ESTADO_LABEL = { SIN_INICIAR: "sin arrancar", TRABAJANDO: "trabajando",
+                         PAUSADO: "en pausa", FINALIZADO: "terminó ✓" };
+
+  // Mismo almacenamiento que la PWA: el supervisor ya inició sesión ahí.
+  let email = "";
+  try { email = localStorage.getItem("glp_email") || ""; } catch {}
+
+  let datos = null;
+  let duplas = [];
+  // Qué hoja está abierta ({zonaId} o {vin} para los carros sin plaza). Se
+  // guarda la referencia, no el objeto: tras cada acción los datos son otros y
+  // la hoja tiene que repintarse con los nuevos, no con los de hace un rato.
+  let abierto = null;
+
+  function pintarError(msg) {
+    $("error").innerHTML = msg ? `<div class="err">${esc(msg)}</div>` : "";
+  }
+
+  async function cargar() {
+    if (!email) { pintarError("No hay sesión. Abre la app principal e inicia sesión primero."); return; }
+    try {
+      const r = await fetch("/api/despacho/panel?email=" + encodeURIComponent(email));
+      const d = await r.json();
+      if (!d.ok) { pintarError(d.error || "No autorizado"); return; }
+      pintarError("");
+      datos = d;
+      $("modo").textContent = d.modo || "—";
+      $("modo").className = "modo " + (d.modo || "");
+      $("hora").textContent = d.hora || "";
+      // Las duplas van aparte del panel: son de la jornada, no del mapa, y si
+      // esa llamada falla el taller se tiene que seguir viendo igual.
+      duplas = await cargarDuplas();
+      pintarMapa();
+      pintarSinPlaza();
+      pintarTecnicos();
+      pintarDuplas();
+      repintarSheet();
+    } catch {
+      pintarError("Sin conexión con el servidor");
+    }
+  }
+
+  async function cargarDuplas() {
+    try {
+      const r = await fetch("/api/despacho/duplas?email=" + encodeURIComponent(email));
+      const d = await r.json();
+      return d.ok ? (d.duplas || []) : [];
+    } catch { return []; }
+  }
+
+  // ─── Mapa ───────────────────────────────────────────────────────────────────
+
+  function zonaDe(id) {
+    return (datos?.zonas || []).find(z => z.zona_id === id)
+        || { zona_id: id, vin: null, modelo: "", espera: null, puestos: { MOTOR: null, TANQUE: null } };
+  }
+
+  function carroDe(vin) {
+    if (!vin) return null;
+    return (datos?.zonas || []).find(z => z.vin === vin)
+        || (datos?.sinZona || []).find(z => z.vin === vin)
+        || null;
+  }
+
+  /**
+   * Clases de color del carro. Mismo idioma que la TV:
+   *   c0 blanco (nadie) · c1 amarillo (un puesto) · c2 azul (la dupla)
+   *   finArriba / finAbajo: esa mitad ya cerró (delantero / tanquero).
+   *
+   * Cuenta PUESTOS CUBIERTOS, no gente trabajando: el que terminó su lado
+   * sigue ocupándolo, y su nombre se queda en el carro.
+   */
+  function pintaCarro(z) {
+    const m = z.puestos?.MOTOR, t = z.puestos?.TANQUE;
+    const cls = ["c" + ((m ? 1 : 0) + (t ? 1 : 0))];
+    if (m?.terminado) cls.push("finArriba");
+    if (t?.terminado) cls.push("finAbajo");
+    return cls;
+  }
+
+  /** ¿La mitad de este puesto es clara? Entonces su etiqueta va en oscuro. */
+  function mitadClara(z, rol) {
+    const p = z.puestos?.[rol];
+    if (p?.terminado) return false;                       // verde → texto blanco
+    const n = (z.puestos?.MOTOR ? 1 : 0) + (z.puestos?.TANQUE ? 1 : 0);
+    return n <= 1;                                        // blanco o amarillo
+  }
+
+  function soloNombre(n) { return String(n || "").trim().split(/\s+/)[0]; }
+
+  /** Un carro parado desde ayer dice "20 h", no "1178 min". */
+  function fmtEspera(min) {
+    if (min == null) return "";
+    if (min < 60) return `${min} min`;
+    const h = Math.floor(min / 60), m = min % 60;
+    return m ? `${h} h ${m}` : `${h} h`;
+  }
+
+  function plazaHTML(z) {
+    if (!z.vin) {
+      return `<div class="plaza plaza--libre" data-zona="${z.zona_id}">
+        <span class="plazaNum">Z${z.zona_id}</span><span class="plazaP">P</span></div>`;
+    }
+    const cls = pintaCarro(z).map(c => "plaza--" + c).join(" ");
+    const etiqueta = (rol) => {
+      const p = z.puestos?.[rol];
+      const oscuro = mitadClara(z, rol) ? " tecLabel--oscuro" : "";
+      return p
+        ? `<span class="tecLabel${oscuro}">${esc(soloNombre(p.nombre) || "—")}${
+             p.terminado ? ' <span class="tecFin">✓</span>' : ""}</span>`
+        : `<span class="tecLabel tecLabel--falta${oscuro}">+ ${esc(ROL_LABEL[rol].toLowerCase())}</span>`;
+    };
+    return `
+      <div class="plaza ${cls}" data-zona="${z.zona_id}">
+        <span class="plazaNum">Z${z.zona_id}</span>
+        <div class="carroOuter">
+          <div class="carro">
+            ${etiqueta("MOTOR")}
+            ${z.modelo ? `<span class="carroModelo">${esc(z.modelo)}</span>` : ""}
+            ${etiqueta("TANQUE")}
+          </div>
+          <span class="rueda rFL"></span><span class="rueda rFR"></span>
+          <span class="rueda rBL"></span><span class="rueda rBR"></span>
+        </div>
+        <span class="plazaVin">${esc(String(z.vin).slice(-8))}</span>
+        ${z.espera != null ? `<span class="plazaTime">${esc(fmtEspera(z.espera))}</span>` : ""}
+      </div>`;
+  }
+
+  function pintarMapa() {
+    const fila = nums => nums.map(n => plazaHTML(zonaDe(n))).join("");
+    $("mapa").innerHTML = `
+      <div class="loteScroll">
+        <div class="lote">
+          <div class="fila">${fila(FILA_ARRIBA)}</div>
+          <div class="pasillo">◀<div class="pasilloLinea"></div>▶</div>
+          <div class="fila">${fila(FILA_ABAJO)}</div>
+        </div>
+      </div>`;
+    $("mapa").onclick = e => {
+      const p = e.target.closest(".plaza[data-zona]");
+      if (p) abrirZona(Number(p.dataset.zona));
+    };
+  }
+
+  function pintarSinPlaza() {
+    const lista = datos.sinZona || [];
+    $("sinPlaza").innerHTML = lista.length
+      ? `<div class="caja">${lista.map(c =>
+          `<span class="sinPlaza" data-vin="${esc(c.vin)}">${esc(String(c.vin).slice(-8))}</span>`).join("")}</div>`
+      : '<div class="vacio">Todos los carros en curso tienen plaza</div>';
+    $("sinPlaza").onclick = e => {
+      const s = e.target.closest(".sinPlaza[data-vin]");
+      if (s) abrirCarro(s.dataset.vin);
+    };
+  }
+
+  function pintarTecnicos() {
+    const t = datos.tecnicos || [];
+    if (!t.length) { $("tecnicos").innerHTML = '<div class="vacio">Sin técnicos</div>'; return; }
+    const orden = [...t].sort((a, b) =>
+      (a.estado === "DISPONIBLE" ? 0 : 1) - (b.estado === "DISPONIBLE" ? 0 : 1));
+    $("tecnicos").innerHTML = `<div class="caja">` + orden.map(x =>
+      `<span class="chip ${x.estado === "DISPONIBLE" ? "" : "off"}">${
+        esc(x.nombre)} · ${esc(x.estado)}</span>`).join("") + `</div>`;
+  }
+
+  // ─── Duplas ─────────────────────────────────────────────────────────────────
+  // Dos personas trabajando juntas. Hay DOS tipos y el taller los vive distinto,
+  // así que se arman aquí los dos, uno al lado del otro:
+  //
+  //   DE TRABAJO   — no cuelga de ningún carro. Reciben carros como unidad y el
+  //                  crédito se alterna. El técnico puede proponerla desde su
+  //                  celular y esperar que el otro acepte; aquí no se espera a
+  //                  nadie: el supervisor manda y la dupla nace ACTIVA.
+  //   CARRO EXTRA  — cuelga de UN carro que ya está abierto. El carro, la OT y
+  //                  el crédito siguen siendo del titular; el otro solo entra a
+  //                  ayudarlo, y al cerrarse ese carro la dupla se deshace sola.
+  //                  Solo supervisor y admin: no es un acuerdo entre dos iguales
+  //                  como la de trabajo, es una orden sobre el carro de alguien.
+  //
+  // Por eso el formulario del carro extra no es "A + B": el primero tiene que
+  // ser alguien CON carro abierto, porque de ese carro cuelga la dupla. Los
+  // candidatos salen del mapa que la consola ya tiene, con su zona al lado.
+
+  // Qué tipo de dupla se está armando. Se conserva entre refrescos: cambiarlo
+  // cada 15 s le movería el formulario al supervisor bajo los dedos.
+  let tipoDupla = "TRABAJO";
+
+  /**
+   * Puestos con titular a los que se puede mandar apoyo: los que tienen a
+   * alguien y no cerraron su lado. El valor lleva el carro y el rol dentro
+   * ("<vin>|<rol>") porque es de ahí de donde cuelga la dupla.
+   */
+  function candidatosApoyo() {
+    const carros = [...(datos?.zonas || []), ...(datos?.sinZona || [])];
+    const out = [];
+    for (const c of carros) {
+      if (!c.vin) continue;
+      for (const rol of ["MOTOR", "TANQUE"]) {
+        const p = c.puestos?.[rol];
+        if (!p?.user_id || p.terminado) continue;
+        out.push({
+          valor: `${c.vin}|${rol}`,
+          nombre: p.nombre || "—",
+          rol,
+          zona: c.zona_id === 16 ? "sin plaza" : `zona ${c.zona_id}`,
+          // Elegir un puesto que ya tiene apoyo es válido: el servidor deshace
+          // el anterior y pone al nuevo. Es la forma de CAMBIAR de ayudante.
+          conApoyo: !!p.ayudante,
+        });
+      }
+    }
+    return out.sort((a, b) => a.nombre.localeCompare(b.nombre));
+  }
+
+  function pintarDuplas() {
+    // El refresco de cada 15 s no le arranca de las manos un desplegable a
+    // medio elegir — mismo criterio que la hoja del carro.
+    const act = document.activeElement;
+    if (act && $("duplas").contains(act) && act.tagName === "SELECT") return;
+
+    const vivas = duplas.filter(d => d.estado === "ACTIVA" || d.estado === "PENDIENTE");
+    // Con la especialidad al lado: el rol de la dupla sale de ella, y juntar a
+    // un delantero con un tanquero es el error que el servidor va a rechazar.
+    const opt = x => `<option value="${esc(x.user_id)}">${esc(x.nombre)} · ${
+      esc(ROL_LABEL[x.especialidad] || x.especialidad || "")}</option>`;
+    const tecs = (datos?.tecnicos || []);
+
+    const filas = vivas.map(d => {
+      const nombres = (d.miembrosNombres || []).filter(Boolean).join(" + ") || "—";
+      // El tipo se dice de frente en vez de explicarse con una nota al costado:
+      // la fila que no trae Deshacer es la que el sistema maneja solo.
+      const tipo = d.auto ? "carro extra" : "de trabajo";
+      const nota = d.auto ? (d.manual ? "puesta por ti" : "automática")
+        : d.estado === "PENDIENTE" ? "esperando que confirme" : "";
+      // El apoyo se quita por su carro, no por el id de la dupla: es la misma
+      // operación que el botón de la hoja del carro.
+      const quitar = d.auto
+        ? (d.vin ? `<button class="rev" data-quitar-apoyo="${esc(d.vin)}"
+              data-rol="${esc(d.rol_trabajo || "")}">Quitar</button>` : "")
+        : `<button class="rev" data-deshacer="${esc(d.id)}">Deshacer</button>`;
+      return `
+        <div class="duplaFila">
+          <span class="duplaNombres">${esc(nombres)}</span>
+          <span class="duplaNota">${esc(ROL_LABEL[d.rol_trabajo] || d.rol_trabajo || "")} · ${
+            esc(tipo)}${nota ? " · " + esc(nota) : ""}${
+            d.auto && d.zonaId != null ? " · zona " + esc(String(d.zonaId)) : ""}</span>
+          ${quitar}
+        </div>`;
+    }).join("");
+
+    const cand = candidatosApoyo();
+    const optApoyo = c => `<option value="${esc(c.valor)}">${esc(c.nombre)} · ${
+      esc(ROL_LABEL[c.rol])} · ${esc(c.zona)}${c.conApoyo ? " · ya tiene apoyo" : ""}</option>`;
+
+    const formTrabajo = `
+      <select id="duplaA"><option value="">Técnico…</option>${tecs.map(opt).join("")}</select>
+      <select id="duplaB"><option value="">Con…</option>${tecs.map(opt).join("")}</select>
+      <select id="duplaRol">
+        <option value="">Rol según su especialidad</option>
+        <option value="MOTOR">Delantero</option>
+        <option value="TANQUE">Tanquero</option>
+      </select>
+      <button class="pri" id="duplaCrear">Crear dupla</button>`;
+
+    const formExtra = cand.length ? `
+      <select id="apoyoPuesto"><option value="">Apoya a…</option>${cand.map(optApoyo).join("")}</select>
+      <select id="apoyoQuien"><option value="">Con…</option>${tecs.map(opt).join("")}</select>
+      <button class="pri" id="apoyoCrear">Crear dupla</button>`
+      : `<div class="vacio">Nadie tiene un carro abierto — no hay a quién apoyar.</div>`;
+
+    $("duplas").innerHTML = `
+      <div class="caja">
+        ${filas || '<div class="vacio">Nadie trabajando en dupla</div>'}
+      </div>
+      <div class="caja">
+        <div class="duplaTabs">
+          <button data-tipo="TRABAJO" class="${tipoDupla === "TRABAJO" ? "on" : ""}">Dupla de trabajo</button>
+          <button data-tipo="EXTRA" class="${tipoDupla === "EXTRA" ? "on" : ""}">Por carro extra</button>
+        </div>
+        <div class="duplaAyuda">${tipoDupla === "TRABAJO"
+          ? "Reciben un carro entre los dos y el crédito se alterna."
+          : "Entra a un carro ya abierto. El carro y el crédito siguen siendo del titular; al cerrarlo la dupla se deshace sola."}</div>
+        <div class="duplaForm">${tipoDupla === "TRABAJO" ? formTrabajo : formExtra}</div>
+        <div class="duplasErr" id="duplasErr"></div>
+      </div>`;
+
+    for (const b of $("duplas").querySelectorAll("[data-tipo]")) {
+      b.onclick = () => { tipoDupla = b.dataset.tipo; pintarDuplas(); };
+    }
+    if ($("duplaCrear")) $("duplaCrear").onclick = () => crearDupla($("duplaCrear"));
+    if ($("apoyoCrear")) $("apoyoCrear").onclick = () => crearApoyo($("apoyoCrear"));
+    for (const b of $("duplas").querySelectorAll("[data-deshacer]")) {
+      b.onclick = () => deshacerDupla(b.dataset.deshacer, b);
+    }
+    for (const b of $("duplas").querySelectorAll("[data-quitar-apoyo]")) {
+      b.onclick = () => quitarApoyo(b.dataset.quitarApoyo, b.dataset.rol, b);
+    }
+  }
+
+  function duplasError(msg) {
+    const e = $("duplasErr");
+    if (e) e.textContent = msg || "";
+  }
+
+  async function crearDupla(btn) {
+    const aUserId = $("duplaA").value;
+    const bUserId = $("duplaB").value;
+    const rol     = $("duplaRol").value;
+    if (!aUserId || !bUserId) { duplasError("Elige a los dos técnicos"); return; }
+
+    duplasError("");
+    btn.disabled = true; btn.textContent = "…";
+    try {
+      const d = await postJSON("/api/despacho/dupla/crear", { aUserId, bUserId, rol });
+      if (!d.ok) { duplasError(d.error || "No se pudo crear"); return; }
+    } catch {
+      duplasError("Sin conexión");
+      return;
+    } finally {
+      btn.disabled = false; btn.textContent = "Crear dupla";
+    }
+    await cargar();
+  }
+
+  /**
+   * Dupla por carro extra: mete a alguien al carro que otro ya tiene abierto.
+   *
+   * El puesto viaja como "<vin>|<rol>" porque de ese carro cuelga la dupla —
+   * es lo que la deshace sola al cerrarlo y lo que le dice al ayudante a qué
+   * zona ir. Si ese puesto ya tenía apoyo, el servidor deshace el anterior y
+   * pone al nuevo: elegirlo de nuevo es cómo se CAMBIA de ayudante.
+   */
+  async function crearApoyo(btn) {
+    const puesto = $("apoyoPuesto").value;
+    const userId = $("apoyoQuien").value;
+    if (!puesto || !userId) { duplasError("Elige el carro y a quién lo apoya"); return; }
+    const corte = puesto.lastIndexOf("|");
+    const vin = puesto.slice(0, corte);
+    const rol = puesto.slice(corte + 1);
+
+    duplasError("");
+    btn.disabled = true; btn.textContent = "…";
+    try {
+      const d = await postJSON("/api/despacho/ayudante", { vin, rol, userId });
+      if (!d.ok) { duplasError(d.error || "No se pudo crear"); return; }
+    } catch {
+      duplasError("Sin conexión");
+      return;
+    } finally {
+      btn.disabled = false; btn.textContent = "Crear dupla";
+    }
+    await cargar();
+  }
+
+  /** El mismo Quitar de la hoja del carro, desde la lista de duplas. */
+  async function quitarApoyo(vin, rol, btn) {
+    duplasError("");
+    btn.disabled = true; btn.textContent = "…";
+    try {
+      const d = await postJSON("/api/despacho/ayudante/quitar", { vin, rol });
+      if (!d.ok) { duplasError(d.error || "No se pudo quitar"); return; }
+    } catch {
+      duplasError("Sin conexión");
+      return;
+    } finally {
+      btn.disabled = false; btn.textContent = "Quitar";
+    }
+    await cargar();
+  }
+
+  /** Deshacer NO toca el carro en curso: se termina y la ruptura vale para el siguiente. */
+  async function deshacerDupla(duplaId, btn) {
+    duplasError("");
+    btn.disabled = true; btn.textContent = "…";
+    try {
+      const d = await postJSON("/api/despacho/dupla/disolver",
+        { duplaId, motivo: "Deshecha desde la consola" });
+      if (!d.ok) { duplasError(d.error || "No se pudo deshacer"); return; }
+    } catch {
+      duplasError("Sin conexión");
+      return;
+    } finally {
+      btn.disabled = false; btn.textContent = "Deshacer";
+    }
+    await cargar();
+  }
+
+  // ─── Hoja de la zona ────────────────────────────────────────────────────────
+
+  let sheetEl = null;
+  function cerrarSheet() {
+    if (sheetEl && sheetEl.parentNode) sheetEl.parentNode.removeChild(sheetEl);
+    sheetEl = null; abierto = null;
+  }
+
+  function abrirZona(zonaId) {
+    abierto = { zonaId };
+    pintarSheet(zonaDe(zonaId), false);
+  }
+  function abrirCarro(vin) {
+    const carro = carroDe(vin);
+    if (!carro) return;
+    abierto = { vin };
+    pintarSheet(carro, false);
+  }
+
+  /** Repinta la hoja abierta con los datos recién traídos. */
+  function repintarSheet() {
+    if (!abierto || !sheetEl) return;
+    const carro = abierto.vin != null ? carroDe(abierto.vin) : zonaDe(abierto.zonaId);
+    if (!carro) { cerrarSheet(); return; }
+    pintarSheet(carro, true);
+  }
+
+  /**
+   * Opciones de técnico para un puesto. Los de la especialidad del puesto van
+   * primero, pero NADIE queda fuera de la lista: el taller siempre tiene un día
+   * en que el tanquero hace de delantero, y una consola que lo impide se
+   * termina resolviendo por WhatsApp.
+   */
+  function opcionesTecnicos(rol) {
+    const t = datos.tecnicos || [];
+    const encaja = x => x.especialidad === rol || x.especialidad === "AMBOS";
+    const opt = x => `<option value="${esc(x.user_id)}">${esc(x.nombre)}${
+      x.estado === "DISPONIBLE" ? " · libre" : " · " + esc(String(x.estado || "").toLowerCase())}</option>`;
+    const propios = t.filter(encaja).sort((a, b) =>
+      (a.estado === "DISPONIBLE" ? 0 : 1) - (b.estado === "DISPONIBLE" ? 0 : 1));
+    const otros = t.filter(x => !encaja(x));
+    return `<optgroup label="${esc(ROL_LABEL[rol])}">${propios.map(opt).join("")}</optgroup>` +
+      (otros.length ? `<optgroup label="Otras especialidades">${otros.map(opt).join("")}</optgroup>` : "");
+  }
+
+  /**
+   * Quién apoya en este puesto: el segundo técnico sobre el carro de otro.
+   *
+   * Se PONE desde la sección Duplas, no desde aquí — allá viven los dos tipos
+   * juntos y es un solo sitio donde se decide. Lo que sí queda en el carro es
+   * el cartel y el Quitar, porque sacar a alguien es un gesto que se hace
+   * mirando el carro, no buscándolo en una lista.
+   *
+   * El carro, la OT y el crédito NO cambian de dueño — se dice en pantalla
+   * porque es la primera pregunta que aparece en cuanto dos personas trabajan
+   * en uno solo, y sin respuesta se convierte en discusión de taller.
+   */
+  function ayudanteHTML(p, rol) {
+    const a = p.user_id ? p.ayudante : null;
+    if (!a) return "";
+    return `
+      <div class="ayuda" data-rol="${rol}">
+        <div class="ayudaTop">
+          <span class="ayudaEtq">🤝 Ayudante</span>
+          <span class="ayudaNombre">${esc(a.nombre || "—")}</span>
+          <span class="ayudaNota">${a.manual ? "puesto por ti" : "automático"}</span>
+        </div>
+        <div class="acciones">
+          <button class="rev" data-ayuda-quitar="${rol}">Quitar apoyo</button>
+        </div>
+      </div>`;
+  }
+
+  function puestoHTML(carro, rol) {
+    const p = carro.puestos?.[rol] || null;
+    if (!p) {
+      return `
+        <div class="puesto puesto--libre" data-rol="${rol}">
+          <div class="puestoTop">
+            <span class="rol ${rol}">${esc(ROL_LABEL[rol])}</span>
+            <span class="puestoNombre libre">Puesto vacío</span>
+          </div>
+          <div class="fila-form">
+            <select data-sel="${rol}">${opcionesTecnicos(rol)}</select>
+            <button class="pri" data-poner="${rol}">Poner ${esc(ROL_LABEL[rol].toLowerCase())}</button>
+          </div>
+        </div>`;
+    }
+    const estado = ESTADO_LABEL[p.estadoOt] || (p.asignacionId ? "" : "publicado");
+    return `
+      <div class="puesto" data-rol="${rol}">
+        <div class="puestoTop">
+          <span class="rol ${rol}">${esc(ROL_LABEL[rol])}</span>
+          <span class="puestoNombre">${esc(p.nombre || "—")}</span>
+          <span class="estadoOt">${esc(estado)}</span>
+        </div>
+        ${p.razon ? `<div class="razon">${esc(p.razon)}</div>` : ""}
+        <div class="acciones">
+          <button data-cambiar="${rol}">Cambiar</button>
+          <button class="rev" data-quitar="${rol}">Quitar</button>
+        </div>
+        ${ayudanteHTML(p, rol)}
+        ${p.asignacionId && !p.terminado ? `
+          <div class="pausas">
+            ${p.pausado
+              ? `<button class="pri" data-reanudar="${esc(p.asignacionId)}">▶ Reanudar</button>
+                 <span class="restante">${esc(p.pausaTxt || "en pausa")}</span>`
+              : `<span class="etq">Pausar:</span>
+                 <button data-pausa="${esc(p.asignacionId)}" data-min="5">5 min</button>
+                 <button data-pausa="${esc(p.asignacionId)}" data-min="10">10 min</button>
+                 <button data-pausa="${esc(p.asignacionId)}" data-min="15">15 min</button>
+                 <button data-pausa="${esc(p.asignacionId)}" data-min="0">Indefinida</button>`}
+          </div>` : ""}
+      </div>`;
+  }
+
+  function pintarSheet(carro, silencioso) {
+    // Un refresco no le arranca de las manos un desplegable a medio elegir.
+    // Solo cuenta el select: los botones sí quedan enfocados tras tocarlos, y
+    // ahí el repintado es justamente lo que hay que hacer.
+    const act = document.activeElement;
+    if (silencioso && sheetEl && act && sheetEl.contains(act) &&
+        /^(SELECT|INPUT|TEXTAREA)$/.test(act.tagName)) return;
+
+    const previo = sheetEl;
+    const nombreZona = carro.zona_id === 16 ? "Sin plaza" : `Zona ${carro.zona_id}`;
+
+    const cuerpo = !carro.vin
+      ? `<div class="vacio">Plaza libre — no hay carro estacionado.<br>
+           El carro se registra en la zona desde la app del movilizador o del técnico.</div>`
+      : puestoHTML(carro, "MOTOR") + puestoHTML(carro, "TANQUE") +
+        ((carro.puestos?.MOTOR && carro.puestos?.TANQUE)
+          ? `<div class="acciones"><button class="rev" data-quitar-ambos="1"
+               style="width:100%">Quitar a los dos</button></div>` : "");
+
+    const el = document.createElement("div");
+    el.className = "sheet";
+    el.innerHTML = `
+      <div class="sheetBox">
+        <div class="sheetHead">
+          <div>
+            <div class="sheetTitulo">${esc(nombreZona)}</div>
+            ${carro.vin ? `<div class="sheetSub">${esc(carro.vin)}${
+              carro.modelo ? ` · ${esc(carro.modelo)}` : ""}${
+              carro.espera != null ? ` · ${esc(fmtEspera(carro.espera))} en zona` : ""}</div>` : ""}
+          </div>
+          <button class="sheetX" data-cerrar="1">✕</button>
+        </div>
+        ${cuerpo}
+        <div class="sheetErr" id="sheetErr"></div>
+      </div>`;
+
+    document.body.appendChild(el);
+    if (previo && previo.parentNode) previo.parentNode.removeChild(previo);
+    sheetEl = el;
+
+    el.addEventListener("click", ev => { if (ev.target === el) cerrarSheet(); });
+    el.querySelector("[data-cerrar]").onclick = cerrarSheet;
+
+    const vin   = carro.vin;
+    const zonaId = carro.zona_id === 16 ? null : carro.zona_id;
+
+    for (const b of el.querySelectorAll("[data-poner]")) {
+      b.onclick = () => {
+        const rol = b.dataset.poner;
+        const userId = el.querySelector(`[data-sel="${rol}"]`).value;
+        if (!userId) return;
+        accion("/api/despacho/asignar-manual", { vin, zonaId, rol, userId }, b);
+      };
+    }
+    for (const b of el.querySelectorAll("[data-quitar]")) {
+      b.onclick = () => quitar(vin, b.dataset.quitar, b);
+    }
+    const ambos = el.querySelector("[data-quitar-ambos]");
+    if (ambos) ambos.onclick = async () => {
+      await quitar(vin, "MOTOR", ambos, true);
+      await quitar(vin, "TANQUE", ambos, true);
+      await cargar();
+    };
+    for (const b of el.querySelectorAll("[data-cambiar]")) {
+      b.onclick = () => abrirCambio(el, carro, b.dataset.cambiar);
+    }
+    for (const b of el.querySelectorAll("[data-ayuda-quitar]")) {
+      b.onclick = () => accion("/api/despacho/ayudante/quitar",
+        { vin, rol: b.dataset.ayudaQuitar }, b);
+    }
+    for (const b of el.querySelectorAll("[data-pausa]")) {
+      b.onclick = () => accion("/api/despacho/pausa-ot",
+        { asignacionId: b.dataset.pausa, minutos: Number(b.dataset.min) }, b);
+    }
+    for (const b of el.querySelectorAll("[data-reanudar]")) {
+      b.onclick = () => accion("/api/despacho/reanudar-ot", { asignacionId: b.dataset.reanudar }, b);
+    }
+  }
+
+  function sheetError(msg) {
+    const e = document.getElementById("sheetErr");
+    if (e) e.textContent = msg || "";
+    else pintarError(msg);
+  }
+
+  /** Cambiar de técnico sin soltar el puesto: el carro no vuelve a la cola. */
+  function abrirCambio(el, carro, rol) {
+    const cont = el.querySelector(`.puesto[data-rol="${rol}"]`);
+    if (cont.querySelector("select")) return;
+    const form = document.createElement("div");
+    form.className = "fila-form";
+    form.innerHTML = `
+      <select>${opcionesTecnicos(rol)}</select>
+      <button class="pri">Confirmar cambio</button>`;
+    cont.appendChild(form);
+    form.querySelector("button").onclick = async () => {
+      const btn = form.querySelector("button");
+      const nuevoUserId = form.querySelector("select").value;
+      const p = carro.puestos?.[rol];
+      btn.disabled = true; btn.textContent = "…";
+      try {
+        if (p?.asignacionId) {
+          // Reusa la reasignación de OT de Admin: opera sobre la asignación
+          // real, que es lo que crea el motor.
+          const r = await fetch("/api/admin/asignaciones/" + encodeURIComponent(p.asignacionId), {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json", "x-user-email": email },
+            body: JSON.stringify({ user_id: nuevoUserId, email }),
+          });
+          const d = await r.json();
+          if (!d.ok) throw new Error(d.error || "No se pudo cambiar");
+        } else {
+          // Propuesta sin OT detrás: no hay nada que reasignar, se rehace.
+          await quitar(carro.vin, rol, null, true);
+          const d = await postJSON("/api/despacho/asignar-manual", {
+            vin: carro.vin, zonaId: carro.zona_id === 16 ? null : carro.zona_id,
+            rol, userId: nuevoUserId,
+          });
+          if (!d.ok) throw new Error(d.error || "No se pudo cambiar");
+        }
+        await cargar();
+      } catch (e) {
+        btn.disabled = false; btn.textContent = "Confirmar cambio";
+        sheetError(e.message);
+      }
+    };
+  }
+
+  /**
+   * Quitar a alguien que ya arrancó el carro no puede ser un toque suelto: el
+   * servidor responde 409 pidiendo confirmación y recién ahí se reenvía.
+   */
+  async function quitar(vin, rol, btn, sinRecargar) {
+    const texto = btn ? btn.textContent : "";
+    if (btn) { btn.disabled = true; btn.textContent = "…"; }
+    try {
+      let d = await postJSON("/api/despacho/puesto/liberar", { vin, rol });
+      if (!d.ok && d.requiereForzar) {
+        if (!confirm(`${d.error}\n\n¿Quitar a ${ROL_LABEL[rol].toLowerCase()} igual?`)) {
+          if (btn) { btn.disabled = false; btn.textContent = texto; }
+          return;
+        }
+        d = await postJSON("/api/despacho/puesto/liberar", { vin, rol, forzar: true });
+      }
+      if (!d.ok) {
+        sheetError(d.error || "No se pudo quitar");
+        if (btn) { btn.disabled = false; btn.textContent = texto; }
+      }
+    } catch {
+      sheetError("Sin conexión");
+      if (btn) { btn.disabled = false; btn.textContent = texto; }
+    }
+    if (!sinRecargar) await cargar();
+  }
+
+  async function postJSON(url, cuerpo) {
+    const r = await fetch(url, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, ...cuerpo }),
+    });
+    return r.json();
+  }
+
+  async function accion(url, cuerpo, btn) {
+    const texto = btn ? btn.textContent : "";
+    if (btn) { btn.disabled = true; btn.textContent = "…"; }
+    try {
+      const d = await postJSON(url, cuerpo);
+      if (!d.ok) {
+        sheetError(d.error || "No se pudo aplicar");
+        if (btn) { btn.disabled = false; btn.textContent = texto; }
+        return;
+      }
+    } catch {
+      sheetError("Sin conexión");
+      if (btn) { btn.disabled = false; btn.textContent = texto; }
+      return;
+    }
+    await cargar();
+  }
+
+  // Disparo manual del motor.
+  //
+  // El endpoint POST /api/despacho/motor/correr existía desde siempre y NADA en
+  // el frontend lo llamaba: la única forma de forzar un reparto era esperar al
+  // intervalo. Con el intervalo en 5 minutos ese botón deja de ser un lujo — es
+  // la salida cuando el supervisor ve a alguien parado y no quiere esperar.
+  document.getElementById("motorCorrer")?.addEventListener("click", async (e) => {
+    const b = e.currentTarget;
+    const txt = b.textContent;
+    b.disabled = true; b.textContent = "Repartiendo…";
+    try {
+      const d = await postJSON("/api/despacho/motor/correr", {});
+      if (!d.ok) sheetError(d.error || "No se pudo repartir");
+      else if (d.encolado) b.textContent = "↻ Ya estaba corriendo";
+      else b.textContent = `✓ ${d.propuestas?.length ?? 0} asignada(s)`;
+      await cargar();
+    } catch (err) {
+      sheetError(err.message);
+    } finally {
+      setTimeout(() => { b.disabled = false; b.textContent = txt; }, 1500);
+    }
+  });
+
+  // Latido de respaldo, no el mecanismo de frescura: el SSE de más abajo
+  // recarga la consola en cuanto algo cambia de verdad. Estaba clavado en 15 s
+  // y cada ciclo costaba 30 consultas (~59 KB) a Supabase — con la consola
+  // abierta todo el día, ~345 MB diarios por pestaña.
+  //
+  // El valor sale de /api/config (POLL_DESPACHO_ADMIN_MS) y se relee en cada
+  // vuelta, así que se ajusta desde Admin sin redesplegar.
+  const REFRESCO_FALLBACK_MS = 30_000;
+  let refrescoMs = REFRESCO_FALLBACK_MS;
+
+  (async () => {
+    try {
+      const r = await fetch("/api/config");
+      const j = await r.json();
+      const v = Number(j?.config?.POLL_DESPACHO_ADMIN_MS);
+      if (v > 0) refrescoMs = Math.max(10_000, v);
+    } catch { /* sin config → queda el fallback */ }
+  })();
+
+  (function ciclo_() {
+    cargar().finally(() => setTimeout(ciclo_, refrescoMs));
+  })();
+
+  try {
+    const es = new EventSource("/api/events");
+    es.onmessage = ev => {
+      try {
+        const { topic } = JSON.parse(ev.data || "{}");
+        if (topic === "despacho" || topic === "zonas" || topic === "asignaciones") cargar();
+      } catch {}
+    };
+  } catch {}
+})();
+</script>
+</body>
+</html>

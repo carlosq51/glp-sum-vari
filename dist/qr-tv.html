@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>QR de asistencia · GLP</title>
+<!--
+  Pantalla dedicada al QR de asistencia: SOLO el código, lo más grande que
+  quepa. Existe porque la TV del taller todavía no está montada, y hasta que
+  llegue el código tiene que poder vivir en cualquier parte — una laptop vieja
+  en la puerta, el celular del supervisor, o impreso en una hoja A4.
+
+  Por qué no reusar public/tv.html: esa pantalla es el tablero de despacho
+  entero (zonas, cola, incidencias, rotación de escenas) y ahí el QR es una
+  esquina del pie. Puesta a 3 metros en la puerta, esa esquina no se escanea.
+  Aquí el QR ES la pantalla.
+
+  Se imprime con Ctrl+P: el @media print deja la hoja en blanco y negro, sin
+  fondo oscuro (que se come el tóner y baja el contraste del código).
+-->
+<style>
+  :root {
+    --bg: #0c0e11; --surface: #151a21; --line: rgba(255,255,255,.12);
+    --text: #e9eaec; --muted: rgba(233,234,236,.55); --amber: #f59e0b;
+    --font: ui-rounded, Quicksand, Nunito, system-ui, -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    gap: min(3vmin, 28px);
+    padding: min(4vmin, 36px);
+    text-align: center;
+    /* La pantalla vive encendida en la puerta: sin selección accidental. */
+    user-select: none;
+  }
+
+  h1 {
+    font-size: min(7vmin, 64px);
+    font-weight: 800;
+    letter-spacing: .01em;
+    line-height: 1.1;
+  }
+  h1 small {
+    display: block;
+    margin-top: .35em;
+    font-size: .42em;
+    font-weight: 700;
+    color: var(--muted);
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+
+  /* El QR manda: ocupa todo el alto libre y se recorta por el lado corto. */
+  .marco {
+    display: grid;
+    place-items: center;
+    min-height: 0;
+  }
+  .qrCaja {
+    background: #fff;
+    border-radius: min(2vmin, 20px);
+    padding: min(2vmin, 18px);
+    /* Cuadrado que crece hasta donde deje el lado más corto de la pantalla. */
+    width: min(72vh, 92vw);
+    height: min(72vh, 92vw);
+    display: grid;
+    place-items: center;
+  }
+  .qrCaja img { width: 100%; height: 100%; display: block; }
+
+  /* Aviso cuando no hay servidor detrás (archivo abierto suelto). */
+  .qrCaja .falla {
+    display: none;
+    color: #0c0e11;
+    font-size: min(3vmin, 22px);
+    font-weight: 800;
+    padding: 6%;
+    line-height: 1.4;
+  }
+  body.sinQr .qrCaja img { display: none; }
+  body.sinQr .qrCaja .falla { display: block; }
+
+  footer {
+    display: grid;
+    gap: min(1.6vmin, 14px);
+    justify-items: center;
+  }
+  .pasos {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: min(2.4vmin, 22px);
+    font-size: min(2.6vmin, 24px);
+    font-weight: 700;
+    color: var(--muted);
+  }
+  .pasos b { color: var(--text); }
+  .pasos span { display: flex; align-items: center; gap: .5em; }
+  .pasos i {
+    font-style: normal;
+    background: var(--amber);
+    color: #14171c;
+    font-weight: 800;
+    border-radius: 999px;
+    width: 1.7em; height: 1.7em;
+    display: grid; place-items: center;
+    font-size: .8em;
+  }
+
+  /* Estado del código: fijo o rotativo. No es decoración — quien mira la
+     pantalla necesita saber si vale la foto que le mandaron por WhatsApp. */
+  .estado {
+    font-size: min(2.2vmin, 19px);
+    font-weight: 700;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: .6em;
+  }
+  .punto {
+    width: .7em; height: .7em; border-radius: 999px;
+    background: var(--muted);
+  }
+  .estado.fijo    .punto { background: #38bdf8; }
+  .estado.rotando .punto { background: var(--amber); animation: late 2s ease-in-out infinite; }
+  @keyframes late { 50% { opacity: .35; } }
+
+  /* Barra de vida del código, solo cuando rota. */
+  .cuenta {
+    width: min(52vmin, 460px);
+    height: min(1.1vmin, 10px);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    overflow: hidden;
+    display: none;
+  }
+  body.rotando .cuenta { display: block; }
+  .cuenta i { display: block; height: 100%; width: 100%; background: var(--amber); transition: width .95s linear; }
+
+  /* ─── Impresión ───
+     La hoja pegada en la puerta es el caso de uso principal mientras no hay
+     TV, así que imprimir bien no es un extra. Fondo blanco, sin barra de
+     cuenta (en papel no vence nada) y el código lo más grande posible. */
+  @media print {
+    body { background: #fff; color: #000; display: block; padding: 0; }
+    h1 { color: #000; font-size: 34px; margin: 18px 0 10px; }
+    h1 small { color: #444; }
+    .qrCaja { width: 15cm; height: 15cm; margin: 0 auto; padding: 0; border-radius: 0; }
+    .cuenta, .estado { display: none !important; }
+    .pasos { color: #000; font-size: 16px; margin-top: 14px; }
+    .pasos i { background: #000; color: #fff; }
+  }
+</style>
+</head>
+<body>
+
+<h1>
+  Marca tu asistencia
+  <small>Entrada y salida · escanea con tu celular</small>
+</h1>
+
+<div class="marco">
+  <div class="qrCaja">
+    <img id="qr" alt="Código QR de asistencia">
+    <div class="falla">Sin conexión con el servidor.<br>Recarga la página.</div>
+  </div>
+</div>
+
+<footer>
+  <div class="pasos">
+    <span><i>1</i> Abre la cámara</span>
+    <span><i>2</i> Apunta al código</span>
+    <span><i>3</i> Toca <b>Marcar</b></span>
+  </div>
+  <div class="estado" id="estado"><span class="punto"></span><span id="estadoTxt">Cargando…</span></div>
+  <div class="cuenta"><i id="barra"></i></div>
+</footer>
+
+<script>
+(() => {
+  "use strict";
+  const $ = id => document.getElementById(id);
+
+  // Mismo trato que en tv.html: la barra se calcula desde el INSTANTE de
+  // vencimiento, no restando 1 cada segundo. El navegador estrangula los
+  // temporizadores en segundo plano y un contador propio se desfasaría.
+  let estatico = false;
+  let ventanaSeg = 0;
+  let venceEnMs = 0;
+  let ultimoSondeo = 0;
+
+  function pintarBarra() {
+    if (estatico || !ventanaSeg) return;
+    const restan = Math.max(0, (venceEnMs - Date.now()) / 1000);
+    $("barra").style.width = Math.min(100, (restan / ventanaSeg) * 100) + "%";
+  }
+
+  async function refrescar() {
+    ultimoSondeo = Date.now();
+    let d = null;
+    try {
+      const r = await fetch("/api/despacho/qr", { cache: "no-store" });
+      d = await r.json();
+    } catch {
+      document.body.classList.add("sinQr");
+      $("estadoTxt").textContent = "Sin conexión con el servidor";
+      return;
+    }
+    document.body.classList.remove("sinQr");
+
+    estatico   = !!d.estatico;
+    ventanaSeg = estatico ? 0 : (d.ventanaSeg || 300);
+    venceEnMs  = estatico ? 0 : Date.now() + (d.expiraEn ?? ventanaSeg) * 1000;
+
+    document.body.classList.toggle("rotando", !estatico);
+    $("estado").className = "estado " + (estatico ? "fijo" : "rotando");
+    $("estadoTxt").textContent = estatico
+      ? "Código fijo — el mismo todo el día. También sirve impreso."
+      : `Código nuevo cada ${Math.round(ventanaSeg / 60) || 1} min — hay que escanear el de la pantalla`;
+
+    // ?ts= fuerza la recarga real de la imagen: sin él, el navegador se queda
+    // con la del slot anterior y la pantalla muestra un código ya vencido.
+    $("qr").src = "/api/despacho/qr.svg?ts=" + Date.now();
+
+    // Sin barra que animar, la transición se corta para que no viaje al 100%.
+    const b = $("barra");
+    b.style.transition = "none";
+    pintarBarra();
+    void b.offsetWidth;
+    b.style.transition = "";
+  }
+
+  $("qr").addEventListener("error", () => document.body.classList.add("sinQr"));
+
+  setInterval(() => {
+    // Fijo: se sondea cada 5 min por si vuelven a encender la rotación al
+    // montar la TV — una pantalla que lleva días prendida debe enterarse sola.
+    if (estatico) {
+      if (Date.now() - ultimoSondeo >= 300_000) refrescar();
+      return;
+    }
+    if (!ventanaSeg) { if (Date.now() - ultimoSondeo >= 30_000) refrescar(); return; }
+    if (Date.now() >= venceEnMs) { refrescar(); return; }
+    pintarBarra();
+  }, 1000);
+
+  refrescar();
+})();
+</script>
+</body>
+</html>

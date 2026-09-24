@@ -22,6 +22,15 @@ function copyPwaIcons() {
         try { copyFileSync(`${src}/${f}`, `${dst}/${f}`) } catch {}
       }
 
+      // Páginas sueltas: no son parte de la PWA (no importan nada de js/ ni
+      // css/, todo va inline) y Vite, con publicDir:false, solo procesa el
+      // index.html. Sin esta copia quedan fuera del dist y en producción
+      // devuelven 404, porque el servidor sirve dist/ cuando existe.
+      for (const f of readdirSync(src)) {
+        if (!f.endsWith('.html') || f === 'index.html') continue
+        try { copyFileSync(`${src}/${f}`, `${dst}/${f}`) } catch {}
+      }
+
       // Copiar imagenes propias (logo del Informe de Taller)
       const imgSrc = resolve(src, 'img')
       const imgDst = resolve(dst, 'img')
@@ -59,6 +68,13 @@ export default defineConfig({
       srcDir: 'public',
       filename: 'sw-custom.js',
       registerType: 'autoUpdate',
+      injectManifest: {
+        // Las páginas sueltas (invitado, marcar, qr-tv, tv, despacho-admin)
+        // no se abren nunca desde dentro de la PWA: cada una tiene su URL y
+        // su público. Precachearlas engordaría la instalación de todos los
+        // técnicos con páginas que no van a usar.
+        globIgnores: ['**/{invitado,marcar,qr-tv,tv,despacho-admin}.html'],
+      },
       manifest: {
         name: 'Registro GLP',
         short_name: 'Registro GLP',

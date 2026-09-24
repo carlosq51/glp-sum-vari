@@ -22,6 +22,7 @@ import zonasRouter from "./routes/zonas.js";
 import profileRouter from "./routes/profile.js";
 import informesRouter from "./routes/informes.js";
 import despachoRouter, { scheduleCierreJornada_, scheduleMotor_ } from "./routes/despacho.js";
+import invitadoRouter from "./routes/invitado.js";
 import { sseHandler_ } from "./lib/events.js";
 import { scheduleHorariosPausa_ } from "./lib/pausa-masiva.js";
 
@@ -100,6 +101,14 @@ app.get(["/inventario", "/ramales", "/informe-taller"], (_req, res) => {
   res.sendFile(resolve(staticDir, "index.html"));
 });
 
+// ── Vista de invitado (PDI) ───────────────────────────────────────────────────
+// Página suelta, fuera de la PWA: quien la abre no tiene cuenta ni la va a
+// tener. Se sirve con su propio HTML para que no cargue la app entera ni pida
+// sesión. La lógica del veredicto está en routes/invitado.js.
+app.get("/invitado", (_req, res) => {
+  res.sendFile(resolve(staticDir, "invitado.html"));
+});
+
 // ── Eventos en vivo (SSE) ─────────────────────────────────────────────────────
 // Las vistas se suscriben aquí; cada mutación emite su topic (lib/events.js)
 app.get("/api/events", sseHandler_);
@@ -124,6 +133,8 @@ app.use(profileRouter);
 // Despacho: inerte mientras DESPACHO_MODO=OFF (los endpoints de escritura
 // responden 503 y nada del flujo actual cambia). Ver supabase/despacho.sql.
 app.use(despachoRouter);
+// Consulta pública de un VIN (PDI). Sin sesión: ver la cabecera del archivo.
+app.use(invitadoRouter);
 
 // ── Start server ──────────────────────────────────────────────────────────────
 app.listen(PORT, "0.0.0.0", () => {
