@@ -39,10 +39,17 @@ const RL_VENTANA_MS = 60_000;
 const RL_MAX        = 40;   // consultas por IP y minuto
 const _hits = new Map();    // ip → number[] (timestamps dentro de la ventana)
 
-function excedeLimite_(ip) {
+/**
+ * @param {string} ip
+ * @param {number} [coste]  cuánto cuenta esta petición. Un lote cuesta más que
+ *   una consulta suelta: a la base le cuesta lo mismo (son las mismas dos
+ *   consultas), pero deja mirar 100 VINs de una vez, y eso es lo que usaría
+ *   quien quiera vaciar el padrón.
+ */
+function excedeLimite_(ip, coste) {
   const ahora = Date.now();
   const previas = (_hits.get(ip) || []).filter(t => ahora - t < RL_VENTANA_MS);
-  previas.push(ahora);
+  for (let i = 0; i < (coste || 1); i++) previas.push(ahora);
   _hits.set(ip, previas);
   // El Map crece con cada IP nueva. Se poda cuando se hace grande, no en cada
   // petición: recorrerlo entero por consulta sería peor que el problema.
@@ -127,6 +134,84 @@ export function decidirVeredicto_(enPadron, estadoPadron, conv, cal) {
   return "FALTA_GLP";
 }
 
+/**
+ * Consulta N VINs con DOS lecturas, no con dos por VIN.
+ *
+ * Un lote de 100 le cuesta a Supabase lo mismo que uno suelto. Por eso la
+ * versión suelta también pasa por aquí: un solo camino que probar, y el
+ * veredicto no puede divergir entre la pantalla de escaneo y la de lista.
+ *
+ * @param {string[]} vins  ya validados y normalizados
+ * @returns {Promise<object[]>} un resultado por VIN, en el mismo orden
+ */
+async function consultarVins_(vins) {
+  const SUPABASE_URL = process.env.SUPABASE_URL;
+  const headers = supabaseHeaders_();
+  const inList = vins.map(v => `"${v}"`).join(",");
+
+  const [vinResp, woResp] = await Promise.all([
+    // `select=*` y no `select=vin,estado` a propósito: si la columna `estado`
+    // no existe (supabase/invitado.sql sin correr), pedirla por nombre hace
+    // que PostgREST rechace la consulta entera. Eso devolvía "no figura en el
+    // padrón" para carros que sí están — el peor error posible aquí, porque
+    // suena a "puede salir". Las columnas de más no salen de este servidor.
+    fetch(`${SUPABASE_URL}/rest/v1/vins?vin=in.(${inList})&select=*`,
+      { method: "GET", headers }),
+    // Sin filtro de fecha: un carro puede llevar meses parado y su OT seguir
+    // siendo la que manda. Ordenado para que la primera de cada tipo gane.
+    fetch(`${SUPABASE_URL}/rest/v1/work_orders?vin=in.(${inList})` +
+      `&tipo_ot=in.(CONVERSION,CALIDAD)&select=vin,tipo_ot,estado_general,fecha_creacion` +
+      `&order=fecha_creacion.desc`,
+      { method: "GET", headers }),
+  ]);
+
+  // Una consulta que falla NO se degrada a veredicto: sin el padrón no se sabe
+  // si el carro lleva GLP, y responder "no figura" sonaría a "puede salir". Se
+  // prefiere el error, que la página muestra como "no se pudo consultar" y
+  // obliga a preguntar al área de GLP.
+  if (!vinResp.ok || !woResp.ok) {
+    throw new Error(`Supabase respondió ${vinResp.status}/${woResp.status}`);
+  }
+  const vinRows = await vinResp.json();
+  const woRows  = await woResp.json();
+
+  const padron = new Map();
+  for (const f of (vinRows || [])) if (f?.vin) padron.set(String(f.vin).toUpperCase(), f);
+
+  // La OT más reciente de cada tipo manda: un carro re-trabajado tiene OTs
+  // viejas que ya no dicen nada de dónde está ahora. Como vienen ordenadas por
+  // fecha descendente, la primera que se ve de cada tipo es la buena.
+  const ots = new Map(); // vin → { conv, cal }
+  for (const wo of (woRows || [])) {
+    if (!wo?.vin) continue;
+    const k = String(wo.vin).toUpperCase();
+    const e = ots.get(k) || { conv: null, cal: null };
+    if (wo.tipo_ot === "CONVERSION" && e.conv === null) e.conv = wo.estado_general || "";
+    if (wo.tipo_ot === "CALIDAD"    && e.cal  === null) e.cal  = wo.estado_general || "";
+    ots.set(k, e);
+  }
+
+  return vins.map(vin => {
+    const fila = padron.get(vin) || null;
+    const e = ots.get(vin) || { conv: null, cal: null };
+    // Mientras la migración no corra, `estado` simplemente no viene y el
+    // veredicto sale de las OTs: sirve igual, solo sin ANULADO/DELEGADO.
+    const clave = decidirVeredicto_(!!fila, fila?.estado || "", e.conv, e.cal);
+    const v = VEREDICTOS[clave];
+    return {
+      vin,
+      veredicto: clave,
+      tono:    v.tono,
+      titulo:  v.titulo,
+      detalle: v.detalle,
+      etapas: {
+        conversion: etiquetaEtapa_(e.conv),
+        calidad:    etiquetaEtapa_(e.cal),
+      },
+    };
+  });
+}
+
 // GET /api/invitado/vin/:vin — consulta pública, sin sesión.
 router.get("/api/invitado/vin/:vin", async (req, res) => {
   try {
@@ -140,8 +225,6 @@ router.get("/api/invitado/vin/:vin", async (req, res) => {
       return res.status(400).json({ ok: false, error: "VIN inválido." });
     }
 
-    const { SRV_CACHE_PESADO_MS } = await getConfig_();
-
     // Cache por VIN. Los topics son los que mueven un veredicto: una OT que
     // cambia de estado ("work_orders") o el padrón que se resincroniza
     // ("vins"). Lo que llega desde Apps Script no emite evento, y para eso
@@ -149,73 +232,88 @@ router.get("/api/invitado/vin/:vin", async (req, res) => {
     // como LISTO; lo que nunca pasa es lo contrario — que uno sin GLP salga
     // como listo — porque para eso su OT tendría que cerrarse, y eso sí
     // invalida al instante.
+    const { SRV_CACHE_PESADO_MS } = await getConfig_();
     const payload = await cachedByTopics_(
-      `invitado:vin:${vin}`, ["work_orders", "vins"], SRV_CACHE_PESADO_MS, async () => {
-        const SUPABASE_URL = process.env.SUPABASE_URL;
-        const headers = supabaseHeaders_();
-
-        const [vinResp, woResp] = await Promise.all([
-          // `select=*` y no `select=vin,estado` a propósito: hasta que no se
-          // corra supabase/invitado.sql la columna `estado` no existe, y
-          // pedirla por nombre hace que PostgREST rechace la consulta entera.
-          // Eso devolvía "no figura en el padrón" para carros que sí están —
-          // el peor error posible aquí, porque suena a "puede salir".
-          // Es una sola fila; las columnas de más no se mandan al cliente.
-          fetch(`${SUPABASE_URL}/rest/v1/vins?vin=eq.${encodeURIComponent(vin)}&select=*`,
-            { method: "GET", headers }),
-          // Sin filtro de fecha: un carro puede llevar meses parado y su OT
-          // seguir siendo la que manda. Son pocas filas por VIN.
-          fetch(`${SUPABASE_URL}/rest/v1/work_orders?vin=eq.${encodeURIComponent(vin)}` +
-            `&tipo_ot=in.(CONVERSION,CALIDAD)&select=tipo_ot,estado_general,fecha_creacion` +
-            `&order=fecha_creacion.desc`,
-            { method: "GET", headers }),
-        ]);
-
-        // Una consulta que falla NO se degrada a veredicto: sin el padrón no
-        // se sabe si el carro lleva GLP, y responder "no figura" sonaría a
-        // "puede salir". Se prefiere el error, que la página muestra como
-        // "no se pudo consultar" y obliga a preguntar al área de GLP.
-        if (!vinResp.ok || !woResp.ok) {
-          throw new Error(`Supabase respondió ${vinResp.status}/${woResp.status}`);
-        }
-        const vinRows = await vinResp.json();
-        const woRows  = await woResp.json();
-
-        const fila = (vinRows || [])[0] || null;
-        // Mientras la migración no corra, `estado` simplemente no viene y el
-        // veredicto sale de las OTs: la página sirve desde el primer día,
-        // solo sin distinguir ANULADO/DELEGADO.
-        const enPadron = !!fila;
-        const estadoPadron = fila?.estado || "";
-
-        // La más reciente de cada tipo manda: un carro re-trabajado tiene OTs
-        // viejas que ya no dicen nada de dónde está ahora.
-        let conv = null, cal = null;
-        for (const wo of (woRows || [])) {
-          if (wo.tipo_ot === "CONVERSION" && conv === null) conv = wo.estado_general || "";
-          if (wo.tipo_ot === "CALIDAD"    && cal  === null) cal  = wo.estado_general || "";
-        }
-
-        const clave = decidirVeredicto_(enPadron, estadoPadron, conv, cal);
-        const v = VEREDICTOS[clave];
-
-        return {
-          ok: true,
-          vin,
-          veredicto: clave,
-          tono: v.tono,
-          titulo: v.titulo,
-          detalle: v.detalle,
-          etapas: {
-            conversion: etiquetaEtapa_(conv),
-            calidad:    etiquetaEtapa_(cal),
-          },
-        };
-      });
+      `invitado:vin:${vin}`, ["work_orders", "vins"], SRV_CACHE_PESADO_MS,
+      async () => ({ ok: true, ...(await consultarVins_([vin]))[0] }));
 
     return res.json(payload);
   } catch (e) {
     console.error("[INVITADO_VIN]", e.message);
+    return res.status(500).json({ ok: false, error: "No se pudo consultar. Intente de nuevo." });
+  }
+});
+
+// POST /api/invitado/lote — varios VINs de una vez.
+// body: { vins: ["...", "..."] }
+//
+// PDI trabaja con listas pegadas desde un correo o un Excel, no de uno en uno.
+// Sin esto tenían que escanear carro por carro, que es justo la fricción por
+// la que se acaba despachando sin mirar.
+const LOTE_MAX = 100;
+router.post("/api/invitado/lote", async (req, res) => {
+  try {
+    const ip = req.ip || req.socket?.remoteAddress || "?";
+    // Un lote cuenta como varias consultas: ver arriba, en excedeLimite_.
+    if (excedeLimite_(ip, 5)) {
+      return res.status(429).json({ ok: false, error: "Demasiadas consultas seguidas. Espere un minuto." });
+    }
+
+    const crudos = Array.isArray(req.body?.vins) ? req.body.vins : [];
+    if (!crudos.length) {
+      return res.status(400).json({ ok: false, error: "No se recibió ningún VIN." });
+    }
+
+    // Se separan los que no son VIN en vez de rechazar el lote entero: quien
+    // pega una lista casi siempre arrastra una cabecera o una celda vacía, y
+    // tirar las 40 buenas por una mala sería absurdo. Los descartados se
+    // devuelven para que la página los enseñe y nadie dé por consultado algo
+    // que no lo fue.
+    const vistos = new Set();
+    const vins = [], invalidos = [];
+    for (const c of crudos) {
+      const v = String(c || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+      if (!VIN_RE.test(v)) { if (v) invalidos.push(v.slice(0, 20)); continue; }
+      if (vistos.has(v)) continue;   // duplicados en la lista pegada
+      vistos.add(v);
+      vins.push(v);
+    }
+
+    if (vins.length > LOTE_MAX) {
+      return res.status(400).json({
+        ok: false,
+        error: `Son demasiados de una vez (${vins.length}). El máximo es ${LOTE_MAX}.`,
+      });
+    }
+    if (!vins.length) {
+      return res.status(400).json({ ok: false, error: "Ningún VIN de la lista es válido.", invalidos });
+    }
+
+    // Cache por lista ordenada: dos personas que peguen la misma lista se
+    // sirven de una sola lectura. Mismo patrón que /api/movilizador/revalidate-ot.
+    const clave = [...vins].sort().join(",");
+    const { SRV_CACHE_PESADO_MS } = await getConfig_();
+    const resultados = await cachedByTopics_(
+      `invitado:lote:${clave}`, ["work_orders", "vins"], SRV_CACHE_PESADO_MS,
+      () => consultarVins_(vins));
+
+    // El resumen es lo que de verdad se mira: de 40 carros, cuáles NO pueden
+    // salir. Va calculado aquí para que la página no tenga que saber qué
+    // veredictos frenan un despacho.
+    const frenan = resultados.filter(r => r.tono === "warn" || r.tono === "danger").length;
+    const dudosos = resultados.filter(r => r.tono === "duda").length;
+
+    return res.json({
+      ok: true,
+      total: resultados.length,
+      frenan,
+      dudosos,
+      pueden: resultados.length - frenan - dudosos,
+      invalidos,
+      resultados,
+    });
+  } catch (e) {
+    console.error("[INVITADO_LOTE]", e.message);
     return res.status(500).json({ ok: false, error: "No se pudo consultar. Intente de nuevo." });
   }
 });

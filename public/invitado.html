@@ -135,28 +135,128 @@
   .aviso { color: var(--muted); font-size: 13px; font-weight: 600; text-align: center; min-height: 18px; }
   .aviso.error { color: var(--danger); }
   footer { color: var(--muted); font-size: 12px; font-weight: 600; text-align: center; max-width: 460px; }
+
+  /* ── Selector de modo ── */
+  .modos { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: min(94vw, 460px); }
+  .modoBtn {
+    background: var(--surface);
+    color: var(--muted);
+    border: 1px solid var(--line);
+    font-size: 15px;
+    padding: 11px 10px;
+  }
+  .modoBtn.activo { background: var(--ok); color: #0c0e11; border-color: var(--ok); }
+
+  body.modoLista #bloqueUno,   body.modoLista #resultado      { display: none !important; }
+  body.modoUno   #bloqueLista, body.modoUno   #resultadoLista { display: none !important; }
+
+  textarea {
+    width: 100%;
+    min-height: 130px;
+    resize: vertical;
+    background: #12161c;
+    border: 1px solid rgba(255,255,255,.18);
+    border-radius: 12px;
+    color: var(--text);
+    font: 600 14px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+    padding: 12px 14px;
+    text-transform: uppercase;
+  }
+  textarea:focus { outline: 2px solid var(--ok); outline-offset: 1px; }
+
+  /* ── Resultado de lista ── */
+  #resultadoLista { display: none; width: min(94vw, 460px); gap: 10px; }
+  body.conLista #resultadoLista { display: grid; }
+
+  .resumen { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .resumenTile {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 12px 6px;
+    text-align: center;
+    display: grid;
+    gap: 3px;
+  }
+  .resumenNum { font-size: 26px; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; }
+  .resumenLbl { font-size: 11px; font-weight: 700; color: var(--muted); }
+  .resumenTile.malo  { border-color: var(--danger); background: rgba(248,113,113,.12); }
+  .resumenTile.malo  .resumenNum { color: var(--danger); }
+  .resumenTile.duda  .resumenNum { color: var(--duda); }
+  .resumenTile.bueno .resumenNum { color: var(--ok); }
+
+  .filaVin {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 3px 10px;
+    align-items: baseline;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-left: 4px solid;
+    border-radius: 10px;
+    padding: 10px 12px;
+  }
+  .filaVin .fVin {
+    font: 700 13px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: .04em;
+  }
+  .filaVin .fTit  { font-size: 13px; font-weight: 800; text-align: right; }
+  .filaVin .fSub  { grid-column: 1 / -1; font-size: 12px; font-weight: 600; color: var(--muted); }
+  .filaVin.ok     { border-left-color: var(--ok); }
+  .filaVin.ok     .fTit { color: var(--ok); }
+  .filaVin.warn   { border-left-color: var(--warn); }
+  .filaVin.warn   .fTit { color: var(--warn); }
+  .filaVin.danger { border-left-color: var(--danger); }
+  .filaVin.danger .fTit { color: var(--danger); }
+  .filaVin.duda   { border-left-color: var(--duda); }
+  .filaVin.duda   .fTit { color: var(--duda); }
+
+  .grupoTit {
+    font-size: 12px;
+    font-weight: 800;
+    color: var(--muted);
+    letter-spacing: .04em;
+    margin-top: 4px;
+  }
 </style>
 </head>
-<body>
+<body class="modoUno">
 
 <header>
   <h1>¿Este carro lleva GLP?</h1>
   <div class="sub">Escanee el VIN o escríbalo antes de despachar</div>
 </header>
 
+<div class="modos">
+  <button class="modoBtn activo" id="btnModoUno"   type="button">Un carro</button>
+  <button class="modoBtn"        id="btnModoLista" type="button">Pegar lista</button>
+</div>
+
 <div class="card">
   <div id="lector"></div>
-  <div id="bloqueManual" style="display:grid;gap:12px;">
-    <input id="vin" type="text" inputmode="latin" autocomplete="off" autocapitalize="characters"
-           spellcheck="false" placeholder="VIN" maxlength="17" aria-label="VIN del vehículo">
-    <div class="fila">
-      <button id="btnConsultar" disabled>Consultar</button>
-      <button id="btnEscanear" class="btnGhost" type="button">📷 Escanear</button>
+
+  <div id="bloqueUno">
+    <div id="bloqueManual" style="display:grid;gap:12px;">
+      <input id="vin" type="text" inputmode="latin" autocomplete="off" autocapitalize="characters"
+             spellcheck="false" placeholder="VIN" maxlength="17" aria-label="VIN del vehículo">
+      <div class="fila">
+        <button id="btnConsultar" disabled>Consultar</button>
+        <button id="btnEscanear" class="btnGhost" type="button">📷 Escanear</button>
+      </div>
     </div>
   </div>
+
+  <div id="bloqueLista" style="display:grid;gap:12px;">
+    <textarea id="vinsLista" spellcheck="false" aria-label="Lista de VINs"
+      placeholder="Pegue aquí los VIN, uno por línea.&#10;Da igual si vienen con comas, tabulaciones o texto de más."></textarea>
+    <button id="btnConsultarLista" type="button">Consultar lista</button>
+  </div>
+
   <button id="btnCerrarLector" class="btnGhost" type="button" style="display:none;">✕ Cerrar cámara</button>
   <div class="aviso" id="aviso"></div>
 </div>
+
+<div id="resultadoLista"></div>
 
 <div id="resultado">
   <div class="veredicto" id="veredicto">
@@ -246,6 +346,112 @@
     $("btnConsultar").disabled = true;
     $("vin").focus();
   });
+
+  // ── Modo ──
+  function setModo_(modo) {
+    document.body.classList.toggle("modoUno",   modo === "uno");
+    document.body.classList.toggle("modoLista", modo === "lista");
+    $("btnModoUno").classList.toggle("activo",   modo === "uno");
+    $("btnModoLista").classList.toggle("activo", modo === "lista");
+    aviso_("");
+    if (modo === "lista") cerrarLector_();
+  }
+  $("btnModoUno").addEventListener("click",   () => setModo_("uno"));
+  $("btnModoLista").addEventListener("click", () => setModo_("lista"));
+
+  // ── Lista pegada ──
+
+  /**
+   * Saca los VIN de un texto pegado de cualquier sitio.
+   *
+   * Se trocea por todo lo que no sea alfanumérico, así da igual si la lista
+   * viene de un Excel (tabulaciones), de un correo (comas, viñetas) o con una
+   * cabecera de más: cada trozo se juzga por separado y el servidor descarta
+   * lo que no sea un VIN.
+   */
+  function extraerVins_(texto) {
+    return String(texto || "")
+      .split(/[^A-Za-z0-9]+/)
+      .map(t => t.toUpperCase())
+      .filter(Boolean);
+  }
+
+  async function consultarLista_() {
+    const vins = extraerVins_($("vinsLista").value);
+    if (!vins.length) {
+      aviso_("Pegue al menos un VIN.", true);
+      return;
+    }
+    aviso_("Consultando " + vins.length + "…");
+    $("btnConsultarLista").disabled = true;
+    try {
+      const r = await fetch("/api/invitado/lote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vins: vins }),
+      });
+      const d = await r.json();
+      if (!d || !d.ok) throw new Error(d && d.error ? d.error : "No se pudo consultar.");
+      pintarLista_(d);
+      aviso_("");
+    } catch (e) {
+      aviso_(e.message || "Sin conexión. Intente de nuevo.", true);
+    } finally {
+      $("btnConsultarLista").disabled = false;
+    }
+  }
+
+  // Peor primero. Quien pega 40 carros busca los que NO pueden salir; que
+  // tenga que bajar por 36 verdes para encontrar los 4 rojos sería al revés
+  // de lo que necesita.
+  var ORDEN_TONO = { danger: 0, warn: 1, duda: 2, ok: 3 };
+
+  function pintarLista_(d) {
+    // Sin `??` a propósito: esta página no pasa por el transpilador de Vite y
+    // se abre en teléfonos viejos del taller, donde ese operador no existe.
+    var peso_ = function (t) { return ORDEN_TONO[t] === undefined ? 9 : ORDEN_TONO[t]; };
+    var filas = (d.resultados || []).slice().sort(function (a, b) {
+      return peso_(a.tono) - peso_(b.tono);
+    });
+
+    var html =
+      '<div class="resumen">' +
+        '<div class="resumenTile malo"><span class="resumenNum">' + d.frenan + '</span>' +
+          '<span class="resumenLbl">NO PUEDEN SALIR</span></div>' +
+        '<div class="resumenTile duda"><span class="resumenNum">' + d.dudosos + '</span>' +
+          '<span class="resumenLbl">POR CONFIRMAR</span></div>' +
+        '<div class="resumenTile bueno"><span class="resumenNum">' + d.pueden + '</span>' +
+          '<span class="resumenLbl">PUEDEN SALIR</span></div>' +
+      '</div>';
+
+    if (d.invalidos && d.invalidos.length) {
+      html += '<div class="grupoTit">No se consultaron (' + d.invalidos.length +
+              '): no parecen VIN — ' + d.invalidos.map(escapar_).join(", ") + '</div>';
+    }
+
+    html += filas.map(function (r) {
+      return '<div class="filaVin ' + r.tono + '">' +
+        '<span class="fVin">' + escapar_(r.vin) + '</span>' +
+        '<span class="fTit">' + escapar_(r.titulo) + '</span>' +
+        '<span class="fSub">Conversión: ' + escapar_(r.etapas.conversion) +
+          ' · Revisión: ' + escapar_(r.etapas.calidad) + '</span>' +
+      '</div>';
+    }).join("");
+
+    $("resultadoLista").innerHTML = html;
+    document.body.classList.add("conLista");
+  }
+
+  // El servidor solo manda texto suyo y VINs ya filtrados, pero esto se pinta
+  // con innerHTML: se escapa igual, para que un cambio de arriba no se
+  // convierta en un agujero aquí abajo.
+  function escapar_(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  $("btnConsultarLista").addEventListener("click", consultarLista_);
 
   // ── Cámara ──
   // html5-qrcode llega por <script defer> desde unpkg. Si la red del taller
