@@ -40,6 +40,31 @@ function fmtDate_(iso) {
   return iso ? fmtShort_(iso) : "—";
 }
 
+/**
+ * diasDesde_ — días completos transcurridos desde una fecha ISO hasta ahora.
+ * null si no hay fecha (VIN sin registro de entrada).
+ */
+function diasDesde_(iso) {
+  if (!iso) return null;
+  const ms = Date.now() - new Date(iso).getTime();
+  return ms >= 0 ? Math.floor(ms / 86400000) : 0;
+}
+
+/**
+ * badgeDias_ — escala de color según cuánto lleva un carro esperando
+ * conversión sin que nadie lo toque: 0 días es normal, de ahí en más es
+ * señal de que puede haberse ido a otra área sin que el movilizador se
+ * entere. Los cortes (1 / 3 días) son ajustables si en la práctica resultan
+ * muy sensibles o muy laxos.
+ */
+function badgeDias_(dias) {
+  if (dias === null) return "";
+  let cls = "badge-note", label = "Hoy";
+  if (dias === 1)      { cls = "badge-warn";   label = "1 día"; }
+  else if (dias >= 2)  { cls = "badge-danger"; label = `${dias} días`; }
+  return `<span class="badge ${cls}">⏱️ ${label} esperando</span>`;
+}
+
 function setBadge_(id, count) {
   const el = document.getElementById(id);
   if (!el) return;
@@ -69,7 +94,9 @@ function renderList0_(rows) {
   const espera     = rows.filter(r => !r.en_conversion);
   const conversion = rows.filter(r =>  r.en_conversion);
 
-  const cardHtml = (r) => `
+  const cardHtml = (r) => {
+    const dias = r.en_conversion ? null : diasDesde_(r.fecha_entrada);
+    return `
     <div class="movCard">
       <div class="movCardTop">
         <span class="movVin">${escapeHtml(r.vin)}</span>
@@ -84,7 +111,9 @@ function renderList0_(rows) {
           : `<span class="movCardNoReg">⚠️ Sin registro de entrada</span>`
         }
       </div>
+      ${dias !== null ? `<div class="movCardSub" style="margin-top:6px;">${badgeDias_(dias)}</div>` : ""}
     </div>`;
+  };
 
   let html = `<div class="movCardList">`;
 

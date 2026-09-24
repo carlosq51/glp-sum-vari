@@ -244,11 +244,14 @@ router.get("/api/movilizador/status", async (req, res) => {
       });
     }
 
-    // Orden: primero En Espera (newest first), luego En Conversión
+    // Orden: primero En Espera, luego En Conversión.
+    // Dentro de En Espera: el más VIEJO arriba (no el más nuevo). Esta lista
+    // es la que delata un carro que se trajo y otra área se llevó antes de
+    // que empiece su conversión — el que lleva más días esperando es el que
+    // hay que mirar primero, no el que acaba de entrar.
     list0.sort((a, b) => {
       if (a.en_conversion !== b.en_conversion) return a.en_conversion ? 1 : -1;
-      // Dentro de En Espera: más reciente arriba
-      if (!a.en_conversion) return new Date(b.fecha_entrada || 0) - new Date(a.fecha_entrada || 0);
+      if (!a.en_conversion) return new Date(a.fecha_entrada || 0) - new Date(b.fecha_entrada || 0);
       return 0;
     });
 
