@@ -154,6 +154,15 @@ export function movilizadorView() {
           <span class="adminDetailTitle">🔧 Pendientes de Calibración</span>
         </div>
 
+        <div class="movSearchRow">
+          <div class="vinWrap" style="flex:1;">
+            <input id="movCalibSearch" type="search" placeholder="Buscar VIN…"
+              class="movVinInput" autocomplete="off" autocapitalize="characters" spellcheck="false" />
+            <div id="movCalibSuggest" class="vinSuggest hidden" role="listbox"></div>
+          </div>
+        </div>
+        <div id="movCalibSubHdr" class="movPendientesSubHdr"></div>
+
         <div class="movPanel open" id="movPanel2">
           <button class="movPanelHeader" type="button" aria-expanded="true">
             <span class="movPanelIcon">🕐</span>

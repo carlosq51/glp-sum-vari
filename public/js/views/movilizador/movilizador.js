@@ -526,6 +526,8 @@ const FLOW_CONFIG = {
 };
 
 let _listaDiariaRows = [];
+let _list2Rows = [];
+let _calibFiltro = "";
 let _list3Rows = [];
 let _filtroActivo = "todos";
 
@@ -606,13 +608,46 @@ function applyFiltroLista_(filtro) {
  * de ingreso delata al que lleva semanas en el taller sin que nadie lo cierre.
  */
 function renderList2_(rows) {
-  const box = document.getElementById("movPanel2Body");
-  if (!box) return;
-  setBadge_("movBadge2", rows.length);
-  updateHubModuleBadge("MOVILIZADOR", rows.length);
+  _list2Rows = rows || [];
+  // Los badges cuentan SIEMPRE el total, no lo que deja ver la búsqueda: son
+  // el aviso de cuántos hay pendientes, no de cuántos se están mirando.
+  setBadge_("movBadge2", _list2Rows.length);
+  updateHubModuleBadge("MOVILIZADOR", _list2Rows.length);
 
-  if (!rows.length) {
-    box.innerHTML = `<div class="movEmpty small muted">Ningún vehículo pendiente de calibración.</div>`;
+  // Re-aplicar el filtro actual: el poll repinta cada pocos segundos y sin
+  // esto la búsqueda del movilizador se borraría sola mientras escribe.
+  applyCalibFiltro_(_calibFiltro);
+}
+
+function applyCalibFiltro_(q) {
+  _calibFiltro = String(q || "").toUpperCase().trim();
+  const filtered = _calibFiltro
+    ? _list2Rows.filter(r => r.vin.toUpperCase().includes(_calibFiltro))
+    : _list2Rows;
+  renderList2Body_(filtered);
+}
+
+function renderList2Body_(filtered) {
+  const box = document.getElementById("movPanel2Body");
+  const subHdr = document.getElementById("movCalibSubHdr");
+
+  const total = _list2Rows.length;
+  if (subHdr) {
+    if (!total) {
+      subHdr.textContent = "";
+    } else if (_calibFiltro && filtered.length !== total) {
+      subHdr.textContent = `${filtered.length} de ${total} pendiente${total !== 1 ? "s" : ""}`;
+    } else {
+      subHdr.textContent = `${total} pendiente${total !== 1 ? "s" : ""} de calibración`;
+    }
+  }
+
+  if (!box) return;
+
+  if (!filtered.length) {
+    box.innerHTML = `<div class="movEmpty small muted">${
+      total ? "Ningún VIN coincide con la búsqueda." : "Ningún vehículo pendiente de calibración."
+    }</div>`;
     return;
   }
 
@@ -621,7 +656,7 @@ function renderList2_(rows) {
 
   box.innerHTML = `
     <div class="movCardList">
-      ${rows.map(r => {
+      ${filtered.map(r => {
         const diasConv = diasDesde_(r.fecha_conversion);
         const diasEnt  = diasDesde_(r.fecha_entrada);
         return `
@@ -1239,6 +1274,22 @@ export function init() {
   }
   document.getElementById("movPendientesSearch")?.addEventListener("input", e => {
     applyPendientesFiltro_(e.target.value);
+  });
+
+  // Búsqueda en Pendientes de Calibración. El autocompletado consulta todos
+  // los VIN, no solo los de la lista: elegir uno que no esté pendiente deja la
+  // lista vacía con el aviso, que ya responde la pregunta de si está ahí.
+  createVinSuggest_({
+    input: "movCalibSearch", box: "movCalibSuggest",
+    min: 1, debounce: 220, limit: 12,
+    onPick: item => {
+      const inp = document.getElementById("movCalibSearch");
+      if (inp) inp.value = item.vin;
+      applyCalibFiltro_(item.vin);
+    },
+  }).bind();
+  document.getElementById("movCalibSearch")?.addEventListener("input", e => {
+    applyCalibFiltro_(e.target.value);
   });
 
 
