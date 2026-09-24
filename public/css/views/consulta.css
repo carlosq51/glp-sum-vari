@@ -13,6 +13,104 @@
   margin-bottom: 8px;
 }
 
+/* ─── Modos ─── */
+.cqModos { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px; }
+.cqModoBtn {
+  height: var(--h-btn-sm, 34px);
+  border-radius: var(--radiusSm);
+  border: 1px solid var(--surfaceLine, rgba(255,255,255,.14));
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  cursor: pointer;
+}
+.cqModoBtn.activo {
+  background: rgba(34,197,94,.14);
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+#cqBloqueLista { display: none; gap: 10px; margin-bottom: 8px; }
+
+.cqTextarea {
+  width: 100%;
+  min-height: 120px;
+  resize: vertical;
+  background: var(--inputBg);
+  border: 1.5px solid var(--inputLine);
+  border-radius: var(--radiusSm);
+  color: var(--text);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  padding: 10px 12px;
+  text-transform: uppercase;
+  box-sizing: border-box;
+}
+.cqTextarea:focus { outline: 2px solid var(--ok); outline-offset: 1px; }
+
+.cqBtnLista {
+  height: var(--h-btn, 42px);
+  border-radius: var(--radiusSm);
+  border: 1px solid var(--ok);
+  background: rgba(34,197,94,.14);
+  color: var(--ok);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-bold);
+  cursor: pointer;
+}
+.cqBtnLista:disabled { opacity: .45; cursor: default; }
+
+/* ─── Resumen de lista ─── */
+.cqResumen { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; }
+.cqResTile {
+  background: rgba(0,0,0,.12);
+  border: 1px solid var(--surfaceLine, rgba(255,255,255,.10));
+  border-radius: var(--radiusSm);
+  padding: 11px 6px;
+  text-align: center;
+  display: grid;
+  gap: 3px;
+}
+.cqResNum { font-size: 1.6rem; font-weight: var(--fw-black); line-height: 1; font-variant-numeric: tabular-nums; }
+.cqResLbl { font-size: var(--fs-xs); font-weight: 700; color: var(--muted); overflow-wrap: anywhere; }
+.cqResTile.malo  { border-color: var(--danger); background: rgba(248,113,113,.12); }
+.cqResTile.malo  .cqResNum { color: var(--danger); }
+.cqResTile.duda  .cqResNum { color: var(--muted); }
+.cqResTile.bueno .cqResNum { color: var(--ok); }
+
+/* ─── Filas de la lista ─── */
+/* Son botones: cada una abre la ficha completa de ese carro. */
+.cqFila {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px 10px;
+  width: 100%;
+  text-align: left;
+  align-items: baseline;
+  background: rgba(0,0,0,.12);
+  border: 1px solid var(--surfaceLine, rgba(255,255,255,.10));
+  border-left: 4px solid;
+  border-radius: var(--radiusSm);
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  color: var(--text);
+  cursor: pointer;
+}
+.cqFila:hover { background: rgba(255,255,255,.06); }
+.cqFilaVin { font-family: var(--font-mono, ui-monospace, monospace); font-size: var(--fs-xs); font-weight: 700; }
+.cqFilaTit { font-size: var(--fs-xs); font-weight: var(--fw-black); text-align: right; }
+.cqFilaSub { grid-column: 1 / -1; font-size: var(--fs-xs); color: var(--muted); font-weight: 600; }
+.cqFila.ok     { border-left-color: var(--ok); }
+.cqFila.ok     .cqFilaTit { color: var(--ok); }
+.cqFila.warn   { border-left-color: var(--warn); }
+.cqFila.warn   .cqFilaTit { color: var(--warn); }
+.cqFila.danger { border-left-color: var(--danger); }
+.cqFila.danger .cqFilaTit { color: var(--danger); }
+.cqFila.duda   { border-left-color: var(--muted); }
+.cqFila.duda   .cqFilaTit { color: var(--muted); }
+
 .cqAviso {
   font-size: var(--fs-xs);
   font-weight: 600;
@@ -147,5 +245,11 @@
 }
 
 :root[data-theme="day"] .cqFichaGrid,
-:root[data-theme="day"] .cqPanel   { background: var(--pillBg); border-color: var(--surfaceLine); }
+:root[data-theme="day"] .cqPanel,
+:root[data-theme="day"] .cqResTile { background: var(--pillBg); border-color: var(--surfaceLine); }
 :root[data-theme="day"] .cqTrabajo { background: rgba(0,0,0,.04); }
+
+/* Solo el fondo: un `border-color` aquí pisaría el `border-left-color` del
+   tono y las filas perderían la franja de color justo en tema claro. */
+:root[data-theme="day"] .cqFila       { background: var(--pillBg); }
+:root[data-theme="day"] .cqFila:hover { background: rgba(0,0,0,.05); }

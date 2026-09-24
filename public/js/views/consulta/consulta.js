@@ -11,7 +11,12 @@
 // información, no la protege.
 // =========================
 
-import { CORE, escapeHtml, fmtShort_, getJSON, createVinSuggest_ } from "../../core/core.js";
+import { CORE, escapeHtml, fmtShort_, getJSON, postJSON, createVinSuggest_ } from "../../core/core.js";
+import { createScanner } from "../../core/qr-scanner.js";
+
+// Sobre el modal compartido #qrModal, igual que conversión y supervisor: cada
+// vista trae su propia instancia y abre solo cuando su módulo está delante.
+const _scanner = createScanner("qrReader");
 
 /** ¿El usuario puede ver nombres y tiempos? */
 function puedeVerDetalle_() {
@@ -95,7 +100,10 @@ function pintar_(d) {
   document.getElementById("cqDetalleBloque").innerHTML =
     puedeVerDetalle_() ? detalleHtml_(d) : "";
 
-  document.getElementById("cqResultado").style.display = "block";
+  const box = document.getElementById("cqResultado");
+  box.style.display = "block";
+  // Viniendo de una fila de la lista, la ficha nace fuera de pantalla.
+  box.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
 function detalleHtml_(d) {
@@ -153,6 +161,105 @@ function panel_(titulo, cuerpo) {
     </details>`;
 }
 
+// ─── Modo lista ───────────────────────────────────────────────────────
+
+function setModo_(modo) {
+  const uno = modo === "uno";
+  document.getElementById("cqBloqueUno").style.display    = uno ? "flex" : "none";
+  document.getElementById("cqBloqueLista").style.display  = uno ? "none" : "grid";
+  document.getElementById("cqResultado").style.display    = "none";
+  document.getElementById("cqResultadoLista").style.display = "none";
+  document.getElementById("btnCqModoUno").classList.toggle("activo", uno);
+  document.getElementById("btnCqModoLista").classList.toggle("activo", !uno);
+  aviso_("");
+  if (!uno) cerrarQr_();
+}
+
+/**
+ * Trocea por todo lo que no sea alfanumérico: da igual si la lista viene de
+ * un Excel (tabulaciones), de un correo (comas, viñetas) o con cabecera. El
+ * servidor descarta lo que no sea un VIN y lo devuelve aparte.
+ */
+function extraerVins_(texto) {
+  return String(texto || "").split(/[^A-Za-z0-9]+/).map(t => t.toUpperCase()).filter(Boolean);
+}
+
+// Peor primero: quien pega 40 carros busca los que NO pueden salir.
+const ORDEN_TONO = { danger: 0, warn: 1, duda: 2, ok: 3 };
+
+async function consultarLista_() {
+  const vins = extraerVins_(document.getElementById("cqVinsLista").value);
+  if (!vins.length) { aviso_("Pegue al menos un VIN.", true); return; }
+
+  aviso_(`Consultando ${vins.length}…`);
+  const btn = document.getElementById("btnCqLista");
+  if (btn) btn.disabled = true;
+  try {
+    const d = await postJSON("/api/invitado/lote", { vins });
+    if (!d?.ok) throw new Error(d?.error || "No se pudo consultar.");
+    pintarLista_(d);
+    aviso_("");
+  } catch (e) {
+    aviso_(e.message || "Sin conexión. Intente de nuevo.", true);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+function pintarLista_(d) {
+  const filas = (d.resultados || []).slice().sort(
+    (a, b) => (ORDEN_TONO[a.tono] ?? 9) - (ORDEN_TONO[b.tono] ?? 9));
+
+  let html = `
+    <div class="cqResumen">
+      <div class="cqResTile malo"><span class="cqResNum">${d.frenan}</span><span class="cqResLbl">NO PUEDEN SALIR</span></div>
+      <div class="cqResTile duda"><span class="cqResNum">${d.dudosos}</span><span class="cqResLbl">POR CONFIRMAR</span></div>
+      <div class="cqResTile bueno"><span class="cqResNum">${d.pueden}</span><span class="cqResLbl">PUEDEN SALIR</span></div>
+    </div>`;
+
+  if (d.invalidos?.length) {
+    html += `<div class="cqVacio">No se consultaron (${d.invalidos.length}): no parecen VIN — ${
+      d.invalidos.map(escapeHtml).join(", ")}</div>`;
+  }
+
+  // Cada fila abre la ficha completa. Es la razón de tener la lista aquí
+  // dentro y no solo en /invitado: se pega el lote, se ve cuáles fallan y se
+  // entra a ver quién tiene ese carro, sin volver a escribir nada.
+  html += filas.map(r => `
+    <button class="cqFila ${r.tono}" data-cq-vin="${escapeHtml(r.vin)}" type="button">
+      <span class="cqFilaVin">${escapeHtml(r.vin)}</span>
+      <span class="cqFilaTit">${escapeHtml(r.titulo)}</span>
+      <span class="cqFilaSub">Conversión: ${escapeHtml(r.etapas.conversion)} · Revisión: ${escapeHtml(r.etapas.calidad)}</span>
+    </button>`).join("");
+
+  const box = document.getElementById("cqResultadoLista");
+  box.innerHTML = html;
+  box.style.display = "block";
+}
+
+// ─── QR ───────────────────────────────────────────────────────────────
+
+async function abrirQr_() {
+  document.getElementById("qrModal")?.classList?.add("show");
+  try {
+    await _scanner.start({
+      mode: "QR",
+      msgEl: document.getElementById("qrMsg"),
+      onDecoded: async (code) => {
+        await cerrarQr_();
+        const inp = document.getElementById("cqVin");
+        if (inp) inp.value = String(code || "").toUpperCase();
+        consultar_(code);
+      },
+    });
+  } catch { /* el propio scanner ya pintó el error en msgEl */ }
+}
+
+async function cerrarQr_() {
+  document.getElementById("qrModal")?.classList?.remove("show");
+  await _scanner.stop();
+}
+
 // ─── API pública ──────────────────────────────────────────────────────
 
 export function init() {
@@ -177,10 +284,45 @@ export function init() {
     if (v.length === 17) consultar_(v);
   });
 
+  // Modo
+  document.getElementById("btnCqModoUno")?.addEventListener("click", () => setModo_("uno"));
+  document.getElementById("btnCqModoLista")?.addEventListener("click", () => setModo_("lista"));
+  document.getElementById("btnCqLista")?.addEventListener("click", () => consultarLista_());
+
+  // De una fila de la lista a la ficha completa, sin reescribir el VIN.
+  // NO se cambia de modo: la ficha aparece debajo y la lista se queda, para
+  // poder ir mirando uno por uno los que fallan sin volver a pegarla.
+  document.getElementById("cqResultadoLista")?.addEventListener("click", e => {
+    const fila = e.target.closest("[data-cq-vin]");
+    if (!fila) return;
+    const inp = document.getElementById("cqVin");
+    if (inp) inp.value = fila.dataset.cqVin;
+    consultar_(fila.dataset.cqVin);
+  });
+
+  // QR sobre el modal compartido #qrModal. El guard de módulo es obligatorio:
+  // conversión y supervisor enganchan sus propios handlers al MISMO botón de
+  // cerrar, así que sin él un clic en cualquiera de esas vistas pararía este
+  // escáner (y al revés).
+  document.getElementById("btnCqQr")?.addEventListener("click", () => {
+    if (CORE.state.currentModule !== "CONSULTA") return;
+    abrirQr_().catch(() => {});
+  });
+  document.getElementById("btnCloseQR")?.addEventListener("click", () => {
+    if (CORE.state.currentModule !== "CONSULTA") return;
+    cerrarQr_().catch(() => {});
+  });
+  document.getElementById("qrModal")?.addEventListener("click", e => {
+    if (CORE.state.currentModule !== "CONSULTA") return;
+    if (e.target === e.currentTarget) cerrarQr_().catch(() => {});
+  });
 }
 
 export function enter() {
+  setModo_("uno");
   document.getElementById("cqVin")?.focus();
 }
 
-export function exit() {}
+export function exit() {
+  cerrarQr_().catch(() => {});
+}
