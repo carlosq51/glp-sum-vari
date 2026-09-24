@@ -607,6 +607,8 @@ function renderList2_(rows) {
             }
           </div>
           ${r.trasladado_at ? `<div class="movCardSub">Trasladado: ${fmtDate_(r.trasladado_at)}</div>` : ""}
+          ${r.dias_gas != null ? `<div class="movCardSub">🔥 ${r.dias_gas} día${r.dias_gas === 1 ? "" : "s"} en zona de gas</div>` : ""}
+          ${dias !== null ? `<div class="movCardSub">🕐 ${dias} día${dias === 1 ? "" : "s"} en zona de espera (tras conversión)</div>` : ""}
           ${dias !== null ? `<div class="movCardSub" style="margin-top:6px;">${badgeDias_(dias)}</div>` : ""}
           ${r.estado === "TRASLADADO" ? `
             <button class="movBtnAction btnEntregarCalidad movBtnFull"

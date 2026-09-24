@@ -114,6 +114,17 @@ router.get("/api/movilizador/status", async (req, res) => {
       else trasMap.set(t.vin, t);
     }
 
+    // Lista diaria vigente: Ingreso solo trabaja con estos VINs. Sin este
+    // filtro, carros de hace un mes que quedaron en movilizador_traslados
+    // seguían apareciendo entre los del día.
+    const listaDiariaResp = await fetch(`${SUPABASE_URL}/rest/v1/lista_diaria_activa?select=vin`, { method: "GET", headers });
+    const listaDiariaRows = listaDiariaResp.ok ? await listaDiariaResp.json() : null;
+    // Si la consulta falla no se filtra: mejor ver de más que un Ingreso vacío.
+    const enListaDiaria = listaDiariaRows
+      ? new Set(listaDiariaRows.map(r => String(r.vin || "").trim().toUpperCase()).filter(Boolean))
+      : null;
+    const enLista_ = vin => !enListaDiaria || enListaDiaria.has(String(vin || "").trim().toUpperCase());
+
     // 4. CALIDAD FINALIZADO (con filtro de fecha de corte)
     let calUrl = `${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CALIDAD&estado_general=eq.FINALIZADO&select=vin,fecha_creacion,created_at`;
     if (fechaCorte) calUrl += `&fecha_creacion=gte.${fechaCorte}T00:00:00`;
@@ -222,6 +233,7 @@ router.get("/api/movilizador/status", async (req, res) => {
     for (const [vin, t] of trasMap) {
       if (t.estado !== "EN_ESPERA_CONVERSION") continue;
       if (convVinMap.has(vin)) continue; // conversión ya finalizada → aparece en list1
+      if (!enLista_(vin)) continue;
       list0.push({
         vin,
         fecha_entrada: t.trasladado_at,
@@ -235,6 +247,7 @@ router.get("/api/movilizador/status", async (req, res) => {
     for (const vin of convActivaMap) {
       if (list0Vins.has(vin)) continue; // ya está por traslado
       if (convVinMap.has(vin)) continue; // conversión finalizada → va a list1
+      if (!enLista_(vin)) continue;
       list0.push({
         vin,
         fecha_entrada: null,
@@ -267,8 +280,16 @@ router.get("/api/movilizador/status", async (req, res) => {
       if (t.estado === "ENTREGADO_FINAL") continue;
       if (calidadActivaMap.has(vin)) continue; // ya en revisión, no es "falta de calibración"
       if (t.estado === "TRASLADADO" || t.estado === "ENTREGADO_CALIDAD") {
+        // El ingreso real no se guarda (trasladado_at se pisa al mover a zona
+        // de espera): la OT de conversión, que se abre al empezar, es el mejor
+        // punto de partida de la estadía en zona de gas.
+        const inicioGas = convAllMap.get(vin)?.fecha_creacion || null;
+        const diasGas = inicioGas && t.trasladado_at
+          ? Math.max(0, Math.floor((new Date(t.trasladado_at) - new Date(inicioGas)) / 86400000))
+          : null;
         list2.push({
           vin,
+          dias_gas: diasGas,
           estado: t.estado,
           trasladado_at: t.trasladado_at,
           trasladado_por: t.trasladado_por || "",
@@ -369,6 +390,7 @@ router.get("/api/movilizador/status", async (req, res) => {
     for (const vin of allConvVins) {
       const t = trasMap.get(vin);
       if (entregadoFinalSet.has(vin)) continue; // ya entregado, no mostrar
+      if (!enLista_(vin)) continue;
 
       let flow_status;
       const fecha_ot = convVinMap.get(vin)?.fecha_creacion || null;
@@ -417,6 +439,7 @@ router.get("/api/movilizador/status", async (req, res) => {
     const olvidados = [];
     for (const [vin, t] of trasOlvidados) {
       if (vivos.has(vin)) continue;
+      if (!enLista_(vin)) continue;
       olvidados.push({
         vin,
         estado: t.estado,
