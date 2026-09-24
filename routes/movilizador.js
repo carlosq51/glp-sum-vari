@@ -551,14 +551,21 @@ router.get("/api/movilizador/pendientes", async (req, res) => {
     if (!vinsLista.length) return { ok: true, sin_registrar: [] };
 
     const inList = vinsLista.map(v => `"${v}"`).join(",");
-    const [trasResp, vinsResp] = await Promise.all([
+    const [trasResp, vinsResp, woResp] = await Promise.all([
       fetch(`${SUPABASE_URL}/rest/v1/movilizador_traslados?vin=in.(${inList})&select=vin`, { method: "GET", headers }),
       fetch(`${SUPABASE_URL}/rest/v1/vins?vin=in.(${inList})&select=vin,ultima_ubicacion`, { method: "GET", headers }),
+      // Una OT de CONVERSION ya es prueba de que el carro está físicamente en
+      // el taller: un técnico lo trabajó. Sin esto, un VIN que entró sin pasar
+      // por "marcar ingreso" del movilizador (caso real, no debería pasar pero
+      // pasa) quedaba en "sin registrar" para siempre, aunque ya esté FINALIZADO.
+      fetch(`${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CONVERSION&vin=in.(${inList})&select=vin`, { method: "GET", headers }),
     ]);
     const trasRows = trasResp.ok ? await trasResp.json() : [];
     const vinsRows = vinsResp.ok ? await vinsResp.json() : [];
+    const woRows   = woResp.ok   ? await woResp.json()   : [];
 
     const registrado = new Set((trasRows || []).map(t => t.vin));
+    (woRows || []).forEach(w => { if (w.vin) registrado.add(w.vin); });
     const ubicMap    = new Map((vinsRows || []).map(v => [v.vin, v.ultima_ubicacion || ""]));
     const sin_registrar = (listaRows || [])
       .filter(r => !registrado.has(r.vin))
@@ -653,25 +660,44 @@ router.get("/api/supervisor/lista-pendientes", async (req, res) => {
     const trasRows  = trasResp.ok  ? await trasResp.json()  : [];
     const vinsRows  = vinsResp.ok  ? await vinsResp.json()  : [];
 
+    // Una OT de CONVERSION ya es prueba de que el carro está físicamente en
+    // el taller: un técnico lo trabajó. Sin esto, un VIN que entró sin pasar
+    // por "marcar ingreso" del movilizador (pasa, aunque no debería) quedaba
+    // en "sin registrar" para siempre, aunque ya esté FINALIZADO.
+    const vinsListaSet = new Set((listaRows || []).map(r => r.vin).filter(Boolean));
+    let woVins = new Set();
+    if (vinsListaSet.size) {
+      const inList = [...vinsListaSet].map(v => `"${v}"`).join(",");
+      const woResp = await fetch(
+        `${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CONVERSION&vin=in.(${inList})&select=vin`,
+        { method: "GET", headers }
+      );
+      const woRows = woResp.ok ? await woResp.json() : [];
+      woVins = new Set((woRows || []).map(w => w.vin).filter(Boolean));
+    }
+
     const registradoMap = new Map();  // vin → estado traslado
     for (const t of (trasRows || [])) { if (t.vin) registradoMap.set(t.vin, t.estado); }
 
     const ubicMap = new Map();
     for (const v of (vinsRows || [])) { if (v.vin) ubicMap.set(v.vin, v.ultima_ubicacion || ""); }
 
-    const sin_registrar  = [];  // en lista diaria, movilizador NO los ha traido
-    const en_proceso     = [];  // movilizador ya los registró (EN_ESPERA o TRASLADADO)
+    const sin_registrar  = [];  // en lista diaria, movilizador NO los ha traido NI hay evidencia de trabajo
+    const en_proceso     = [];  // movilizador ya los registró, o ya tienen OT (trabajados sin registro)
 
     for (const row of (listaRows || [])) {
       const estado = registradoMap.get(row.vin) || null;
+      const trabajadoSinRegistro = !estado && woVins.has(row.vin);
       const item = {
         vin:    row.vin,
         fecha:  row.fecha_asignacion,
         ubicacion: ubicMap.get(row.vin) || "",
-        estado_traslado: estado || "",
+        estado_traslado: trabajadoSinRegistro ? "TRABAJADO_SIN_REGISTRO" : (estado || ""),
       };
-      if (!estado || estado === "ENTREGADO_FINAL") {
-        if (!estado) sin_registrar.push(item);  // no registrado aun
+      if (trabajadoSinRegistro) {
+        en_proceso.push(item);  // hay OT: ya está en el taller, aunque el movilizador nunca lo marcó
+      } else if (!estado || estado === "ENTREGADO_FINAL") {
+        if (!estado) sin_registrar.push(item);  // no registrado aun, ni evidencia de trabajo
       } else {
         en_proceso.push(item);
       }
