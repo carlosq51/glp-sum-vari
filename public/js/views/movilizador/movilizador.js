@@ -586,37 +586,36 @@ function renderList2_(rows) {
   setBadge_("movBadge2", rows.length);
 
   if (!rows.length) {
-    box.innerHTML = `<div class="movEmpty small muted">Ningún vehículo en zona de espera.</div>`;
+    box.innerHTML = `<div class="movEmpty small muted">Ningún vehículo con falta de calibración.</div>`;
     return;
   }
 
-  // Ordenar: En zona de espera (TRASLADADO) primero, luego en proceso de revisión
-  const sorted = [...rows].sort((a, b) => {
-    const pa = a.estado === "TRASLADADO" ? 0 : 1;
-    const pb = b.estado === "TRASLADADO" ? 0 : 1;
-    return pa - pb;
-  });
+  // Ya vienen ordenados del backend: el más viejo esperando primero (el
+  // candidato a haberse ido con otra área sin que nadie se entere).
 
   box.innerHTML = `
     <div class="movCardList">
-      ${sorted.map(r => `
+      ${rows.map(r => {
+        const dias = diasDesde_(r.trasladado_at);
+        return `
         <div class="movCard">
           <div class="movCardTop">
             <span class="movVin">${escapeHtml(r.vin)}</span>
             ${r.estado === "TRASLADADO"
               ? `<span class="badge badge-warn">En zona de espera</span>`
-              : `<span class="badge badge-note">En proceso de revisión</span>`
+              : `<span class="badge badge-note">Entregado, sin calibrar</span>`
             }
           </div>
           ${r.trasladado_at ? `<div class="movCardSub">Trasladado: ${fmtDate_(r.trasladado_at)}</div>` : ""}
+          ${dias !== null ? `<div class="movCardSub" style="margin-top:6px;">${badgeDias_(dias)}</div>` : ""}
           ${r.estado === "TRASLADADO" ? `
             <button class="movBtnAction btnEntregarCalidad movBtnFull"
               data-vin="${escapeHtml(r.vin)}" type="button">
               Mover a revisión técnica ▶
             </button>
           ` : ""}
-        </div>
-      `).join("")}
+        </div>`;
+      }).join("")}
     </div>
   `;
 }

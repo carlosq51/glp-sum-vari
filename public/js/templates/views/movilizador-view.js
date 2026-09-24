@@ -155,7 +155,7 @@ export function movilizadorView() {
             <span class="movPanelIcon">🕐</span>
             <div class="movPanelTitleGroup">
               <span class="movPanelTitle">En Zona de Espera</span>
-              <span class="movPanelHint">Convertidos · esperando revisión o en proceso</span>
+              <span class="movPanelHint">Convertidos · falta de calibración</span>
             </div>
             <span class="movChevron" aria-hidden="true">▼</span>
           </button>

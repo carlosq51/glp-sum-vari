@@ -255,43 +255,27 @@ router.get("/api/movilizador/status", async (req, res) => {
       return 0;
     });
 
-    // ─── Lista 2: VINs trasladados (sin calidad done) + VINs con OT CALIDAD activa
+    // ─── Lista 2: conversión finalizada, entregada, pero con falta de
+    // calibración (sin OT de CALIDAD activa todavía). Ya NO incluye los que
+    // están EN_REVISION (calidad ya les abrió OT): esos dejaron de ser "falta
+    // de calibración" — alguien ya los está calibrando. Orden: el que lleva
+    // más días esperando (trasladado_at más viejo) primero, para que salte a
+    // la vista el que puede haberse ido con otra área sin que se note.
     const list2 = [];
-    const list2Vins = new Set();
-
-    // 2a. Trasladados manualmente por el movilizador (TRASLADADO o ENTREGADO_CALIDAD)
     for (const [vin, t] of trasMap) {
       if (calidadDoneMap.has(vin)) continue;
       if (t.estado === "ENTREGADO_FINAL") continue;
+      if (calidadActivaMap.has(vin)) continue; // ya en revisión, no es "falta de calibración"
       if (t.estado === "TRASLADADO" || t.estado === "ENTREGADO_CALIDAD") {
-        // Si ya tiene OT de calidad activa, mostrar como EN_REVISION aunque traslado diga TRASLADADO
-        const estadoReal = calidadActivaMap.has(vin) ? "EN_REVISION" : t.estado;
         list2.push({
           vin,
-          estado: estadoReal,
+          estado: t.estado,
           trasladado_at: t.trasladado_at,
           trasladado_por: t.trasladado_por || "",
           entregado_at: t.entregado_at || null,
           entregado_por: t.entregado_por || "",
         });
-        list2Vins.add(vin);
       }
-    }
-
-    // 2b. OT CALIDAD activa sin traslado registrado (inspector abrió OT directo)
-    for (const [vin] of calidadActivaMap) {
-      if (list2Vins.has(vin)) continue; // ya incluido por traslado
-      if (calidadDoneMap.has(vin)) continue;
-      const t = trasMap.get(vin);
-      if (t?.estado === "ENTREGADO_FINAL") continue;
-      list2.push({
-        vin,
-        estado: "EN_REVISION",
-        trasladado_at: null,
-        trasladado_por: "",
-        entregado_at: null,
-        entregado_por: "",
-      });
     }
     list2.sort((a, b) => new Date(a.trasladado_at || 0) - new Date(b.trasladado_at || 0));
 
@@ -421,9 +405,14 @@ router.get("/api/movilizador/status", async (req, res) => {
     // casi siempre es un carro que salió sin registrar la salida, y el
     // movilizador es el único que puede saberlo. Los que sí siguen vivos en
     // alguna lista (su OT es reciente aunque el ingreso sea viejo) no cuentan.
+    // calidadActivaMap entra aparte: list2 ya NO trae los VINs en revisión
+    // activa (ver arriba), pero uno de esos puede tener un traslado VIEJO
+    // (revisión que se alarga semanas) y sin esto se marcaría "olvidado"
+    // estando en realidad en manos de calidad ahora mismo.
     const vivos = new Set([
       ...list0.map(r => r.vin), ...list1.map(r => r.vin),
       ...list2.map(r => r.vin), ...list3.map(r => r.vin),
+      ...calidadActivaMap.keys(),
     ]);
     const olvidados = [];
     for (const [vin, t] of trasOlvidados) {
