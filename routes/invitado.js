@@ -319,6 +319,50 @@ router.post("/api/invitado/lote", async (req, res) => {
   }
 });
 
+// GET /api/invitado/sugerir?q= — autocompletado para la página pública.
+//
+// Existe aparte de /api/vin-suggest porque aquél acepta UNA letra y devuelve
+// modelo y cliente de cada VIN: dentro de la app es lo que hace falta, pero
+// colgado de una página pública es un enumerador del padrón — se teclea "A" y
+// salen doce carros con su cliente.
+//
+// Aquí: mínimo 4 caracteres (los últimos del VIN, que es como se busca de
+// verdad un carro), como mucho 8 resultados y SOLO el VIN. Basta para no
+// escribir los 17 a mano y no sirve para llevarse la lista.
+const SUG_MIN = 4;
+const SUG_MAX = 8;
+router.get("/api/invitado/sugerir", async (req, res) => {
+  try {
+    const ip = req.ip || req.socket?.remoteAddress || "?";
+    if (excedeLimite_(ip)) {
+      return res.status(429).json({ ok: false, items: [] });
+    }
+
+    // Se limpia igual que un VIN: quien teclea un guion o un espacio busca lo
+    // mismo, y así el patrón nunca lleva comodines de PostgREST.
+    const q = String(req.query.q || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+    if (q.length < SUG_MIN) return res.json({ ok: true, items: [] });
+
+    const { SRV_CACHE_PESADO_MS } = await getConfig_();
+    const payload = await cachedByTopics_(
+      `invitado:sugerir:${q}`, ["vins"], SRV_CACHE_PESADO_MS, async () => {
+        const url = `${process.env.SUPABASE_URL}/rest/v1/vins` +
+          `?vin=ilike.${encodeURIComponent(`%${q}%`)}&select=vin&order=vin.asc&limit=${SUG_MAX}`;
+        const r = await fetch(url, { method: "GET", headers: supabaseHeaders_() });
+        if (!r.ok) return { ok: true, items: [] };
+        const filas = await r.json();
+        return { ok: true, items: (filas || []).map(v => v.vin).filter(Boolean) };
+      });
+
+    return res.json(payload);
+  } catch (e) {
+    console.error("[INVITADO_SUGERIR]", e.message);
+    // El autocompletado es una comodidad: si falla, se calla y el usuario
+    // sigue pudiendo escribir el VIN entero.
+    return res.json({ ok: true, items: [] });
+  }
+});
+
 // GET /api/vin/ficha/:vin — el mismo veredicto, con el detrás.
 //
 // Esto NO es la vista de invitado: alimenta la cartilla "Consulta de VIN" de

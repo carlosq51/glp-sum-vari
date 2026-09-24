@@ -136,6 +136,31 @@
   .aviso.error { color: var(--danger); }
   footer { color: var(--muted); font-size: 12px; font-weight: 600; text-align: center; max-width: 460px; }
 
+  /* ── Autocompletado ── */
+  .vinWrap { position: relative; }
+  .sugBox {
+    position: absolute;
+    left: 0; right: 0; top: calc(100% + 4px);
+    z-index: 20;
+    background: #12161c;
+    border: 1px solid rgba(255,255,255,.18);
+    border-radius: 12px;
+    overflow: hidden;
+    max-height: 240px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .sugBox[hidden] { display: none; }
+  .sugItem {
+    padding: 12px 14px;
+    font: 700 15px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: .05em;
+    cursor: pointer;
+    border-bottom: 1px solid rgba(255,255,255,.07);
+  }
+  .sugItem:last-child { border-bottom: 0; }
+  .sugItem.activo, .sugItem:hover { background: rgba(34,197,94,.16); color: var(--ok); }
+
   /* ── Selector de modo ── */
   .modos { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: min(94vw, 460px); }
   .modoBtn {
@@ -237,8 +262,13 @@
 
   <div id="bloqueUno">
     <div id="bloqueManual" style="display:grid;gap:12px;">
-      <input id="vin" type="text" inputmode="latin" autocomplete="off" autocapitalize="characters"
-             spellcheck="false" placeholder="VIN" maxlength="17" aria-label="VIN del vehículo">
+      <div class="vinWrap">
+        <input id="vin" type="text" inputmode="latin" autocomplete="off" autocapitalize="characters"
+               spellcheck="false" placeholder="VIN o sus últimos dígitos" maxlength="17"
+               aria-label="VIN del vehículo" role="combobox" aria-expanded="false"
+               aria-controls="vinSug" aria-autocomplete="list">
+        <div id="vinSug" class="sugBox" role="listbox" hidden></div>
+      </div>
       <div class="fila">
         <button id="btnConsultar" disabled>Consultar</button>
         <button id="btnEscanear" class="btnGhost" type="button">📷 Escanear</button>
@@ -327,17 +357,90 @@
     $("resultado").scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
+  // ── Autocompletado ──
+  // Escribir 17 caracteres a mano es absurdo cuando los últimos cuatro ya
+  // identifican el carro. Es una versión mínima a mano y no el componente de
+  // la app: esta página no carga nada de la PWA a propósito.
+  var sugItems = [];
+  var sugActivo = -1;
+  var sugTimer = null;
+
+  function cerrarSug_() {
+    sugItems = [];
+    sugActivo = -1;
+    $("vinSug").hidden = true;
+    $("vin").setAttribute("aria-expanded", "false");
+  }
+
+  function pintarSug_() {
+    if (!sugItems.length) { cerrarSug_(); return; }
+    $("vinSug").innerHTML = sugItems.map(function (v, i) {
+      return '<div class="sugItem' + (i === sugActivo ? " activo" : "") +
+             '" role="option" aria-selected="' + (i === sugActivo) +
+             '" data-i="' + i + '">' + escapar_(v) + "</div>";
+    }).join("");
+    $("vinSug").hidden = false;
+    $("vin").setAttribute("aria-expanded", "true");
+  }
+
+  function elegirSug_(i) {
+    var v = sugItems[i];
+    if (!v) return;
+    $("vin").value = v;
+    $("btnConsultar").disabled = false;
+    cerrarSug_();
+    consultar_(v);
+  }
+
+  async function buscarSug_(q) {
+    try {
+      const r = await fetch("/api/invitado/sugerir?q=" + encodeURIComponent(q), { cache: "no-store" });
+      const d = await r.json();
+      sugItems = (d && d.items) ? d.items : [];
+      sugActivo = -1;
+      pintarSug_();
+    } catch { cerrarSug_(); }
+  }
+
+  $("vinSug").addEventListener("mousedown", e => {
+    // mousedown y no click: el blur del input llega antes que el click y
+    // cerraría la lista justo debajo del dedo.
+    const it = e.target.closest(".sugItem");
+    if (!it) return;
+    e.preventDefault();
+    elegirSug_(Number(it.dataset.i));
+  });
+  $("vin").addEventListener("blur", () => setTimeout(cerrarSug_, 120));
+
   // ── Entrada manual ──
   $("vin").addEventListener("input", function () {
     const v = limpiar_(this.value);
     if (this.value !== v) this.value = v;
     $("btnConsultar").disabled = !VIN_RE.test(v);
+
+    clearTimeout(sugTimer);
+    if (v.length >= 4 && v.length < 17) {
+      sugTimer = setTimeout(() => buscarSug_(v), 220);
+    } else {
+      cerrarSug_();
+    }
+
     // Un lector Bluetooth escribe el VIN entero de golpe y termina con Enter,
     // pero algunos no mandan Enter: al llegar a 17 se consulta solo.
     if (v.length === 17) consultar_(v);
   });
   $("vin").addEventListener("keydown", e => {
-    if (e.key === "Enter") { e.preventDefault(); consultar_($("vin").value); }
+    if (!$("vinSug").hidden && sugItems.length) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault(); sugActivo = (sugActivo + 1) % sugItems.length; pintarSug_(); return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault(); sugActivo = (sugActivo - 1 + sugItems.length) % sugItems.length; pintarSug_(); return;
+      }
+      if (e.key === "Escape") { cerrarSug_(); return; }
+      if (e.key === "Enter" && sugActivo >= 0) { e.preventDefault(); elegirSug_(sugActivo); return; }
+    }
+    if (e.key === "Enter") { e.preventDefault(); cerrarSug_(); consultar_($("vin").value); }
   });
   $("btnConsultar").addEventListener("click", () => consultar_($("vin").value));
   $("btnOtro").addEventListener("click", () => {

@@ -4,7 +4,16 @@ import { icon } from "../../core/icons.js";
 export function supervisorView() {
   return `
     <div id="viewSUPERVISOR" class="card" style="display:none;">
-      <h3>Supervisor</h3>
+
+      <!-- Misma cabecera que Admin: era un <h3> suelto, la única vista de la
+           app sin identidad propia arriba. -->
+      <div class="adminHero">
+        <span class="adminHeroIcon" aria-hidden="true">${icon("target", 22)}</span>
+        <div>
+          <h3 class="adminHeroTitle">Supervisor</h3>
+          <div class="adminHeroSub">Producción, incidencias y control del taller</div>
+        </div>
+      </div>
 
       <!-- Pestañas principales: REPORTE / LIVE / CONTROL / INCIDENCIAS / RAMALES.
            VALIDAR (¿está este VIN en el sistema?) se quitó el 2026-09-12: el
@@ -37,7 +46,7 @@ export function supervisorView() {
         <div class="fullStack" style="margin-top:10px;">
           <div class="supNameWrap" style="display:flex; gap:10px; align-items:center;">
             <input id="supName" type="text" placeholder="Buscar por nombre o email..." autocomplete="off" style="flex:1;" />
-            <select id="supMarca" title="Filtrar por marca" style="width:140px;height:44px;border-radius:14px;padding:0 10px;background:rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.18);color:#fff;font-weight:800;outline:none;">
+            <select id="supMarca" class="supSelect" title="Filtrar por marca">
               <option value="ALL">TODOS</option>
               <option value="KYC">KYC</option>
               <option value="JETOUR">JETOUR</option>
@@ -87,7 +96,7 @@ export function supervisorView() {
         </div>
 
         <!-- Gráfico de tendencias (solo cuando hay técnico seleccionado) -->
-        <div id="supTrendContainer" style="display:none; margin-top:20px; background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(0,0,0,.08)); border:1px solid rgba(255,255,255,.18); border-radius:18px; padding:20px;">
+        <div id="supTrendContainer" class="supBox" style="display:none;">
           <div id="supTrendControls"></div>
           <!-- La ALTURA vive aquí, no en el canvas, y el wrap es position:relative.
                Con responsive + maintainAspectRatio:false, Chart.js dimensiona el
@@ -104,8 +113,8 @@ export function supervisorView() {
              arriba: no "¿estamos mejorando?" sino "¿cómo va cada uno frente a
              sus compañeros?", y para eso hay que mirar a la gente en paralelo,
              no al calendario. -->
-        <div id="supTecnicosContainer" style="display:none; margin-top:16px; background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(0,0,0,.08)); border:1px solid rgba(255,255,255,.18); border-radius:18px; padding:20px;">
-          <button id="btnComparaTecnicos" type="button" class="btn3" style="font-weight:900;">👥 Comparar técnicos</button>
+        <div id="supTecnicosContainer" class="supBox" style="display:none;">
+          <button id="btnComparaTecnicos" type="button" class="btn3">${icon("users", 14)} Comparar técnicos</button>
           <div id="supTecnicosPanel" style="display:none; margin-top:14px;"></div>
         </div>
 
@@ -167,9 +176,9 @@ export function supervisorView() {
 
           <div class="inc-rep-tipo-row" style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;">
             <button type="button" class="btn3 inc-rep-tipo active" data-tipo="ALL">TODOS</button>
-            <button type="button" class="btn3 inc-rep-tipo" data-tipo="CRITICA" style="border-color:rgba(248,113,113,.6);">🔴 CRÍTICA</button>
-            <button type="button" class="btn3 inc-rep-tipo" data-tipo="MODERADA" style="border-color:rgba(251,146,60,.6);">🟠 MODERADA</button>
-            <button type="button" class="btn3 inc-rep-tipo" data-tipo="LEVE" style="border-color:rgba(250,204,21,.6);">🟡 LEVE</button>
+            <button type="button" class="btn3 inc-rep-tipo" data-tipo="CRITICA" data-grav="critica">CRÍTICA</button>
+            <button type="button" class="btn3 inc-rep-tipo" data-tipo="MODERADA" data-grav="moderada">MODERADA</button>
+            <button type="button" class="btn3 inc-rep-tipo" data-tipo="LEVE" data-grav="leve">LEVE</button>
           </div>
 
           <div style="display:flex; gap:8px; margin-top:8px; align-items:center;">
