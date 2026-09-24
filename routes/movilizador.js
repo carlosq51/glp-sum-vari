@@ -13,7 +13,7 @@ const router = Router();
 //
 // "asignaciones" NO está aquí a propósito. Es el topic más ruidoso del sistema
 // (~130 mutaciones al día: cada avance de un técnico) y de esta vista solo
-// mueve UN dato — la fecha de fin que list1 saca de las asignaciones
+// mueve UN dato — la fecha de fin que list2 saca de las asignaciones
 // FINALIZADAS. Tenerlo dentro obligaba a recalcular las ~210 KB de /status en
 // cada avance (~27 MB/día de egress) para cambiar una hora en pantalla. Lo que
 // de verdad mueve un VIN de lista es que su OT cambie de estado, y eso emite
@@ -82,7 +82,7 @@ router.get("/api/movilizador/status", async (req, res) => {
     // Sin `asignaciones(...)` embebido a propósito: ese embed duplicaba el peso
     // de la respuesta (366 KB → 189 KB al quitarlo) para calcular la fecha de
     // fin de un puñado de VINs. Las asignaciones se piden abajo, solo para los
-    // que terminan en list1. El resto de la respuesta es idéntica.
+    // que terminan en list2. El resto de la respuesta es idéntica.
     let convUrl = `${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CONVERSION&estado_general=eq.FINALIZADO&select=id,vin,fecha_creacion,created_at,numero_ot`;
     if (fechaCorte) convUrl += `&created_at=gte.${fechaCorte}T00:00:00`;
     convUrl += `&order=fecha_creacion.asc`;
@@ -160,7 +160,14 @@ router.get("/api/movilizador/status", async (req, res) => {
       if (wo.vin) convActivaMap.add(wo.vin);
     }
 
-    // ─── Lista 1: conversión finalizada + sin traslado (o en EN_ESPERA_CONVERSION) + sin OT de CALIDAD
+    // ─── Pendientes de calibración: conversión finalizada y sin OT de CALIDAD.
+    //
+    // Antes esta lista dependía del estado del traslado (solo entraba el que el
+    // movilizador había marcado como TRASLADADO). En la práctica el movilizador
+    // dejó de registrar ese movimiento, así que carros ya convertidos no
+    // aparecían en ninguna parte. Lo que define a un pendiente de calibración
+    // es la conversión terminada y la ausencia de calidad, no que alguien haya
+    // pulsado un botón: el traslado ya no filtra nada.
     const convVinMap = new Map();
     // convAllMap: todos los CONVERSION FINALIZADO para lookup de numero_ot (incluye list3 VINs)
     const convAllMap = new Map();
@@ -171,30 +178,27 @@ router.get("/api/movilizador/status", async (req, res) => {
         convAllMap.set(wo.vin, wo);
       }
       if (calidadDoneMap.has(wo.vin) || calidadActivaMap.has(wo.vin)) continue;
-      const trasEntry = trasMap.get(wo.vin);
-      // Excluir solo si ya fue trasladado/entregado (no si está en espera de conversión)
-      if (trasEntry && trasEntry.estado !== "EN_ESPERA_CONVERSION") continue;
       const prev2 = convVinMap.get(wo.vin);
       if (!prev2 || new Date(wo.fecha_creacion) > new Date(prev2.fecha_creacion)) {
         convVinMap.set(wo.vin, wo);
       }
     }
     // Fecha fin = max updated_at de asignaciones FINALIZADAS (MOTOR/TANQUE).
-    // Solo para las OTs que quedaron en list1: son decenas, no las 1000 que
+    // Solo para las OTs pendientes de calibración: son decenas, no las 1000 que
     // traía el embed. Si la consulta falla se cae al fecha_creacion de la OT,
     // que es exactamente el fallback que ya tenía el cálculo anterior.
     const finPorWo = new Map();
-    const list1WoIds = Array.from(convVinMap.values()).map(wo => wo.id).filter(Boolean);
-    if (list1WoIds.length) {
+    const pendWoIds = Array.from(convVinMap.values()).map(wo => wo.id).filter(Boolean);
+    if (pendWoIds.length) {
       try {
-        // En trozos: list1 puede rondar el millar de OTs y un solo `in.(...)`
+        // En trozos: la lista puede rondar el millar de OTs y un solo `in.(...)`
         // con mil UUIDs produce una URL que el servidor rechaza — y el catch de
         // abajo lo tragaría en silencio, dejando todas las fechas en el
         // fallback sin que nada lo delate.
         const { LIM_VINS_POR_CONSULTA } = await getConfig_();
         const trozos = [];
-        for (let i = 0; i < list1WoIds.length; i += LIM_VINS_POR_CONSULTA) {
-          trozos.push(list1WoIds.slice(i, i + LIM_VINS_POR_CONSULTA));
+        for (let i = 0; i < pendWoIds.length; i += LIM_VINS_POR_CONSULTA) {
+          trozos.push(pendWoIds.slice(i, i + LIM_VINS_POR_CONSULTA));
         }
         const respuestas = await Promise.all(trozos.map(trozo =>
           fetch(
@@ -217,13 +221,25 @@ router.get("/api/movilizador/status", async (req, res) => {
       } catch (_) { /* silencioso: cae al fecha_creacion de la OT */ }
     }
 
-    const list1 = Array.from(convVinMap.values())
-      .map(wo => ({
-        vin: wo.vin,
-        fecha: finPorWo.get(wo.id) || wo.fecha_creacion,
-        fecha_updated: wo.created_at,
-      }))
-      .sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+    // Quién ya salió del taller. Se consulta antes de armar las listas porque
+    // ENTREGADO_FINAL es lo único que saca a un carro de pendientes de
+    // calibración sin pasar por calidad, y trasMap no lo trae (la consulta de
+    // traslados excluye ese estado a propósito, ver arriba).
+    const vinsSalida = new Set([...calidadDoneMap.keys(), ...convVinMap.keys()]);
+    let entregadoFinalSet = new Set();
+    if (vinsSalida.size > 0) {
+      try {
+        const efList = [...vinsSalida].map(v => `"${v}"`).join(",");
+        const efResp = await fetch(
+          `${SUPABASE_URL}/rest/v1/movilizador_traslados?estado=eq.ENTREGADO_FINAL&vin=in.(${efList})&select=vin`,
+          { method: "GET", headers }
+        );
+        if (efResp.ok) {
+          const efRows = await efResp.json();
+          entregadoFinalSet = new Set((efRows || []).map(r => r.vin));
+        }
+      } catch (_) { /* silencioso */ }
+    }
 
     // ─── Lista 0: en espera de conversión + en conversión activa
     const list0 = [];
@@ -232,7 +248,7 @@ router.get("/api/movilizador/status", async (req, res) => {
     // a) Registrados por movilizador como EN_ESPERA_CONVERSION
     for (const [vin, t] of trasMap) {
       if (t.estado !== "EN_ESPERA_CONVERSION") continue;
-      if (convVinMap.has(vin)) continue; // conversión ya finalizada → aparece en list1
+      if (convVinMap.has(vin)) continue; // conversión ya finalizada → pendiente de calibración
       if (!enLista_(vin)) continue;
       list0.push({
         vin,
@@ -246,7 +262,7 @@ router.get("/api/movilizador/status", async (req, res) => {
     // b) VINs con OT de conversión activa pero sin registro de entrada (movilizador no los registró)
     for (const vin of convActivaMap) {
       if (list0Vins.has(vin)) continue; // ya está por traslado
-      if (convVinMap.has(vin)) continue; // conversión finalizada → va a list1
+      if (convVinMap.has(vin)) continue; // conversión finalizada → pendiente de calibración
       if (!enLista_(vin)) continue;
       list0.push({
         vin,
@@ -268,54 +284,33 @@ router.get("/api/movilizador/status", async (req, res) => {
       return 0;
     });
 
-    // ─── Lista 2: conversión finalizada, entregada, pero con falta de
-    // calibración (sin OT de CALIDAD activa todavía). Ya NO incluye los que
-    // están EN_REVISION (calidad ya les abrió OT): esos dejaron de ser "falta
-    // de calibración" — alguien ya los está calibrando. Orden: el que lleva
-    // más días esperando (trasladado_at más viejo) primero, para que salte a
-    // la vista el que puede haberse ido con otra área sin que se note.
+    // ─── Lista 2: pendientes de calibración — convertidos, sin calidad.
+    //
+    // Los que están EN_REVISION quedan fuera (calidad ya les abrió OT): esos
+    // dejaron de ser "falta de calibración", alguien ya los está calibrando.
+    //
+    // Cada carro trae sus dos relojes: desde que entró al taller (el registro
+    // de ingreso del movilizador) y desde que terminó su conversión. El
+    // segundo es el que importa para calidad; el primero delata al carro que
+    // lleva semanas dentro sin que nadie lo cierre.
     const list2 = [];
-    for (const [vin, t] of trasMap) {
-      if (calidadDoneMap.has(vin)) continue;
-      if (t.estado === "ENTREGADO_FINAL") continue;
-      if (calidadActivaMap.has(vin)) continue; // ya en revisión, no es "falta de calibración"
-      if (t.estado === "TRASLADADO" || t.estado === "ENTREGADO_CALIDAD") {
-        // El ingreso real no se guarda (trasladado_at se pisa al mover a zona
-        // de espera): la OT de conversión, que se abre al empezar, es el mejor
-        // punto de partida de la estadía en zona de gas.
-        const inicioGas = convAllMap.get(vin)?.fecha_creacion || null;
-        const diasGas = inicioGas && t.trasladado_at
-          ? Math.max(0, Math.floor((new Date(t.trasladado_at) - new Date(inicioGas)) / 86400000))
-          : null;
-        list2.push({
-          vin,
-          dias_gas: diasGas,
-          estado: t.estado,
-          trasladado_at: t.trasladado_at,
-          trasladado_por: t.trasladado_por || "",
-          entregado_at: t.entregado_at || null,
-          entregado_por: t.entregado_por || "",
-        });
-      }
+    for (const [vin, wo] of convVinMap) {
+      if (entregadoFinalSet.has(vin)) continue; // ya salió del taller
+      const t = trasMap.get(vin);
+      const fechaConversion = finPorWo.get(wo.id) || wo.fecha_creacion;
+      list2.push({
+        vin,
+        // Ingreso registrado por el movilizador. Null cuando el carro entró sin
+        // pasar por "marcar ingreso" — pasa, y es justo lo que conviene ver.
+        fecha_entrada: t?.trasladado_at || null,
+        fecha_conversion: fechaConversion,
+        estado: t?.estado || null,
+        registrado_por: t?.trasladado_por || "",
+      });
     }
-    list2.sort((a, b) => new Date(a.trasladado_at || 0) - new Date(b.trasladado_at || 0));
-
-    // Consulta targeted: qué VINs de calidadDoneMap ya fueron entregados (ENTREGADO_FINAL).
-    // No usamos trasMap para esto porque trasMap excluye ENTREGADO_FINAL (ver query arriba).
-    let entregadoFinalSet = new Set();
-    if (calidadDoneMap.size > 0) {
-      try {
-        const calVinList = [...calidadDoneMap.keys()].map(v => `"${v}"`).join(",");
-        const efResp = await fetch(
-          `${SUPABASE_URL}/rest/v1/movilizador_traslados?estado=eq.ENTREGADO_FINAL&vin=in.(${calVinList})&select=vin`,
-          { method: "GET", headers }
-        );
-        if (efResp.ok) {
-          const efRows = await efResp.json();
-          entregadoFinalSet = new Set((efRows || []).map(r => r.vin));
-        }
-      } catch (_) { /* silencioso */ }
-    }
+    // El que terminó su conversión hace más tiempo, arriba: es el que lleva
+    // más esperando calidad.
+    list2.sort((a, b) => new Date(a.fecha_conversion || 0) - new Date(b.fecha_conversion || 0));
 
     // ─── Lista 3: calidad finalizada (con o sin traslado registrado, excluye ENTREGADO_FINAL)
     const list3 = [];
@@ -432,7 +427,7 @@ router.get("/api/movilizador/status", async (req, res) => {
     // (revisión que se alarga semanas) y sin esto se marcaría "olvidado"
     // estando en realidad en manos de calidad ahora mismo.
     const vivos = new Set([
-      ...list0.map(r => r.vin), ...list1.map(r => r.vin),
+      ...list0.map(r => r.vin),
       ...list2.map(r => r.vin), ...list3.map(r => r.vin),
       ...calidadActivaMap.keys(),
     ]);
@@ -454,7 +449,6 @@ router.get("/api/movilizador/status", async (req, res) => {
       fechaCorte,
       corteTraslados,
       list0,
-      list1,
       list2,
       list3,
       listDiaria,
@@ -463,7 +457,6 @@ router.get("/api/movilizador/status", async (req, res) => {
         list0: list0.length,
         list0_espera: list0.filter(r => !r.en_conversion).length,
         list0_conversion: list0.filter(r => r.en_conversion).length,
-        list1: list1.length,
         list2: list2.length,
         list3: list3.length,
         listDiaria: listDiaria.length,

@@ -1455,10 +1455,11 @@ export function init() {
       const j = await getJSON("/api/movilizador/status");
       if (!j?.ok) throw new Error(j?.error || "Error al cargar");
 
-      // list2 tiene los VINs en zona de espera; filtrar los que NO están en EN_REVISION
+      // list2 = pendientes de calibración (convertidos y sin calidad). Ya viene
+      // ordenado del backend, pero se reordena aquí por si la forma cambia:
+      // primero el que terminó su conversión hace más tiempo.
       const pending = (j.list2 || [])
-        .filter(r => r.estado !== "EN_REVISION")
-        .sort((a, b) => new Date(a.trasladado_at || 0) - new Date(b.trasladado_at || 0))
+        .sort((a, b) => new Date(a.fecha_conversion || 0) - new Date(b.fecha_conversion || 0))
         .slice(0, 3);
 
       if (!pending.length) {
@@ -1471,7 +1472,7 @@ export function init() {
           <span class="calSugNum">${i + 1}</span>
           <div class="calSugInfo">
             <span class="calSugVin">${escapeHtml(r.vin)}</span>
-            <span class="calSugDate small muted">Traslado: ${fmtShort_(r.trasladado_at)}</span>
+            <span class="calSugDate small muted">Conversión: ${fmtShort_(r.fecha_conversion)}</span>
           </div>
         </div>
       `).join("");

@@ -2,8 +2,8 @@
 // public/js/views/movilizador/movilizador.js
 // Vista MOVILIZADOR – flujo de 3 etapas
 //
-// Lista 1: Conversión finalizada → pendientes de traslado
-// Lista 2: En zona de calidad   → trasladados / entregados a calidad
+// Lista 0: Ingreso              → registrados, aún sin trabajar
+// Lista 2: Pendientes de calibración → convertidos y sin calidad
 // Lista 3: Listos para salir    → calidad finalizada
 // =========================
 
@@ -65,6 +65,13 @@ function badgeDias_(dias) {
   return `<span class="badge ${cls}">⏱️ ${label} esperando</span>`;
 }
 
+/** plDias_ — "hoy" / "1 día" / "N días", para meterlo dentro de una frase. */
+function plDias_(dias) {
+  if (dias === null) return "";
+  if (dias === 0) return "hoy";
+  return `${dias} día${dias === 1 ? "" : "s"}`;
+}
+
 function setBadge_(id, count) {
   const el = document.getElementById(id);
   if (!el) return;
@@ -111,7 +118,10 @@ function renderList0_(rows) {
           : `<span class="movCardNoReg">⚠️ Sin registro de entrada</span>`
         }
       </div>
-      ${dias !== null ? `<div class="movCardSub" style="margin-top:6px;">${badgeDias_(dias)}</div>` : ""}
+      ${dias !== null ? `
+        <div class="movCardSub">📥 ${plDias_(dias)} desde el ingreso · sin trabajar</div>
+        <div class="movCardSub" style="margin-top:6px;">${badgeDias_(dias)}</div>
+      ` : ""}
     </div>`;
   };
 
@@ -551,71 +561,47 @@ function applyFiltroLista_(filtro) {
   </div>`;
 }
 
-function renderList1_(rows) {
-  const box = document.getElementById("movPanel1Body");
-  if (!box) return;
-  setBadge_("movBadge1", rows.length);
-  updateHubModuleBadge("MOVILIZADOR", rows.length);
-
-  if (!rows.length) {
-    box.innerHTML = `<div class="movEmpty small muted">Sin conversiones finalizadas pendientes.</div>`;
-    return;
-  }
-
-  box.innerHTML = `
-    <div class="movCardList">
-      ${rows.map(r => `
-        <div class="movCard">
-          <div class="movCardTop">
-            <span class="movVin">${escapeHtml(r.vin)}</span>
-            <span class="movCardDate">${fmtDate_(r.fecha)}</span>
-          </div>
-          <button class="movBtnAction btnTrasladar movBtnFull"
-            data-vin="${escapeHtml(r.vin)}" type="button">
-            Mover a zona de espera ▶
-          </button>
-        </div>
-      `).join("")}
-    </div>
-  `;
-}
-
+/**
+ * renderList2_ — Pendientes de calibración: convertidos y sin calidad.
+ *
+ * Panel de solo lectura. El movilizador dejó de registrar el traslado a zona
+ * de espera, así que aquí no hay nada que pulsar: el carro entra cuando su
+ * conversión termina y sale cuando calidad le abre su OT.
+ *
+ * Dos relojes por carro. El de conversión es el que importa para calidad; el
+ * de ingreso delata al que lleva semanas en el taller sin que nadie lo cierre.
+ */
 function renderList2_(rows) {
   const box = document.getElementById("movPanel2Body");
   if (!box) return;
   setBadge_("movBadge2", rows.length);
+  updateHubModuleBadge("MOVILIZADOR", rows.length);
 
   if (!rows.length) {
-    box.innerHTML = `<div class="movEmpty small muted">Ningún vehículo con falta de calibración.</div>`;
+    box.innerHTML = `<div class="movEmpty small muted">Ningún vehículo pendiente de calibración.</div>`;
     return;
   }
 
-  // Ya vienen ordenados del backend: el más viejo esperando primero (el
-  // candidato a haberse ido con otra área sin que nadie se entere).
+  // Ya vienen ordenados del backend: el que terminó su conversión hace más
+  // tiempo primero — el que lleva más esperando calidad.
 
   box.innerHTML = `
     <div class="movCardList">
       ${rows.map(r => {
-        const dias = diasDesde_(r.trasladado_at);
+        const diasConv = diasDesde_(r.fecha_conversion);
+        const diasEnt  = diasDesde_(r.fecha_entrada);
         return `
         <div class="movCard">
           <div class="movCardTop">
             <span class="movVin">${escapeHtml(r.vin)}</span>
-            ${r.estado === "TRASLADADO"
-              ? `<span class="badge badge-warn">En zona de espera</span>`
-              : `<span class="badge badge-note">Entregado, sin calibrar</span>`
-            }
+            ${diasConv !== null ? badgeDias_(diasConv) : ""}
           </div>
-          ${r.trasladado_at ? `<div class="movCardSub">Trasladado: ${fmtDate_(r.trasladado_at)}</div>` : ""}
-          ${r.dias_gas != null ? `<div class="movCardSub">🔥 ${r.dias_gas} día${r.dias_gas === 1 ? "" : "s"} en zona de gas</div>` : ""}
-          ${dias !== null ? `<div class="movCardSub">🕐 ${dias} día${dias === 1 ? "" : "s"} en zona de espera (tras conversión)</div>` : ""}
-          ${dias !== null ? `<div class="movCardSub" style="margin-top:6px;">${badgeDias_(dias)}</div>` : ""}
-          ${r.estado === "TRASLADADO" ? `
-            <button class="movBtnAction btnEntregarCalidad movBtnFull"
-              data-vin="${escapeHtml(r.vin)}" type="button">
-              Mover a revisión técnica ▶
-            </button>
-          ` : ""}
+          ${diasEnt !== null
+            ? `<div class="movCardSub">📥 ${plDias_(diasEnt)} en el taller · ingresó ${fmtDate_(r.fecha_entrada)}</div>`
+            : `<div class="movCardSub muted">📥 Sin registro de ingreso</div>`}
+          ${diasConv !== null
+            ? `<div class="movCardSub">🔧 ${plDias_(diasConv)} desde la conversión · ${fmtDate_(r.fecha_conversion)}</div>`
+            : ""}
         </div>`;
       }).join("")}
     </div>
@@ -699,7 +685,6 @@ async function refreshAll_({ fresh = false } = {}) {
     hideCacheBanner_();
     updateGuardarBtn_(new Date().toISOString());
     renderList0_(j.list0 || []);
-    renderList1_(j.list1 || []);
     renderList2_(j.list2 || []);
     renderList3_(j.list3 || []);
     renderOlvidados_(j.olvidados || []);
@@ -793,10 +778,10 @@ function initMovCards_() {
       badges: [{ id: "movBadge0", type: "Warn" }, { id: "movBadge0conv", type: "Note" }],
     },
     {
-      key: "Espera", icon: "clock", label: "Zona de Espera",
-      desc: "Conversión finalizada · en espera",
+      key: "Espera", icon: "clock", label: "Pendientes de Calibración",
+      desc: "Convertidos · falta calidad",
       tone: "var(--tone-blue)",
-      badges: [{ id: "movBadge1", type: "Warn" }, { id: "movBadge2", type: "Note" }],
+      badges: [{ id: "movBadge2", type: "Warn" }],
     },
     {
       key: "Salida", icon: "trayOut", label: "Salida",
@@ -1280,11 +1265,7 @@ export function init() {
     if (!btn) return;
     const vin = btn.dataset.vin;
     if (!vin) return;
-    if (btn.classList.contains("btnTrasladar")) {
-      handleAction_(vin, "TRASLADAR", btn).catch(() => {});
-    } else if (btn.classList.contains("btnEntregarCalidad")) {
-      handleAction_(vin, "ENTREGAR_CALIDAD", btn).catch(() => {});
-    } else if (btn.classList.contains("btnEntregarFinal")) {
+    if (btn.classList.contains("btnEntregarFinal")) {
       handleAction_(vin, "ENTREGAR_FINAL", btn).catch(() => {});
     } else if (btn.classList.contains("btnConfirmarSalida")) {
       // Confirmar salida: registra ENTREGAR_FINAL + abre app GPS de registro

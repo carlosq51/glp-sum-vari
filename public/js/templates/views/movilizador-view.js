@@ -131,31 +131,19 @@ export function movilizadorView() {
         </div>
       </div>
 
-      <!-- ── Screen: Zona de Espera ── -->
+      <!-- ── Screen: Pendientes de Calibración ── -->
       <div id="movScreenEspera" class="movScreen" style="display:none;">
         <div class="adminDetailHead">
           <button class="adminBackBtn movBackBtn" type="button">← Volver</button>
-          <span class="adminDetailTitle">🔧 Zona de Espera</span>
-        </div>
-
-        <div class="movPanel open" id="movPanel1">
-          <button class="movPanelHeader" type="button" aria-expanded="true">
-            <span class="movPanelIcon">⚙️</span>
-            <div class="movPanelTitleGroup">
-              <span class="movPanelTitle">Conversión Finalizada</span>
-              <span class="movPanelHint">Pendientes de traslado a zona de espera</span>
-            </div>
-            <span class="movChevron" aria-hidden="true">▼</span>
-          </button>
-          <div id="movPanel1Body" class="movPanelBody"></div>
+          <span class="adminDetailTitle">🔧 Pendientes de Calibración</span>
         </div>
 
         <div class="movPanel open" id="movPanel2">
           <button class="movPanelHeader" type="button" aria-expanded="true">
             <span class="movPanelIcon">🕐</span>
             <div class="movPanelTitleGroup">
-              <span class="movPanelTitle">En Zona de Espera</span>
-              <span class="movPanelHint">Convertidos · falta de calibración</span>
+              <span class="movPanelTitle">Convertidos · falta calidad</span>
+              <span class="movPanelHint">Conversión terminada y sin revisión técnica</span>
             </div>
             <span class="movChevron" aria-hidden="true">▼</span>
           </button>
