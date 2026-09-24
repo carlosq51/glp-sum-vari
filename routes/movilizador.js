@@ -125,6 +125,31 @@ router.get("/api/movilizador/status", async (req, res) => {
       : null;
     const enLista_ = vin => !enListaDiaria || enListaDiaria.has(String(vin || "").trim().toUpperCase());
 
+    // ¿Qué VINs de la lista diaria ya tienen su conversión terminada?
+    //
+    // Consulta aparte, sin filtro de fecha, porque es la única prueba
+    // definitiva de que el carro ya se trabajó. Los mapas de arriba no sirven
+    // para esto: convVinMap descarta a los que ya pasaron por calidad, y con
+    // eso un carro terminado del todo reaparecía en Ingreso como "en espera"
+    // (caso LVTDB11B8VH514333: convertido el 15/09, calidad el 24/09, y su
+    // traslado seguía en EN_ESPERA_CONVERSION porque nadie lo mueve ya).
+    // Tampoco vale mirar solo la ventana de fechas: la conversión puede ser
+    // más vieja que el corte y el carro seguiría colgado en Ingreso.
+    let convDoneSet = new Set();
+    if (enListaDiaria?.size) {
+      try {
+        const inLista = [...enListaDiaria].map(v => `"${v}"`).join(",");
+        const cdResp = await fetch(
+          `${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CONVERSION&estado_general=eq.FINALIZADO&vin=in.(${inLista})&select=vin`,
+          { method: "GET", headers }
+        );
+        if (cdResp.ok) {
+          const cdRows = await cdResp.json();
+          convDoneSet = new Set((cdRows || []).map(r => r.vin).filter(Boolean));
+        }
+      } catch (_) { /* silencioso: se cae al filtro por convVinMap de abajo */ }
+    }
+
     // 4. CALIDAD FINALIZADO (con filtro de fecha de corte)
     let calUrl = `${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CALIDAD&estado_general=eq.FINALIZADO&select=vin,fecha_creacion,created_at`;
     if (fechaCorte) calUrl += `&fecha_creacion=gte.${fechaCorte}T00:00:00`;
@@ -245,10 +270,16 @@ router.get("/api/movilizador/status", async (req, res) => {
     const list0 = [];
     const list0Vins = new Set();
 
+    // Un carro que ya pasó por calidad tuvo que convertirse antes, aunque su
+    // OT de conversión no aparezca (sin FINALIZAR, borrada, de otro tipo).
+    const yaConvertido_ = vin =>
+      convDoneSet.has(vin) || convVinMap.has(vin) ||
+      calidadDoneMap.has(vin) || calidadActivaMap.has(vin);
+
     // a) Registrados por movilizador como EN_ESPERA_CONVERSION
     for (const [vin, t] of trasMap) {
       if (t.estado !== "EN_ESPERA_CONVERSION") continue;
-      if (convVinMap.has(vin)) continue; // conversión ya finalizada → pendiente de calibración
+      if (yaConvertido_(vin)) continue; // ya se trabajó: no es un ingreso pendiente
       if (!enLista_(vin)) continue;
       list0.push({
         vin,
@@ -262,7 +293,7 @@ router.get("/api/movilizador/status", async (req, res) => {
     // b) VINs con OT de conversión activa pero sin registro de entrada (movilizador no los registró)
     for (const vin of convActivaMap) {
       if (list0Vins.has(vin)) continue; // ya está por traslado
-      if (convVinMap.has(vin)) continue; // conversión finalizada → pendiente de calibración
+      if (yaConvertido_(vin)) continue; // ya se trabajó: no es un ingreso pendiente
       if (!enLista_(vin)) continue;
       list0.push({
         vin,

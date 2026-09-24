@@ -1336,8 +1336,9 @@ export function enter() {
       readOnly: false,
       usuario: getMovNombre_(),
       onZoneAction: () => refreshAll_().catch(() => {}),
-      // Los carros en verde en la cartilla del hub: es el número que el
-      // movilizador busca para saber si hay algo que sacar sin abrir el mapa.
+      // Los carros en verde de las 15 zonas en la cartilla del hub: es el
+      // número que el movilizador busca para saber si hay algo que sacar sin
+      // abrir el mapa. La zona libre no cuenta (llega como enZonaLibre).
       onCounts: ({ finalizados }) => setBadge_("movBadgeMapa", finalizados),
     });
   }

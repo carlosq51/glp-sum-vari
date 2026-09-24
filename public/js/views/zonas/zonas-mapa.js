@@ -45,13 +45,14 @@ function renderMapa_(container, zonas, sinZona, readOnly) {
   // Los carros en verde, para quien quiera el número fuera del mapa (la
   // cartilla del hub). Aquí porque es el único punto por el que pasan los dos
   // caminos de render: el refresco automático y el que sigue a un clic.
-  // Incluye la zona libre: ahí también se pintan en verde y también se sacan.
+  //
+  // `finalizados` cuenta solo las 15 zonas de trabajo, igual que el chip de
+  // arriba. La zona libre va aparte y no entra en el total: es área de
+  // desborde, no una plaza de la que se saque un carro.
   if (typeof container._onZonaCounts === "function") {
-    const enZonaLibre = sinZona.filter(v => v.estado === "FINALIZADO").length;
     container._onZonaCounts({
-      finalizados: finalizados + enZonaLibre,
-      enZonas: finalizados,
-      enZonaLibre,
+      finalizados,
+      enZonaLibre: sinZona.filter(v => v.estado === "FINALIZADO").length,
     });
   }
   const finChip = finalizados > 0
@@ -419,8 +420,9 @@ let _zonaData = { zonas: [], sin_zona: [] };
  * Inicializa el mapa de zonas en un contenedor DOM.
  * @param {string} containerId
  * @param {{ readOnly, usuario, onZoneAction, onCounts }} opts
- *   onCounts({ finalizados, enZonas, enZonaLibre }) — se llama en cada render
- *   con los carros en verde (listos para sacar), zona libre incluida.
+ *   onCounts({ finalizados, enZonaLibre }) — se llama en cada render con los
+ *   carros en verde (listos para sacar) de las 15 zonas de trabajo. Los de
+ *   zona libre van aparte y no se suman.
  * @returns {{ refresh: function, destroy: function }}
  */
 export function initZonasMapa(containerId, opts = {}) {
