@@ -66,14 +66,22 @@ function renderMapa_(container, zonas, sinZona, readOnly) {
   const sinZonaCount = sinZona.length;
   let zonaLibreBody;
   if (!sinZona.length) {
-    zonaLibreBody = `<span class="zonaLibreEmpty">Sin vehículos en zona libre</span>`;
+    // Desde que Zona Libre se asigna a mano, vacía es lo normal, no un fallo.
+    // El texto lo dice para que nadie piense que se perdieron carros.
+    zonaLibreBody = `<span class="zonaLibreEmpty">Sin vehículos. Se asigna a mano, como las demás zonas.</span>`;
   } else {
     zonaLibreBody = sinZona.map(v => {
       const css     = ESTADO_CSS[v.estado] || "en_conversion";
       const roClass = readOnly ? " readOnly" : "";
+      // Quién lo puso ahí y cuándo, en el tooltip: ahora que es una decisión
+      // de alguien y no un residuo del cálculo, hay a quién preguntarle.
+      const quien = v.registrado_por
+        ? `Puesto por ${v.registrado_por}${v.registrado_at ? ` · ${new Date(v.registrado_at).toLocaleDateString("es-PE")}` : ""}`
+        : "";
       return `<span class="zonaLibreVin zonaLibreVin--${css}${roClass}"
                 data-vin="${escapeHtml(v.vin)}"
                 data-zona="16"
+                ${quien ? `title="${escapeHtml(quien)}"` : ""}
                 data-estado="${v.estado}">
         ${escapeHtml(v.vin)}
         <span class="zonaLibreVinEstado">${v.estado === "FINALIZADO" ? "✅" : "🔧"}</span>
@@ -91,7 +99,7 @@ function renderMapa_(container, zonas, sinZona, readOnly) {
         <div class="zonaLibreHeader">
           <div class="zonaLibreHeaderLeft">
             <div class="zonaLibreTitle">ZONA LIBRE</div>
-            <div class="zonaLibreSub">Área de desborde · sin espacio asignado</div>
+            <div class="zonaLibreSub">Área de desborde · se asigna a mano</div>
           </div>
           ${sinZonaCount ? `<span class="zonaLibreBadge">${sinZonaCount} carro${sinZonaCount !== 1 ? "s" : ""}</span>` : ""}
         </div>

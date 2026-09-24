@@ -32,13 +32,25 @@ async function armarMapaZonas_() {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
 
-    const [zResp, convResp, finResp] = await Promise.all([
+    // Tope de antigüedad en las OTs abiertas: sin él la consulta crecía sola
+    // con las que nadie cerró y el mapa arrastraba carros de hace meses.
+    // Ver MAPA_VENTANA_DIAS en lib/config.js.
+    const { MAPA_VENTANA_DIAS } = await getConfig_();
+    const corteMapa = fechaPeruMenosDias_(Number(MAPA_VENTANA_DIAS) || 30);
+
+    const [zResp, libreResp, convResp, finResp] = await Promise.all([
       fetch(`${SUPABASE_URL}/rest/v1/conversion_zonas?select=zona_id,vin,registrado_por,registrado_at&order=zona_id.asc`, { method: "GET", headers }),
-      fetch(`${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CONVERSION&estado_general=neq.FINALIZADO&select=id,vin,estado_general&limit=200`, { method: "GET", headers }),
+      // Zona Libre ya no se deduce: es una tabla, y un carro solo está ahí si
+      // alguien lo puso. Ver supabase/zona-libre.sql.
+      fetch(`${SUPABASE_URL}/rest/v1/zona_libre?select=vin,registrado_por,registrado_at`, { method: "GET", headers }),
+      fetch(`${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CONVERSION&estado_general=neq.FINALIZADO&fecha_creacion=gte.${corteMapa}T00:00:00&select=id,vin,estado_general&limit=200`, { method: "GET", headers }),
       fetch(`${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CONVERSION&estado_general=eq.FINALIZADO&fecha_sin_calidad=gte.${todayStart.toISOString()}&select=id,vin,estado_general&limit=100`, { method: "GET", headers }),
     ]);
 
     const zonaRows = zResp.ok ? await zResp.json() : [];
+    // Si la tabla aún no existe (migración sin correr), Zona Libre sale vacía
+    // y el resto del mapa funciona igual.
+    const libreRows = libreResp.ok ? await libreResp.json() : [];
     const convRows = convResp.ok ? await convResp.json() : [];
     const finRows  = finResp.ok  ? await finResp.json()  : [];
 
@@ -53,8 +65,13 @@ async function armarMapaZonas_() {
     // terminó un día anterior y sigue en su plaza. Sin esta consulta la zona lo
     // daba por ESPERANDO y sin técnicos — el carro estaba listo pero la
     // pantalla decía que nadie lo había tocado, que es justo lo que confunde.
+    // Zona Libre entra en el rescate igual que las plazas: un carro que
+    // alguien colocó a mano tiene que mostrar su estado real aunque su OT
+    // quede fuera de la ventana de fechas. Lo colocó una persona; no es un
+    // arrastre del cálculo.
     const vinsHuerfanos = [...new Set(
-      zonaRows.map(z => z.vin).filter(v => v && !woEstadoMap.has(v))
+      [...zonaRows.map(z => z.vin), ...libreRows.map(l => l.vin)]
+        .filter(v => v && !woEstadoMap.has(v))
     )];
     if (vinsHuerfanos.length) {
       try {
@@ -173,16 +190,58 @@ async function armarMapaZonas_() {
     });
 
     // Zone 16: VINs in conversion flow but not assigned to any physical zone
+    // ─── Zona Libre ───────────────────────────────────────────────────
+    //
+    // Antes esto era una RESTA: todo VIN con OT viva que no ocupara plaza
+    // caía aquí solo. Por eso había carros que nadie había visto nunca y
+    // otros que llevaban meses sin poder salir. Ahora es una lista: está
+    // quien alguien puso, y punto.
+    //
+    // Se cae de la lista por dos motivos:
+    //   · El carro ya entró en calidad — se fue del área de conversión.
+    //   · Se le dio una plaza de las 15 — no puede estar en dos sitios.
+    const vinsLibre = [...new Set(libreRows.map(l => l.vin).filter(Boolean))];
+
+    // Quién ya está en manos de calidad. Consulta acotada a los de Zona
+    // Libre, que son unos pocos.
+    let enCalidad = new Set();
+    if (vinsLibre.length) {
+      try {
+        const q = vinsLibre.map(v => `"${v}"`).join(",");
+        const r = await fetch(
+          `${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CALIDAD&vin=in.(${q})&select=vin`,
+          { method: "GET", headers }
+        );
+        if (r.ok) enCalidad = new Set((await r.json()).map(w => w.vin).filter(Boolean));
+      } catch {}
+    }
+
     const sin_zona = [];
-    for (const [vin, eg] of woEstadoMap) {
-      if (!vinZonaSet.has(vin)) {
-        sin_zona.push({
-          vin,
-          estado: (eg || "").toUpperCase() === "FINALIZADO" ? "FINALIZADO" : "EN_CONVERSION",
-          tecnicos: tecnicosMap.get(vin) || null,
-          modelo:   modeloMap.get(vin) || null,
-        });
-      }
+    const aSoltar = [];
+    for (const l of libreRows) {
+      const vin = l.vin;
+      if (!vin) continue;
+      if (enCalidad.has(vin) || vinZonaSet.has(vin)) { aSoltar.push(vin); continue; }
+      const eg = woEstadoMap.get(vin);
+      sin_zona.push({
+        vin,
+        estado: (eg || "").toUpperCase() === "FINALIZADO" ? "FINALIZADO" : "EN_CONVERSION",
+        tecnicos: tecnicosMap.get(vin) || null,
+        modelo:   modeloMap.get(vin) || null,
+        registrado_por: l.registrado_por || "",
+        registrado_at:  l.registrado_at || null,
+      });
+    }
+    sin_zona.sort((a, b) => new Date(a.registrado_at || 0) - new Date(b.registrado_at || 0));
+
+    // Los que ya no pintan nada aquí se borran, para que la tabla no crezca
+    // con carros que se fueron hace meses. Va suelto y sin esperar: quien
+    // manda es el filtro de arriba, y si el borrado falla el carro sigue sin
+    // salir en el mapa. Un GET que escribe no puede retrasar la respuesta.
+    if (aSoltar.length) {
+      fetch(`${SUPABASE_URL}/rest/v1/zona_libre?vin=in.(${aSoltar.map(v => `"${v}"`).join(",")})`,
+        { method: "DELETE", headers })
+        .catch(() => {});
     }
 
     return { ok: true, zonas, sin_zona };
@@ -241,7 +300,30 @@ router.post("/api/zonas/asignar", async (req, res) => {
       );
       if (!r.ok) throw new Error("Error al asignar zona");
     }
-    // zona_id=16 = sin ubicación → ya se limpió en paso 1, no hay más acción
+
+    // 3. Zona Libre (16) es ahora un sitio, no la ausencia de sitio: se
+    // registra igual que una plaza. Antes aquí no se hacía nada y el carro
+    // "aparecía" en Zona Libre solo porque el mapa la calculaba restando.
+    if (zonaNum === 16) {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/zona_libre?on_conflict=vin`, {
+        method: "POST",
+        headers: { ...headers, "Prefer": "resolution=merge-duplicates,return=minimal" },
+        body: JSON.stringify({ vin: vinNorm, registrado_por: userName, registrado_at: now }),
+      });
+      if (!r.ok) {
+        const t = await r.text().catch(() => "");
+        console.error("[ZONA_LIBRE]", r.status, t);
+        return res.status(502).json({
+          ok: false,
+          error: "No se pudo registrar en Zona Libre. ¿Falta correr supabase/zona-libre.sql?",
+        });
+      }
+    } else {
+      // Una plaza de las 15 lo saca de Zona Libre: no puede estar en dos
+      // sitios, y sin esto se quedaría duplicado en el mapa.
+      await fetch(`${SUPABASE_URL}/rest/v1/zona_libre?vin=eq.${encodeURIComponent(vinNorm)}`,
+        { method: "DELETE", headers }).catch(() => {});
+    }
 
     emitEvent_("zonas", { accion: "ASIGNADA" });
 
