@@ -3,7 +3,19 @@
 // Estado global + contexto por módulo
 // =========================
 
+// Los módulos que existen en el enum `modulo` de Supabase y se conceden por
+// usuario. Admin pinta sus casillas a partir de esta lista, así que meter aquí
+// algo que el enum no acepta rompería el guardado de permisos.
 export const MODULES = ["TECNICO", "RAMALERO", "CALIDAD", "MOVILIZADOR", "SUPERVISOR", "ADMIN"];
+
+// Módulos que NO viven en la base: los tiene todo el que entra y no se
+// conceden ni se quitan. Van aparte precisamente para no tocar ese enum.
+export const MODULES_VIRTUALES = ["CONSULTA"];
+
+// Todo lo que puede llegar a pintarse como vista. Lo usa quien necesita
+// recorrer las vistas existentes (ocultarlas, registrarlas), no quien reparte
+// permisos.
+export const MODULES_TODOS = [...MODULES, ...MODULES_VIRTUALES];
 
 export const CORE = {
   state: {

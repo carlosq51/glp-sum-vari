@@ -25,6 +25,7 @@ import * as VRamalero from "./js/views/ramalero/ramalero.js";
 import * as VSupervisor from "./js/views/supervisor/supervisor.js";
 import * as VAdmin from "./js/views/admin/admin.js";
 import * as VMovilizador from "./js/views/movilizador/movilizador.js";
+import * as VConsulta from "./js/views/consulta/consulta.js";
 import { initAppSettings } from "./js/core/app-settings.js";
 import { openSettingsSheet } from "./js/core/settings-sheet.js";
 import { loadConfig } from "./js/core/config.js";
@@ -299,12 +300,14 @@ openView.register("RAMALERO", () => VRamalero.enter(), () => VRamalero.exit());
 openView.register("SUPERVISOR", () => VSupervisor.enter(), () => VSupervisor.exit());
 openView.register("ADMIN", () => VAdmin.enter(), () => VAdmin.exit());
 openView.register("MOVILIZADOR", () => VMovilizador.enter(), () => VMovilizador.exit());
+openView.register("CONSULTA", () => VConsulta.enter(), () => VConsulta.exit());
 // init once for each view (bind listeners once)
 VConversion.init();
 VRamalero.init();
 VSupervisor.init();
 VAdmin.init();
 VMovilizador.init();
+VConsulta.init();
 initUploaderView();
 
 // ---------- GLOBAL LISTENERS ----------
@@ -363,6 +366,7 @@ $("btnLogout")?.addEventListener("click", () => {
   VConversion.exit("CALIDAD");
   VRamalero.exit();
   VMovilizador.exit();
+  VConsulta.exit();
   hideInventarioPage_();
   hideRamalesPage_();
   hideInformePage_();

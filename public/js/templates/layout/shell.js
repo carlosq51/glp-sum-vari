@@ -10,6 +10,7 @@ import { inventarioView } from "../views/inventario-view.js";
 import { informeTallerView } from "../views/informe-taller-view.js";
 import { ramalesView } from "../views/ramales-view.js";
 import { movilizadorView } from "../views/movilizador-view.js";
+import { consultaView } from "../views/consulta-view.js";
 import { supervisorView, supIncModal, liveDetailModal, supOtControlModal } from "../views/supervisor-view.js";
 
 import { topbarView } from "./topbar.js";
@@ -44,6 +45,8 @@ export function appShell() {
 
       <!-- MOVILIZADOR (stub como lo tenías) -->
       ${movilizadorView()}
+
+      ${consultaView()}
 
       ${supervisorView()}
       ${adminView()}

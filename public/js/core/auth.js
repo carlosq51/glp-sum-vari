@@ -3,12 +3,20 @@
 // Perfil, módulos efectivos, inputs auth/work
 // =========================
 
-import { CORE, MODULES } from "./state.js";
+import { CORE, MODULES, MODULES_VIRTUALES } from "./state.js";
 import { $, el_ } from "./dom.js";
 
 const EMAIL_KEY = "glp_email";
 
 export function effectiveModulos(profile) {
+  // Consulta de VIN la tiene todo el mundo: saber si un carro lleva GLP no es
+  // un permiso, es información que cualquiera del taller necesita. Lo que sí
+  // depende del rol es el detalle (quién lo trabajó y cuándo), y eso lo
+  // decide la propia vista.
+  return [...new Set([...modulosConcedidos_(profile), ...MODULES_VIRTUALES])];
+}
+
+function modulosConcedidos_(profile) {
   const rol = String(profile?.rol || "").toUpperCase();
   if (Array.isArray(profile?.modulos) && profile.modulos.length) {
     const up = profile.modulos.map((x) => String(x || "").trim().toUpperCase()).filter(Boolean);

@@ -3,7 +3,7 @@
 // UI base login/app/hub/salida
 // =========================
 
-import { CORE, MODULES } from "./state.js";
+import { CORE, MODULES_TODOS } from "./state.js";
 import { $, el_ } from "./dom.js";
 import { icon, toroSvg, venadoSvg } from "./icons.js";
 
@@ -34,6 +34,7 @@ const MODULE_META = {
   MOVILIZADOR: { icon: "truck",       label: "Movilizador", desc: "Traslados y listas" },
   SUPERVISOR:  { icon: "target",      label: "Supervisor",  desc: "Supervisión del taller" },
   ADMIN:       { icon: "sliders",     label: "Admin",       desc: "Administración del sistema" },
+  CONSULTA:    { icon: "search",      label: "Consulta de VIN", desc: "¿Dónde está y qué le falta?" },
 };
 
 export function showLoginUI(msg = "") {
@@ -52,7 +53,7 @@ export function hideAllModulesUI() {
   const hub = $("viewHub");
   if (hub) hub.style.display = "none";
 
-  MODULES.forEach((m) => {
+  MODULES_TODOS.forEach((m) => {
     const el = document.getElementById(`view${m}`);
     if (el) el.style.display = "none";
   });

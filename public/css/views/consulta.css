@@ -1,0 +1,151 @@
+/* =====================================================================
+   consulta.css — Consulta de VIN
+   ---------------------------------------------------------------------
+   El veredicto se lee de pie, junto al carro: grande y con color. El
+   detalle (zona, técnicos, tiempos) va debajo, en paneles plegables,
+   para quien viene a investigar y no solo a mirar.
+   ===================================================================== */
+
+.cqSearchRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.cqAviso {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--muted);
+  min-height: 18px;
+  margin-bottom: 6px;
+}
+.cqAviso.error { color: var(--danger); }
+
+/* ─── Veredicto ─── */
+.cqVeredicto {
+  display: grid;
+  gap: 6px;
+  text-align: center;
+  padding: 18px 16px;
+  border-radius: var(--radius);
+  border: 2px solid;
+  margin-bottom: 10px;
+}
+.cqVeredicto .cqVin {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--fs-xs);
+  letter-spacing: .08em;
+  opacity: .7;
+}
+.cqVeredicto .cqTitulo  { font-size: 1.6rem; font-weight: var(--fw-black); line-height: 1.05; }
+.cqVeredicto .cqDetalle { font-size: var(--fs-sm); font-weight: 600; opacity: .92; }
+
+/* Mismo criterio que en /invitado: fondo tenue con borde y texto saturados.
+   Un relleno saturado con texto oscuro se lava con el sol del taller. */
+.cqVeredicto.ok     { border-color: var(--ok);     background: rgba(34,197,94,.12);  color: var(--ok); }
+.cqVeredicto.warn   { border-color: var(--warn);   background: rgba(245,158,11,.12); color: var(--warn); }
+.cqVeredicto.danger { border-color: var(--danger); background: rgba(248,113,113,.14); color: var(--danger); }
+.cqVeredicto.duda   { border-color: var(--muted);  background: rgba(148,163,184,.12); color: var(--muted); }
+
+/* ─── Chips ─── */
+.cqChips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.cqChip {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--pillBg, rgba(255,255,255,.06));
+  border: 1px solid var(--surfaceLine, rgba(255,255,255,.12));
+}
+.cqChip--zona { border-color: var(--note); color: var(--note); }
+
+/* ─── Ficha del carro ─── */
+.cqFichaGrid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 14px;
+  font-size: var(--fs-sm);
+  padding: 12px 14px;
+  border-radius: var(--radiusSm);
+  background: rgba(0,0,0,.12);
+  border: 1px solid var(--surfaceLine, rgba(255,255,255,.10));
+  margin-bottom: 10px;
+}
+.cqFichaGrid span { color: var(--muted); font-weight: 600; }
+.cqFichaGrid b    { font-weight: 700; overflow-wrap: anywhere; }
+
+/* ─── Paneles de detalle ─── */
+.cqPanel {
+  border: 1px solid var(--surfaceLine, rgba(255,255,255,.12));
+  border-radius: var(--radiusSm);
+  background: rgba(0,0,0,.12);
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+.cqPanel > summary {
+  cursor: pointer;
+  padding: 11px 14px;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  list-style: none;
+}
+/* La flecha por defecto de <summary> es distinta en cada navegador. */
+.cqPanel > summary::-webkit-details-marker { display: none; }
+.cqPanel > summary::after { content: " ▾"; opacity: .5; }
+.cqPanel[open] > summary::after { content: " ▴"; }
+
+.cqPanelBody { padding: 0 14px 12px; display: grid; gap: 6px; }
+
+.cqLinea {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: var(--fs-sm);
+  flex-wrap: wrap;
+}
+.cqLinea span { color: var(--muted); font-weight: 600; }
+
+/* Una fila por técnico. En móvil el nombre y el tiempo se apilan solos. */
+.cqTrabajo {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 10px;
+  padding: 8px 10px;
+  border-radius: var(--radiusSm);
+  background: rgba(255,255,255,.04);
+  font-size: var(--fs-sm);
+}
+.cqTrabajo .cqRol    { font-weight: var(--fw-bold); }
+.cqTrabajo .cqQuien  { font-weight: 700; text-align: right; overflow-wrap: anywhere; }
+.cqTrabajo .cqCuando,
+.cqTrabajo .cqFecha  { font-size: var(--fs-xs); color: var(--muted); font-weight: 600; }
+.cqTrabajo .cqFecha  { text-align: right; }
+
+/* Una asignación anulada se muestra, pero apagada: para supervisión importa
+   que alguien empezó el carro y se le quitó, sin confundirla con la vigente. */
+.cqTrabajo.anulada { opacity: .55; }
+.cqTrabajo .cqAnulada {
+  grid-column: 1 / -1;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  color: var(--warn);
+}
+
+.cqNota {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  font-weight: 600;
+  padding-top: 4px;
+}
+
+.cqVacio {
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  font-weight: 600;
+  padding: 6px 0;
+}
+
+:root[data-theme="day"] .cqFichaGrid,
+:root[data-theme="day"] .cqPanel   { background: var(--pillBg); border-color: var(--surfaceLine); }
+:root[data-theme="day"] .cqTrabajo { background: rgba(0,0,0,.04); }

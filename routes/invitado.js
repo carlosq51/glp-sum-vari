@@ -20,6 +20,7 @@
 
 import { Router } from "express";
 import { supabaseHeaders_ } from "../lib/supabase.js";
+import { isValidOT_ } from "../lib/utils.js";
 import { getConfig_ } from "../lib/config.js";
 import { cachedByTopics_ } from "../lib/poll-cache.js";
 
@@ -314,6 +315,118 @@ router.post("/api/invitado/lote", async (req, res) => {
     });
   } catch (e) {
     console.error("[INVITADO_LOTE]", e.message);
+    return res.status(500).json({ ok: false, error: "No se pudo consultar. Intente de nuevo." });
+  }
+});
+
+// GET /api/vin/ficha/:vin — el mismo veredicto, con el detrás.
+//
+// Esto NO es la vista de invitado: alimenta la cartilla "Consulta de VIN" de
+// dentro de la app, donde supervisión necesita saber en qué zona está el
+// carro, quién lo trabajó y cuándo. Vive en este archivo porque el veredicto
+// es el mismo y no quiero dos verdades sobre si un carro puede salir.
+//
+// Sobre el acceso: este servidor no autentica ninguna de sus rutas — ni las de
+// admin. Quien filtra por rol es el cliente. Se mantiene esa (mala) costumbre
+// aquí por coherencia, pero conviene saberlo: la cartilla se esconde a los
+// técnicos, el endpoint no.
+router.get("/api/vin/ficha/:vin", async (req, res) => {
+  try {
+    const vin = String(req.params.vin || "").replace(/\s+/g, "").trim().toUpperCase();
+    if (!VIN_RE.test(vin)) {
+      return res.status(400).json({ ok: false, error: "VIN inválido." });
+    }
+
+    const { SRV_CACHE_PESADO_MS } = await getConfig_();
+    const payload = await cachedByTopics_(
+      `invitado:ficha:${vin}`, ["work_orders", "vins", "asignaciones", "zonas", "movilizador"],
+      SRV_CACHE_PESADO_MS, async () => {
+        const SUPABASE_URL = process.env.SUPABASE_URL;
+        const headers = supabaseHeaders_();
+        const q = encodeURIComponent(vin);
+
+        const [base, fichaResp, otsResp, zonaResp, movResp] = await Promise.all([
+          consultarVins_([vin]),
+          fetch(`${SUPABASE_URL}/rest/v1/vins?vin=eq.${q}&select=*`, { headers }),
+          // El embed trae las asignaciones y el nombre del técnico de una vez.
+          // Aquí sí compensa: es UN VIN pedido a mano, no una lista que se
+          // repinta sola, así que el peso del embed no se multiplica.
+          fetch(`${SUPABASE_URL}/rest/v1/work_orders?vin=eq.${q}` +
+            `&select=id,tipo_ot,numero_ot,estado_general,fecha_creacion,observaciones,` +
+            `asignaciones(rol_trabajo,estado_actual,tiempo_trab_ms,updated_at,activo,usuarios(nombre))` +
+            `&order=fecha_creacion.desc`, { headers }),
+          fetch(`${SUPABASE_URL}/rest/v1/conversion_zonas?vin=eq.${q}` +
+            `&select=zona_id,registrado_por,registrado_at`, { headers }),
+          fetch(`${SUPABASE_URL}/rest/v1/movilizador_traslados?vin=eq.${q}&select=*`, { headers }),
+        ]);
+
+        if (!fichaResp.ok || !otsResp.ok) {
+          throw new Error(`Supabase respondió ${fichaResp.status}/${otsResp.status}`);
+        }
+        const fichaRows = await fichaResp.json();
+        const otsRows   = await otsResp.json();
+        // Zona y traslado son adorno: si fallan, la ficha sale sin ellos en
+        // vez de no salir. El veredicto no depende de ninguno de los dos.
+        const zonaRows = zonaResp.ok ? await zonaResp.json().catch(() => []) : [];
+        const movRows  = movResp.ok  ? await movResp.json().catch(() => [])  : [];
+
+        const f = (fichaRows || [])[0] || null;
+        const z = (zonaRows  || [])[0] || null;
+        const m = (movRows   || [])[0] || null;
+
+        const ots = (otsRows || []).map(wo => ({
+          tipo:    wo.tipo_ot,
+          numero:  isValidOT_(wo.numero_ot) ? wo.numero_ot : "",
+          estado:  wo.estado_general,
+          fecha:   wo.fecha_creacion,
+          nota:    wo.observaciones || "",
+          trabajos: (wo.asignaciones || [])
+            // Las anuladas se quedan: para supervisión, que alguien empezara
+            // un carro y se le quitara es justo lo que quiere ver. Van
+            // marcadas para que no se confundan con las vigentes.
+            .map(a => ({
+              rol:        a.rol_trabajo,
+              estado:     a.estado_actual,
+              tiempo_ms:  a.tiempo_trab_ms || 0,
+              actualizado: a.updated_at,
+              usuario:    a.usuarios?.nombre || "—",
+              anulada:    a.activo === false,
+            }))
+            .sort((a, b) => new Date(a.actualizado || 0) - new Date(b.actualizado || 0)),
+        }));
+
+        return {
+          ok: true,
+          ...base[0],
+          ficha: f ? {
+            modelo:   f.modelo   || "",
+            cliente:  f.cliente  || "",
+            tanque:   f.tanque_asignado   || "",
+            reductor: f.reductor_asignado || "",
+            ubicacion: f.ultima_ubicacion || "",
+            estado:   f.estado || "",
+          } : null,
+          // zona_id 16 es "zona libre" (desborde), no una plaza del taller.
+          zona: z && z.zona_id ? {
+            id: z.zona_id,
+            nombre: z.zona_id === 16 ? "Zona Libre" : `Zona ${z.zona_id}`,
+            por: z.registrado_por || "",
+            desde: z.registrado_at || null,
+          } : null,
+          movilizador: m ? {
+            estado:     m.estado || "",
+            ingreso_at: m.trasladado_at || null,
+            ingreso_por: m.trasladado_por || "",
+            salida_at:  m.entregado_at || null,
+            salida_por: m.entregado_por || "",
+          } : null,
+          ots,
+        };
+      });
+
+    return res.json(payload);
+  } catch (e) {
+    console.error("[VIN_FICHA]", e.message);
     return res.status(500).json({ ok: false, error: "No se pudo consultar. Intente de nuevo." });
   }
 });
