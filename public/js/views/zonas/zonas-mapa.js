@@ -41,6 +41,19 @@ function renderMapa_(container, zonas, sinZona, readOnly) {
 
   // Contador solo zonas numeradas 1-15 con estado FINALIZADO
   const finalizados = zonas.filter(z => z.estado === "FINALIZADO").length;
+
+  // Los carros en verde, para quien quiera el número fuera del mapa (la
+  // cartilla del hub). Aquí porque es el único punto por el que pasan los dos
+  // caminos de render: el refresco automático y el que sigue a un clic.
+  // Incluye la zona libre: ahí también se pintan en verde y también se sacan.
+  if (typeof container._onZonaCounts === "function") {
+    const enZonaLibre = sinZona.filter(v => v.estado === "FINALIZADO").length;
+    container._onZonaCounts({
+      finalizados: finalizados + enZonaLibre,
+      enZonas: finalizados,
+      enZonaLibre,
+    });
+  }
   const finChip = finalizados > 0
     ? `<div class="zonasFinChip">
          <span class="zonasFinChipNum">${finalizados}</span>
@@ -405,13 +418,18 @@ let _zonaData = { zonas: [], sin_zona: [] };
 /**
  * Inicializa el mapa de zonas en un contenedor DOM.
  * @param {string} containerId
- * @param {{ readOnly, usuario, onZoneAction }} opts
+ * @param {{ readOnly, usuario, onZoneAction, onCounts }} opts
+ *   onCounts({ finalizados, enZonas, enZonaLibre }) — se llama en cada render
+ *   con los carros en verde (listos para sacar), zona libre incluida.
  * @returns {{ refresh: function, destroy: function }}
  */
 export function initZonasMapa(containerId, opts = {}) {
-  const { readOnly = false, usuario = "", onZoneAction = null } = opts;
+  const { readOnly = false, usuario = "", onZoneAction = null, onCounts = null } = opts;
   const container = document.getElementById(containerId);
   if (!container) return null;
+  // En el contenedor, como el handler de clics de abajo: renderMapa_ se llama
+  // desde sitios que no ven estas opciones.
+  container._onZonaCounts = onCounts;
 
   // Clave única por instancia (el mapa vive en movilizador Y supervisor a la vez);
   // el intervalo compartido viene de config (POLL_ZONAS_MAPA_MS).

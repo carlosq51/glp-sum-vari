@@ -82,6 +82,22 @@ export function movilizadorView() {
           <span class="adminDetailTitle">📥 Ingreso</span>
         </div>
 
+        <div class="movStatsRow" id="movIngresoStats">
+          <div class="movStatTile movStatTile--warn">
+            <span class="movStatNum" id="movStatEspera">0</span>
+            <span class="movStatLabel">En espera</span>
+          </div>
+          <div class="movStatTile movStatTile--note">
+            <span class="movStatNum" id="movStatConversion">0</span>
+            <span class="movStatLabel">En conversión</span>
+          </div>
+          <div class="movStatTile movStatTile--total">
+            <span class="movStatNum" id="movStatTotal">0</span>
+            <span class="movStatLabel">Total en taller</span>
+          </div>
+        </div>
+        <div class="movStatsHint" id="movIngresoStatsHint"></div>
+
         <div class="movRegBox">
           <div class="movRegTitle">Registrar Ingreso</div>
           <div class="movRegHint">Marca el vehículo como <strong>En Espera Conversión</strong></div>

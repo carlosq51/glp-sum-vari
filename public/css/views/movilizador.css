@@ -490,11 +490,21 @@
   gap: 10px;
 }
 
-/* Badge dentro de cartilla (top-right) */
-.hubCard .movBadge {
+/* Badges dentro de cartilla (top-right).
+   Van en una fila propia: cuando eran cada uno `position:absolute` en la misma
+   esquina, la cartilla de Ingreso (en espera + en conversión) los apilaba uno
+   encima del otro y no se leía ningún número. */
+.hubCardBadges {
   position: absolute;
   top: 8px;
   right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.hubCard .movBadge {
+  position: static;
   min-width: 20px;
   height: 20px;
   padding: 0 5px;
@@ -1139,6 +1149,60 @@
   margin-bottom: 4px;
   min-height: 16px;
 }
+
+/* ─── Fila de totales (cabecera de Ingreso) ─── */
+.movStatsRow {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.movStatTile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 10px 6px;
+  border-radius: var(--radiusSm);
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(0,0,0,.12);
+  min-width: 0;
+}
+
+.movStatNum {
+  font-size: 1.5rem;
+  font-weight: var(--fw-black);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.movStatLabel {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: rgba(240,244,255,.52);
+  text-align: center;
+  /* El label no se corta: en pantallas angostas prefiere dos líneas a que
+     "En conversión" salga como "En conver…" */
+  overflow-wrap: anywhere;
+}
+
+.movStatTile--warn  .movStatNum { color: var(--warn); }
+.movStatTile--note  .movStatNum { color: var(--note); }
+.movStatTile--total { background: rgba(255,255,255,.06); }
+
+.movStatsHint {
+  font-size: var(--fs-xs);
+  color: rgba(240,244,255,.42);
+  font-weight: 600;
+  margin-bottom: 10px;
+  min-height: 16px;
+}
+
+:root[data-theme="day"] .movStatTile   { background: var(--pillBg); border-color: var(--surfaceLine); }
+:root[data-theme="day"] .movStatLabel  { color: var(--muted); }
+:root[data-theme="day"] .movStatsHint  { color: var(--muted); }
 
 :root[data-theme="day"] .movDownloadBtn { background: var(--pillBg); border-color: var(--surfaceLine); }
 :root[data-theme="day"] .movDownloadBtn:hover { background: var(--pillBg); }

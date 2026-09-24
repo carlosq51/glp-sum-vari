@@ -65,6 +65,19 @@ function badgeDias_(dias) {
   return `<span class="badge ${cls}">⏱️ ${label} esperando</span>`;
 }
 
+/**
+ * esHoyPeru_ — ¿la fecha cae en el día de hoy en Lima?
+ *
+ * Se compara en hora de Perú y no con la del dispositivo: el taller trabaja
+ * de madrugada y un teléfono en otra zona horaria contaría el turno de la
+ * noche como si fuera de ayer o de mañana.
+ */
+function esHoyPeru_(iso) {
+  if (!iso) return false;
+  const fmt = d => d.toLocaleDateString("es-PE", { timeZone: "America/Lima" });
+  return fmt(new Date(iso)) === fmt(new Date());
+}
+
 /** plDias_ — "hoy" / "1 día" / "N días", para meterlo dentro de una frase. */
 function plDias_(dias) {
   if (dias === null) return "";
@@ -91,6 +104,27 @@ function renderList0_(rows) {
   // Badge naranja = en espera, badge azul = en conversión
   setBadge_("movBadge0",      countEspera);
   setBadge_("movBadge0conv",  countConversion);
+
+  // Los tres números de la cabecera de Ingreso. Suman entre sí a propósito:
+  // "en espera" y "en conversión" no se solapan, así que el total es el parque
+  // que hay ahora mismo en el taller. Los ingresados hoy van aparte en la
+  // línea de abajo porque un carro registrado hoy puede estar ya en conversión
+  // y sumarlo aquí lo contaría dos veces.
+  const setNum_ = (id, n) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = String(n);
+  };
+  setNum_("movStatEspera",     countEspera);
+  setNum_("movStatConversion", countConversion);
+  setNum_("movStatTotal",      rows.length);
+
+  const hoy = rows.filter(r => esHoyPeru_(r.fecha_entrada)).length;
+  const hintEl = document.getElementById("movIngresoStatsHint");
+  if (hintEl) {
+    hintEl.textContent = rows.length
+      ? `${hoy} ingresado${hoy !== 1 ? "s" : ""} hoy · el resto viene de días anteriores`
+      : "";
+  }
 
   if (!rows.length) {
     box.innerHTML = `<div class="movEmpty small muted">Sin vehículos en espera de conversión.</div>`;
@@ -775,7 +809,10 @@ function initMovCards_() {
       key: "Ingreso", icon: "trayIn", label: "Ingreso",
       desc: "Registrar entrada de vehículos al taller",
       tone: "var(--tone-amber)",
-      badges: [{ id: "movBadge0", type: "Warn" }, { id: "movBadge0conv", type: "Note" }],
+      badges: [
+        { id: "movBadge0",     type: "Warn", title: "En espera de conversión" },
+        { id: "movBadge0conv", type: "Note", title: "En conversión" },
+      ],
     },
     {
       key: "Espera", icon: "clock", label: "Pendientes de Calibración",
@@ -793,7 +830,7 @@ function initMovCards_() {
       key: "Mapa", icon: "map", label: "Mapa de Zonas",
       desc: "Estado en tiempo real de las 15 zonas",
       tone: "var(--tone-violet)",
-      badges: [],
+      badges: [{ id: "movBadgeMapa", type: "Ok", title: "Listos para sacar" }],
     },
   ];
 
@@ -803,9 +840,13 @@ function initMovCards_() {
     btn.dataset.movCard = c.key.toLowerCase();
     btn.style.setProperty("--tone", c.tone);
 
-    const badgesHTML = c.badges.map(b =>
-      `<span id="${b.id}" class="movBadge movBadge${b.type}" style="display:none;"></span>`
-    ).join("");
+    // Envueltos en una fila: sueltos, cada uno caía en la misma esquina
+    // absoluta y los dos números de Ingreso quedaban uno encima del otro.
+    const badgesHTML = c.badges.length
+      ? `<span class="hubCardBadges">${c.badges.map(b =>
+          `<span id="${b.id}" class="movBadge movBadge${b.type}" title="${escapeHtml(b.title || "")}" style="display:none;"></span>`
+        ).join("")}</span>`
+      : "";
 
     btn.innerHTML = `
       <span class="hubCardIcon" aria-hidden="true">${icon(c.icon, 22)}</span>
@@ -1295,6 +1336,9 @@ export function enter() {
       readOnly: false,
       usuario: getMovNombre_(),
       onZoneAction: () => refreshAll_().catch(() => {}),
+      // Los carros en verde en la cartilla del hub: es el número que el
+      // movilizador busca para saber si hay algo que sacar sin abrir el mapa.
+      onCounts: ({ finalizados }) => setBadge_("movBadgeMapa", finalizados),
     });
   }
 }
