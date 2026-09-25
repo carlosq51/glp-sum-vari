@@ -257,8 +257,7 @@ export async function enviarEvento(accionOverride, opts = {}) {
         .then(r => r.json())
         .then(z => {
           if (z?.ok && z.zona_id == null) {
-            const nombre = CORE.state.currentProfile?.nombre || CORE.state.currentProfile?.email || "";
-            promptZonaForVin(vinParaZona, nombre, null, false); // false = no dismissible
+            promptZonaForVin(vinParaZona, null, false); // false = no dismissible
           }
         })
         .catch(() => {});

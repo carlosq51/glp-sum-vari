@@ -64,7 +64,7 @@ function elegirZona_() {
   if (vin.length < 5) return;
   const nombre = miNombre_();
   setMsg_("");
-  promptZonaForVin(vin, nombre, (zonaId) => {
+  promptZonaForVin(vin, (zonaId) => {
     const dondeTxt = zonaId === 16 ? "Zona Libre" : `Zona ${zonaId}`;
     setMsg_(`✅ <b>${escapeHtml(vin)}</b> registrado en <b>${dondeTxt}</b>${nombre ? ` a nombre de ${escapeHtml(nombre)}` : ""}.`, "ok");
     const inp = $id("tecZonaVin");

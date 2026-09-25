@@ -4,11 +4,19 @@
 // Layout: 9 zonas izquierda | carretera | 6 zonas derecha | Zona Libre
 // =========================
 
-import { escapeHtml, postJSON, createVinSuggest_ } from "../../core/core.js";
+import { escapeHtml, postJSON, createVinSuggest_, getEmail } from "../../core/core.js";
 import { createScanner } from "../../core/qr-scanner.js";
 import { startPoll, stopPoll } from "../../core/poll.js";
 import { zonaCardHTML_, zonasGridHTML_ } from "./zonas-layout.js";
 import { puedeDespachar_, montarPuestos_, CONSOLA_DESPACHO } from "./zonas-despacho.js";
+
+// Toda escritura del mapa va firmada con la cuenta en sesión: el servidor
+// resuelve el nombre contra `usuarios` y lo guarda en zonas_historial. Antes
+// se mandaba un `usuario` de texto libre —vacío desde aquí— y las 15 plazas
+// acababan a nombre de "Sistema", sin nadie a quien preguntar.
+function postZonas_(url, body) {
+  return postJSON(url, { ...body, email: getEmail() });
+}
 
 const ESTADO_LABEL = {
   LIBRE:          "Libre",
@@ -201,7 +209,7 @@ function openActionSheet_(zona, onRefresh) {
       liberarBtn.disabled = true;
       liberarBtn.textContent = "Liberando…";
       try {
-        const j = await postJSON("/api/zonas/liberar", { zona_id: zona.zona_id });
+        const j = await postZonas_("/api/zonas/liberar", { zona_id: zona.zona_id, origen: "mapa" });
         if (!j?.ok) throw new Error(j?.error || "Error");
         closeActionSheet_();
         if (onRefresh) await onRefresh();
@@ -332,7 +340,7 @@ function openPickerForZone_(zonaId, onRefresh) {
     confirmBtn.disabled = true;
     confirmBtn.textContent = "Guardando…";
     try {
-      const j = await postJSON("/api/zonas/asignar", { zona_id: zonaId, vin, usuario: "" });
+      const j = await postZonas_("/api/zonas/asignar", { zona_id: zonaId, vin, origen: "mapa" });
       if (!j?.ok) throw new Error(j?.error || "Error");
       await closeMe();
       if (onRefresh) await onRefresh();
@@ -351,12 +359,11 @@ function openPickerForZone_(zonaId, onRefresh) {
 /**
  * Abre el picker de zonas para asignar un VIN.
  * @param {string} vin
- * @param {string} usuario
  * @param {{ zonas, sin_zona }} zonaData
  * @param {function|null} onDone - callback(zona_id) tras asignar
  * @param {boolean} dismissible
  */
-export function openZonaPicker(vin, usuario, zonaData, onDone, dismissible = true) {
+export function openZonaPicker(vin, zonaData, onDone, dismissible = true) {
   removeEl_(_pickerEl);
   const { zonas = [] } = zonaData || {};
 
@@ -394,7 +401,7 @@ export function openZonaPicker(vin, usuario, zonaData, onDone, dismissible = tru
     if (sel) { sel.style.opacity = "1"; sel.style.pointerEvents = ""; }
     if (statusEl) statusEl.textContent = "Guardando…";
     try {
-      const j = await postJSON("/api/zonas/asignar", { zona_id: zonaId, vin, usuario });
+      const j = await postZonas_("/api/zonas/asignar", { zona_id: zonaId, vin, origen: "picker" });
       if (!j?.ok) throw new Error(j?.error || "Error");
       closePicker_();
       if (onDone) onDone(j.zona_id);
@@ -427,14 +434,14 @@ let _zonaData = { zonas: [], sin_zona: [] };
 /**
  * Inicializa el mapa de zonas en un contenedor DOM.
  * @param {string} containerId
- * @param {{ readOnly, usuario, onZoneAction, onCounts }} opts
+ * @param {{ readOnly, onZoneAction, onCounts }} opts
  *   onCounts({ finalizados, enZonaLibre }) — se llama en cada render con los
  *   carros en verde (listos para sacar) de las 15 zonas de trabajo. Los de
  *   zona libre van aparte y no se suman.
  * @returns {{ refresh: function, destroy: function }}
  */
 export function initZonasMapa(containerId, opts = {}) {
-  const { readOnly = false, usuario = "", onZoneAction = null, onCounts = null } = opts;
+  const { readOnly = false, onZoneAction = null, onCounts = null } = opts;
   const container = document.getElementById(containerId);
   if (!container) return null;
   // En el contenedor, como el handler de clics de abajo: renderMapa_ se llama
@@ -461,7 +468,7 @@ export function initZonasMapa(containerId, opts = {}) {
       _zonaData = j;
       renderMapa_(container, j.zonas, j.sin_zona, readOnly);
       updateTs_();
-      if (!readOnly) bindMapaClicks_(container, usuario, onZoneAction);
+      if (!readOnly) bindMapaClicks_(container, onZoneAction);
     } catch {}
   }
 
@@ -484,7 +491,7 @@ export function initZonasMapa(containerId, opts = {}) {
   return { refresh: refresh_, destroy: destroy_ };
 }
 
-function bindMapaClicks_(container, usuario, onZoneAction) {
+function bindMapaClicks_(container, onZoneAction) {
   const old = container._zonaClickHandler;
   if (old) container.removeEventListener("click", old);
 
@@ -494,7 +501,7 @@ function bindMapaClicks_(container, usuario, onZoneAction) {
     if (!j?.ok) return;
     _zonaData = j;
     renderMapa_(container, j.zonas, j.sin_zona, false);
-    bindMapaClicks_(container, usuario, onZoneAction);
+    bindMapaClicks_(container, onZoneAction);
     if (onZoneAction) onZoneAction();
   };
 
@@ -513,7 +520,7 @@ function bindMapaClicks_(container, usuario, onZoneAction) {
     if (libVin) {
       const vin = libVin.dataset.vin;
       if (!vin) return;
-      openZonaPicker(vin, usuario, _zonaData, doRefresh_);
+      openZonaPicker(vin, _zonaData, doRefresh_);
     }
   };
 
@@ -524,17 +531,16 @@ function bindMapaClicks_(container, usuario, onZoneAction) {
 /**
  * Consulta si un VIN tiene zona asignada y abre el picker si no la tiene.
  * @param {string} vin
- * @param {string} usuario
  * @param {function|null} onDone
  * @param {boolean} dismissible
  */
-export async function promptZonaForVin(vin, usuario, onDone, dismissible = true) {
+export async function promptZonaForVin(vin, onDone, dismissible = true) {
   try {
     const res  = await fetch("/api/zonas");
     const j    = res.ok ? await res.json() : null;
     const data = j?.ok ? j : { zonas: [], sin_zona: [] };
-    openZonaPicker(vin, usuario, data, onDone, dismissible);
+    openZonaPicker(vin, data, onDone, dismissible);
   } catch {
-    openZonaPicker(vin, usuario, { zonas: [], sin_zona: [] }, onDone, dismissible);
+    openZonaPicker(vin, { zonas: [], sin_zona: [] }, onDone, dismissible);
   }
 }

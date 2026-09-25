@@ -5,6 +5,7 @@ import { cachedByTopics_ } from "../lib/poll-cache.js";
 import { getConfig_ } from "../lib/config.js";
 import { fechaPeruMenosDias_ } from "../lib/utils.js";
 import { dispararMotor_, despachoReparteAhora_ } from "./despacho.js";
+import { getUsuarioByEmail_ } from "../lib/authz.js";
 
 const router = Router();
 
@@ -12,6 +13,92 @@ const router = Router();
 // liberar zona (zonas), al abrir o cerrar una OT (work_orders), al entrar o
 // salir un técnico del carro (asignaciones) y al repartir el motor (despacho).
 const TOPICS_ZONAS = ["zonas", "work_orders", "asignaciones", "despacho"];
+
+// ─── QUIÉN MUEVE EL MAPA ───────────────────────────────────────────────────
+// Hasta el 25-09-2026 el nombre de quien mapeaba venía en el body como texto
+// libre (`usuario`), y el mapa lo mandaba vacío: las 15 plazas decían
+// "Sistema". Cuando se preguntó quién había puesto un carro en la Zona 7 no
+// había a quién señalar.
+//
+// Ahora el nombre NO se acepta del cliente: se resuelve en el servidor contra
+// `usuarios` a partir del email de la sesión, igual que lib/authz.js. Un
+// `usuario` en el body se ignora — si se leyera, cualquiera podría firmar
+// con el nombre de otro y el historial no probaría nada.
+//
+// Alcance honesto, el mismo de lib/authz.js: el email sigue viniendo del
+// cliente y no hay contraseña que lo pruebe. Esto no impide que alguien
+// suplante a otro a propósito; sí garantiza que toda acción queda a nombre de
+// una cuenta real y activa, que es lo que faltaba.
+async function identidadZona_(req) {
+  const email = String(
+    req.body?.email || req.query?.email || req.get("x-user-email") || ""
+  ).trim().toLowerCase();
+
+  // El motivo del rechazo se dice explícito, como en requireRol_: a quien está
+  // en piso no le sirve un "No autorizado" pelado.
+  if (!email) return { ok: false, motivo: "SIN_EMAIL",
+    error: "Tu sesión no envió tu identidad. Cierra sesión y vuelve a entrar." };
+
+  const u = await getUsuarioByEmail_(email);
+  if (!u)        return { ok: false, motivo: "SIN_CUENTA", error: `La cuenta ${email} no existe en el sistema.` };
+  if (!u.activo) return { ok: false, motivo: "INACTIVO",   error: `La cuenta ${email} está desactivada.` };
+
+  return { ok: true, email, nombre: u.nombre || email, rol: u.rol };
+}
+
+// Estado actual de las plazas implicadas en un movimiento: dónde está AHORA
+// el VIN que entra y quién ocupa AHORA la plaza de destino. Se lee ANTES de
+// escribir porque el PATCH pisa el dato — que es justo por lo que no había
+// historial.
+async function estadoPrevioZonas_(vin, zonaNum) {
+  try {
+    // Liberar no trae VIN —se libera la plaza, no un carro concreto—, así que
+    // el filtro se arma solo con lo que hay.
+    const cond = [];
+    if (vin) cond.push(`vin.eq.${encodeURIComponent(vin)}`);
+    if (zonaNum >= 1 && zonaNum <= 15) cond.push(`zona_id.eq.${zonaNum}`);
+    if (!cond.length) return { dondeEstaba: null, ocupante: "" };
+    const r = await fetch(
+      `${process.env.SUPABASE_URL}/rest/v1/conversion_zonas?or=(${cond.join(",")})&select=zona_id,vin`,
+      { method: "GET", headers: supabaseHeaders_() },
+    );
+    const rows = r.ok ? await r.json() : [];
+    const dondeEstaba = rows.find(x => x.vin === vin)?.zona_id ?? null;
+    const ocupante    = rows.find(x => x.zona_id === zonaNum)?.vin || "";
+    return { dondeEstaba, ocupante: ocupante === vin ? "" : ocupante };
+  } catch {
+    return { dondeEstaba: null, ocupante: "" };
+  }
+}
+
+// Libro de actas del mapa (supabase/zonas-historial.sql). Append only: nada
+// de lo que entra aquí se actualiza después.
+//
+// Se ESPERA a que termine, al revés que los otros efectos secundarios de este
+// archivo. Un historial que se pierde cuando hay prisa no sirve de prueba, y
+// es un INSERT pequeño. Si aun así falla, la acción NO se deshace —el carro ya
+// está en su plaza y negarlo sería peor— pero la respuesta lo dice con
+// `historial: false` en vez de callarlo.
+async function registrarHistorial_(filas) {
+  const rows = filas.filter(Boolean);
+  if (!rows.length) return true;
+  try {
+    const r = await fetch(`${process.env.SUPABASE_URL}/rest/v1/zonas_historial`, {
+      method: "POST",
+      headers: { ...supabaseHeaders_(), "Prefer": "return=minimal" },
+      body: JSON.stringify(rows),
+    });
+    if (!r.ok) {
+      const t = await r.text().catch(() => "");
+      console.error("[ZONAS_HIST]", r.status, t.slice(0, 300));
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error("[ZONAS_HIST]", e.message);
+    return false;
+  }
+}
 
 // ─── CONVERSION ZONAS ──────────────────────────────────────────────────────
 // GET /api/zonas
@@ -266,17 +353,28 @@ router.get("/api/zonas", async (req, res) => {
 });
 
 // POST /api/zonas/asignar
-// body: { zona_id (1-15 o 16=sin ubicación), vin, usuario }
+// body: { zona_id (1-15 o 16=sin ubicación), vin, email, origen? }
+//
+// `usuario` ya no se lee: el nombre sale de la cuenta, no del body.
+// Ver identidadZona_().
 router.post("/api/zonas/asignar", async (req, res) => {
   try {
-    const { vin, zona_id, usuario } = req.body || {};
+    const { vin, zona_id, origen } = req.body || {};
     if (!vin) return res.status(400).json({ ok: false, error: "Falta vin" });
+
+    const quien = await identidadZona_(req);
+    if (!quien.ok) return res.status(403).json({ ok: false, error: quien.error, motivo: quien.motivo });
+
     const vinNorm = String(vin).trim().toUpperCase();
     const zonaNum = Number(zona_id);
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const headers = supabaseHeaders_();
     const now = new Date().toISOString();
-    const userName = String(usuario || "").trim() || "Sistema";
+    const userName = quien.nombre;
+
+    // Foto del antes: quién ocupaba el destino y de dónde viene este VIN. Se
+    // lee ahora porque los PATCH de abajo borran ambas cosas.
+    const previo = await estadoPrevioZonas_(vinNorm, zonaNum);
 
     // 1. Quitar el VIN de cualquier zona donde esté actualmente
     await fetch(
@@ -325,6 +423,26 @@ router.post("/api/zonas/asignar", async (req, res) => {
         { method: "DELETE", headers }).catch(() => {});
     }
 
+    // Dos filas cuando hay desplazamiento: la del que entra y la del que sale.
+    // Sin la segunda, el historial del carro expulsado saldría vacío — y ese
+    // es el carro que acaba siendo "fantasma": OT viva y ninguna plaza.
+    const zonaFinal = zonaNum >= 1 && zonaNum <= 15 ? zonaNum : 16;
+    const comun = {
+      ocurrido_at: now,
+      usuario_email:  quien.email,
+      usuario_nombre: quien.nombre,
+      usuario_rol:    quien.rol,
+      origen: String(origen || "").slice(0, 40),
+    };
+    const historialOk = await registrarHistorial_([
+      { ...comun, accion: "ASIGNAR", zona_id: zonaFinal, vin: vinNorm,
+        vin_relacionado: previo.ocupante, zona_anterior: previo.dondeEstaba },
+      previo.ocupante
+        ? { ...comun, accion: "DESPLAZADO", zona_id: zonaFinal, vin: previo.ocupante,
+            vin_relacionado: vinNorm, zona_anterior: zonaFinal }
+        : null,
+    ]);
+
     emitEvent_("zonas", { accion: "ASIGNADA" });
 
     // Un carro que entra a una zona física es trabajo nuevo, y el motor solo
@@ -343,24 +461,37 @@ router.post("/api/zonas/asignar", async (req, res) => {
         .catch(err => console.warn("[Zonas] Disparo del motor falló:", err.message));
     }
 
-    return res.json({ ok: true, zona_id: zonaNum >= 1 && zonaNum <= 15 ? zonaNum : 16 });
+    return res.json({
+      ok: true,
+      zona_id: zonaFinal,
+      registrado_por: quien.nombre,
+      // El que se quedó sin plaza: el cliente avisa en vez de tragárselo.
+      desplazado: previo.ocupante || null,
+      historial: historialOk,
+    });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e.message) });
   }
 });
 
 // POST /api/zonas/liberar
-// body: { zona_id (1-15), usuario }
+// body: { zona_id (1-15), email, origen? }
 router.post("/api/zonas/liberar", async (req, res) => {
   try {
-    const { zona_id } = req.body || {};
+    const { zona_id, origen } = req.body || {};
     const zonaNum = Number(zona_id);
     if (!zonaNum || zonaNum < 1 || zonaNum > 15)
       return res.status(400).json({ ok: false, error: "zona_id inválido (1-15)" });
 
+    const quien = await identidadZona_(req);
+    if (!quien.ok) return res.status(403).json({ ok: false, error: quien.error, motivo: quien.motivo });
+
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const headers = supabaseHeaders_();
     const now = new Date().toISOString();
+
+    // A quién se está sacando. El PATCH lo borra, así que se lee antes.
+    const previo = await estadoPrevioZonas_("", zonaNum);
 
     const r = await fetch(
       `${SUPABASE_URL}/rest/v1/conversion_zonas?zona_id=eq.${zonaNum}`,
@@ -371,8 +502,21 @@ router.post("/api/zonas/liberar", async (req, res) => {
       }
     );
     if (!r.ok) throw new Error("Error al liberar zona");
+
+    const historialOk = await registrarHistorial_([{
+      ocurrido_at: now,
+      accion: "LIBERAR",
+      zona_id: zonaNum,
+      vin: previo.ocupante,
+      zona_anterior: zonaNum,
+      usuario_email:  quien.email,
+      usuario_nombre: quien.nombre,
+      usuario_rol:    quien.rol,
+      origen: String(origen || "").slice(0, 40),
+    }]);
+
     emitEvent_("zonas", { accion: "LIBERADA", zona_id: zonaNum });
-    return res.json({ ok: true });
+    return res.json({ ok: true, vin: previo.ocupante || null, historial: historialOk });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e.message) });
   }
@@ -393,6 +537,50 @@ router.get("/api/zonas/vin/:vin", async (req, res) => {
     );
     const rows = r.ok ? await r.json() : [];
     return res.json({ ok: true, vin, zona_id: rows.length ? rows[0].zona_id : null });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e.message) });
+  }
+});
+
+// GET /api/zonas/historial?vin=&zona_id=&desde=&limit=
+// Quién movió qué en el mapa. Sin filtros devuelve los últimos movimientos
+// del taller; con `vin` responde la pregunta que dejó esto en evidencia —
+// "¿quién mapeó este carro?"— incluidas las veces que lo desplazaron.
+//
+// `vin` acepta el VIN completo o el trozo final que se lee en el carro: en
+// piso nadie dicta 17 caracteres, y buscar "515110" tenía que funcionar.
+router.get("/api/zonas/historial", async (req, res) => {
+  try {
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const vin    = String(req.query.vin || "").trim().toUpperCase();
+    const zonaId = Number(req.query.zona_id);
+    const desde  = String(req.query.desde || "").trim();
+    const limit  = Math.min(Number(req.query.limit) || 100, 500);
+
+    let q = `${SUPABASE_URL}/rest/v1/zonas_historial?select=*&order=ocurrido_at.desc&limit=${limit}`;
+    if (vin) {
+      // El carro desplazado aparece en `vin`; el que lo desplazó, en
+      // `vin_relacionado`. Los dos lados cuentan la misma historia.
+      const p = encodeURIComponent(`*${vin}*`);
+      q += `&or=(vin.like.${p},vin_relacionado.like.${p})`;
+    }
+    if (zonaId >= 1 && zonaId <= 16) q += `&zona_id=eq.${zonaId}`;
+    if (desde) q += `&ocurrido_at=gte.${encodeURIComponent(desde)}`;
+
+    const r = await fetch(q, { method: "GET", headers: supabaseHeaders_() });
+    if (!r.ok) {
+      const t = await r.text().catch(() => "");
+      // El 404 de PostgREST cuando la tabla no existe se dice con todas las
+      // letras: lo que falta es correr la migración, no reintentar.
+      if (r.status === 404) {
+        return res.status(503).json({
+          ok: false,
+          error: "El historial de zonas aún no existe. Falta correr supabase/zonas-historial.sql.",
+        });
+      }
+      throw new Error(`Supabase ${r.status}: ${t.slice(0, 200)}`);
+    }
+    return res.json({ ok: true, movimientos: await r.json() });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e.message) });
   }

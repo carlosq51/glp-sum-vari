@@ -456,7 +456,7 @@ async function confirmarIngresoPendiente_(vin) {
     if (statusEl) statusEl.textContent = `✓ ${vinClean} registrado en GLP.`;
     await refreshAll_();
     // Preguntar zona al movilizador (dismissible)
-    promptZonaForVin(vinClean, getMovNombre_(), async () => {
+    promptZonaForVin(vinClean, async () => {
       if (_zonasMapa) await _zonasMapa.refresh();
     });
   } catch (e) {
@@ -1105,7 +1105,7 @@ async function handleRegistroDesde_(vin, btn) {
     if (statusEl) statusEl.textContent = `✓ ${vinClean} ingresado.`;
     await refreshAll_();
     // Preguntar zona al movilizador (dismissible)
-    promptZonaForVin(vinClean, getMovNombre_(), async () => {
+    promptZonaForVin(vinClean, async () => {
       if (_zonasMapa) await _zonasMapa.refresh();
     });
   } catch (e) {
@@ -1155,7 +1155,7 @@ async function handleRegistro_(vin, accion, btnId) {
 
     await refreshAll_();
     if (accion === "REGISTRAR_ENTRADA") {
-      promptZonaForVin(vinClean, getMovNombre_(), async () => {
+      promptZonaForVin(vinClean, async () => {
         if (_zonasMapa) await _zonasMapa.refresh();
       });
     }
@@ -1385,7 +1385,6 @@ export function enter() {
   if (!_zonasMapa) {
     _zonasMapa = initZonasMapa("movZonasMapaContainer", {
       readOnly: false,
-      usuario: getMovNombre_(),
       onZoneAction: () => refreshAll_().catch(() => {}),
       // Los carros en verde de las 15 zonas en la cartilla del hub: es el
       // número que el movilizador busca para saber si hay algo que sacar sin
