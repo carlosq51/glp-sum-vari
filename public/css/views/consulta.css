@@ -158,6 +158,21 @@
 }
 .cqChip--zona { border-color: var(--note); color: var(--note); }
 
+/* Etapas y planificación, con el mismo criterio que el veredicto: fondo
+   tenue, borde y texto saturados. El relleno saturado se lava con el sol
+   que entra al taller y con las pantallas viejas de la nave.
+
+   Gris no es "falta color": es el estado real de una etapa que nadie ha
+   tocado, y tiene que distinguirse de un chip neutro sin significado. */
+.cqChip--sin     { border-color: var(--muted);  color: var(--muted);
+                   background: rgba(148,163,184,.12); }
+.cqChip--proceso { border-color: var(--warn);   color: var(--warn);
+                   background: rgba(245,158,11,.12); }
+.cqChip--listo   { border-color: var(--ok);     color: var(--ok);
+                   background: rgba(34,197,94,.12); }
+.cqChip--alerta  { border-color: var(--danger); color: var(--danger);
+                   background: rgba(248,113,113,.14); }
+
 /* ─── Ficha del carro ─── */
 .cqFichaGrid {
   display: grid;

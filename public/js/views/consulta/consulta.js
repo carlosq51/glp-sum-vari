@@ -54,6 +54,31 @@ const ETIQUETA_ESTADO = {
   PAUSADO: "Pausado", FINALIZADO: "Terminado",
 };
 
+/**
+ * Chip de una etapa, pintado según en qué punto está.
+ *
+ * El tono lo decide el servidor (`etapas_tono`), no esta función: el texto y
+ * el color salen del mismo sitio y no pueden desmentirse. Si la respuesta es
+ * vieja y no trae el campo, el chip sale neutro como siempre.
+ */
+function chipEtapa_(icono, nombre, etiqueta, tono) {
+  const clase = tono ? ` cqChip--${tono}` : "";
+  return `<span class="cqChip${clase}">${icono} ${nombre}: ${escapeHtml(etiqueta)}</span>`;
+}
+
+/**
+ * Chip de planificación.
+ *
+ * Tres respuestas, y la tercera importa: `null` es "no se pudo consultar la
+ * lista". Ahí no se enseña nada, porque decir "no planificado" cuando no se
+ * sabe frenaría un carro que sí se podía trabajar.
+ */
+function chipListaDiaria_(enLista) {
+  if (enLista === true)  return `<span class="cqChip cqChip--listo">📋 En lista diaria</span>`;
+  if (enLista === false) return `<span class="cqChip cqChip--alerta">⛔ Fuera de lista diaria · sin equipos asignados</span>`;
+  return "";
+}
+
 // ─── Consulta ─────────────────────────────────────────────────────────
 
 async function consultar_(vinCrudo) {
@@ -79,12 +104,19 @@ function pintar_(d) {
   document.getElementById("cqDetalle").textContent = d.detalle || "";
   document.getElementById("cqVeredicto").className = "cqVeredicto " + (d.tono || "duda");
 
-  // Chips: lo que se lee de un vistazo. La zona primero porque es la
-  // pregunta real de supervisión — "¿dónde está el carro ahora?".
+  // Chips: lo que se lee de un vistazo.
+  //
+  // La planificación va primero, delante incluso de la zona, porque manda
+  // sobre el veredicto: un "FALTA GLP" de un carro que no está en la lista
+  // diaria no es una orden de trabajarlo — es un carro sin equipos asignados
+  // que hay que dejar en paz hasta que almacén los traiga.
   const chips = [];
+  const lista = chipListaDiaria_(d.lista_diaria);
+  if (lista) chips.push(lista);
   if (d.zona) chips.push(`<span class="cqChip cqChip--zona">📍 ${escapeHtml(d.zona.nombre)}</span>`);
-  chips.push(`<span class="cqChip">🔧 Conversión: ${escapeHtml(d.etapas.conversion)}</span>`);
-  chips.push(`<span class="cqChip">🛡️ Revisión: ${escapeHtml(d.etapas.calidad)}</span>`);
+  const tonos = d.etapas_tono || {};
+  chips.push(chipEtapa_("🔧", "Conversión", d.etapas.conversion, tonos.conversion));
+  chips.push(chipEtapa_("🛡️", "Revisión",   d.etapas.calidad,    tonos.calidad));
   document.getElementById("cqChips").innerHTML = chips.join("");
 
   const f = d.ficha;

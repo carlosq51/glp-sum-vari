@@ -103,6 +103,20 @@ const VEREDICTOS = {
   },
 };
 
+/**
+ * Tono de una etapa, para pintarla.
+ *
+ * Tres estados y no más: gris (nadie la ha tocado), ámbar (alguien está
+ * dentro) y verde (cerrada). Se decide aquí, pegado a la etiqueta, para que
+ * color y texto no puedan contradecirse: si mañana aparece un estado nuevo,
+ * los dos lo tratan igual en vez de divergir.
+ */
+function tonoEtapa_(estado) {
+  if (!estado) return "sin";
+  if (estado === "FINALIZADO") return "listo";
+  return "proceso";
+}
+
 /** Etiqueta legible del estado de una OT (o "No iniciada" si no existe). */
 function etiquetaEtapa_(estado) {
   if (!estado) return "No iniciada";
@@ -208,6 +222,12 @@ async function consultarVins_(vins) {
       etapas: {
         conversion: etiquetaEtapa_(e.conv),
         calidad:    etiquetaEtapa_(e.cal),
+      },
+      // Campo aparte, y no dentro de `etapas`, a propósito: /invitado lee
+      // `etapas.conversion` como texto y tiene que seguir leyéndolo igual.
+      etapas_tono: {
+        conversion: tonoEtapa_(e.conv),
+        calidad:    tonoEtapa_(e.cal),
       },
     };
   });
@@ -384,12 +404,15 @@ router.get("/api/vin/ficha/:vin", async (req, res) => {
     const { SRV_CACHE_PESADO_MS } = await getConfig_();
     const payload = await cachedByTopics_(
       `invitado:ficha:${vin}`, ["work_orders", "vins", "asignaciones", "zonas", "movilizador"],
+      // lista_diaria_activa la escribe Apps Script cada 10 min y no emite
+      // ningún topic, así que aquí manda el TTL. No pasa nada: una lista que
+      // se vea un ciclo tarde no cambia ninguna decisión de taller.
       SRV_CACHE_PESADO_MS, async () => {
         const SUPABASE_URL = process.env.SUPABASE_URL;
         const headers = supabaseHeaders_();
         const q = encodeURIComponent(vin);
 
-        const [base, fichaResp, otsResp, zonaResp, movResp] = await Promise.all([
+        const [base, fichaResp, otsResp, zonaResp, movResp, listaResp] = await Promise.all([
           consultarVins_([vin]),
           fetch(`${SUPABASE_URL}/rest/v1/vins?vin=eq.${q}&select=*`, { headers }),
           // El embed trae las asignaciones y el nombre del técnico de una vez.
@@ -402,6 +425,12 @@ router.get("/api/vin/ficha/:vin", async (req, res) => {
           fetch(`${SUPABASE_URL}/rest/v1/conversion_zonas?vin=eq.${q}` +
             `&select=zona_id,registrado_por,registrado_at`, { headers }),
           fetch(`${SUPABASE_URL}/rest/v1/movilizador_traslados?vin=eq.${q}&select=*`, { headers }),
+          // ¿Está planificado para hoy? Es la pregunta que decide si el carro
+          // se puede empezar: los que no están en lista diaria no tienen
+          // equipos asignados todavía y hay que esperar a que almacén los
+          // traiga. Sin este dato, la ficha decía "FALTA GLP" de un carro que
+          // nadie podía tocar, y se empezaba igual.
+          fetch(`${SUPABASE_URL}/rest/v1/lista_diaria_activa?vin=eq.${q}&select=vin`, { headers }),
         ]);
 
         if (!fichaResp.ok || !otsResp.ok) {
@@ -413,6 +442,10 @@ router.get("/api/vin/ficha/:vin", async (req, res) => {
         // vez de no salir. El veredicto no depende de ninguno de los dos.
         const zonaRows = zonaResp.ok ? await zonaResp.json().catch(() => []) : [];
         const movRows  = movResp.ok  ? await movResp.json().catch(() => [])  : [];
+        // Si esta consulta falla no se inventa un "no planificado": eso frena
+        // un carro que sí se podía trabajar. Se devuelve null y la página no
+        // enseña el chip, que es lo que había antes de todo esto.
+        const listaRows = listaResp.ok ? await listaResp.json().catch(() => null) : null;
 
         const f = (fichaRows || [])[0] || null;
         const z = (zonaRows  || [])[0] || null;
@@ -450,6 +483,7 @@ router.get("/api/vin/ficha/:vin", async (req, res) => {
             ubicacion: f.ultima_ubicacion || "",
             estado:   f.estado || "",
           } : null,
+          lista_diaria: Array.isArray(listaRows) ? listaRows.length > 0 : null,
           // zona_id 16 es "zona libre" (desborde), no una plaza del taller.
           zona: z && z.zona_id ? {
             id: z.zona_id,
