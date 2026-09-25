@@ -83,12 +83,12 @@
 /* ─── Filas de la lista ─── */
 /* Son botones: cada una abre la ficha completa de ese carro. */
 .cqFila {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 3px 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
   width: 100%;
   text-align: left;
-  align-items: baseline;
   background: rgba(0,0,0,.12);
   border: 1px solid var(--surfaceLine, rgba(255,255,255,.10));
   border-left: 4px solid;
@@ -102,30 +102,98 @@
 /* La fila cuya ficha está abierta justo debajo. Sin esto, con la ficha
    anclada entre medias, no se sabe a qué carro pertenece lo que se lee. */
 .cqFila.abierta { background: rgba(255,255,255,.08); border-left-width: 6px; }
-.cqFilaVin { font-family: var(--font-mono, ui-monospace, monospace); font-size: var(--fs-xs); font-weight: 700; }
-.cqFilaTit { font-size: var(--fs-xs); font-weight: var(--fw-black); text-align: right; }
-/* La fila dejó de ser texto: lleva los mismos chips que la ficha, para que
-   leerla y abrirla no digan cosas distintas del mismo carro. */
-.cqFilaSub {
-  grid-column: 1 / -1;
+/* VIN a la izquierda, veredicto a la derecha, en una sola línea que nunca
+   se parte: el veredicto se encoge antes que el VIN, que es lo que
+   identifica el carro. */
+.cqFilaTop {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 2px;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
 }
-/* Los chips dentro de una fila van un punto más pequeños: son 40 en columna,
-   no tres sueltos bajo un veredicto. */
-.cqFilaSub .cqChip { padding: 3px 8px; font-size: .68rem; }
+.cqFilaVin {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.cqFilaTit {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-black);
+  text-align: right;
+  min-width: 0;
+}
 
-/* Zona o fecha de cierre — la línea que evita tener que abrir la ficha. */
+/* Semáforos + contexto. flex-wrap para que en 320 px el contexto baje solo
+   en vez de desbordar la tarjeta. */
+.cqFilaEstado {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px 8px;
+  min-width: 0;
+}
+/* Zona o fecha de cierre — el dato que evita tener que abrir la ficha.
+   Se lleva el hueco que sobra a la derecha de los semáforos. */
 .cqFilaCtx {
-  grid-column: 1 / -1;
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: var(--fs-xs);
   font-weight: 700;
   color: var(--muted);
-  opacity: .9;
-  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
+
+/* ─── Semáforo de etapa ─── */
+/* Un disco con el icono dentro. El borde y el fondo llevan el estado; el
+   icono solo dice de qué etapa se habla. Los emoji no se pueden recolorear,
+   de ahí el disco. */
+.cqPunto {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1.5px solid;
+  font-size: .72rem;
+  line-height: 1;
+  font-style: normal;
+}
+.cqPunto--sin     { border-color: var(--muted);  background: rgba(148,163,184,.14); }
+.cqPunto--proceso { border-color: var(--warn);   background: rgba(245,158,11,.18); }
+.cqPunto--listo   { border-color: var(--ok);     background: rgba(34,197,94,.18); }
+.cqPunto--alerta  { border-color: var(--danger); background: rgba(248,113,113,.20); }
+/* En la leyenda van vacíos y más pequeños: ahí el color es todo el mensaje. */
+.cqLeyenda .cqPunto { width: 13px; height: 13px; }
+
+/* ─── Leyenda de la lista ─── */
+.cqLeyenda {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin-bottom: 8px;
+  padding: 7px 10px;
+  border-radius: var(--radiusSm);
+  background: rgba(0,0,0,.10);
+  border: 1px solid var(--surfaceLine, rgba(255,255,255,.08));
+  font-size: .68rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+.cqLeyenda span { display: inline-flex; align-items: center; gap: 4px; }
+/* Separador entre "qué icono es cada etapa" y "qué significa cada color". */
+.cqLeySep {
+  width: 1px;
+  align-self: stretch;
+  background: var(--surfaceLine, rgba(255,255,255,.14));
+}
+@media (max-width: 420px) { .cqLeySep { display: none; } }
 .cqFila.ok     { border-left-color: var(--ok); }
 .cqFila.ok     .cqFilaTit { color: var(--ok); }
 .cqFila.warn   { border-left-color: var(--warn); }

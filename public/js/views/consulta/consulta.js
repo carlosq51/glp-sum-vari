@@ -66,44 +66,74 @@ const ETIQUETA_ESTADO = {
  *
  * Deliberadamente NO se contestan todas a la vez: la ficha ya tiene los
  * paneles con todo, y esta línea existe para que no haya que abrirlos.
+ *
+ * `compacto` es para las filas de la lista. Son cuarenta y entran en un
+ * móvil de 360 px: ahí la frase explicativa no cabe y, al envolver, tapaba
+ * la fila de al lado. El dato es el mismo, sin el porqué — que lo cuenta la
+ * ficha al abrirla.
  */
-function contextoVeredicto_(d) {
+function contextoVeredicto_(d, compacto) {
   const z = d.zona, h = d.hitos || {};
-  const zonaDesde = z
-    ? `📍 ${escapeHtml(z.nombre)} · desde ${fmtShort_(z.desde)}`
-    : "";
+  const zona = z ? `📍 ${escapeHtml(z.nombre)}` : "";
+  const zonaDesde = z ? `${zona} · desde ${fmtShort_(z.desde)}` : "";
 
   switch (d.veredicto) {
     case "EN_PROCESO":
       // Sin zona no se puede ir a buscarlo, y eso es una incidencia en sí:
       // alguien lo está trabajando en un sitio que nadie registró.
+      if (compacto) return zona || "📍 Sin zona";
       return zonaDesde || "📍 Sin zona registrada — se está trabajando sin ubicación";
 
     case "FALTA_GLP":
       // La pregunta real aquí no es "¿falta?" sino "¿está el carro?". Un
       // FALTA GLP sin registro de zona es un carro que todavía no ha
       // entrado al área; con registro, uno que entró y está parado.
-      if (zonaDesde) return `${zonaDesde} · esperando conversión`;
-      return d.movilizador?.ingreso_at
-        ? `🚚 Ingresó al taller ${fmtShort_(d.movilizador.ingreso_at)} · sin registro en zona de gas`
+      if (z) return compacto ? zona : `${zonaDesde} · esperando conversión`;
+      if (d.movilizador?.ingreso_at) {
+        return compacto
+          ? `🚚 Taller ${fmtShort_(d.movilizador.ingreso_at)}`
+          : `🚚 Ingresó al taller ${fmtShort_(d.movilizador.ingreso_at)} · sin registro en zona de gas`;
+      }
+      return compacto
+        ? "⛔ Sin zona de gas"
         : "⛔ Sin registro en zona de gas — el carro no ha entrado al área";
 
     case "FALTA_CALIDAD":
-      return h.conversion_fin
-        ? `🔧 Conversión terminada ${fmtShort_(h.conversion_fin)}${zonaDesde ? ` · ${zonaDesde}` : ""}`
-        : zonaDesde;
+      if (!h.conversion_fin) return compacto ? zona : zonaDesde;
+      return compacto
+        ? `🔧 ${fmtShort_(h.conversion_fin)}${zona ? ` · ${zona}` : ""}`
+        : `🔧 Conversión terminada ${fmtShort_(h.conversion_fin)}${zonaDesde ? ` · ${zonaDesde}` : ""}`;
 
     case "LISTO":
       // Las dos fechas, y en este orden: la de calidad es la que cierra el
-      // carro, la de conversión explica cuánto tardó el visto bueno.
+      // carro, la de conversión explica cuánto tardó el visto bueno. En la
+      // fila solo la de calidad: es la que se apunta.
+      if (compacto) return h.calidad_fin ? `🛡️ ${fmtShort_(h.calidad_fin)}` : "";
       return [
         h.calidad_fin    ? `🛡️ Revisión técnica ${fmtShort_(h.calidad_fin)}` : "",
         h.conversion_fin ? `🔧 Conversión ${fmtShort_(h.conversion_fin)}`    : "",
       ].filter(Boolean).join(" · ");
 
     default:
-      return zonaDesde;
+      return compacto ? zona : zonaDesde;
   }
+}
+
+/**
+ * El estado de una etapa, en un icono.
+ *
+ * En la ficha caben los chips con su texto; en una fila de la lista no. Con
+ * cuarenta carros, escribir "Conversión: No iniciada · Revisión: No iniciada"
+ * en cada una es una pared de texto idéntico donde lo único que cambia —el
+ * estado— se pierde. Aquí el color ES el dato y el icono dice de qué etapa
+ * habla. La leyenda de arriba lo traduce una vez para toda la lista.
+ *
+ * `title` va igualmente: en escritorio el hover lo cuenta sin leyenda, y los
+ * lectores de pantalla no ven colores.
+ */
+function semaforo_(icono, nombre, etiqueta, tono) {
+  return `<span class="cqPunto cqPunto--${tono || "sin"}" title="${escapeHtml(nombre)}: ${
+    escapeHtml(etiqueta)}">${icono}</span>`;
 }
 
 /**
@@ -125,16 +155,9 @@ function chipEtapa_(icono, nombre, etiqueta, tono) {
  * lista". Ahí no se enseña nada, porque decir "no planificado" cuando no se
  * sabe frenaría un carro que sí se podía trabajar.
  */
-function chipListaDiaria_(enLista, compacto) {
-  if (enLista === true) {
-    return `<span class="cqChip cqChip--listo">📋 ${compacto ? "Planificado" : "En lista diaria"}</span>`;
-  }
-  if (enLista === false) {
-    // En la fila solo cabe el titular. El porqué —que sin equipos asignados
-    // hay que esperar a almacén— lo cuenta la ficha al abrirla.
-    return `<span class="cqChip cqChip--alerta">⛔ ${
-      compacto ? "Sin planificar" : "Fuera de lista diaria · sin equipos asignados"}</span>`;
-  }
+function chipListaDiaria_(enLista) {
+  if (enLista === true)  return `<span class="cqChip cqChip--listo">📋 En lista diaria</span>`;
+  if (enLista === false) return `<span class="cqChip cqChip--alerta">⛔ Fuera de lista diaria · sin equipos asignados</span>`;
   return "";
 }
 
@@ -222,13 +245,18 @@ function detalleHtml_(d) {
   const bloques = [];
 
   if (d.zona) {
+    // Cerrado: la zona y su fecha ya están en los chips de arriba. Este
+    // panel solo añade quién la registró, que casi nunca es la pregunta.
     bloques.push(panel_("Ubicación en el taller", `
       <div class="cqLinea">
         <b>${escapeHtml(d.zona.nombre)}</b>
         <span>desde ${fmtShort_(d.zona.desde)}${d.zona.por ? ` · por ${escapeHtml(d.zona.por)}` : ""}</span>
-      </div>`));
+      </div>`, false));
   }
 
+  // Las OTs vienen ordenadas por fecha descendente: la primera es la que
+  // dice quién tiene el carro hoy, y es la única que se abre sola.
+  let primeraOt = true;
   for (const ot of (d.ots || [])) {
     const trabajos = (ot.trabajos || []).length
       ? ot.trabajos.map(t => `
@@ -246,8 +274,10 @@ function detalleHtml_(d) {
       (ot.numero ? ` · #${escapeHtml(ot.numero)}` : ""),
       `<div class="cqLinea"><b>${escapeHtml(ot.estado)}</b><span>creada ${fmtShort_(ot.fecha)}</span></div>
        ${trabajos}
-       ${ot.nota ? `<div class="cqNota">${escapeHtml(ot.nota)}</div>` : ""}`
+       ${ot.nota ? `<div class="cqNota">${escapeHtml(ot.nota)}</div>` : ""}`,
+      primeraOt
     ));
+    primeraOt = false;
   }
 
   const m = d.movilizador;
@@ -255,7 +285,7 @@ function detalleHtml_(d) {
     bloques.push(panel_("Movilizador", `
       ${m.ingreso_at ? `<div class="cqLinea"><b>Ingreso</b><span>${fmtShort_(m.ingreso_at)}${m.ingreso_por ? ` · ${escapeHtml(m.ingreso_por)}` : ""}</span></div>` : ""}
       ${m.salida_at  ? `<div class="cqLinea"><b>Entrega</b><span>${fmtShort_(m.salida_at)}${m.salida_por ? ` · ${escapeHtml(m.salida_por)}` : ""}</span></div>` : ""}
-      <div class="cqLinea"><b>Estado</b><span>${escapeHtml(m.estado)}</span></div>`));
+      <div class="cqLinea"><b>Estado</b><span>${escapeHtml(m.estado)}</span></div>`, false));
   }
 
   if (!bloques.length) {
@@ -264,10 +294,19 @@ function detalleHtml_(d) {
   return bloques.join("");
 }
 
-/** Panel plegable. Abierto por defecto: se abre para leerlo, no para plegarlo. */
-function panel_(titulo, cuerpo) {
+/**
+ * Panel plegable.
+ *
+ * Antes nacían TODOS abiertos. Dentro de la lista eso era media pantalla de
+ * ficha metida entre dos filas —zona, las dos OTs con sus técnicos y el
+ * movilizador— y para ver el siguiente carro había que desplazarse a ciegas.
+ *
+ * Ahora solo se abre el que contesta la pregunta con la que se entra: la OT
+ * más reciente, que es quién tiene el carro ahora. El resto está a un toque.
+ */
+function panel_(titulo, cuerpo, abierto) {
   return `
-    <details class="cqPanel" open>
+    <details class="cqPanel"${abierto ? " open" : ""}>
       <summary>${titulo}</summary>
       <div class="cqPanelBody">${cuerpo}</div>
     </details>`;
@@ -341,6 +380,21 @@ function pintarLista_(d) {
       <div class="cqResTile bueno"><span class="cqResNum">${d.pueden}</span><span class="cqResLbl">PUEDEN SALIR</span></div>
     </div>`;
 
+  // Los iconos de cada fila no se explican solos, y en un móvil no hay hover
+  // que los cuente. Una leyenda para las cuarenta filas ocupa menos que
+  // repetir las palabras cuarenta veces.
+  html += `
+    <div class="cqLeyenda">
+      <span><b>🔧</b> Conversión</span>
+      <span><b>🛡️</b> Revisión</span>
+      <span><b>📋</b> Planificado</span>
+      <span class="cqLeySep"></span>
+      <span><i class="cqPunto cqPunto--sin"></i> Sin iniciar</span>
+      <span><i class="cqPunto cqPunto--proceso"></i> En proceso</span>
+      <span><i class="cqPunto cqPunto--listo"></i> Terminado</span>
+      <span><i class="cqPunto cqPunto--alerta"></i> Atención</span>
+    </div>`;
+
   if (d.invalidos?.length) {
     html += `<div class="cqVacio">No se consultaron (${d.invalidos.length}): no parecen VIN — ${
       d.invalidos.map(escapeHtml).join(", ")}</div>`;
@@ -355,17 +409,22 @@ function pintarLista_(d) {
   // técnicos y los tiempos, que es otra pregunta y no cabe en una fila.
   html += filas.map(r => {
     const tonos = r.etapas_tono || {};
-    const ctx = contextoVeredicto_(r);
+    const ctx = contextoVeredicto_(r, true);
+    const plan = r.lista_diaria === true  ? semaforo_("📋", "Planificación", "En lista diaria", "listo")
+               : r.lista_diaria === false ? semaforo_("📋", "Planificación", "Fuera de lista diaria — sin equipos asignados", "alerta")
+               : "";
     return `
     <button class="cqFila ${r.tono}" data-cq-vin="${escapeHtml(r.vin)}" type="button">
-      <span class="cqFilaVin">${escapeHtml(r.vin)}</span>
-      <span class="cqFilaTit">${escapeHtml(r.titulo)}</span>
-      <span class="cqFilaSub">
-        ${chipEtapa_("🔧", "Conversión", r.etapas.conversion, tonos.conversion)}
-        ${chipEtapa_("🛡️", "Revisión",   r.etapas.calidad,    tonos.calidad)}
-        ${chipListaDiaria_(r.lista_diaria, true)}
+      <span class="cqFilaTop">
+        <span class="cqFilaVin">${escapeHtml(r.vin)}</span>
+        <span class="cqFilaTit">${escapeHtml(r.titulo)}</span>
       </span>
-      ${ctx ? `<span class="cqFilaCtx">${ctx}</span>` : ""}
+      <span class="cqFilaEstado">
+        ${semaforo_("🔧", "Conversión", r.etapas.conversion, tonos.conversion)}
+        ${semaforo_("🛡️", "Revisión",   r.etapas.calidad,    tonos.calidad)}
+        ${plan}
+        ${ctx ? `<span class="cqFilaCtx">${ctx}</span>` : ""}
+      </span>
     </button>`;
   }).join("");
 
@@ -438,12 +497,22 @@ export function init() {
   document.getElementById("cqResultadoLista")?.addEventListener("click", e => {
     const fila = e.target.closest("[data-cq-vin]");
     if (!fila) return;
+
+    // Segundo toque en la MISMA fila: se cierra. Faltaba esa salida — una
+    // vez abierta una ficha no había forma de quitarla de en medio, y con
+    // cuarenta carros eso deja la lista partida por un bloque que ya no
+    // interesa.
+    if (fila.classList.contains("abierta")) {
+      fila.classList.remove("abierta");
+      devolverFicha_();
+      fila.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      return;
+    }
+
+    for (const otra of document.querySelectorAll(".cqFila.abierta")) otra.classList.remove("abierta");
+    fila.classList.add("abierta");
     const inp = document.getElementById("cqVin");
     if (inp) inp.value = fila.dataset.cqVin;
-    fila.classList.add("abierta");
-    for (const otra of document.querySelectorAll(".cqFila.abierta")) {
-      if (otra !== fila) otra.classList.remove("abierta");
-    }
     consultar_(fila.dataset.cqVin, fila);
   });
 
