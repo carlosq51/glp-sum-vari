@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { hitos_ } from "../routes/invitado.js";
+import { hitos_, otDesdeFila_ } from "../routes/invitado.js";
 
 // Las fechas que la ficha pone debajo del veredicto: cuándo terminó la
 // conversión y cuándo la revisión técnica. Se apuntan en el acta del carro,
@@ -88,5 +88,44 @@ describe("invitado · hitos de cierre", () => {
     it("aguanta un undefined sin romper la ficha entera", () => {
       expect(hitos_(undefined)).toEqual({ conversion_fin: null, calidad_fin: null });
     });
+  });
+});
+
+// El puente entre la lista y hitos_(). La lista baja las OTs crudas de
+// PostgREST con las asignaciones embebidas; la ficha las arma ya masticadas.
+// hitos_() solo entiende una forma, y este adaptador es el que la produce.
+describe("invitado · fila cruda → hitos", () => {
+  it("traduce una OT de conversión cerrada tal como viene de PostgREST", () => {
+    const h = hitos_([otDesdeFila_({
+      vin: "X", tipo_ot: "CONVERSION", estado_general: "FINALIZADO",
+      fecha_creacion: "2026-09-20T08:00:00Z",
+      fecha_sin_calidad: "2026-09-20T16:10:00Z",
+      asignaciones: [{ estado_actual: "FINALIZADO", updated_at: "2026-09-20T16:09:00Z", activo: true }],
+    })]);
+    expect(h.conversion_fin).toBe("2026-09-20T16:10:00Z");
+  });
+
+  it("traduce activo:false a anulada, que es como hitos_ lo entiende", () => {
+    // Si esta traducción se pierde, una asignación retirada cerraría la
+    // conversión con la fecha del técnico al que le quitaron el carro.
+    const h = hitos_([otDesdeFila_({
+      vin: "X", tipo_ot: "CONVERSION", estado_general: "FINALIZADO",
+      fecha_sin_calidad: null,
+      asignaciones: [
+        { estado_actual: "FINALIZADO", updated_at: "2026-09-20T14:00:00Z", activo: true },
+        { estado_actual: "FINALIZADO", updated_at: "2026-09-22T09:00:00Z", activo: false },
+      ],
+    })]);
+    expect(h.conversion_fin).toBe("2026-09-20T14:00:00.000Z");
+  });
+
+  it("una OT sin embed de asignaciones no revienta", () => {
+    // El modo NO detallado no pide el embed. Si alguien reusa el adaptador
+    // con esas filas, tiene que salir null, no una excepción.
+    expect(otDesdeFila_({ tipo_ot: "CALIDAD", estado_general: "FINALIZADO" }).trabajos).toEqual([]);
+  });
+
+  it("null entra y null sale", () => {
+    expect(otDesdeFila_(null)).toBeNull();
   });
 });

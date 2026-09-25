@@ -104,7 +104,28 @@
 .cqFila.abierta { background: rgba(255,255,255,.08); border-left-width: 6px; }
 .cqFilaVin { font-family: var(--font-mono, ui-monospace, monospace); font-size: var(--fs-xs); font-weight: 700; }
 .cqFilaTit { font-size: var(--fs-xs); font-weight: var(--fw-black); text-align: right; }
-.cqFilaSub { grid-column: 1 / -1; font-size: var(--fs-xs); color: var(--muted); font-weight: 600; }
+/* La fila dejó de ser texto: lleva los mismos chips que la ficha, para que
+   leerla y abrirla no digan cosas distintas del mismo carro. */
+.cqFilaSub {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+/* Los chips dentro de una fila van un punto más pequeños: son 40 en columna,
+   no tres sueltos bajo un veredicto. */
+.cqFilaSub .cqChip { padding: 3px 8px; font-size: .68rem; }
+
+/* Zona o fecha de cierre — la línea que evita tener que abrir la ficha. */
+.cqFilaCtx {
+  grid-column: 1 / -1;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  color: var(--muted);
+  opacity: .9;
+  margin-top: 3px;
+}
 .cqFila.ok     { border-left-color: var(--ok); }
 .cqFila.ok     .cqFilaTit { color: var(--ok); }
 .cqFila.warn   { border-left-color: var(--warn); }

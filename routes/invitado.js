@@ -159,10 +159,19 @@ export function decidirVeredicto_(enPadron, estadoPadron, conv, cal) {
  * @param {string[]} vins  ya validados y normalizados
  * @returns {Promise<object[]>} un resultado por VIN, en el mismo orden
  */
-async function consultarVins_(vins) {
+async function consultarVins_(vins, opciones) {
+  // `detallado` NO cambia el veredicto: pide las mismas OTs con dos campos
+  // más para poder fechar los cierres. Vive dentro de esta función, y no en
+  // una paralela, justamente para que no pueda divergir — la lista de dentro
+  // de la app y la pública tienen que decir lo mismo del mismo carro.
+  const detallado = !!(opciones && opciones.detallado);
   const SUPABASE_URL = process.env.SUPABASE_URL;
   const headers = supabaseHeaders_();
   const inList = vins.map(v => `"${v}"`).join(",");
+  const selectWo = detallado
+    ? "select=vin,tipo_ot,estado_general,fecha_creacion,fecha_sin_calidad," +
+      "asignaciones(estado_actual,updated_at,activo)"
+    : "select=vin,tipo_ot,estado_general,fecha_creacion";
 
   const [vinResp, woResp] = await Promise.all([
     // `select=*` y no `select=vin,estado` a propósito: si la columna `estado`
@@ -175,7 +184,7 @@ async function consultarVins_(vins) {
     // Sin filtro de fecha: un carro puede llevar meses parado y su OT seguir
     // siendo la que manda. Ordenado para que la primera de cada tipo gane.
     fetch(`${SUPABASE_URL}/rest/v1/work_orders?vin=in.(${inList})` +
-      `&tipo_ot=in.(CONVERSION,CALIDAD)&select=vin,tipo_ot,estado_general,fecha_creacion` +
+      `&tipo_ot=in.(CONVERSION,CALIDAD)&${selectWo}` +
       `&order=fecha_creacion.desc`,
       { method: "GET", headers }),
   ]);
@@ -196,19 +205,19 @@ async function consultarVins_(vins) {
   // La OT más reciente de cada tipo manda: un carro re-trabajado tiene OTs
   // viejas que ya no dicen nada de dónde está ahora. Como vienen ordenadas por
   // fecha descendente, la primera que se ve de cada tipo es la buena.
-  const ots = new Map(); // vin → { conv, cal }
+  const ots = new Map(); // vin → { conv, cal, convFila, calFila }
   for (const wo of (woRows || [])) {
     if (!wo?.vin) continue;
     const k = String(wo.vin).toUpperCase();
-    const e = ots.get(k) || { conv: null, cal: null };
-    if (wo.tipo_ot === "CONVERSION" && e.conv === null) e.conv = wo.estado_general || "";
-    if (wo.tipo_ot === "CALIDAD"    && e.cal  === null) e.cal  = wo.estado_general || "";
+    const e = ots.get(k) || { conv: null, cal: null, convFila: null, calFila: null };
+    if (wo.tipo_ot === "CONVERSION" && e.conv === null) { e.conv = wo.estado_general || ""; e.convFila = wo; }
+    if (wo.tipo_ot === "CALIDAD"    && e.cal  === null) { e.cal  = wo.estado_general || ""; e.calFila  = wo; }
     ots.set(k, e);
   }
 
   return vins.map(vin => {
     const fila = padron.get(vin) || null;
-    const e = ots.get(vin) || { conv: null, cal: null };
+    const e = ots.get(vin) || { conv: null, cal: null, convFila: null, calFila: null };
     // Mientras la migración no corra, `estado` simplemente no viene y el
     // veredicto sale de las OTs: sirve igual, solo sin ANULADO/DELEGADO.
     const clave = decidirVeredicto_(!!fila, fila?.estado || "", e.conv, e.cal);
@@ -229,6 +238,11 @@ async function consultarVins_(vins) {
         conversion: tonoEtapa_(e.conv),
         calidad:    tonoEtapa_(e.cal),
       },
+      // Solo en modo detallado. La respuesta pública no lleva fechas: quien
+      // pregunta desde fuera no está identificado.
+      ...(detallado ? { hitos: hitos_([
+        otDesdeFila_(e.convFila), otDesdeFila_(e.calFila),
+      ].filter(Boolean)) } : {}),
     };
   });
 }
@@ -384,6 +398,27 @@ router.get("/api/invitado/sugerir", async (req, res) => {
 });
 
 /**
+ * Fila cruda de work_orders → la forma que espera hitos_().
+ *
+ * Existe para que hitos_() no tenga que conocer dos formas distintas: la
+ * ficha arma sus OTs con nombres de usuario y notas, la lista no baja nada
+ * de eso. Lo único que comparten es esto.
+ */
+export function otDesdeFila_(fila) {
+  if (!fila) return null;
+  return {
+    tipo:   fila.tipo_ot,
+    estado: fila.estado_general,
+    fin:    fila.fecha_sin_calidad || null,
+    trabajos: (fila.asignaciones || []).map(a => ({
+      estado:      a.estado_actual,
+      actualizado: a.updated_at,
+      anulada:     a.activo === false,
+    })),
+  };
+}
+
+/**
  * Cuándo se cerró cada etapa.
  *
  * Es la pregunta que se hace delante del carro: "¿esto terminó, y cuándo?".
@@ -416,6 +451,116 @@ export function hitos_(ots) {
     calidad_fin:    cal  && cal.estado  === "FINALIZADO" ? (cal.fin  || ultimoFin_(cal))  : null,
   };
 }
+
+// POST /api/vin/lote — la lista de dentro de la app, con el contexto puesto.
+//
+// Por qué no vale /api/invitado/lote: aquél es público y devuelve SOLO el
+// veredicto, a propósito. Zona, fechas de cierre y planificación son el
+// padrón del taller y no salen a la calle.
+//
+// Y por qué no basta con abrir cada ficha: con 40 carros pegados eso son 40
+// clics y 40 consultas para responder algo que se mira de una pasada — qué
+// frena, dónde está y desde cuándo. Aquí son 5 lecturas para la lista entera.
+//
+// Sobre el acceso: mismo aviso que /api/vin/ficha. Este servidor no autentica
+// ninguna ruta; quien filtra por rol es el cliente.
+router.post("/api/vin/lote", async (req, res) => {
+  try {
+    const crudos = Array.isArray(req.body?.vins) ? req.body.vins : [];
+    if (!crudos.length) {
+      return res.status(400).json({ ok: false, error: "No se recibió ningún VIN." });
+    }
+
+    // Mismo saneado que el lote público: se separan los que no son VIN en vez
+    // de tirar el lote entero, porque quien pega una lista arrastra cabeceras.
+    const vistos = new Set();
+    const vins = [], invalidos = [];
+    for (const c of crudos) {
+      const v = String(c || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+      if (!VIN_RE.test(v)) { if (v) invalidos.push(v.slice(0, 20)); continue; }
+      if (vistos.has(v)) continue;
+      vistos.add(v);
+      vins.push(v);
+    }
+    if (vins.length > LOTE_MAX) {
+      return res.status(400).json({
+        ok: false,
+        error: `Son demasiados de una vez (${vins.length}). El máximo es ${LOTE_MAX}.`,
+      });
+    }
+    if (!vins.length) {
+      return res.status(400).json({ ok: false, error: "Ningún VIN de la lista es válido.", invalidos });
+    }
+
+    const clave = [...vins].sort().join(",");
+    const { SRV_CACHE_PESADO_MS } = await getConfig_();
+    const payload = await cachedByTopics_(
+      `vin:lote:${clave}`,
+      ["work_orders", "vins", "asignaciones", "zonas", "movilizador"],
+      SRV_CACHE_PESADO_MS, async () => {
+        const SUPABASE_URL = process.env.SUPABASE_URL;
+        const headers = supabaseHeaders_();
+        const inList = vins.map(v => `"${v}"`).join(",");
+
+        const [base, zonaResp, listaResp, movResp] = await Promise.all([
+          consultarVins_(vins, { detallado: true }),
+          fetch(`${SUPABASE_URL}/rest/v1/conversion_zonas?vin=in.(${inList})` +
+            `&select=vin,zona_id,registrado_por,registrado_at`, { headers }),
+          fetch(`${SUPABASE_URL}/rest/v1/lista_diaria_activa?vin=in.(${inList})&select=vin`, { headers }),
+          // Para los FALTA GLP sin zona: saber si el carro llegó siquiera al
+          // taller cambia qué se hace con él — esperar o ir a buscarlo.
+          fetch(`${SUPABASE_URL}/rest/v1/movilizador_traslados?vin=in.(${inList})` +
+            `&select=vin,estado,trasladado_at`, { headers }),
+        ]);
+
+        // Los tres adornos degradan a "no se sabe", nunca a un dato falso: un
+        // fallo de red no puede convertirse en "fuera de lista diaria" ni en
+        // "sin registro en zona de gas", que son motivos para frenar un carro.
+        const porVin_ = async (resp) => {
+          if (!resp.ok) return null;
+          const filas = await resp.json().catch(() => null);
+          if (!Array.isArray(filas)) return null;
+          const m = new Map();
+          for (const f of filas) if (f?.vin) m.set(String(f.vin).toUpperCase(), f);
+          return m;
+        };
+        const zonas = await porVin_(zonaResp);
+        const lista = await porVin_(listaResp);
+        const movs  = await porVin_(movResp);
+
+        const resultados = base.map(r => {
+          const z = zonas?.get(r.vin) || null;
+          const m = movs?.get(r.vin) || null;
+          return {
+            ...r,
+            lista_diaria: lista ? lista.has(r.vin) : null,
+            zona: z && z.zona_id ? {
+              id: z.zona_id,
+              nombre: z.zona_id === 16 ? "Zona Libre" : `Zona ${z.zona_id}`,
+              por: z.registrado_por || "",
+              desde: z.registrado_at || null,
+            } : null,
+            movilizador: m ? { estado: m.estado || "", ingreso_at: m.trasladado_at || null } : null,
+          };
+        });
+
+        const frenan  = resultados.filter(r => r.tono === "warn" || r.tono === "danger").length;
+        const dudosos = resultados.filter(r => r.tono === "duda").length;
+        return {
+          ok: true,
+          total: resultados.length,
+          frenan, dudosos,
+          pueden: resultados.length - frenan - dudosos,
+          resultados,
+        };
+      });
+
+    return res.json({ ...payload, invalidos });
+  } catch (e) {
+    console.error("[VIN_LOTE]", e.message);
+    return res.status(500).json({ ok: false, error: "No se pudo consultar. Intente de nuevo." });
+  }
+});
 
 // GET /api/vin/ficha/:vin — el mismo veredicto, con el detrás.
 //

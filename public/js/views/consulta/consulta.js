@@ -125,9 +125,16 @@ function chipEtapa_(icono, nombre, etiqueta, tono) {
  * lista". Ahí no se enseña nada, porque decir "no planificado" cuando no se
  * sabe frenaría un carro que sí se podía trabajar.
  */
-function chipListaDiaria_(enLista) {
-  if (enLista === true)  return `<span class="cqChip cqChip--listo">📋 En lista diaria</span>`;
-  if (enLista === false) return `<span class="cqChip cqChip--alerta">⛔ Fuera de lista diaria · sin equipos asignados</span>`;
+function chipListaDiaria_(enLista, compacto) {
+  if (enLista === true) {
+    return `<span class="cqChip cqChip--listo">📋 ${compacto ? "Planificado" : "En lista diaria"}</span>`;
+  }
+  if (enLista === false) {
+    // En la fila solo cabe el titular. El porqué —que sin equipos asignados
+    // hay que esperar a almacén— lo cuenta la ficha al abrirla.
+    return `<span class="cqChip cqChip--alerta">⛔ ${
+      compacto ? "Sin planificar" : "Fuera de lista diaria · sin equipos asignados"}</span>`;
+  }
   return "";
 }
 
@@ -309,7 +316,10 @@ async function consultarLista_() {
   const btn = document.getElementById("btnCqLista");
   if (btn) btn.disabled = true;
   try {
-    const d = await postJSON("/api/invitado/lote", { vins });
+    // No /api/invitado/lote: aquél es el público y devuelve solo el
+    // veredicto. Aquí hace falta zona, fechas y planificación en la propia
+    // fila, para no tener que abrir 40 fichas.
+    const d = await postJSON("/api/vin/lote", { vins });
     if (!d?.ok) throw new Error(d?.error || "No se pudo consultar.");
     pintarLista_(d);
     aviso_("");
@@ -336,15 +346,28 @@ function pintarLista_(d) {
       d.invalidos.map(escapeHtml).join(", ")}</div>`;
   }
 
-  // Cada fila abre la ficha completa. Es la razón de tener la lista aquí
-  // dentro y no solo en /invitado: se pega el lote, se ve cuáles fallan y se
-  // entra a ver quién tiene ese carro, sin volver a escribir nada.
-  html += filas.map(r => `
+  // Cada fila lleva ya lo que antes obligaba a abrirla: en qué punto están
+  // las dos etapas, dónde está el carro o cuándo se cerró, y si está
+  // planificado. Con 40 carros pegados, abrir uno por uno para eso eran 40
+  // clics y 40 consultas.
+  //
+  // Sigue abriendo la ficha al pulsarla: ahí están los nombres de los
+  // técnicos y los tiempos, que es otra pregunta y no cabe en una fila.
+  html += filas.map(r => {
+    const tonos = r.etapas_tono || {};
+    const ctx = contextoVeredicto_(r);
+    return `
     <button class="cqFila ${r.tono}" data-cq-vin="${escapeHtml(r.vin)}" type="button">
       <span class="cqFilaVin">${escapeHtml(r.vin)}</span>
       <span class="cqFilaTit">${escapeHtml(r.titulo)}</span>
-      <span class="cqFilaSub">Conversión: ${escapeHtml(r.etapas.conversion)} · Revisión: ${escapeHtml(r.etapas.calidad)}</span>
-    </button>`).join("");
+      <span class="cqFilaSub">
+        ${chipEtapa_("🔧", "Conversión", r.etapas.conversion, tonos.conversion)}
+        ${chipEtapa_("🛡️", "Revisión",   r.etapas.calidad,    tonos.calidad)}
+        ${chipListaDiaria_(r.lista_diaria, true)}
+      </span>
+      ${ctx ? `<span class="cqFilaCtx">${ctx}</span>` : ""}
+    </button>`;
+  }).join("");
 
   // Repintar la lista destruye la fila que anclaba la ficha. Se devuelve
   // ANTES de vaciar el contenedor: si no, el <div> de la ficha se iría con
