@@ -18,6 +18,9 @@ import { loadConfig } from "./config.js";
 
 // Topic del servidor → claves de config de los polls que deben refrescarse ya.
 // (pollNowByCfg solo dispara los que estén ACTIVOS — vista abierta.)
+// POLL_TEC_ESTADO_MS es el estado del VIN que el técnico tiene escrito, y era
+// el último poll que seguía sin empujón: su única frescura era el latido, por
+// eso estaba en 8 s. Con el evento delante, el latido puede ser largo.
 // POLL_TEC_SYNC_MS es la lista de "mis activas" del técnico. Antes dependía de
 // un WebSocket a Supabase que nunca entregó un evento (ver conversion-sync.js),
 // así que su única frescura era el latido. Ahora entra por aquí: el técnico ve
@@ -28,12 +31,12 @@ const TOPIC_TO_POLLS = {
   // cambia de estado, y eso emite "work_orders". Tenerlo aquí forzaba a cada
   // dispositivo del taller a recargar las ~210 KB de /movilizador/status en
   // cada avance ajeno — el mayor consumo de egress de la app.
-  asignaciones: ["POLL_SUP_LIVE_MS", "POLL_SUP_OT_CONTROL_MS", "POLL_ZONAS_MAPA_MS", "POLL_COLA_BADGE_MS", "POLL_VIN_READY_MS", "POLL_PAIR_SUGGEST_MS", "POLL_TEC_SYNC_MS"],
+  asignaciones: ["POLL_SUP_LIVE_MS", "POLL_SUP_OT_CONTROL_MS", "POLL_ZONAS_MAPA_MS", "POLL_COLA_BADGE_MS", "POLL_VIN_READY_MS", "POLL_PAIR_SUGGEST_MS", "POLL_TEC_SYNC_MS", "POLL_TEC_ESTADO_MS"],
   ramal:        ["POLL_RAMAL_LISTO_MS", "POLL_COLA_POSICION_MS", "POLL_RAMALERO_SOL_MS"],
   ramales:      ["POLL_RAMALES_MS"],
   zonas:        ["POLL_ZONAS_MAPA_MS"],
   movilizador:  ["POLL_MOVILIZADOR_MS", "POLL_ZONAS_MAPA_MS"],
-  work_orders:  ["POLL_SUP_OT_CONTROL_MS", "POLL_SUP_LIVE_MS", "POLL_TEC_SYNC_MS", "POLL_MOVILIZADOR_MS"],
+  work_orders:  ["POLL_SUP_OT_CONTROL_MS", "POLL_SUP_LIVE_MS", "POLL_TEC_SYNC_MS", "POLL_TEC_ESTADO_MS", "POLL_MOVILIZADOR_MS"],
   incidencias:  [],  // las vistas de incidencias escuchan "glp:live" directamente
   config:       [],  // manejado abajo: recarga la config
 };
