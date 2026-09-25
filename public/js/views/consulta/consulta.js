@@ -108,9 +108,9 @@ function contextoVeredicto_(d, compacto) {
       // Las dos fechas, y en este orden: la de calidad es la que cierra el
       // carro, la de conversión explica cuánto tardó el visto bueno. En la
       // fila solo la de calidad: es la que se apunta.
-      if (compacto) return h.calidad_fin ? `🛡️ ${fmtShort_(h.calidad_fin)}` : "";
+      if (compacto) return h.calidad_fin ? `🔍 ${fmtShort_(h.calidad_fin)}` : "";
       return [
-        h.calidad_fin    ? `🛡️ Revisión técnica ${fmtShort_(h.calidad_fin)}` : "",
+        h.calidad_fin    ? `🔍 Revisión técnica ${fmtShort_(h.calidad_fin)}` : "",
         h.conversion_fin ? `🔧 Conversión ${fmtShort_(h.conversion_fin)}`    : "",
       ].filter(Boolean).join(" · ");
 
@@ -212,7 +212,7 @@ function pintar_(d) {
   if (d.zona) chips.push(`<span class="cqChip cqChip--zona">📍 ${escapeHtml(d.zona.nombre)}</span>`);
   const tonos = d.etapas_tono || {};
   chips.push(chipEtapa_("🔧", "Conversión", d.etapas.conversion, tonos.conversion));
-  chips.push(chipEtapa_("🛡️", "Revisión",   d.etapas.calidad,    tonos.calidad));
+  chips.push(chipEtapa_("🔍", "Revisión",   d.etapas.calidad,    tonos.calidad));
   document.getElementById("cqChips").innerHTML = chips.join("");
 
   const f = d.ficha;
@@ -344,8 +344,31 @@ function extraerVins_(texto) {
   return String(texto || "").split(/[^A-Za-z0-9]+/).map(t => t.toUpperCase()).filter(Boolean);
 }
 
-// Peor primero: quien pega 40 carros busca los que NO pueden salir.
+/**
+ * El orden de la lista, por veredicto y no por tono.
+ *
+ * Antes ordenaba por color, y eso metía EN PROCESO y FALTA REVISIÓN en el
+ * mismo saco (los dos son `warn`), mezclados entre sí. Son dos cosas
+ * distintas de hacer: uno se está trabajando ahora y el otro está parado
+ * esperando a calidad.
+ *
+ * El orden es el del recorrido del carro por el taller, de lo más lejos de
+ * salir a lo más cerca. Quien pega cuarenta carros lee de arriba abajo y
+ * para cuando deja de haber trabajo pendiente.
+ */
+const ORDEN_VEREDICTO = {
+  FALTA_GLP:     0,   // ni ha empezado
+  EN_PROCESO:    1,   // alguien lo tiene ahora
+  FALTA_CALIDAD: 2,   // convertido, esperando el visto bueno
+  LISTO:         3,   // puede salir
+  NO_FIGURA:     4,   // no está en el padrón: hay que confirmarlo aparte
+  DELEGADO:      5,   // se convierte en otra sede
+  ANULADO:       6,   // ya no lleva GLP
+};
+// Red de seguridad por si aparece un veredicto nuevo sin pasar por aquí:
+// cae al final por su color en vez de colarse arriba con un 0.
 const ORDEN_TONO = { danger: 0, warn: 1, duda: 2, ok: 3 };
+const orden_ = r => ORDEN_VEREDICTO[r.veredicto] ?? (10 + (ORDEN_TONO[r.tono] ?? 9));
 
 async function consultarLista_() {
   const vins = extraerVins_(document.getElementById("cqVinsLista").value);
@@ -370,8 +393,10 @@ async function consultarLista_() {
 }
 
 function pintarLista_(d) {
+  // Dentro del mismo veredicto manda el VIN, para que dos consultas de la
+  // misma lista salgan en el mismo orden y se puedan comparar de un vistazo.
   const filas = (d.resultados || []).slice().sort(
-    (a, b) => (ORDEN_TONO[a.tono] ?? 9) - (ORDEN_TONO[b.tono] ?? 9));
+    (a, b) => orden_(a) - orden_(b) || String(a.vin).localeCompare(String(b.vin)));
 
   let html = `
     <div class="cqResumen">
@@ -386,7 +411,7 @@ function pintarLista_(d) {
   html += `
     <div class="cqLeyenda">
       <span><b>🔧</b> Conversión</span>
-      <span><b>🛡️</b> Revisión</span>
+      <span><b>🔍</b> Revisión</span>
       <span><b>📋</b> Planificado</span>
       <span class="cqLeySep"></span>
       <span><i class="cqPunto cqPunto--sin"></i> Sin iniciar</span>
@@ -421,7 +446,7 @@ function pintarLista_(d) {
       </span>
       <span class="cqFilaEstado">
         ${semaforo_("🔧", "Conversión", r.etapas.conversion, tonos.conversion)}
-        ${semaforo_("🛡️", "Revisión",   r.etapas.calidad,    tonos.calidad)}
+        ${semaforo_("🔍", "Revisión",   r.etapas.calidad,    tonos.calidad)}
         ${plan}
         ${ctx ? `<span class="cqFilaCtx">${ctx}</span>` : ""}
       </span>
