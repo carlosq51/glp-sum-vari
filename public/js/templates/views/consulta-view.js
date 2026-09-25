@@ -45,6 +45,10 @@ export function consultaView() {
           <span class="cqVin" id="cqRVin"></span>
           <span class="cqTitulo" id="cqTitulo"></span>
           <span class="cqDetalle" id="cqDetalle"></span>
+          <!-- El dato que hace falta para actuar sobre ESTE veredicto: la
+               zona si el carro está en proceso, la fecha de cierre si ya
+               terminó. Lo rellena el JS; vacío no ocupa. -->
+          <span class="cqContexto" id="cqContexto"></span>
         </div>
 
         <div class="cqChips" id="cqChips"></div>

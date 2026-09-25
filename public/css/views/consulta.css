@@ -99,6 +99,9 @@
   cursor: pointer;
 }
 .cqFila:hover { background: rgba(255,255,255,.06); }
+/* La fila cuya ficha está abierta justo debajo. Sin esto, con la ficha
+   anclada entre medias, no se sabe a qué carro pertenece lo que se lee. */
+.cqFila.abierta { background: rgba(255,255,255,.08); border-left-width: 6px; }
 .cqFilaVin { font-family: var(--font-mono, ui-monospace, monospace); font-size: var(--fs-xs); font-weight: 700; }
 .cqFilaTit { font-size: var(--fs-xs); font-weight: var(--fw-black); text-align: right; }
 .cqFilaSub { grid-column: 1 / -1; font-size: var(--fs-xs); color: var(--muted); font-weight: 600; }
@@ -138,6 +141,17 @@
 }
 .cqVeredicto .cqTitulo  { font-size: 1.6rem; font-weight: var(--fw-black); line-height: 1.05; }
 .cqVeredicto .cqDetalle { font-size: var(--fs-sm); font-weight: 600; opacity: .92; }
+
+/* La línea de contexto: zona o fecha de cierre. Más pequeña y más apagada
+   que el detalle — es el dato de apoyo, no el veredicto. Vacía no ocupa
+   nada, así que no hace falta ocultarla desde el JS. */
+.cqVeredicto .cqContexto {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  opacity: .8;
+  letter-spacing: .01em;
+}
+.cqVeredicto .cqContexto:empty { display: none; }
 
 /* Mismo criterio que en /invitado: fondo tenue con borde y texto saturados.
    Un relleno saturado con texto oscuro se lava con el sol del taller. */

@@ -55,6 +55,58 @@ const ETIQUETA_ESTADO = {
 };
 
 /**
+ * La línea de debajo del veredicto: el dato que hace falta para actuar
+ * sobre ESE veredicto, y no sobre los otros.
+ *
+ * Cada estado tiene una pregunta distinta y una sola:
+ *   EN PROCESO      · ¿dónde está el carro para ir a verlo?
+ *   FALTA GLP       · ¿ha llegado siquiera al área? ¿desde cuándo?
+ *   FALTA REVISIÓN  · ¿cuánto lleva esperando a calidad?
+ *   GLP COMPLETO    · ¿cuándo se cerró? (es lo que se apunta en el acta)
+ *
+ * Deliberadamente NO se contestan todas a la vez: la ficha ya tiene los
+ * paneles con todo, y esta línea existe para que no haya que abrirlos.
+ */
+function contextoVeredicto_(d) {
+  const z = d.zona, h = d.hitos || {};
+  const zonaDesde = z
+    ? `📍 ${escapeHtml(z.nombre)} · desde ${fmtShort_(z.desde)}`
+    : "";
+
+  switch (d.veredicto) {
+    case "EN_PROCESO":
+      // Sin zona no se puede ir a buscarlo, y eso es una incidencia en sí:
+      // alguien lo está trabajando en un sitio que nadie registró.
+      return zonaDesde || "📍 Sin zona registrada — se está trabajando sin ubicación";
+
+    case "FALTA_GLP":
+      // La pregunta real aquí no es "¿falta?" sino "¿está el carro?". Un
+      // FALTA GLP sin registro de zona es un carro que todavía no ha
+      // entrado al área; con registro, uno que entró y está parado.
+      if (zonaDesde) return `${zonaDesde} · esperando conversión`;
+      return d.movilizador?.ingreso_at
+        ? `🚚 Ingresó al taller ${fmtShort_(d.movilizador.ingreso_at)} · sin registro en zona de gas`
+        : "⛔ Sin registro en zona de gas — el carro no ha entrado al área";
+
+    case "FALTA_CALIDAD":
+      return h.conversion_fin
+        ? `🔧 Conversión terminada ${fmtShort_(h.conversion_fin)}${zonaDesde ? ` · ${zonaDesde}` : ""}`
+        : zonaDesde;
+
+    case "LISTO":
+      // Las dos fechas, y en este orden: la de calidad es la que cierra el
+      // carro, la de conversión explica cuánto tardó el visto bueno.
+      return [
+        h.calidad_fin    ? `🛡️ Revisión técnica ${fmtShort_(h.calidad_fin)}` : "",
+        h.conversion_fin ? `🔧 Conversión ${fmtShort_(h.conversion_fin)}`    : "",
+      ].filter(Boolean).join(" · ");
+
+    default:
+      return zonaDesde;
+  }
+}
+
+/**
  * Chip de una etapa, pintado según en qué punto está.
  *
  * El tono lo decide el servidor (`etapas_tono`), no esta función: el texto y
@@ -81,7 +133,17 @@ function chipListaDiaria_(enLista) {
 
 // ─── Consulta ─────────────────────────────────────────────────────────
 
-async function consultar_(vinCrudo) {
+// Dónde se engancha la ficha al abrirse.
+//
+// En la plantilla, #cqResultado va DESPUÉS de #cqResultadoLista. Con 40
+// carros pegados eso ponía la ficha al final de todo: se pulsaba una fila y
+// la página saltaba al fondo, sin nada alrededor que dijera cuál de los 40
+// se había abierto. Ahora la ficha se mueve justo debajo de la fila pulsada
+// y vuelve a su sitio cuando se consulta un VIN suelto.
+let _anclaFicha = null;
+
+async function consultar_(vinCrudo, ancla) {
+  _anclaFicha = ancla || null;
   const vin = String(vinCrudo || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
   if (vin.length < 11) {
     aviso_("Escriba o escanee un VIN completo.", true);
@@ -103,6 +165,10 @@ function pintar_(d) {
   document.getElementById("cqTitulo").textContent  = d.titulo || "";
   document.getElementById("cqDetalle").textContent = d.detalle || "";
   document.getElementById("cqVeredicto").className = "cqVeredicto " + (d.tono || "duda");
+  // innerHTML y no textContent: el texto trae emojis y nombres de zona ya
+  // escapados por contextoVeredicto_. Nada de aquí viene sin pasar por
+  // escapeHtml.
+  document.getElementById("cqContexto").innerHTML = contextoVeredicto_(d);
 
   // Chips: lo que se lee de un vistazo.
   //
@@ -133,8 +199,15 @@ function pintar_(d) {
     puedeVerDetalle_() ? detalleHtml_(d) : "";
 
   const box = document.getElementById("cqResultado");
+  // El nodo se mueve, no se duplica: es el mismo <div> de la plantilla, con
+  // sus ids. Si la fila ya no está en el DOM (se volvió a consultar la
+  // lista), la ficha regresa al final, que es su sitio en la plantilla.
+  if (_anclaFicha?.isConnected) _anclaFicha.insertAdjacentElement("afterend", box);
+  else document.getElementById("viewCONSULTA")?.appendChild(box);
+
   box.style.display = "block";
-  // Viniendo de una fila de la lista, la ficha nace fuera de pantalla.
+  // Anclada bajo su fila, "nearest" apenas mueve la página: la fila pulsada
+  // sigue a la vista, que es justo lo que faltaba.
   box.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
@@ -195,8 +268,17 @@ function panel_(titulo, cuerpo) {
 
 // ─── Modo lista ───────────────────────────────────────────────────────
 
+/** Devuelve la ficha al final de la vista, que es su sitio en la plantilla. */
+function devolverFicha_() {
+  _anclaFicha = null;
+  const box = document.getElementById("cqResultado");
+  const vista = document.getElementById("viewCONSULTA");
+  if (box && vista) { box.style.display = "none"; vista.appendChild(box); }
+}
+
 function setModo_(modo) {
   const uno = modo === "uno";
+  devolverFicha_();
   document.getElementById("cqBloqueUno").style.display    = uno ? "flex" : "none";
   document.getElementById("cqBloqueLista").style.display  = uno ? "none" : "grid";
   document.getElementById("cqResultado").style.display    = "none";
@@ -264,6 +346,11 @@ function pintarLista_(d) {
       <span class="cqFilaSub">Conversión: ${escapeHtml(r.etapas.conversion)} · Revisión: ${escapeHtml(r.etapas.calidad)}</span>
     </button>`).join("");
 
+  // Repintar la lista destruye la fila que anclaba la ficha. Se devuelve
+  // ANTES de vaciar el contenedor: si no, el <div> de la ficha se iría con
+  // el innerHTML y la vista se quedaría sin sus ids para siempre.
+  devolverFicha_();
+
   const box = document.getElementById("cqResultadoLista");
   box.innerHTML = html;
   box.style.display = "block";
@@ -322,14 +409,19 @@ export function init() {
   document.getElementById("btnCqLista")?.addEventListener("click", () => consultarLista_());
 
   // De una fila de la lista a la ficha completa, sin reescribir el VIN.
-  // NO se cambia de modo: la ficha aparece debajo y la lista se queda, para
-  // poder ir mirando uno por uno los que fallan sin volver a pegarla.
+  // NO se cambia de modo: la ficha se abre bajo la fila pulsada y la lista
+  // se queda, para ir mirando uno por uno los que fallan sin volver a
+  // pegarla.
   document.getElementById("cqResultadoLista")?.addEventListener("click", e => {
     const fila = e.target.closest("[data-cq-vin]");
     if (!fila) return;
     const inp = document.getElementById("cqVin");
     if (inp) inp.value = fila.dataset.cqVin;
-    consultar_(fila.dataset.cqVin);
+    fila.classList.add("abierta");
+    for (const otra of document.querySelectorAll(".cqFila.abierta")) {
+      if (otra !== fila) otra.classList.remove("abierta");
+    }
+    consultar_(fila.dataset.cqVin, fila);
   });
 
   // QR sobre el modal compartido #qrModal. El guard de módulo es obligatorio:

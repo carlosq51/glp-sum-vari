@@ -383,6 +383,40 @@ router.get("/api/invitado/sugerir", async (req, res) => {
   }
 });
 
+/**
+ * Cuándo se cerró cada etapa.
+ *
+ * Es la pregunta que se hace delante del carro: "¿esto terminó, y cuándo?".
+ * Estaba en la ficha, pero enterrada entre las asignaciones de cada OT y
+ * solo visible para supervisión; el veredicto, que es lo que todos leen, no
+ * llevaba ninguna fecha.
+ *
+ * Conversión tiene campo propio (`fecha_sin_calidad`), pero no siempre: las
+ * OTs cerradas antes de esa migración lo tienen a null, y ahí el último
+ * técnico en terminar es la mejor prueba que queda. Calidad nunca lo tuvo
+ * —nadie lo escribe para ese tipo de OT— así que siempre sale de ahí.
+ *
+ * Se mira solo la OT MÁS RECIENTE de cada tipo, que es la que vienen
+ * ordenadas primero y la única que dice dónde está el carro hoy.
+ */
+export function hitos_(ots) {
+  const ultimoFin_ = ot => {
+    const fines = (ot.trabajos || [])
+      .filter(t => !t.anulada && t.estado === "FINALIZADO" && t.actualizado)
+      .map(t => Date.parse(t.actualizado))
+      .filter(Number.isFinite);
+    return fines.length ? new Date(Math.max(...fines)).toISOString() : null;
+  };
+  const primera_ = tipo => (ots || []).find(o => o.tipo === tipo) || null;
+
+  const conv = primera_("CONVERSION");
+  const cal  = primera_("CALIDAD");
+  return {
+    conversion_fin: conv && conv.estado === "FINALIZADO" ? (conv.fin || ultimoFin_(conv)) : null,
+    calidad_fin:    cal  && cal.estado  === "FINALIZADO" ? (cal.fin  || ultimoFin_(cal))  : null,
+  };
+}
+
 // GET /api/vin/ficha/:vin — el mismo veredicto, con el detrás.
 //
 // Esto NO es la vista de invitado: alimenta la cartilla "Consulta de VIN" de
@@ -419,7 +453,7 @@ router.get("/api/vin/ficha/:vin", async (req, res) => {
           // Aquí sí compensa: es UN VIN pedido a mano, no una lista que se
           // repinta sola, así que el peso del embed no se multiplica.
           fetch(`${SUPABASE_URL}/rest/v1/work_orders?vin=eq.${q}` +
-            `&select=id,tipo_ot,numero_ot,estado_general,fecha_creacion,observaciones,` +
+            `&select=id,tipo_ot,numero_ot,estado_general,fecha_creacion,observaciones,fecha_sin_calidad,` +
             `asignaciones(rol_trabajo,estado_actual,tiempo_trab_ms,updated_at,activo,usuarios(nombre))` +
             `&order=fecha_creacion.desc`, { headers }),
           fetch(`${SUPABASE_URL}/rest/v1/conversion_zonas?vin=eq.${q}` +
@@ -456,6 +490,9 @@ router.get("/api/vin/ficha/:vin", async (req, res) => {
           numero:  isValidOT_(wo.numero_ot) ? wo.numero_ot : "",
           estado:  wo.estado_general,
           fecha:   wo.fecha_creacion,
+          // Cuándo terminó el último técnico, sin esperar a calidad. Lo
+          // escribe routes/trabajo.js al cerrar la OT de conversión.
+          fin:     wo.fecha_sin_calidad || null,
           nota:    wo.observaciones || "",
           trabajos: (wo.asignaciones || [])
             // Las anuladas se quedan: para supervisión, que alguien empezara
@@ -475,6 +512,7 @@ router.get("/api/vin/ficha/:vin", async (req, res) => {
         return {
           ok: true,
           ...base[0],
+          hitos: hitos_(ots),
           ficha: f ? {
             modelo:   f.modelo   || "",
             cliente:  f.cliente  || "",
