@@ -231,3 +231,82 @@ describe('grupoDeRol_', () => {
     expect(new Set(todos).size).toBe(todos.length);
   });
 });
+
+// Las franjas REALES del taller: el rango y la etiqueta no coinciden, y eso
+// no es un descuido. El primer turno se anuncia a las 07:00 pero desde las
+// 05:00 ya se cierran carros; la noche se anuncia hasta la 01:00 pero quien
+// cierra a la 01:40 estaba en ese turno. Es la regla que lleva anios en la
+// hoja de calculo (gas/REP_DASHBOARD.js: 'if (minutos < 120) minutos += 1440'
+// con el slot 1380->1560).
+const FRANJAS = [
+  '05:00-10:30|07:00–10:30',
+  '10:30-13:00',
+  '13:00-16:30',
+  '16:30-19:30',
+  '19:30-23:00',
+  '23:00-02:00|23:00–01:00',
+].join(',');
+
+describe('bloquesJornada_ · franjas con etiqueta propia', () => {
+  const b = bloquesJornada_(FRANJAS);
+
+  it('devuelve las seis franjas del taller', () => {
+    expect(b).toHaveLength(6);
+  });
+
+  it('la etiqueta manda en pantalla y el rango manda en los datos', () => {
+    // Se anuncia a las 07:00, pero recoge desde las 05:00.
+    expect(b[0].label).toBe('07:00–10:30');
+    expect(b[0].ini).toBe(5 * 60);
+    // Se anuncia hasta la 01:00, pero recoge hasta las 02:00.
+    expect(b[5].label).toBe('23:00–01:00');
+    expect(b[5].fin).toBe(26 * 60);
+  });
+
+  it('sin etiqueta, la etiqueta es el propio rango', () => {
+    expect(b[1].label).toBe('10:30–13:00');
+  });
+
+  it('coincide con los slots de la hoja: el ultimo va de 1380 a 1560', () => {
+    expect(b[5].ini).toBe(1380);
+    expect(b[5].fin).toBe(1560);
+  });
+
+  it('descarta una franja mal escrita sin tirar la tabla entera', () => {
+    expect(bloquesJornada_('05:00-10:30, basura, 10:30-13:00')).toHaveLength(2);
+  });
+});
+
+describe('indiceBloque_ · la franja de noche', () => {
+  const b = bloquesJornada_(FRANJAS);
+  const en = (hhmm) => indiceBloque_(hhmmAMin_(hhmm), b);
+
+  it('lo cerrado despues de medianoche sigue siendo del turno noche', () => {
+    expect(en('23:00')).toBe(5);
+    expect(en('23:59')).toBe(5);
+    expect(en('00:30')).toBe(5);
+    // Este es el que se perdia antes, cuando la franja acababa a la 01:00.
+    expect(en('01:40')).toBe(5);
+    expect(en('01:59')).toBe(5);
+  });
+
+  it('a las 02:00 se acabo la jornada', () => {
+    expect(en('02:00')).toBe(-1);
+    expect(en('03:00')).toBe(-1);
+    expect(en('04:59')).toBe(-1);
+  });
+
+  it('respeta los cortes en :30', () => {
+    expect(en('10:29')).toBe(0);
+    expect(en('10:30')).toBe(1);
+    expect(en('16:29')).toBe(2);
+    expect(en('16:30')).toBe(3);
+    expect(en('19:29')).toBe(3);
+    expect(en('19:30')).toBe(4);
+  });
+
+  it('las dos horas antes del turno anunciado cuentan en la primera franja', () => {
+    expect(en('05:00')).toBe(0);
+    expect(en('06:59')).toBe(0);
+  });
+});

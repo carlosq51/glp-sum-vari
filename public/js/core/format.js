@@ -204,20 +204,57 @@ export function minutosPE_(fecha = new Date()) {
 }
 
 /**
- * "05:00,10:00,…,01:00" → [{ ini, fin, label }] en minutos linealizados.
+ * Texto de franjas → [{ ini, fin, label }] en minutos linealizados.
  *
- * `ini` del primer bloque es el origen del eje; los siguientes pueden pasar de
- * 1440 si el corte cruzó la medianoche. Con menos de dos límites no hay
- * bloques que devolver.
+ * Formato: `desde-hasta[|etiqueta]`, separadas por comas.
+ *
+ *   05:00-10:30|07:00–10:30 , 10:30-13:00 , … , 23:00-02:00|23:00–01:00
+ *
+ * El rango y la etiqueta se declaran por separado A PROPÓSITO, porque en este
+ * taller no coinciden y no es un descuido:
+ *
+ *   · El primer turno se anuncia a las 07:00, pero entre las 05:00 y las 07:00
+ *     se cierran carros que tienen que contar en algún sitio. La etiqueta dice
+ *     07:00; el rango recoge desde las 05:00.
+ *   · La franja de noche se anuncia hasta la 01:00, pero el que cierra a las
+ *     01:40 estaba en ese turno. El rango llega hasta las 02:00 — es la misma
+ *     regla que lleva años en la hoja de cálculo (gas/REP_DASHBOARD.js:1921,
+ *     `if (minutos < 120) minutos += 1440`, con el slot 1380→1560).
+ *
+ * Una franja cuyo fin no sea mayor que su inicio cruza la medianoche y se
+ * linealiza sumándole un día, que es lo que permite comparar en minutos.
+ *
+ * Se admite también el formato antiguo de solo límites ("05:00,10:00,13:00")
+ * para no romper un app_config escrito antes de esto.
  */
 export function bloquesJornada_(txt) {
-  const crudos = String(txt || "").split(",").map(hhmmAMin_).filter(n => n != null);
+  const items = String(txt || "").split(",").map(s => s.trim()).filter(Boolean);
+  if (!items.length) return [];
+  if (!items.some(s => s.includes("-") || s.includes("–"))) return bloquesDeLimites_(items);
+
+  const out = [];
+  for (const item of items) {
+    const [rango, etiqueta] = item.split("|").map(s => String(s || "").trim());
+    const m = /^(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})$/.exec(rango || "");
+    if (!m) continue;
+    const ini = hhmmAMin_(m[1]);
+    let   fin = hhmmAMin_(m[2]);
+    if (ini == null || fin == null) continue;
+    if (fin <= ini) fin += 1440;   // la franja cruza la medianoche
+    out.push({ ini, fin, label: etiqueta || `${m[1]}–${m[2]}` });
+  }
+  return out;
+}
+
+/** Formato antiguo: una lista de límites, donde cada uno abre la franja siguiente. */
+function bloquesDeLimites_(items) {
+  const crudos = items.map(hhmmAMin_).filter(n => n != null);
   if (crudos.length < 2) return [];
 
   const lin = [crudos[0]];
   for (let i = 1; i < crudos.length; i++) {
     let v = crudos[i];
-    while (v <= lin[i - 1]) v += 1440;   // este corte ya es del día siguiente
+    while (v <= lin[i - 1]) v += 1440;
     lin.push(v);
   }
 

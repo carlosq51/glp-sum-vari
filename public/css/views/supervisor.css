@@ -505,6 +505,13 @@ button[data-suptrack].active {
   background: var(--pillBg);
   border-top: 1px solid var(--surfaceLine);
 }
+/* Subtotal de seccion: cierra el grupo al que pertenece. */
+.lvCortes__tbl tbody tr.is-sub th[scope="row"],
+.lvCortes__tbl tbody tr.is-sub td {
+  font-weight: var(--fw-black);
+  background: var(--pillBg);
+  border-top: 1px solid var(--surfaceLine);
+}
 .lvCortes__tbl tfoot tr.is-fuerte th[scope="row"],
 .lvCortes__tbl tfoot tr.is-fuerte td {
   background: var(--glass);

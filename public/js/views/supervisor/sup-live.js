@@ -367,13 +367,13 @@ export function cortesHTML_(data, techs) {
       <th scope="col" class="lvCortes__tot">TOT</th>
     </tr>`;
 
-  const cuerpo_ = (lista, conRol) => lista.map(({ t, celdas, fuera, total }) => {
+  const cuerpo_ = (lista) => lista.map(({ t, celdas, fuera, total }) => {
     const rm     = rolMeta(t.rol);
     const nombre = t.nombre || t.email || "—";
     return `
     <tr class="${total === 0 ? "is-cero" : ""}">
       <th scope="row" title="${escapeHtml(nombre)} — ${escapeHtml(rm.label)}">
-        ${presenciaHTML_(t)}${conRol ? `<span class="lvCortes__rol" style="color:${rm.color};">${rm.icon}</span>` : ""}${escapeHtml(nombre)}
+        ${presenciaHTML_(t)}<span class="lvCortes__rol" style="color:${rm.color};">${rm.icon}</span>${escapeHtml(nombre)}
       </th>
       ${fila_(celdas)}
       <td class="lvCortes__tot">${total > 0 ? total : cero_}${
@@ -382,21 +382,25 @@ export function cortesHTML_(data, techs) {
     </tr>`;
   }).join("");
 
-  const pie_ = (rows) => `<tfoot>${rows.map(r => `
-    <tr${r.fuerte ? ` class="is-fuerte"` : ""}>
+  const filaTotal_ = (r, cls) => `
+    <tr${cls ? ` class="${cls}"` : ""}>
       <th scope="row">${r.label}</th>
       ${fila_(r.arr)}
       <td class="lvCortes__tot">${suma_(r.arr)}</td>
-    </tr>`).join("")}</tfoot>`;
+    </tr>`;
 
-  const tabla_ = ({ titulo, unidad, lista, conRol, pie }) => `
+  // Cada sección es un tbody, y su subtotal va al FINAL de la sección. Un total
+  // encima de lo que suma se lee como una fila más; debajo, se lee como lo que
+  // es. Fue exactamente el error de la versión anterior de esta tabla.
+  const tabla_ = ({ titulo, unidad, secciones, pie }) => `
     <div class="lvCortes__bloque">
       <div class="lvCortes__cap">${titulo} <em>${escapeHtml(unidad)}</em></div>
       <div class="lvCortes__scroll">
         <table class="lvCortes__tbl">
           <thead>${cabecera_}</thead>
-          <tbody>${cuerpo_(lista, conRol)}</tbody>
-          ${pie_(pie)}
+          ${secciones.map(s =>
+            `<tbody>${cuerpo_(s.lista)}${s.cierre ? filaTotal_(s.cierre, "is-sub") : ""}</tbody>`).join("")}
+          ${pie.length ? `<tfoot>${pie.map(r => filaTotal_(r, "is-fuerte")).join("")}</tfoot>` : ""}
         </table>
       </div>
     </div>`;
@@ -404,22 +408,24 @@ export function cortesHTML_(data, techs) {
   const tablaConv = conv.length ? tabla_({
     titulo: "🔧 Técnicos de conversión",
     unidad: "mitades de carro cerradas",
-    lista:  conv,
-    conRol: true,                       // motor y tanque conviven: hay que distinguirlos
-    pie: [
-      { label: "Mitades cerradas",     arr: subtotal_(conv) },
-      { label: "🚗 Carros completos",  arr: porBloque_(data.cierres?.conv), fuerte: true },
-    ],
+    secciones: [{ lista: conv, cierre: { label: "Mitades cerradas", arr: subtotal_(conv) } }],
+    pie: [{ label: "🚗 Carros completos", arr: porBloque_(data.cierres?.conv) }],
   }) : "";
+
+  // Ramales arriba con su subtotal, calidad al fondo. Así "Aprobados QC" queda
+  // pegado a las filas que lo producen en vez de flotando debajo de una lista
+  // mezclada, que era lo que hacía el total ilegible.
+  const ramales = apoyo.filter(f => grupoDeRol_(f.t.rol)?.id === "RAMALES");
+  const calidad = apoyo.filter(f => grupoDeRol_(f.t.rol)?.id !== "RAMALES");
 
   const tablaApoyo = apoyo.length ? tabla_({
     titulo: "🤝 Apoyo",
-    unidad: "calidad y ramales",
-    lista:  apoyo,
-    conRol: true,
-    pie: [
-      { label: "✅ Aprobados QC", arr: porBloque_(data.cierres?.cal), fuerte: true },
+    unidad: "ramales armados e inspecciones",
+    secciones: [
+      ...(ramales.length ? [{ lista: ramales, cierre: { label: "🔗 Ramales armados", arr: subtotal_(ramales) } }] : []),
+      ...(calidad.length ? [{ lista: calidad }] : []),
     ],
+    pie: calidad.length ? [{ label: "✅ Aprobados QC", arr: porBloque_(data.cierres?.cal) }] : [],
   }) : "";
 
   return `

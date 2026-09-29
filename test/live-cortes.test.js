@@ -156,6 +156,30 @@ describe("cortesHTML_", () => {
       [tec("A", "MOTOR", [], { estadoActivo: "DESCONECTADO" })])).toBe("");
   });
 
+  it("en apoyo, calidad va al fondo y su total queda pegado a sus filas", () => {
+    const html = cortesHTML_({ cierres: { conv: [], cal: [] } }, [
+      tec("INSPECTOR UNO", "CALIDAD", [MANANA]),
+      tec("RAMALERO UNO", "RAMALERO", [MANANA, MANANA]),
+    ]);
+    const apoyo = html.slice(html.indexOf("🤝 Apoyo"));
+    // Ramales primero aunque calidad llegara antes en la lista de entrada.
+    expect(apoyo.indexOf("RAMALERO UNO")).toBeLessThan(apoyo.indexOf("INSPECTOR UNO"));
+    // Y cada total detras de lo que suma: ramales cierra su seccion, QC cierra la tabla.
+    expect(apoyo.indexOf("Ramales armados")).toBeGreaterThan(apoyo.indexOf("RAMALERO UNO"));
+    expect(apoyo.indexOf("Ramales armados")).toBeLessThan(apoyo.indexOf("INSPECTOR UNO"));
+    expect(apoyo.indexOf("Aprobados QC")).toBeGreaterThan(apoyo.indexOf("INSPECTOR UNO"));
+  });
+
+  it("un cierre a la 01:40 cuenta en la franja de noche, no se pierde", () => {
+    // 06:40Z = 01:40 en Lima. Antes caia fuera de toda franja y solo dejaba un
+    // asterisco; ahora la franja de noche llega hasta las 02:00.
+    const html = cortesHTML_({ cierres: { conv: [], cal: [] } }, [
+      tec("TRASNOCHE", "MOTOR", ["2026-09-30T06:40:00Z"]),
+    ]);
+    expect(html).not.toContain("fuera de las franjas");
+    expect(html).toContain("23:00–01:00");
+  });
+
   it("sin gente de apoyo solo se pinta una tabla", () => {
     const html = cortesHTML_({ cierres: { conv: [], cal: [] } }, [tec("SOLO MOTOR", "MOTOR", [MANANA])]);
     expect(html.match(/<table/g)).toHaveLength(1);
