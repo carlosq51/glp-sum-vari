@@ -396,9 +396,9 @@ button[data-suptrack].active {
 }
 .lvSpark__now { color: var(--accent); font-weight: var(--fw-black); }
 
-/* ── 1b-bis. Cortes del día por técnico (la 2ª hoja del taller) ──
-   Es una tabla de reporte, no una tarjeta: densa, de ancho de CONTENIDO y
-   alineada a la izquierda. Con width:100% las seis columnas numéricas se
+/* ── 1b-bis. Cortes del día (la 2ª hoja del taller) ──
+   Son tablas de reporte, no tarjetas: densas, de ancho de CONTENIDO y
+   alineadas a la izquierda. Con width:100% las seis columnas numéricas se
    repartían una pantalla de escritorio entera y quedaban cinco dígitos
    flotando en medio de la nada. */
 .lvCortes { margin-top: 12px; }
@@ -415,9 +415,24 @@ button[data-suptrack].active {
 .lvCortes > summary::before { content: "▸ "; opacity: .6; }
 .lvCortes[open] > summary::before { content: "▾ "; }
 
+.lvCortes__bloque { margin-bottom: 12px; }
+.lvCortes__cap {
+  margin-bottom: 4px;
+  font-size: 10px;
+  font-weight: var(--fw-black);
+  letter-spacing: .5px;
+  color: var(--text);
+}
+.lvCortes__cap em {
+  font-style: normal;
+  font-weight: var(--fw-bold);
+  letter-spacing: 0;
+  color: var(--muted);
+}
+
 /* En móvil no cabe y encogerla la volvería ilegible: se desplaza en
-   horizontal con la primera columna anclada, que es la que dice de quién es
-   cada fila. */
+   horizontal con la columna de nombres anclada, que es la que dice de quién
+   es cada fila. */
 .lvCortes__scroll {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
@@ -450,6 +465,11 @@ button[data-suptrack].active {
   background: var(--surface, var(--glass));
   border-bottom: 1px solid var(--surfaceLine);
 }
+/* Solo la CABECERA marca la franja en curso. Antes el realce iba en cada
+   celda de la columna y dibujaba una línea naranja continua de arriba abajo
+   que se leía como un separador de tabla, no como "estamos aquí". */
+.lvCortes__tbl thead th.is-ahora { color: var(--accent); }
+.lvCortes__tbl thead th.is-ahora::after { content: " ●"; font-size: 7px; vertical-align: middle; }
 
 /* Columna de nombres: anclada al hacer scroll lateral y con tope de ancho,
    que si no un "CONTRERAS BERNALDO" ensancha la tabla entera. */
@@ -457,70 +477,68 @@ button[data-suptrack].active {
   position: sticky;
   left: 0;
   z-index: 1;
-  max-width: 170px;
+  max-width: 190px;
   overflow: hidden;
   text-overflow: ellipsis;
   text-align: left;
   font-weight: var(--fw-bold);
   background: var(--surface, var(--glass));
 }
-.lvCortes__tbl thead th:first-child {
-  z-index: 2;
-  left: 0;
-  text-align: left;
-}
+.lvCortes__tbl thead th:first-child { z-index: 2; left: 0; text-align: left; }
 .lvCortes__rol { margin-right: 4px; }
+
+/* La columna de totales se separa del cuerpo: es de otra naturaleza. */
+.lvCortes__tot { border-left: 1px solid var(--surfaceLine); font-weight: var(--fw-black); }
 
 /* Zebra en vez de una línea por fila: a 24 filas, 24 líneas son ruido. */
 .lvCortes__tbl tbody tr:nth-child(even) th[scope="row"],
 .lvCortes__tbl tbody tr:nth-child(even) td { background: var(--pillBg); }
 .lvCortes__tbl tbody tr.is-cero { opacity: .4; }
 
-/* Cabecera de oficio: la que impide comparar ramales con medios carros. */
-.lvCortes__grp th[scope="row"],
-.lvCortes__grp td {
-  padding-top: 6px;
-  font-weight: var(--fw-black);
-  border-top: 1px solid var(--surfaceLine);
-  background: var(--glass);
-}
-.lvCortes__grp th[scope="row"] {
-  text-transform: uppercase;
-  font-size: 10px;
-  letter-spacing: .5px;
-}
-.lvCortes__grp em {
-  font-style: normal;
-  font-weight: var(--fw-bold);
-  text-transform: none;
-  letter-spacing: 0;
-  opacity: .45;
-}
-.lvCortes__tbl tbody:first-of-type .lvCortes__grp th[scope="row"],
-.lvCortes__tbl tbody:first-of-type .lvCortes__grp td { border-top: 0; }
-
 .lvCortes__cero { font-style: normal; opacity: .22; }
-.lvCortes__tot { font-weight: var(--fw-black); }
-
 /* Una franja que nadie usó no merece la misma tinta que una con producción. */
 .lvCortes__tbl .is-vacio { opacity: .45; }
-.lvCortes__tbl .is-ahora { box-shadow: inset 2px 0 0 var(--accent); }
-.lvCortes__tbl thead th.is-ahora { color: var(--accent); }
 
 .lvCortes__tbl tfoot th[scope="row"],
 .lvCortes__tbl tfoot td {
   font-weight: var(--fw-black);
   background: var(--pillBg);
+  border-top: 1px solid var(--surfaceLine);
+}
+.lvCortes__tbl tfoot tr.is-fuerte th[scope="row"],
+.lvCortes__tbl tfoot tr.is-fuerte td {
+  background: var(--glass);
   border-top: 2px solid var(--surfaceLine);
 }
 .lvCortes__tbl sup { color: var(--warn); }
 .lvCortes__nota {
   margin-top: 5px;
   font-size: 9px;
-  line-height: 1.45;
+  line-height: 1.5;
   color: var(--muted);
 }
 .lvCortes__nota b { font-weight: var(--fw-bold); }
+
+/* ── Presencia: quién está DENTRO del taller ahora (marcaje de despacho) ──
+   Late, porque es el único dato de toda la tabla que cambia sin que nadie
+   cierre nada: lo demás es producción ya hecha. */
+.lvVivo {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: var(--ok);
+  vertical-align: middle;
+  animation: livePulse 1.8s ease-in-out infinite;
+}
+.lvVivo.is-pausa {
+  background: var(--warn);
+  animation: none;   /* en pausa está, pero no está produciendo */
+}
+@media (prefers-reduced-motion: reduce) {
+  .lvVivo { animation: none; }
+}
 
 /* ── 1c. Embudo: convertidos → en QC → aprobados ── */
 .lvFunnel {

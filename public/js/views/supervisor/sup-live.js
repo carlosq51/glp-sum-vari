@@ -18,7 +18,7 @@ import {
   hhmmAMin_, minutosPE_, bloquesJornada_, indiceBloque_,
 } from "../../core/format.js";
 import { startPoll, stopPoll } from "../../core/poll.js";
-import { rolMeta, estadoMeta, GRUPOS_OFICIO, grupoDeRol_ } from "../../core/domain-meta.js";
+import { rolMeta, estadoMeta, grupoDeRol_ } from "../../core/domain-meta.js";
 import { cfg } from "../../core/config.js";
 import { relTimeText, startRelTimeTicker, countUp, skeletonHTML } from "../../core/ui-dynamics.js";
 import { clasificarDuplas_, renderDuplasPanel_, cumplioMeta_, ROLES_DUPLA } from "./sup-duplas.js";
@@ -267,99 +267,80 @@ function sparkHTML_(cierres) {
   </div>`;
 }
 
-// ── 1b-bis. Cortes por técnico: quién cerró qué y en qué turno ────────
+// ── 1b-bis. Cortes del día: quién cerró qué y en qué turno ────────────
 //
-// Esto es la segunda hoja del taller ("CORTES DIARIOS · PRODUCCIÓN POR
-// TÉCNICO"), en vivo. El sparkline de arriba dice a qué ritmo va el taller;
-// esto dice QUIÉN lo movió y en qué franja, que es lo que se mira cuando el
-// ritmo cae y hay que preguntarle a alguien.
+// La segunda hoja del taller ("CORTES DIARIOS · PRODUCCIÓN POR TÉCNICO"), en
+// vivo. El sparkline de arriba dice a qué ritmo va el taller; esto dice QUIÉN
+// lo movió y en qué franja, que es lo que se mira cuando el ritmo cae.
 //
-// Va SEPARADA POR OFICIO. En una sola lista ordenada por total, el ramalero
-// que armó 8 ramales salía encima del motorista que cerró 3 medios carros y
-// parecía el más productivo del taller — cuando no están midiendo lo mismo.
-// Cada grupo lleva su unidad escrita y su propio subtotal por franja.
+// Son DOS TABLAS, no una con secciones. La primera es la del taller: los que
+// convierten carros, que es lo que se mide todos los días. La segunda junta
+// calidad y ramales, que son apoyo y cuentan en otra unidad.
 //
-// Todo sale de `asignacionesHoy`, que ya viajaba en la respuesta para el modal
-// de detalle: cada cierre trae su `updated_at`. Ni una consulta más.
+// El intento anterior las metía en una sola tabla con cabeceras de grupo, y no
+// se entendía: la cabecera "CONVERSIÓN 10 13 · · · 7 30" se leía como una
+// persona más, pero en negrita, encima de la gente. Un subtotal va DEBAJO de lo
+// que suma, no encima — ahora vive en el pie, donde nadie lo confunde con una
+// fila de alguien.
 //
-// Las cifras del pie cuentan CARROS enteros y aprobaciones, no mitades: un
-// carro lo cierran dos personas, así que nunca van a cuadrar con la columna
-// TOT de conversión. La nota del final lo dice, porque si no lo primero que
-// piensa cualquiera es que uno de los dos números está mal.
-function cortesHTML_(data, techs) {
+// Todo sale de `asignacionesHoy`, que ya viajaba para el modal de detalle:
+// cada cierre trae su `updated_at`. Ni una consulta más.
+
+/**
+ * Punto de presencia junto al nombre.
+ *
+ * Sale del marcaje del módulo de despacho (asistencia_jornada). Verde latiendo
+ * = está en el taller ahora; ámbar fijo = marcó pausa. Sin marca no se pinta
+ * nada: no saber dónde está alguien no es lo mismo que saber que se fue, y
+ * llenar la tabla de puntos rojos el día que el despacho esté apagado sería
+ * afirmar una ausencia que nadie ha comprobado.
+ */
+function presenciaHTML_(t) {
+  const estado = String(t.asistencia || "").toUpperCase();
+  if (!estado || estado === "FUERA") return "";
+  const pausa = estado === "PAUSA";
+  const desde = t.asistenciaAt ? ` (entró ${fmtFechaHora_(t.asistenciaAt)})` : "";
+  const texto = `${pausa ? "En pausa" : "En el taller"}${desde}`;
+  return `<i class="lvVivo${pausa ? " is-pausa" : ""}" role="img" aria-label="${escapeHtml(texto)}" title="${escapeHtml(texto)}"></i>`;
+}
+
+export function cortesHTML_(data, techs) {
   const bloques = bloquesJornada_(cfg("LIVE_CORTES"));
   if (!bloques.length) return "";
 
-  const nb = bloques.length;
+  const nb     = bloques.length;
   const vacio_ = () => new Array(nb).fill(0);
   const suma_  = (arr) => arr.reduce((s, n) => s + n, 0);
-  const bloqueDe_ = (iso) => indiceBloque_(minutosPE_(new Date(iso)), bloques);
 
   // Quien no marcó nada hoy no es una fila vacía: es alguien que no vino.
   const enPista = techs.filter(t => t.estadoActivo !== "DESCONECTADO");
   if (!enPista.length) return "";
 
-  // ── Una fila por persona, repartida en su oficio ──
-  const porGrupo = new Map(GRUPOS_OFICIO.map(g => [g.id, { g, filas: [], subt: vacio_() }]));
-  const sueltos = { g: { id: "OTROS", label: "Otros", icon: "👤", unidad: "cierres" }, filas: [], subt: vacio_() };
-
-  for (const t of enPista) {
+  const filas = enPista.map(t => {
     const celdas = vacio_();
     let fuera = 0;   // cerrado fuera de las franjas configuradas
     for (const a of (t.asignacionesHoy || [])) {
       if (a.estado !== "FINALIZADO" || !a.updated_at) continue;
-      const i = bloqueDe_(a.updated_at);
+      const i = indiceBloque_(minutosPE_(new Date(a.updated_at)), bloques);
       if (i < 0) { fuera++; continue; }
       celdas[i]++;
     }
-    const destino = porGrupo.get(grupoDeRol_(t.rol)?.id) || sueltos;
-    destino.filas.push({ t, celdas, fuera, total: suma_(celdas) + fuera });
-    for (let i = 0; i < nb; i++) destino.subt[i] += celdas[i];
-  }
+    return { t, celdas, fuera, total: suma_(celdas) + fuera };
+  });
+  // Igual que en la hoja: los de más producción arriba, los de cero al final.
+  filas.sort((a, b) => b.total - a.total || (a.t.nombre || "").localeCompare(b.t.nombre || ""));
 
-  const grupos = [...porGrupo.values(), sueltos].filter(x => x.filas.length);
-  for (const x of grupos) {
-    // Igual que en la hoja: los de más producción arriba, los de cero al final.
-    x.filas.sort((a, b) => b.total - a.total || (a.t.nombre || "").localeCompare(b.t.nombre || ""));
-  }
+  const esConversion_ = (f) => grupoDeRol_(f.t.rol)?.id === "CONVERSION";
+  const conv  = filas.filter(esConversion_);
+  const apoyo = filas.filter(f => !esConversion_(f));
 
-  // ── Columnas que nadie usó: se atenúan para que el ojo las salte ──
-  const usadas = vacio_();
-  for (const x of grupos) for (let i = 0; i < nb; i++) usadas[i] += x.subt[i];
-  const ahora = indiceBloque_(minutosPE_(), bloques);
-  const colCls_ = (i) => [
-    usadas[i] === 0 ? "is-vacio" : "",
-    i === ahora ? "is-ahora" : "",
-  ].filter(Boolean).join(" ");
+  const subtotal_ = (lista) => {
+    const out = vacio_();
+    for (const f of lista) for (let i = 0; i < nb; i++) out[i] += f.celdas[i];
+    return out;
+  };
 
-  const celda_ = (n, i) => `<td class="${colCls_(i)}">${n > 0 ? n : `<i class="lvCortes__cero">·</i>`}</td>`;
-  const fila_  = (arr) => arr.map(celda_).join("");
-
-  // ── Cuerpo: un tbody por oficio, encabezado por su subtotal ──
-  const cuerpo = grupos.map(({ g, filas, subt }) => `
-    <tbody>
-      <tr class="lvCortes__grp">
-        <th scope="row">${g.icon} ${escapeHtml(g.label)} <em>${escapeHtml(g.unidad)}</em></th>
-        ${fila_(subt)}
-        <td class="lvCortes__tot">${suma_(subt) || `<i class="lvCortes__cero">·</i>`}</td>
-      </tr>
-      ${filas.map(({ t, celdas, fuera, total }) => {
-        const rm = rolMeta(t.rol);
-        const nombre = t.nombre || t.email || "—";
-        return `
-        <tr class="${total === 0 ? "is-cero" : ""}">
-          <th scope="row" title="${escapeHtml(nombre)} — ${escapeHtml(rm.label)}">
-            <span class="lvCortes__rol" style="color:${rm.color};">${rm.icon}</span>${escapeHtml(nombre)}
-          </th>
-          ${fila_(celdas)}
-          <td class="lvCortes__tot">${total > 0 ? total : `<i class="lvCortes__cero">·</i>`}${
-            fuera > 0 ? `<sup title="${fuera} cerrado${fuera === 1 ? "" : "s"} fuera de las franjas configuradas">*</sup>` : ""
-          }</td>
-        </tr>`;
-      }).join("")}
-    </tbody>`).join("");
-
-  // ── Pie: unidades de VIN, no de persona ──
+  // Las cifras de VIN: carros enteros y aprobaciones, no mitades.
   const porBloque_ = (lista) => {
     const out = vacio_();
     for (const ms of (Array.isArray(lista) ? lista : [])) {
@@ -368,40 +349,89 @@ function cortesHTML_(data, techs) {
     }
     return out;
   };
-  const bruta   = porBloque_(data.cierres?.conv);
-  const calidad = porBloque_(data.cierres?.cal);
+
+  // Una franja que nadie usó no merece la misma tinta que una con producción.
+  const usadas = subtotal_(filas);
+  const ahora  = indiceBloque_(minutosPE_(), bloques);
+  const colCls_ = (i) => (usadas[i] === 0 ? "is-vacio" : "");
+
+  const cero_  = `<i class="lvCortes__cero">·</i>`;
+  const celda_ = (n, i) => `<td class="${colCls_(i)}">${n > 0 ? n : cero_}</td>`;
+  const fila_  = (arr) => arr.map(celda_).join("");
+
+  const cabecera_ = `
+    <tr>
+      <th scope="col">Técnico</th>
+      ${bloques.map((b, i) => `<th scope="col" class="${[colCls_(i), i === ahora ? "is-ahora" : ""].filter(Boolean).join(" ")}"
+           title="${escapeHtml(b.label)}${i === ahora ? " · franja en curso" : ""}">${escapeHtml(b.label.split("–")[0])}</th>`).join("")}
+      <th scope="col" class="lvCortes__tot">TOT</th>
+    </tr>`;
+
+  const cuerpo_ = (lista, conRol) => lista.map(({ t, celdas, fuera, total }) => {
+    const rm     = rolMeta(t.rol);
+    const nombre = t.nombre || t.email || "—";
+    return `
+    <tr class="${total === 0 ? "is-cero" : ""}">
+      <th scope="row" title="${escapeHtml(nombre)} — ${escapeHtml(rm.label)}">
+        ${presenciaHTML_(t)}${conRol ? `<span class="lvCortes__rol" style="color:${rm.color};">${rm.icon}</span>` : ""}${escapeHtml(nombre)}
+      </th>
+      ${fila_(celdas)}
+      <td class="lvCortes__tot">${total > 0 ? total : cero_}${
+        fuera > 0 ? `<sup title="${fuera} cerrado${fuera === 1 ? "" : "s"} fuera de las franjas configuradas">*</sup>` : ""
+      }</td>
+    </tr>`;
+  }).join("");
+
+  const pie_ = (rows) => `<tfoot>${rows.map(r => `
+    <tr${r.fuerte ? ` class="is-fuerte"` : ""}>
+      <th scope="row">${r.label}</th>
+      ${fila_(r.arr)}
+      <td class="lvCortes__tot">${suma_(r.arr)}</td>
+    </tr>`).join("")}</tfoot>`;
+
+  const tabla_ = ({ titulo, unidad, lista, conRol, pie }) => `
+    <div class="lvCortes__bloque">
+      <div class="lvCortes__cap">${titulo} <em>${escapeHtml(unidad)}</em></div>
+      <div class="lvCortes__scroll">
+        <table class="lvCortes__tbl">
+          <thead>${cabecera_}</thead>
+          <tbody>${cuerpo_(lista, conRol)}</tbody>
+          ${pie_(pie)}
+        </table>
+      </div>
+    </div>`;
+
+  const tablaConv = conv.length ? tabla_({
+    titulo: "🔧 Técnicos de conversión",
+    unidad: "mitades de carro cerradas",
+    lista:  conv,
+    conRol: true,                       // motor y tanque conviven: hay que distinguirlos
+    pie: [
+      { label: "Mitades cerradas",     arr: subtotal_(conv) },
+      { label: "🚗 Carros completos",  arr: porBloque_(data.cierres?.conv), fuerte: true },
+    ],
+  }) : "";
+
+  const tablaApoyo = apoyo.length ? tabla_({
+    titulo: "🤝 Apoyo",
+    unidad: "calidad y ramales",
+    lista:  apoyo,
+    conRol: true,
+    pie: [
+      { label: "✅ Aprobados QC", arr: porBloque_(data.cierres?.cal), fuerte: true },
+    ],
+  }) : "";
 
   return `
   <details class="lvCortes"${cortesOpen_ ? " open" : ""}>
     <summary>🕐 Cortes del día · producción por técnico</summary>
-    <div class="lvCortes__scroll">
-      <table class="lvCortes__tbl">
-        <thead>
-          <tr>
-            <th scope="col">Técnico</th>
-            ${bloques.map((b, i) =>
-              `<th scope="col" class="${colCls_(i)}" title="${escapeHtml(b.label)}">${escapeHtml(b.label.split("–")[0])}</th>`).join("")}
-            <th scope="col" class="lvCortes__tot">TOT</th>
-          </tr>
-        </thead>
-        ${cuerpo}
-        <tfoot>
-          <tr>
-            <th scope="row">🚗 Carros completos</th>
-            ${fila_(bruta)}
-            <td class="lvCortes__tot">${suma_(bruta)}</td>
-          </tr>
-          <tr>
-            <th scope="row">✅ Aprobados QC</th>
-            ${fila_(calidad)}
-            <td class="lvCortes__tot">${suma_(calidad)}</td>
-          </tr>
-        </tfoot>
-      </table>
-    </div>
+    ${tablaConv}
+    ${tablaApoyo}
     <div class="lvCortes__nota">
-      Cada columna es la franja que <b>empieza</b> a esa hora. El pie cuenta carros enteros:
-      un carro lo cierran dos personas, así que no cuadra con el total de Conversión.
+      Cada columna es la franja que <b>empieza</b> a esa hora. Arriba, cada fila cuenta
+      <b>mitades</b> (el motor de un carro, o su tanque); el carro entero lo cierran dos
+      personas, por eso «Carros completos» es menor que «Mitades cerradas».
+      El punto <i class="lvVivo" aria-hidden="true"></i> marca a quien está en el taller ahora.
     </div>
   </details>
 `;

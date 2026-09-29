@@ -554,6 +554,38 @@ async function armarReporteSupervisor_(payload) {
 // =========================
 // SUPERVISOR LIVE (resumen en tiempo real de técnicos del día)
 // =========================
+
+/**
+ * Quién está DENTRO del taller ahora mismo, según el marcaje de asistencia.
+ *
+ * Se lee la proyección `asistencia_jornada` y no la bitácora de marcas: la
+ * proyección ya tiene el estado resuelto (una fila por persona), mientras que
+ * reconstruirlo desde las marcas costaría traérselas todas y replicar aquí la
+ * máquina de estados de lib/despacho.js. El LIVE solo necesita el resultado.
+ *
+ * La clave es `jornadaFecha_()`, con su corte a las 06:00, y NO la fecha civil
+ * que usa el resto del LIVE: quien entró anoche a las 23:00 sigue dentro a las
+ * 02:00, y con la fecha civil su marca se leería como la de "ayer".
+ *
+ * Estados posibles (lib/despacho.js): FUERA · PRESENTE · DISPONIBLE · OCUPADO
+ * · PAUSA. Nunca lanza: el LIVE es anterior al módulo de despacho y tiene que
+ * seguir pintándose con el módulo apagado — en ese caso simplemente no hay
+ * marcas y nadie sale señalado, que es mejor que marcar a todo el taller como
+ * ausente.
+ */
+async function asistenciaDeHoy_(SUPABASE_URL, headers) {
+  try {
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/asistencia_jornada` +
+      `?jornada_fecha=eq.${jornadaFecha_()}&select=user_id,estado,ingreso_at`,
+      { headers },
+    );
+    if (!r.ok) return new Map();
+    return new Map((await r.json()).map(a => [a.user_id, a]));
+  } catch {
+    return new Map();
+  }
+}
 /**
  * Forma de la jornada del mes: cuánto objetivo cabe y cuánto ya debería estar.
  *
@@ -687,12 +719,13 @@ async function armarLiveSupervisor_() {
     // para saber en qué está parado ahora mismo un técnico que no abrió nada hoy.
     const url5 = `${SUPABASE_URL}/rest/v1/asignaciones?select=${selectFields}&activo=eq.true&estado_actual=in.(TRABAJANDO,PAUSADO,SIN_INICIAR)&fecha_asignacion=lt.${hoy00}&order=updated_at.desc`;
 
-    const [resp1, resp2, resp3, resp5, duplasAuto] = await Promise.all([
+    const [resp1, resp2, resp3, resp5, duplasAuto, asistencia] = await Promise.all([
       fetch(url1, { method: "GET", headers }),
       fetch(url2, { method: "GET", headers }),
       fetch(url3, { method: "GET", headers }),
       fetch(url5, { method: "GET", headers }),
       duplasAutoDeHoy_(SUPABASE_URL, headers),
+      asistenciaDeHoy_(SUPABASE_URL, headers),
     ]);
     if (!resp1.ok) {
       const text = await resp1.text().catch(() => "");
@@ -1024,6 +1057,20 @@ async function armarLiveSupervisor_() {
         vinsHoy: [],
         asignacionesHoy: [],
       });
+    }
+
+    // 4b. Asistencia: quién está dentro del taller ahora mismo.
+    //
+    // `null` y "FUERA" dicen cosas distintas y la vista las pinta distinto:
+    // null es "este módulo no sabe nada de esta persona" (no marcó nunca, o el
+    // despacho está apagado) y FUERA es "marcó salida". Colapsarlos haría que,
+    // con el despacho apagado, el taller entero apareciera como ausente.
+    if (asistencia.size) {
+      for (const t of techs) {
+        const a = asistencia.get(t.userId);
+        t.asistencia   = a?.estado || null;
+        t.asistenciaAt = a?.ingreso_at || null;
+      }
     }
 
     // 5. Dupla automática del carro extra (módulo de despacho)
