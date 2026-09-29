@@ -810,11 +810,6 @@ async function armarLiveSupervisor_() {
     const diaPE_ = (iso) => (iso
       ? new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Lima" }).format(new Date(iso))
       : "");
-    // hourCycle h23 y no hour12:false: con hour12 algunas versiones de ICU
-    // devuelven "24" a medianoche, y ese 24 se sale del array de horas.
-    const _fHora24 = new Intl.DateTimeFormat("en-GB", { timeZone: "America/Lima", hour: "2-digit", hourCycle: "h23" });
-    const horaPE_  = (ms) => (Number(_fHora24.format(new Date(ms))) || 0) % 24;
-
     // Guardado por rol y no como dos booleanos sueltos: para decir QUÉ mitad
     // falta y QUIÉN cerró la otra hace falta el cuándo y el quién, no solo el si.
     const vinConv = {}; // vin → { roles: {MOTOR|TANQUE: {fin, ms, nombre}}, hasActive, ultFinMs }
@@ -888,15 +883,23 @@ async function armarLiveSupervisor_() {
       parcial:     !mesPrevio.ok || !!mesPrevio.truncado,
     };
 
-    // ── Pulso por hora: a qué ritmo cierra el taller ──────────────────────────
-    // El dato ya estaba (el cierre de la última mitad); solo faltaba contarlo
-    // por hora en vez de tirarlo después de sumar el total del día.
-    const pulsoConv = new Array(24).fill(0);
-    const pulsoCal  = new Array(24).fill(0);
-    for (const v of Object.values(vinConv)) if (cerradoHoy_(v)) pulsoConv[horaPE_(v.ultFinMs)]++;
+    // ── Cuándo cerró cada carro ───────────────────────────────────────────────
+    //
+    // Va la lista de instantes, no un conteo por hora. Los cortes que lleva el
+    // taller caen en :20 (16:20, 19:20), así que un array de 24 horas no los
+    // puede representar: el corte de las 16:20 partiría la hora 16 por la
+    // mitad. Con los instantes, el cliente agrupa donde el taller corte hoy y
+    // donde corte mañana, sin tocar el servidor.
+    //
+    // Son unas decenas de números por día: cuesta menos que el conteo que
+    // sustituye, porque este no viene duplicado en dos arrays de 24.
+    const cierres = { conv: [], cal: [] };
+    for (const v of Object.values(vinConv)) if (cerradoHoy_(v)) cierres.conv.push(v.ultFinMs);
     for (const v of Object.values(vinCal)) {
-      if (v.done && diaPE_(v.ultFinMs) === todayStr) pulsoCal[horaPE_(v.ultFinMs)]++;
+      if (v.done && diaPE_(v.ultFinMs) === todayStr) cierres.cal.push(v.ultFinMs);
     }
+    cierres.conv.sort((a, b) => a - b);
+    cierres.cal.sort((a, b) => a - b);
 
     // ── Carros a medias: una mitad cerrada y la otra no ───────────────────────
     // Es la pregunta que el LIVE no sabía responder ("¿qué carro está
@@ -1063,7 +1066,7 @@ async function armarLiveSupervisor_() {
     const duration = Date.now() - t1;
     return {
       ok: true, techs, fecha: todayStr, vinsSummary,
-      mes, pulso: { conv: pulsoConv, cal: pulsoCal }, carrosMedios,
+      mes, cierres, carrosMedios,
       _timing: `${duration}ms`,
     };
   }

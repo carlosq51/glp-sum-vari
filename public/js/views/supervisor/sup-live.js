@@ -13,7 +13,10 @@
 // =========================
 
 import { getJSON } from "../../core/api.js";
-import { escapeHtml, fmtTiempo_, etiquetaTrabajo_ } from "../../core/format.js";
+import {
+  escapeHtml, fmtTiempo_, etiquetaTrabajo_,
+  hhmmAMin_, minutosPE_, bloquesJornada_, indiceBloque_,
+} from "../../core/format.js";
 import { startPoll, stopPoll } from "../../core/poll.js";
 import { rolMeta, estadoMeta } from "../../core/domain-meta.js";
 import { cfg } from "../../core/config.js";
@@ -26,6 +29,7 @@ let estadoFilter_ = null;   // "TRABAJANDO"|"PAUSADO"|"SIN_INICIAR"|"STALLED"|"M
 let rolFilter_    = null;   // "MOTOR"|"TANQUE"|"CALIDAD"|"RAMALERO"|null
 let offOpen_      = false;  // bloque "sin actividad hoy" desplegado (sobrevive al polling)
 let mediosOpen_   = false;  // bloque "carros a medias" desplegado (idem)
+let cortesOpen_   = false;  // tabla de cortes por técnico desplegada (idem)
 
 let _prevKpi = { conv: null, cal: null }; // para animar los números al cambiar
 
@@ -49,21 +53,8 @@ async function fetchLive_() {
 
 const TZ_PE = "America/Lima";
 
-const _fHoraMinPE = new Intl.DateTimeFormat("en-GB", {
-  timeZone: TZ_PE, hour: "2-digit", minute: "2-digit", hourCycle: "h23",
-});
-
-/** "05:30" → 330. null si la clave está mal escrita en app_config. */
-function hhmmAMin_(txt) {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(String(txt || "").trim());
-  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
-}
-
-/** Minutos desde la medianoche, en hora Perú. */
-function minutosPE_() {
-  const [hh, mm] = _fHoraMinPE.format(new Date()).split(":").map(Number);
-  return hh * 60 + mm;
-}
+// hhmmAMin_, minutosPE_, bloquesJornada_ e indiceBloque_ viven en core/format.js:
+// son aritmética pura sobre el reloj del taller y así se pueden probar sin DOM.
 
 function horaPE_() { return Math.floor(minutosPE_() / 60); }
 
@@ -153,6 +144,7 @@ function renderLive_(container, data) {
   const html = `
     ${headerHTML_(data, nowIso)}
     ${diaHTML_(data)}
+    ${cortesHTML_(data, techs)}
     ${mesHTML_(data)}
     ${mediosHTML_(data)}
     ${pulsoHTML_(techs, duplas, metaTec)}
@@ -227,7 +219,7 @@ function diaHTML_(data) {
       <i style="width:${pct}%;"></i>
       ${sinMeta || frac >= 1 ? "" : `<u style="left:${(frac * 100).toFixed(1)}%;" title="Lo esperado a esta hora: ${esperado}"></u>`}
     </div>
-    ${sparkHTML_(data.pulso)}
+    ${sparkHTML_(data.cierres)}
     ${funnelHTML_(v)}
   </div>`;
 }
@@ -238,9 +230,14 @@ function diaHTML_(data) {
 // cálculo. El dato siempre estuvo en la base (la hora en que cerró la última
 // mitad de cada carro); lo que faltaba era mirarlo por hora en vez de sumarlo
 // todo en un único total que oculta si el turno noche produjo o no.
-function sparkHTML_(pulso) {
-  const conv = Array.isArray(pulso?.conv) ? pulso.conv : null;
-  if (!conv) return "";
+function sparkHTML_(cierres) {
+  const lista = Array.isArray(cierres?.conv) ? cierres.conv : null;
+  if (!lista) return "";
+
+  // El servidor manda los instantes, no un conteo: agrupar por hora es cosa de
+  // quien pinta. Ver cortesHTML_, que agrupa los MISMOS datos por turno.
+  const conv = new Array(24).fill(0);
+  for (const ms of lista) conv[Math.floor(minutosPE_(new Date(ms)) / 60) % 24]++;
 
   const horas = horasJornada_();
   const hNow  = horaPE_();
@@ -268,6 +265,112 @@ function sparkHTML_(pulso) {
       <span>${hh((horas[horas.length - 1] + 1) % 24)}:00</span>
     </div>
   </div>`;
+}
+
+// ── 1b-bis. Cortes por técnico: quién cerró qué y en qué turno ────────
+//
+// Esto es la segunda hoja del taller ("CORTES DIARIOS · PRODUCCIÓN POR
+// TÉCNICO"), en vivo. El sparkline de arriba dice a qué ritmo va el taller;
+// esto dice QUIÉN lo movió y en qué franja, que es lo que se mira cuando el
+// ritmo cae y hay que preguntarle a alguien.
+//
+// Todo sale de `asignacionesHoy`, que ya viajaba en la respuesta para el modal
+// de detalle: cada cierre trae su `updated_at`. Ni una consulta más.
+//
+// Unidades, y son dos distintas a propósito — igual que en la hoja:
+//   · las celdas por persona cuentan MITADES (una asignación cerrada: el motor
+//     de un carro, o su tanque; un ramal armado)
+//   · las filas del pie cuentan CARROS enteros y aprobaciones de QC
+// Por eso la suma de la columna TOTAL no cuadra con PROD. BRUTA, y no debe:
+// un carro lo cierran dos personas.
+function cortesHTML_(data, techs) {
+  const bloques = bloquesJornada_(cfg("LIVE_CORTES"));
+  if (!bloques.length) return "";
+
+  const minDe_ = (iso) => minutosPE_(new Date(iso));
+
+  // Quien no marcó nada hoy no es una fila vacía: es alguien que no vino.
+  const enPista = techs.filter(t => t.estadoActivo !== "DESCONECTADO");
+  if (!enPista.length) return "";
+
+  const filas = enPista.map(t => {
+    const celdas = new Array(bloques.length).fill(0);
+    let fuera = 0;   // cerrado fuera de la jornada configurada
+    for (const a of (t.asignacionesHoy || [])) {
+      if (a.estado !== "FINALIZADO" || !a.updated_at) continue;
+      const i = indiceBloque_(minDe_(a.updated_at), bloques);
+      if (i < 0) { fuera++; continue; }
+      celdas[i]++;
+    }
+    const total = celdas.reduce((s, n) => s + n, 0) + fuera;
+    return { t, celdas, fuera, total };
+  });
+
+  // Igual que en la hoja: los de más producción arriba y los de cero al final.
+  filas.sort((a, b) => b.total - a.total || (a.t.nombre || "").localeCompare(b.t.nombre || ""));
+
+  // El pie cuenta carros y aprobaciones, no mitades (ver cabecera).
+  const porBloque_ = (lista) => {
+    const out = new Array(bloques.length).fill(0);
+    for (const ms of (Array.isArray(lista) ? lista : [])) {
+      const i = indiceBloque_(minutosPE_(new Date(ms)), bloques);
+      if (i >= 0) out[i]++;
+    }
+    return out;
+  };
+  const bruta   = porBloque_(data.cierres?.conv);
+  const calidad = porBloque_(data.cierres?.cal);
+  const suma_   = (arr) => arr.reduce((s, n) => s + n, 0);
+
+  const celdaHTML_ = (n) => `<td>${n > 0 ? n : `<i class="lvCortes__cero">·</i>`}</td>`;
+
+  const cuerpo = filas.map(({ t, celdas, fuera, total }) => {
+    const rm = rolMeta(t.rol);
+    return `
+    <tr class="${total === 0 ? "is-cero" : ""}">
+      <th scope="row" title="${escapeHtml(t.nombre || t.email || "")}">
+        <span class="lvCortes__rol" style="color:${rm.color};" title="${escapeHtml(rm.label)}">${rm.icon}</span>
+        ${escapeHtml(primerNombre_(t.nombre || t.email))}
+      </th>
+      ${celdas.map(celdaHTML_).join("")}
+      <td class="lvCortes__tot">${total > 0 ? total : `<i class="lvCortes__cero">·</i>`}${
+        fuera > 0 ? `<sup title="${fuera} cerrado${fuera === 1 ? "" : "s"} fuera del horario de los cortes">*</sup>` : ""
+      }</td>
+    </tr>`;
+  }).join("");
+
+  return `
+  <details class="lvCortes"${cortesOpen_ ? " open" : ""}>
+    <summary>🕐 Cortes del día · producción por técnico</summary>
+    <div class="lvCortes__scroll">
+      <table class="lvCortes__tbl">
+        <thead>
+          <tr>
+            <th scope="col">Técnico</th>
+            ${bloques.map(b => `<th scope="col">${escapeHtml(b.label)}</th>`).join("")}
+            <th scope="col" class="lvCortes__tot">TOT</th>
+          </tr>
+        </thead>
+        <tbody>${cuerpo}</tbody>
+        <tfoot>
+          <tr>
+            <th scope="row">Carros cerrados</th>
+            ${bruta.map(celdaHTML_).join("")}
+            <td class="lvCortes__tot">${suma_(bruta)}</td>
+          </tr>
+          <tr>
+            <th scope="row">Aprobados QC</th>
+            ${calidad.map(celdaHTML_).join("")}
+            <td class="lvCortes__tot">${suma_(calidad)}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    <div class="lvCortes__nota">
+      Las celdas por persona cuentan mitades (motor, tanque o ramal); el pie cuenta carros enteros.
+      Un carro lo cierran dos personas, así que las dos cifras no suman igual.
+    </div>
+  </details>`;
 }
 
 // ── 1c. Embudo: el carro no termina cuando se convierte ───────────────
@@ -592,6 +695,9 @@ function bindLive_(container, techs, metaTec) {
 
   const medios = container.querySelector(".lvMedios");
   if (medios) medios.addEventListener("toggle", () => { mediosOpen_ = medios.open; });
+
+  const cortes = container.querySelector(".lvCortes");
+  if (cortes) cortes.addEventListener("toggle", () => { cortesOpen_ = cortes.open; });
 
   container.querySelectorAll(".lvCard:not(.is-off)").forEach(card => {
     const abrir = () => {

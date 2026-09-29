@@ -396,6 +396,88 @@ button[data-suptrack].active {
 }
 .lvSpark__now { color: var(--accent); font-weight: var(--fw-black); }
 
+/* ── 1b-bis. Cortes del día por técnico (la 2ª hoja del taller) ── */
+.lvCortes { margin-top: 12px; }
+.lvCortes > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 5px 0;
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-black);
+  letter-spacing: .4px;
+  color: var(--muted);
+}
+.lvCortes > summary::-webkit-details-marker { display: none; }
+.lvCortes > summary::before { content: "▸ "; opacity: .6; }
+.lvCortes[open] > summary::before { content: "▾ "; }
+
+/* La tabla no cabe en un móvil y encogerla la volvería ilegible: se desplaza
+   en horizontal con la primera columna anclada, que es la que dice de quién
+   es cada fila. */
+.lvCortes__scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--surfaceLine);
+  border-radius: var(--radiusSm);
+}
+.lvCortes__tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.lvCortes__tbl th,
+.lvCortes__tbl td {
+  padding: 4px 7px;
+  text-align: center;
+  white-space: nowrap;
+}
+.lvCortes__tbl thead th {
+  font-size: 9px;
+  font-weight: var(--fw-black);
+  letter-spacing: .3px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--surfaceLine);
+}
+.lvCortes__tbl tbody th,
+.lvCortes__tbl tfoot th {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+  font-weight: var(--fw-bold);
+  background: var(--surface, var(--glass));
+}
+.lvCortes__tbl thead th:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  text-align: left;
+  background: var(--surface, var(--glass));
+}
+.lvCortes__rol { margin-right: 3px; }
+.lvCortes__tbl tbody tr + tr th,
+.lvCortes__tbl tbody tr + tr td { border-top: 1px solid var(--surfaceLine); }
+.lvCortes__tbl tbody tr.is-cero { opacity: .42; }
+.lvCortes__cero { font-style: normal; opacity: .25; }
+.lvCortes__tot { font-weight: var(--fw-black); }
+.lvCortes__tbl tfoot { border-top: 2px solid var(--surfaceLine); }
+.lvCortes__tbl tfoot th,
+.lvCortes__tbl tfoot td {
+  font-weight: var(--fw-black);
+  background: var(--pillBg);
+}
+.lvCortes__tbl sup { color: var(--warn); }
+.lvCortes__nota {
+  margin-top: 5px;
+  font-size: 9px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
 /* ── 1c. Embudo: convertidos → en QC → aprobados ── */
 .lvFunnel {
   display: flex;

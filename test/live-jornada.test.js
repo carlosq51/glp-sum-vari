@@ -5,7 +5,10 @@
 import { describe, it, expect } from "vitest";
 import { jornadasDelMes_ } from "../routes/supervisor.js";
 import { slugMarca_ } from "../lib/utils.js";
-import { etiquetaTrabajo_ } from "../public/js/core/format.js";
+import {
+  etiquetaTrabajo_, hhmmAMin_, minAHhmm_, minutosPE_,
+  bloquesJornada_, indiceBloque_,
+} from "../public/js/core/format.js";
 
 describe("jornadasDelMes_", () => {
   it("reproduce la forma del mes que lleva el taller (sept 2026: 24 jornadas)", () => {
@@ -92,5 +95,104 @@ describe("etiquetaTrabajo_", () => {
 
   it("sin nada que mostrar devuelve vacío, no la palabra RAMAL", () => {
     expect(etiquetaTrabajo_("", "JETOUR").texto).toBe("");
+  });
+});
+
+// Los cortes del taller (05:00–10:00 … 23:00–01:00) tienen dos trampas que un
+// "agrupar por hora" no ve: caen en :20 y el último cruza la medianoche.
+const CORTES = "05:00,10:00,13:00,16:20,19:20,23:00,01:00";
+
+describe("hhmmAMin_ / minAHhmm_", () => {
+  it("van y vuelven", () => {
+    expect(hhmmAMin_("05:30")).toBe(330);
+    expect(minAHhmm_(330)).toBe("05:30");
+    expect(hhmmAMin_("00:00")).toBe(0);
+    expect(minAHhmm_(0)).toBe("00:00");
+  });
+
+  it("una hora imposible es null, no un número raro", () => {
+    // Estos valores salen de app_config, que edita una persona a mano.
+    expect(hhmmAMin_("25:00")).toBe(null);
+    expect(hhmmAMin_("10:75")).toBe(null);
+    expect(hhmmAMin_("manana")).toBe(null);
+    expect(hhmmAMin_("")).toBe(null);
+  });
+});
+
+describe("bloquesJornada_", () => {
+  it("N+1 límites dan N bloques, con su etiqueta", () => {
+    const b = bloquesJornada_(CORTES);
+    expect(b).toHaveLength(6);
+    expect(b.map(x => x.label)).toEqual([
+      "05:00–10:00", "10:00–13:00", "13:00–16:20",
+      "16:20–19:20", "19:20–23:00", "23:00–01:00",
+    ]);
+  });
+
+  it("el bloque que cruza la medianoche se linealiza, no se invierte", () => {
+    const ultimo = bloquesJornada_(CORTES).at(-1);
+    expect(ultimo.ini).toBe(23 * 60);        // 23:00 del día
+    expect(ultimo.fin).toBe(24 * 60 + 60);   // 01:00 del siguiente
+    expect(ultimo.fin).toBeGreaterThan(ultimo.ini);
+  });
+
+  it("sin al menos dos límites no hay bloques que dibujar", () => {
+    expect(bloquesJornada_("05:00")).toEqual([]);
+    expect(bloquesJornada_("")).toEqual([]);
+    expect(bloquesJornada_(null)).toEqual([]);
+  });
+
+  it("ignora la basura entre límites válidos en vez de romper la tabla", () => {
+    expect(bloquesJornada_("05:00,xx,13:00").map(x => x.label))
+      .toEqual(["05:00–13:00"]);
+  });
+});
+
+describe("indiceBloque_", () => {
+  const b = bloquesJornada_(CORTES);
+  const en = (hhmm) => indiceBloque_(hhmmAMin_(hhmm), b);
+
+  it("cada corte abre su bloque y cierra el anterior", () => {
+    expect(en("05:00")).toBe(0);
+    expect(en("09:59")).toBe(0);
+    expect(en("10:00")).toBe(1);
+  });
+
+  it("respeta un corte en :20, que es donde falla agrupar por hora", () => {
+    // Las 16:19 y las 16:20 son la misma HORA y turnos distintos.
+    expect(en("16:19")).toBe(2);
+    expect(en("16:20")).toBe(3);
+  });
+
+  it("lo cerrado de madrugada cae en el turno noche, no fuera", () => {
+    expect(en("23:00")).toBe(5);
+    expect(en("00:30")).toBe(5);
+  });
+
+  it("fuera de la jornada devuelve -1 en vez de colarse en un turno", () => {
+    // Entre el fin (01:00) y el inicio (05:00) el taller no corta nada.
+    expect(en("01:00")).toBe(-1);
+    expect(en("03:00")).toBe(-1);
+    expect(en("04:59")).toBe(-1);
+  });
+
+  it("sin bloques no revienta", () => {
+    expect(indiceBloque_(600, [])).toBe(-1);
+    expect(indiceBloque_(NaN, b)).toBe(-1);
+  });
+});
+
+describe("minutosPE_", () => {
+  it("mide en hora Perú, no en la del navegador ni UTC", () => {
+    // 2026-09-29T02:30:00Z = 21:30 del 28 en Lima (UTC-5).
+    expect(minutosPE_(new Date("2026-09-29T02:30:00Z"))).toBe(21 * 60 + 30);
+  });
+
+  it("un cierre de las 23:40 de Lima cae en el turno noche", () => {
+    // Su fecha UTC ya es del día siguiente; medido en UTC se iría a las 04:40
+    // y caería FUERA de la jornada, perdiendo el cierre de la tabla.
+    const d = new Date("2026-09-30T04:40:00Z");
+    const b = bloquesJornada_(CORTES);
+    expect(indiceBloque_(minutosPE_(d), b)).toBe(5);
   });
 });
