@@ -5,6 +5,7 @@
 import { describe, it, expect } from "vitest";
 import { jornadasDelMes_ } from "../routes/supervisor.js";
 import { slugMarca_ } from "../lib/utils.js";
+import { GRUPOS_OFICIO, grupoDeRol_ } from "../public/js/core/domain-meta.js";
 import {
   etiquetaTrabajo_, hhmmAMin_, minAHhmm_, minutosPE_,
   bloquesJornada_, indiceBloque_,
@@ -194,5 +195,39 @@ describe("minutosPE_", () => {
     const d = new Date("2026-09-30T04:40:00Z");
     const b = bloquesJornada_(CORTES);
     expect(indiceBloque_(minutosPE_(d), b)).toBe(5);
+  });
+});
+
+// Mezclar oficios en una sola lista ordenada por total hacía que el ramalero
+// que armó 8 ramales saliera encima del motorista que cerró 3 medios carros,
+// como si hubiera producido más. No miden lo mismo.
+describe('grupoDeRol_', () => {
+  it('las dos mitades del carro caen en el mismo oficio', () => {
+    expect(grupoDeRol_('MOTOR').id).toBe('CONVERSION');
+    expect(grupoDeRol_('TANQUE').id).toBe('CONVERSION');
+  });
+
+  it('calidad y ramales van por su cuenta', () => {
+    expect(grupoDeRol_('CALIDAD').id).toBe('CALIDAD');
+    expect(grupoDeRol_('RAMALERO').id).toBe('RAMALES');
+  });
+
+  it('no inventa grupo para un rol que no conoce', () => {
+    // La tabla lo manda a "Otros" en vez de colarlo en Conversión y falsear
+    // el subtotal de carros.
+    expect(grupoDeRol_('MOVILIZADOR')).toBe(null);
+    expect(grupoDeRol_('')).toBe(null);
+    expect(grupoDeRol_(null)).toBe(null);
+  });
+
+  it('cada oficio dice en qué unidad cuenta', () => {
+    // Sin esto la tabla enseña tres columnas TOT que parecen comparables.
+    for (const g of GRUPOS_OFICIO) expect(g.unidad).toBeTruthy();
+    expect(GRUPOS_OFICIO.map(g => g.id)).toEqual(['CONVERSION', 'CALIDAD', 'RAMALES']);
+  });
+
+  it('ningún rol pertenece a dos oficios a la vez', () => {
+    const todos = GRUPOS_OFICIO.flatMap(g => g.roles);
+    expect(new Set(todos).size).toBe(todos.length);
   });
 });

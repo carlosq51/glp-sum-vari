@@ -396,12 +396,16 @@ button[data-suptrack].active {
 }
 .lvSpark__now { color: var(--accent); font-weight: var(--fw-black); }
 
-/* ── 1b-bis. Cortes del día por técnico (la 2ª hoja del taller) ── */
+/* ── 1b-bis. Cortes del día por técnico (la 2ª hoja del taller) ──
+   Es una tabla de reporte, no una tarjeta: densa, de ancho de CONTENIDO y
+   alineada a la izquierda. Con width:100% las seis columnas numéricas se
+   repartían una pantalla de escritorio entera y quedaban cinco dígitos
+   flotando en medio de la nada. */
 .lvCortes { margin-top: 12px; }
 .lvCortes > summary {
   cursor: pointer;
   list-style: none;
-  padding: 5px 0;
+  padding: 4px 0;
   font-size: var(--fs-2xs);
   font-weight: var(--fw-black);
   letter-spacing: .4px;
@@ -411,9 +415,9 @@ button[data-suptrack].active {
 .lvCortes > summary::before { content: "▸ "; opacity: .6; }
 .lvCortes[open] > summary::before { content: "▾ "; }
 
-/* La tabla no cabe en un móvil y encogerla la volvería ilegible: se desplaza
-   en horizontal con la primera columna anclada, que es la que dice de quién
-   es cada fila. */
+/* En móvil no cabe y encogerla la volvería ilegible: se desplaza en
+   horizontal con la primera columna anclada, que es la que dice de quién es
+   cada fila. */
 .lvCortes__scroll {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
@@ -421,30 +425,39 @@ button[data-suptrack].active {
   border-radius: var(--radiusSm);
 }
 .lvCortes__tbl {
-  width: 100%;
+  width: auto;
   border-collapse: collapse;
   font-size: 11px;
+  line-height: 1.3;
   font-variant-numeric: tabular-nums;
 }
 .lvCortes__tbl th,
 .lvCortes__tbl td {
-  padding: 4px 7px;
-  text-align: center;
+  padding: 2px 9px;
+  text-align: right;
   white-space: nowrap;
 }
 .lvCortes__tbl thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding-top: 5px;
+  padding-bottom: 5px;
   font-size: 9px;
   font-weight: var(--fw-black);
   letter-spacing: .3px;
   color: var(--muted);
+  background: var(--surface, var(--glass));
   border-bottom: 1px solid var(--surfaceLine);
 }
-.lvCortes__tbl tbody th,
-.lvCortes__tbl tfoot th {
+
+/* Columna de nombres: anclada al hacer scroll lateral y con tope de ancho,
+   que si no un "CONTRERAS BERNALDO" ensancha la tabla entera. */
+.lvCortes__tbl th[scope="row"] {
   position: sticky;
   left: 0;
   z-index: 1;
-  max-width: 130px;
+  max-width: 170px;
   overflow: hidden;
   text-overflow: ellipsis;
   text-align: left;
@@ -452,31 +465,62 @@ button[data-suptrack].active {
   background: var(--surface, var(--glass));
 }
 .lvCortes__tbl thead th:first-child {
-  position: sticky;
-  left: 0;
   z-index: 2;
+  left: 0;
   text-align: left;
-  background: var(--surface, var(--glass));
 }
-.lvCortes__rol { margin-right: 3px; }
-.lvCortes__tbl tbody tr + tr th,
-.lvCortes__tbl tbody tr + tr td { border-top: 1px solid var(--surfaceLine); }
-.lvCortes__tbl tbody tr.is-cero { opacity: .42; }
-.lvCortes__cero { font-style: normal; opacity: .25; }
+.lvCortes__rol { margin-right: 4px; }
+
+/* Zebra en vez de una línea por fila: a 24 filas, 24 líneas son ruido. */
+.lvCortes__tbl tbody tr:nth-child(even) th[scope="row"],
+.lvCortes__tbl tbody tr:nth-child(even) td { background: var(--pillBg); }
+.lvCortes__tbl tbody tr.is-cero { opacity: .4; }
+
+/* Cabecera de oficio: la que impide comparar ramales con medios carros. */
+.lvCortes__grp th[scope="row"],
+.lvCortes__grp td {
+  padding-top: 6px;
+  font-weight: var(--fw-black);
+  border-top: 1px solid var(--surfaceLine);
+  background: var(--glass);
+}
+.lvCortes__grp th[scope="row"] {
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: .5px;
+}
+.lvCortes__grp em {
+  font-style: normal;
+  font-weight: var(--fw-bold);
+  text-transform: none;
+  letter-spacing: 0;
+  opacity: .45;
+}
+.lvCortes__tbl tbody:first-of-type .lvCortes__grp th[scope="row"],
+.lvCortes__tbl tbody:first-of-type .lvCortes__grp td { border-top: 0; }
+
+.lvCortes__cero { font-style: normal; opacity: .22; }
 .lvCortes__tot { font-weight: var(--fw-black); }
-.lvCortes__tbl tfoot { border-top: 2px solid var(--surfaceLine); }
-.lvCortes__tbl tfoot th,
+
+/* Una franja que nadie usó no merece la misma tinta que una con producción. */
+.lvCortes__tbl .is-vacio { opacity: .45; }
+.lvCortes__tbl .is-ahora { box-shadow: inset 2px 0 0 var(--accent); }
+.lvCortes__tbl thead th.is-ahora { color: var(--accent); }
+
+.lvCortes__tbl tfoot th[scope="row"],
 .lvCortes__tbl tfoot td {
   font-weight: var(--fw-black);
   background: var(--pillBg);
+  border-top: 2px solid var(--surfaceLine);
 }
 .lvCortes__tbl sup { color: var(--warn); }
 .lvCortes__nota {
   margin-top: 5px;
   font-size: 9px;
-  line-height: 1.4;
+  line-height: 1.45;
   color: var(--muted);
 }
+.lvCortes__nota b { font-weight: var(--fw-bold); }
 
 /* ── 1c. Embudo: convertidos → en QC → aprobados ── */
 .lvFunnel {

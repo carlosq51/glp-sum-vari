@@ -24,6 +24,28 @@ export function rolMeta(rol) {
     || { label: rol || "—", icon: "👤", color: "var(--muted)" };
 }
 
+// ── Oficios: cómo se agrupa la producción del día ────────────────────────────
+//
+// Las tres unidades NO son comparables. Una fila de conversión es media carro
+// (el motor, o el tanque); una de calidad es una inspección; una de ramales es
+// un ramal armado. Mezcladas en una sola lista ordenada por total, el ramalero
+// que armó 8 sale por encima del motorista que cerró 3 y parece que produjo
+// más — cuando no están midiendo lo mismo.
+//
+// El orden es el de la conversación del taller: primero los carros, después
+// quien los aprueba, después quien surte la línea.
+export const GRUPOS_OFICIO = [
+  { id: "CONVERSION", label: "Conversión", icon: "🔧", unidad: "mitades de carro", roles: ["MOTOR", "TANQUE"] },
+  { id: "CALIDAD",    label: "Calidad",    icon: "✅", unidad: "inspecciones",     roles: ["CALIDAD"] },
+  { id: "RAMALES",    label: "Ramales",    icon: "🔗", unidad: "ramales armados",  roles: ["RAMALERO"] },
+];
+
+/** A qué oficio pertenece un rol de trabajo. null si no encaja en ninguno. */
+export function grupoDeRol_(rol) {
+  const r = String(rol || "").toUpperCase();
+  return GRUPOS_OFICIO.find(g => g.roles.includes(r)) || null;
+}
+
 // ── Estados de asignación ──
 // color  = tinta principal (texto/dot)   bg = fondo suave del badge
 export const ESTADO_META = {
