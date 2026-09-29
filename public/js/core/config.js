@@ -17,7 +17,7 @@ const LS_KEY = "glp_runtime_config";
 // Espejo de CONFIG_DEFAULTS del backend (lib/config.js).
 // Solo se usan si el servidor nunca respondió (primera carga offline).
 const DEFAULTS = {
-  META_DIARIA:   25,
+  META_DIARIA:   33,
   META_CALIDAD:  22,
   META_MENSUAL:  60,
   META_CARROS_TEC: 2,
