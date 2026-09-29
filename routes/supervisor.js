@@ -554,6 +554,90 @@ async function armarReporteSupervisor_(payload) {
 // =========================
 // SUPERVISOR LIVE (resumen en tiempo real de técnicos del día)
 // =========================
+/**
+ * Forma de la jornada del mes: cuánto objetivo cabe y cuánto ya debería estar.
+ *
+ * El domingo no se trabaja y el sábado es medio día. Sin esa ponderación el
+ * objetivo mensual sale de multiplicar META_DIARIA por 30 y no coincide con
+ * ningún número que el taller reconozca — que es la forma más rápida de que
+ * nadie vuelva a mirar el panel.
+ *
+ * Devuelve pesos en "jornadas": 24 jornadas × META_DIARIA = objetivo del mes.
+ */
+export function jornadasDelMes_(ym, hastaDia, factorSabado) {
+  const [y, m] = String(ym).split("-").map(Number);
+  const diasMes = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const peso = (d) => {
+    const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 0 domingo … 6 sábado
+    if (dow === 0) return 0;
+    if (dow === 6) return factorSabado;
+    return 1;
+  };
+  let transcurridas = 0, totales = 0;
+  for (let d = 1; d <= diasMes; d++) {
+    const w = peso(d);
+    totales += w;
+    if (d <= hastaDia) transcurridas += w;
+  }
+  return { transcurridas, totales, pesoHoy: peso(hastaDia) };
+}
+
+// Un carro puede quedarse a medias cruzando el cambio de mes: la mitad que
+// falta se cierra en los primeros días del siguiente. Se mira un poco antes del
+// día 1 para poder emparejarla; el carro sigue contando el día en que cerró su
+// ÚLTIMA mitad, así que no se cuenta dos veces.
+const DIAS_ANTES_DEL_MES = 15;
+
+// Las dos mitades de un carro. Nombrarlas evita repetir el ternario
+// MOTOR/TANQUE en cada sitio que pregunta "¿cuál falta?".
+const ROLES_CONV = ["MOTOR", "TANQUE"];
+
+/**
+ * Carros convertidos en el mes SIN contar hoy.
+ *
+ * Va aparte de lo de hoy y con su propio cache porque los días ya cerrados no
+ * cambian: releerlos en cada pasada del LIVE sería pagar el mes entero cada
+ * cinco minutos para que el número no se mueva. El día en curso siempre se
+ * calcula en vivo y se suma encima.
+ */
+async function convMesPrevio_(SUPABASE_URL, headers, cfg, ym, hoy00) {
+  const [anio, mes] = String(ym).split("-").map(Number);
+  // Date.UTC admite días <= 0 y retrocede al mes anterior por su cuenta.
+  const desdeYmd = new Date(Date.UTC(anio, mes - 1, 1 - DIAS_ANTES_DEL_MES)).toISOString().slice(0, 10);
+
+  const url = `${SUPABASE_URL}/rest/v1/asignaciones` +
+    `?select=work_order_id,rol_trabajo,updated_at` +
+    `&tipo_ot=eq.CONVERSION&activo=eq.true&estado_actual=eq.FINALIZADO` +
+    `&updated_at=gte.${encodeURIComponent(desdeYmd + "T00:00:00-05:00")}` +
+    `&updated_at=lt.${hoy00}&order=updated_at.asc`;
+
+  const r = await supabaseFetchAll_(url, headers, {
+    pageSize: cfg.LIM_PAGINA_SUPABASE,
+    maxRows:  cfg.LIM_ASG_MES,
+  });
+  if (!r.ok) return { convDone: 0, truncado: false, ok: false };
+
+  const diaPE = (ms) => new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Lima" }).format(new Date(ms));
+  const porWo = new Map();
+  for (const a of r.rows) {
+    const rol = String(a.rol_trabajo || "").toUpperCase();
+    if (rol !== "MOTOR" && rol !== "TANQUE") continue;
+    let e = porWo.get(a.work_order_id);
+    if (!e) { e = { MOTOR: false, TANQUE: false, ultFinMs: 0 }; porWo.set(a.work_order_id, e); }
+    e[rol] = true;
+    const ms = Date.parse(a.updated_at || "") || 0;
+    if (ms > e.ultFinMs) e.ultFinMs = ms;
+  }
+
+  let convDone = 0;
+  for (const e of porWo.values()) {
+    // El carro cuenta el día en que cerró su última mitad; solo suma si ese día
+    // cae dentro del mes que estamos mirando.
+    if (e.MOTOR && e.TANQUE && diaPE(e.ultFinMs).slice(0, 7) === ym) convDone++;
+  }
+  return { convDone, truncado: r.truncated, ok: true };
+}
+
 // El armado va aparte del handler porque se sirve CACHEADO: son decenas de KB
 // de Supabase por pasada y la vista la tienen abierta varios supervisores a la
 // vez, cada uno repitiéndola entera cada ciclo. La invalidación por evento la
@@ -726,35 +810,116 @@ async function armarLiveSupervisor_() {
     const diaPE_ = (iso) => (iso
       ? new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Lima" }).format(new Date(iso))
       : "");
-    const vinConv = {}; // vin → { motorFin, tanqueFin, hasActive, ultFinMs }
-    const vinCal  = {}; // vin → { done, active }
+    // hourCycle h23 y no hour12:false: con hour12 algunas versiones de ICU
+    // devuelven "24" a medianoche, y ese 24 se sale del array de horas.
+    const _fHora24 = new Intl.DateTimeFormat("en-GB", { timeZone: "America/Lima", hour: "2-digit", hourCycle: "h23" });
+    const horaPE_  = (ms) => (Number(_fHora24.format(new Date(ms))) || 0) % 24;
+
+    // Guardado por rol y no como dos booleanos sueltos: para decir QUÉ mitad
+    // falta y QUIÉN cerró la otra hace falta el cuándo y el quién, no solo el si.
+    const vinConv = {}; // vin → { roles: {MOTOR|TANQUE: {fin, ms, nombre}}, hasActive, ultFinMs }
+    const vinCal  = {}; // vin → { done, active, ultFinMs }
     for (const asg of [...raw, ...hermanas]) {
       if (asg._arrastre) continue;               // trabajo de días previos: no es producción de hoy
       const wo     = Array.isArray(asg.work_orders) ? asg.work_orders[0] : (asg.work_orders || {});
       const vin    = wo.vin || "";
       if (!vin) continue;
+      // Las mitades hermanas vienen sin el usuario embebido: se cerraron otro
+      // día y solo interesan para saber que están hechas.
+      const user   = Array.isArray(asg.usuarios) ? asg.usuarios[0] : (asg.usuarios || {});
       const tipoOt = (asg.tipo_ot || "CONVERSION").toUpperCase(); // las hermanas ya vienen filtradas
       const rol    = (asg.rol_trabajo || "").toUpperCase();
       const done   = asg.estado_actual === "FINALIZADO";
+      const ms     = Date.parse(asg.updated_at || "") || 0;
       if (tipoOt === "CONVERSION") {
-        if (!vinConv[vin]) vinConv[vin] = { motorFin: false, tanqueFin: false, hasActive: false, ultFinMs: 0 };
-        if (rol === "MOTOR")  { if (done) vinConv[vin].motorFin  = true; else vinConv[vin].hasActive = true; }
-        if (rol === "TANQUE") { if (done) vinConv[vin].tanqueFin = true; else vinConv[vin].hasActive = true; }
-        if (done) {
-          const ms = Date.parse(asg.updated_at || "") || 0;
-          if (ms > vinConv[vin].ultFinMs) vinConv[vin].ultFinMs = ms;
+        if (!vinConv[vin]) vinConv[vin] = { roles: {}, hasActive: false, ultFinMs: 0 };
+        const v = vinConv[vin];
+        if (ROLES_CONV.includes(rol)) {
+          // Una mitad cerrada manda sobre una fila abierta del mismo rol: que
+          // otra siga abierta no devuelve a medias lo que alguien ya terminó.
+          const prev = v.roles[rol];
+          if (!prev?.fin) v.roles[rol] = { fin: done, ms, nombre: user.nombre || prev?.nombre || "" };
+          if (!done) v.hasActive = true;
         }
+        if (done && ms > v.ultFinMs) v.ultFinMs = ms;
       } else if (tipoOt === "CALIDAD") {
-        if (!vinCal[vin])  vinCal[vin] = { done: false, active: false };
-        if (done) vinCal[vin].done = true; else vinCal[vin].active = true;
+        if (!vinCal[vin])  vinCal[vin] = { done: false, active: false, ultFinMs: 0 };
+        if (done) {
+          vinCal[vin].done = true;
+          if (ms > vinCal[vin].ultFinMs) vinCal[vin].ultFinMs = ms;
+        } else {
+          vinCal[vin].active = true;
+        }
       }
     }
-    const convDone   = Object.values(vinConv)
-      .filter(v => v.motorFin && v.tanqueFin && diaPE_(v.ultFinMs) === todayStr).length;
-    const convActive = Object.values(vinConv).filter(v => !(v.motorFin && v.tanqueFin)).length;
+    const convCompleto_ = (v) => ROLES_CONV.every(r => v.roles[r]?.fin);
+    const cerradoHoy_   = (v) => convCompleto_(v) && diaPE_(v.ultFinMs) === todayStr;
+
+    const convDone   = Object.values(vinConv).filter(cerradoHoy_).length;
+    const convActive = Object.values(vinConv).filter(v => !convCompleto_(v)).length;
     const calDone    = Object.values(vinCal).filter(v => v.done).length;
     const calActive  = Object.values(vinCal).filter(v => v.active && !v.done).length;
-    const vinsSummary = { convDone, convActive, calDone, calActive, metaConv, metaCal };
+
+    // ── Forma de la jornada y acumulado del mes ───────────────────────────────
+    // El objetivo del sábado es medio: sin esto el panel marca rojo cada sábado
+    // por un objetivo que nadie se ha propuesto cumplir.
+    const ym     = todayStr.slice(0, 7);
+    const diaHoy = Number(todayStr.slice(8, 10));
+    const { transcurridas, totales, pesoHoy } =
+      jornadasDelMes_(ym, diaHoy, Number(cfg.JORNADA_SABADO_FACTOR) || 0);
+    const metaDia = Math.round(metaConv * pesoHoy);
+
+    // Cache propio y sin topics: los días ya cerrados no cambian, así que no
+    // tiene sentido que un cierre de HOY los invalide y obligue a releer el mes.
+    const mesPrevio = await cachedByTopics_(
+      `supervisor:live:mes:${ym}:${todayStr}`, [], cfg.LIVE_CACHE_MES_MS,
+      () => convMesPrevio_(SUPABASE_URL, headers, cfg, ym, hoy00),
+    ).catch(() => ({ convDone: 0, truncado: false, ok: false }));
+
+    const mes = {
+      ym,
+      convDone:    mesPrevio.convDone + convDone,
+      metaAcum:    Math.round(transcurridas * metaConv),
+      metaMes:     Math.round(totales * metaConv),
+      jornadas:    transcurridas,
+      jornadasMes: totales,
+      // Si la lectura del mes falló o topó el límite de filas, el acumulado es
+      // un piso, no un dato. La vista lo dice en vez de fingir precisión.
+      parcial:     !mesPrevio.ok || !!mesPrevio.truncado,
+    };
+
+    // ── Pulso por hora: a qué ritmo cierra el taller ──────────────────────────
+    // El dato ya estaba (el cierre de la última mitad); solo faltaba contarlo
+    // por hora en vez de tirarlo después de sumar el total del día.
+    const pulsoConv = new Array(24).fill(0);
+    const pulsoCal  = new Array(24).fill(0);
+    for (const v of Object.values(vinConv)) if (cerradoHoy_(v)) pulsoConv[horaPE_(v.ultFinMs)]++;
+    for (const v of Object.values(vinCal)) {
+      if (v.done && diaPE_(v.ultFinMs) === todayStr) pulsoCal[horaPE_(v.ultFinMs)]++;
+    }
+
+    // ── Carros a medias: una mitad cerrada y la otra no ───────────────────────
+    // Es la pregunta que el LIVE no sabía responder ("¿qué carro está
+    // esperando?") teniendo el dato en la mano: hasta ahora vinConv alimentaba
+    // un contador y se descartaba entero.
+    const carrosMedios = [];
+    for (const [vin, v] of Object.entries(vinConv)) {
+      const hechas = ROLES_CONV.filter(r => v.roles[r]?.fin);
+      if (hechas.length !== 1) continue;   // ni recién empezado ni terminado
+      const hecho = hechas[0];
+      const falta = ROLES_CONV.find(r => r !== hecho);
+      carrosMedios.push({
+        vin,
+        hecho,
+        falta,
+        cerroNombre:  v.roles[hecho].nombre || "",
+        cerroMs:      v.roles[hecho].ms || 0,
+        faltaEnCurso: !!v.roles[falta],   // la otra mitad existe y está abierta
+      });
+    }
+    carrosMedios.sort((a, b) => a.cerroMs - b.cerroMs);  // el que más lleva esperando, primero
+
+    const vinsSummary = { convDone, convActive, calDone, calActive, metaConv, metaCal, metaDia };
 
     // 2. Agrupar por user_id + rol_trabajo
     const techMap = new Map();
@@ -817,6 +982,9 @@ async function armarLiveSupervisor_() {
         email: tech.email,
         rol: tech.rol,
         vinActivo: current?.vin || "",
+        // La marca del ramal en curso. Un ramal no tiene VIN sino un código
+        // inventado, y sin esto la card solo podía pintar ese código.
+        tipoRamalActivo: current?.tipo_ramal || "",
         vinArrastre: !!current?.arrastre,   // lo que tiene abierto viene de días previos
         estadoActivo: current?.estado || (finalizados.length > 0 ? "FINALIZADO" : "SIN_ACTIVIDAD"),
         totalHoy: asgList.length,
@@ -842,6 +1010,7 @@ async function armarLiveSupervisor_() {
         email: u.email || "",
         rol,
         vinActivo: "",
+        tipoRamalActivo: "",
         vinArrastre: false,
         estadoActivo: "DESCONECTADO",
         totalHoy: 0,
@@ -892,7 +1061,11 @@ async function armarLiveSupervisor_() {
     });
 
     const duration = Date.now() - t1;
-    return { ok: true, techs, fecha: todayStr, vinsSummary, _timing: `${duration}ms` };
+    return {
+      ok: true, techs, fecha: todayStr, vinsSummary,
+      mes, pulso: { conv: pulsoConv, cal: pulsoCal }, carrosMedios,
+      _timing: `${duration}ms`,
+    };
   }
 }
 

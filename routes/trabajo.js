@@ -15,6 +15,7 @@ import { emitEvent_ } from "../lib/events.js";
 import { getConfig_ } from "../lib/config.js";
 import {
   esOtDeUnSoloRol_, estadoGeneralDeAsignacion_, estadoGeneralDeConversion_, inicioDiaPeruISO_,
+  fechaPeruMenosDias_, slugMarca_,
 } from "../lib/utils.js";
 import { dispararMotor_, despachoReparteAhora_, apoyosPorPuesto_, duplaDeTrabajoDe_, zonasDeVins_ } from "./despacho.js";
 import { jornadaFecha_ } from "../lib/despacho.js";
@@ -24,6 +25,60 @@ import {
 } from "../lib/colaboracion.js";
 
 const router = Router();
+
+// ── Código de ramal legible ──────────────────────────────────────────────────
+//
+// Un ramal no tiene VIN, pero TODA la base cuelga de esa columna, así que hay
+// que inventarle uno. Durante meses fue `RAMAL-<epoch>-<4 al azar>`: único, sí,
+// pero ilegible — el supervisor leía "RAMAL-1790686306788-46NX" en el LIVE y no
+// podía decir qué ramal había armado nadie.
+//
+// Ahora el código lleva encima lo único que se le pregunta a un ramal: qué
+// marca es y cuál del día. `RAMAL-260929-JETOUR-07` se lee en voz alta, y se lee
+// igual de bien en la base, en el CSV del reporte y en un WhatsApp.
+//
+// La unicidad la arbitra `vins` (vin es PRIMARY KEY): se calcula el siguiente
+// correlativo, se INTENTA reservar, y si otro ramalero ganó la carrera el
+// insert choca con 23505 y se prueba el siguiente. Ese reintento es lo que
+// sustituye al sufijo aleatorio — sin él, dos "EMPEZAR RAMAL" en el mismo
+// segundo se pisarían el código.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const RAMAL_SEQ_MAX = 99;
+
+function esDuplicado_(err) {
+  const m = String(err?.message || err);
+  return m.includes("23505") || m.includes("duplicate") || m.includes("already exists");
+}
+
+/** Reserva y devuelve el siguiente código libre del día para esa marca. */
+async function nuevoVinRamal_(tipoRamal) {
+  const prefijo = `RAMAL-${fechaPeruMenosDias_(0).slice(2).replace(/-/g, "")}-${slugMarca_(tipoRamal)}`;
+
+  // Cuántos van hoy de esa marca. El correlativo va con dos dígitos a propósito:
+  // así el orden lexicográfico de la PK coincide con el numérico y basta pedir
+  // el último, sin traerse la lista entera.
+  const previos = await fetch(
+    `${process.env.SUPABASE_URL}/rest/v1/vins` +
+    `?select=vin&vin=like.${encodeURIComponent(prefijo + "-*")}&order=vin.desc&limit=1`,
+    { method: "GET", headers: supabaseHeaders_() },
+  ).then(r => (r.ok ? r.json() : [])).catch(() => []);
+  const ultimo = Number(String(previos[0]?.vin || "").split("-").pop()) || 0;
+
+  for (let seq = ultimo + 1; seq <= RAMAL_SEQ_MAX; seq++) {
+    const vin = `${prefijo}-${String(seq).padStart(2, "0")}`;
+    try {
+      await supabasePost_("vins", { vin, modelo: "RAMAL" });
+      return vin;
+    } catch (e) {
+      if (!esDuplicado_(e)) throw e;   // la base falló de verdad, no es carrera
+    }
+  }
+
+  // Más de 99 de la misma marca en un día no ha pasado nunca. Si pasa, el taller
+  // no se para: se vuelve a un sufijo único por construcción.
+  return `${prefijo}-${Date.now().toString(36).slice(-4).toUpperCase()}`;
+}
 
 // ── Helpers compartidos por mis-activas y mis-finalizadas ────────────────────
 
@@ -432,13 +487,8 @@ router.post("/api/evento", async (req, res) => {
         vin = woExist[0].vin || "";
         // Si el WO existe pero no tiene VIN, generar pseudo-VIN y actualizar el WO
         if (!vin) {
-          vin = `RAMAL-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
-          // Asegurar que el VIN existe en la tabla vins
-          try {
-            await supabasePost_("vins", { vin, modelo: "RAMAL" });
-          } catch (e) {
-            if (!String(e.message || e).includes("23505") && !String(e.message || e).includes("duplicate")) throw e;
-          }
+          // nuevoVinRamal_ ya deja la fila en `vins` al reservar el código.
+          vin = await nuevoVinRamal_(tipoRamal);
           // Actualizar el work_order con el VIN generado
           try {
             await supabasePatch_("work_orders", { id: conversionIdBody }, { vin });
@@ -450,8 +500,8 @@ router.post("/api/evento", async (req, res) => {
       }
     }
     if (isRamalero && !vin && accion === "INICIO") {
-      // Nuevo ramal: generar pseudo-VIN único
-      vin = `RAMAL-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+      // Nuevo ramal: código legible y único (queda reservado en `vins`)
+      vin = await nuevoVinRamal_(tipoRamal);
     }
 
     if (!email || !vin || !rolTrabajo || !accion) {

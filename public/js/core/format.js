@@ -129,3 +129,40 @@ export function keyOfItem_(it) {
   const rol = String(it?.rolTrabajo || "").toUpperCase();
   return `${cid}|${rol}`;
 }
+// ── Cómo se llama lo que alguien está haciendo ───────────────────────────────
+//
+// Un carro se llama por su VIN. Un ramal no tiene VIN, así que el backend le
+// inventa un código para poder guardarlo — y durante meses ese código, que es
+// una clave de base de datos, era lo que se pintaba en pantalla:
+//
+//     RAMAL-1790686306788-46NX     ← epoch + 4 al azar; ilegible
+//     RAMAL-260929-JETOUR-07       ← el formato nuevo (routes/trabajo.js)
+//
+// Ninguno de los dos responde lo que se pregunta de un ramal, que es QUÉ MARCA
+// es. La marca viaja aparte en `tipo_ramal` desde siempre; lo que faltaba era
+// usarla. Los códigos viejos no la llevan dentro, así que sale de ese campo;
+// los nuevos dan además el correlativo del día.
+//
+// El código crudo no se pierde: quien llama a esto lo pone en el `title`, que
+// es donde sirve — para copiarlo y buscarlo en la base.
+
+const RE_RAMAL_      = /^RAMAL-/;
+const RE_RAMAL_NUEVO = /^RAMAL-\d{6}-([A-Z0-9]+)-([A-Z0-9]+)$/;
+
+/** → { texto, titulo, esRamal }. `texto` es lo que se pinta. */
+export function etiquetaTrabajo_(vin, tipoRamal) {
+  const v = String(vin || "").trim();
+  if (!v) return { texto: "", titulo: "", esRamal: false };
+  if (!RE_RAMAL_.test(v)) return { texto: v, titulo: v, esRamal: false };
+
+  const m     = RE_RAMAL_NUEVO.exec(v);
+  const marca = String(tipoRamal || "").trim().toUpperCase() || (m ? m[1] : "");
+  // El correlativo lleva cero delante en el código ("07") para que ordene bien
+  // en la base; en pantalla estorba.
+  const seq   = m ? (/^\d+$/.test(m[2]) ? String(Number(m[2])) : m[2]) : "";
+
+  const texto = marca
+    ? (seq ? `${marca} · #${seq}` : marca)
+    : (seq ? `RAMAL · #${seq}` : "RAMAL");
+  return { texto, titulo: v, esRamal: true };
+}

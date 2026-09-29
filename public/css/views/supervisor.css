@@ -290,83 +290,243 @@ button[data-suptrack].active {
 .lvBar__btn:hover  { background: var(--glass); }
 .lvBar__btn:active { transform: rotate(90deg); }
 
-/* ── 1. Meta del día ── */
-.lvGoals {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+/* ── 1. El día: hecho vs. lo esperado a esta hora ── */
+.lvDay {
+  padding: 12px 14px;
   margin-bottom: 10px;
-}
-.lvGoal {
-  padding: 10px 12px;
   background: var(--glass);
   border: 1px solid var(--surfaceLine);
   border-radius: var(--radiusSm);
-  border-top: 3px solid var(--goalTone);
+  border-top: 3px solid var(--dayTone);
 }
-.lvGoal.is-done { border-color: var(--dv-good); border-top-color: var(--dv-good); }
-.lvGoal__head {
+.lvDay__head {
   display: flex;
-  align-items: baseline;
-  gap: 6px;
-  margin-bottom: 2px;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
-.lvGoal__label {
-  flex: 1;
-  min-width: 0;
-  font-size: var(--fs-2xs);
-  font-weight: var(--fw-black);
-  letter-spacing: .5px;
-  color: var(--goalTone);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.lvGoal__pct  { font-size: var(--fs-2xs); font-weight: var(--fw-bold); opacity: .5; }
-.lvGoal__flag {
-  font-size: 10px;
-  font-weight: var(--fw-black);
-  letter-spacing: .6px;
-  color: var(--dv-good);
-  background: var(--okBg);
-  border-radius: 4px;
-  padding: 1px 5px;
-}
-.lvGoal__num {
-  display: flex;
-  align-items: baseline;
-  gap: 5px;
-  margin-bottom: 7px;
-}
-.lvGoal__num b {
-  font-size: 26px;
+.lvDay__num { display: flex; align-items: baseline; gap: 4px; }
+.lvDay__num b {
+  font-size: 38px;
   font-weight: var(--fw-black);
   line-height: 1;
   font-variant-numeric: tabular-nums;
   color: var(--text);
 }
-.lvGoal__of { font-size: var(--fs-xs); font-weight: var(--fw-bold); opacity: .4; }
-.lvGoal__track {
-  height: 6px;
-  background: var(--ring-track);
-  border-radius: 4px;
-  overflow: hidden;
+.lvDay__of { font-size: var(--fs-sm); font-weight: var(--fw-bold); opacity: .4; }
+.lvDay__label {
+  font-size: 10px;
+  line-height: 1.25;
+  font-weight: var(--fw-black);
+  letter-spacing: .5px;
+  text-transform: uppercase;
+  color: var(--muted);
 }
-.lvGoal__track > i {
+.lvDay__verdict {
+  margin-left: auto;
+  text-align: right;
+  max-width: 58%;
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+}
+.lvDay__verdict b {
+  display: block;
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-black);
+  font-variant-numeric: tabular-nums;
+  color: var(--dayTone);
+}
+.lvDay__flat { font-style: italic; }
+
+/* La marca (u) es el objetivo parcial: si el relleno no la alcanza, vamos
+   tarde. Sobresale por arriba y por abajo para que se vea sobre el relleno. */
+.lvDay__track {
+  position: relative;
+  height: 9px;
+  margin-top: 10px;
+  background: var(--ring-track);
+  border-radius: 5px;
+}
+.lvDay__track > i {
   display: block;
   height: 100%;
-  border-radius: 4px;
-  background: var(--goalTone);
+  border-radius: 5px;
+  background: var(--dayTone);
   transition: width .6s var(--ease-out, ease);
 }
-.lvGoal__foot {
-  margin-top: 4px;
-  font-size: 10px;
-  opacity: .5;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.lvDay__track > u {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--text);
+  opacity: .55;
+  transform: translateX(-1px);
 }
+
+/* ── 1b. Pulso por hora (los "cortes diarios", en vivo) ── */
+.lvSpark { margin-top: 12px; }
+.lvSpark__bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 34px;
+}
+.lvSpark__bars > i {
+  flex: 1;
+  min-width: 3px;
+  border-radius: 2px 2px 0 0;
+  background: var(--track-motor);
+  opacity: .75;
+  transition: height .5s var(--ease-out, ease);
+}
+/* Una hora que todavía no ha llegado no es una hora sin producción. */
+.lvSpark__bars > i.is-next { opacity: .16; }
+.lvSpark__bars > i.is-now  { background: var(--accent); opacity: 1; }
+.lvSpark__axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-size: 9px;
+  font-weight: var(--fw-bold);
+  letter-spacing: .4px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.lvSpark__now { color: var(--accent); font-weight: var(--fw-black); }
+
+/* ── 1c. Embudo: convertidos → en QC → aprobados ── */
+.lvFunnel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--surfaceLine);
+}
+.lvFunnel__step { display: flex; align-items: baseline; gap: 5px; }
+.lvFunnel__step b {
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-black);
+  font-variant-numeric: tabular-nums;
+}
+.lvFunnel__step em {
+  font-style: normal;
+  font-size: 10px;
+  font-weight: var(--fw-bold);
+  letter-spacing: .3px;
+  white-space: nowrap;
+  color: var(--muted);
+}
+.lvFunnel__arrow { font-size: var(--fs-xs); opacity: .3; }
+
+/* ── 1d. El mes ── */
+.lvMonth {
+  padding: 9px 12px;
+  margin-bottom: 10px;
+  background: var(--pillBg);
+  border: 1px solid var(--pillLine);
+  border-radius: var(--radiusSm);
+}
+.lvMonth__head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.lvMonth__name {
+  font-size: 10px;
+  font-weight: var(--fw-black);
+  letter-spacing: .9px;
+  color: var(--muted);
+}
+.lvMonth__num { font-variant-numeric: tabular-nums; }
+.lvMonth__num b { font-size: var(--fs-lg); font-weight: var(--fw-black); }
+.lvMonth__num span { font-size: var(--fs-2xs); font-weight: var(--fw-bold); opacity: .45; }
+.lvMonth__num abbr {
+  text-decoration: none;
+  font-weight: var(--fw-black);
+  opacity: .5;
+  cursor: help;
+}
+.lvMonth__delta { margin-left: auto; font-size: var(--fs-2xs); color: var(--muted); }
+.lvMonth__delta b {
+  font-weight: var(--fw-black);
+  font-variant-numeric: tabular-nums;
+  color: var(--monthTone);
+}
+.lvMonth__track {
+  position: relative;
+  height: 6px;
+  margin-top: 7px;
+  background: var(--ring-track);
+  border-radius: 3px;
+}
+.lvMonth__track > i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--monthTone);
+  transition: width .6s var(--ease-out, ease);
+}
+.lvMonth__track > u {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--text);
+  opacity: .5;
+  transform: translateX(-1px);
+}
+.lvMonth__foot { margin-top: 5px; font-size: 9px; color: var(--muted); }
+
+/* ── 1e. Carros a medias ── */
+.lvMedios { margin-bottom: 10px; }
+.lvMedios > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 6px 10px;
+  border-radius: var(--radiusSm);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-bold);
+  color: var(--warn);
+  background: var(--warnBg);
+}
+.lvMedios > summary::-webkit-details-marker { display: none; }
+.lvMedios > summary::before { content: "▸ "; opacity: .6; }
+.lvMedios[open] > summary::before { content: "▾ "; }
+.lvMedios[open] > summary { margin-bottom: 6px; }
+.lvMedios__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+  padding: 6px 10px;
+  background: var(--glass);
+  border: 1px solid var(--surfaceLine);
+  border-left: 3px solid var(--warn);
+  border-radius: 8px;
+}
+.lvMedios__falta {
+  font-size: 10px;
+  font-weight: var(--fw-black);
+  letter-spacing: .3px;
+  white-space: nowrap;
+  color: var(--faltaTone);
+}
+.lvMedios__ago {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: var(--fw-extrabold);
+  white-space: nowrap;
+  color: var(--warn);
+}
+.lvMedios__who { font-size: 10px; white-space: nowrap; color: var(--muted); }
+.lvMedios__mas { padding: 2px 10px; font-size: var(--fs-2xs); color: var(--muted); }
 
 /* ── 2. Pulso del taller ── */
 .lvPulse {
@@ -546,6 +706,9 @@ button[data-suptrack].active {
   text-align: left;
 }
 .lvVin--none { font-family: inherit; font-style: italic; opacity: .28; direction: ltr; }
+/* Un ramal se nombra por su marca ("JETOUR · #7"), no por un VIN: se lee de
+   izquierda a derecha y lo que importa es el principio, no el final. */
+.lvVin--ramal { font-family: inherit; letter-spacing: .3px; opacity: .9; direction: ltr; }
 /* Está en el carro de su compañero: es trabajo real, no un hueco. */
 .lvVin--dupla { color: var(--accent); direction: ltr; }
 .lvVin__old {

@@ -13,7 +13,7 @@
 // =========================
 
 import { getJSON } from "../../core/api.js";
-import { escapeHtml, fmtTiempo_ } from "../../core/format.js";
+import { escapeHtml, fmtTiempo_, etiquetaTrabajo_ } from "../../core/format.js";
 import { startPoll, stopPoll } from "../../core/poll.js";
 import { rolMeta, estadoMeta } from "../../core/domain-meta.js";
 import { cfg } from "../../core/config.js";
@@ -25,6 +25,7 @@ let liveLastData_ = null;   // último fetch, para re-abrir detalle actualizado
 let estadoFilter_ = null;   // "TRABAJANDO"|"PAUSADO"|"SIN_INICIAR"|"STALLED"|"META_OK"|null
 let rolFilter_    = null;   // "MOTOR"|"TANQUE"|"CALIDAD"|"RAMALERO"|null
 let offOpen_      = false;  // bloque "sin actividad hoy" desplegado (sobrevive al polling)
+let mediosOpen_   = false;  // bloque "carros a medias" desplegado (idem)
 
 let _prevKpi = { conv: null, cal: null }; // para animar los números al cambiar
 
@@ -37,6 +38,57 @@ const STALL_SIN_INI_MS = 60 * 60_000;
 // ── API ───────────────────────────────────────────────────────────────
 async function fetchLive_() {
   return getJSON("/api/supervisor/live").catch(() => null);
+}
+
+// ── La jornada, en minutos ───────────────────────────────────────────────
+//
+// El taller trabaja de 05:00 a 01:00: su jornada CRUZA la medianoche. Todo lo
+// de aquí abajo existe para poder decir "van 12 y a esta hora deberían ir 17".
+// Sin esa referencia, un 48 % a las 07:00 y un 48 % a las 22:00 se leen igual
+// y el panel no dice nada sobre lo que hay que hacer.
+
+const TZ_PE = "America/Lima";
+
+const _fHoraMinPE = new Intl.DateTimeFormat("en-GB", {
+  timeZone: TZ_PE, hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+});
+
+/** "05:30" → 330. null si la clave está mal escrita en app_config. */
+function hhmmAMin_(txt) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(txt || "").trim());
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+}
+
+/** Minutos desde la medianoche, en hora Perú. */
+function minutosPE_() {
+  const [hh, mm] = _fHoraMinPE.format(new Date()).split(":").map(Number);
+  return hh * 60 + mm;
+}
+
+function horaPE_() { return Math.floor(minutosPE_() / 60); }
+
+/** Las horas que componen la jornada, en orden: [5,6,…,23,0]. */
+function horasJornada_() {
+  const ini = hhmmAMin_(cfg("LIVE_JORNADA_INICIO")) ?? 300;
+  const fin = hhmmAMin_(cfg("LIVE_JORNADA_FIN"))    ?? 60;
+  const h0  = Math.floor(ini / 60);
+  const total = (((Math.floor(fin / 60) - h0) % 24) + 24) % 24 || 24;
+  return Array.from({ length: total }, (_, i) => (h0 + i) % 24);
+}
+
+/**
+ * Qué fracción de la jornada va consumida (0…1).
+ *
+ * Fuera de la ventana devuelve 1: si ya son las 03:00 la jornada terminó, y el
+ * objetivo del día era el objetivo entero, no una parte de él.
+ */
+function fracJornada_() {
+  const ini = hhmmAMin_(cfg("LIVE_JORNADA_INICIO")) ?? 300;
+  let   fin = hhmmAMin_(cfg("LIVE_JORNADA_FIN"))    ?? 60;
+  if (fin <= ini) fin += 1440;          // la jornada cruza la medianoche
+  let ahora = minutosPE_();
+  if (ahora < ini) ahora += 1440;       // estamos en la cola de la jornada de ayer
+  return Math.max(0, Math.min(1, (ahora - ini) / (fin - ini)));
 }
 
 // ── Helpers de dominio ────────────────────────────────────────────────
@@ -100,7 +152,9 @@ function renderLive_(container, data) {
   const nowIso = new Date().toISOString();
   const html = `
     ${headerHTML_(data, nowIso)}
-    ${metasHTML_(data)}
+    ${diaHTML_(data)}
+    ${mesHTML_(data)}
+    ${mediosHTML_(data)}
     ${pulsoHTML_(techs, duplas, metaTec)}
     ${renderDuplasPanel_(duplas)}
     ${rolesTabsHTML_(techs)}
@@ -129,33 +183,200 @@ function headerHTML_(data, nowIso) {
   </div>`;
 }
 
-// ── 1. Meta del día: conversión y calidad ─────────────────────────────
-function metasHTML_(data) {
-  const v = data.vinsSummary || {};
-  const tiles = [
-    { id: "liveKpiConv", label: "Conversión", icon: "🔧", done: v.convDone || 0,
-      meta: v.metaConv || cfg("META_DIARIA"), curso: v.convActive || 0, track: "var(--track-motor)" },
-    { id: "liveKpiCal",  label: "Calidad",    icon: "✅", done: v.calDone || 0,
-      meta: v.metaCal || cfg("META_CALIDAD"), curso: v.calActive || 0, track: "var(--track-calidad)" },
-  ];
+// ── 1. El día: ¿vamos a tiempo? ───────────────────────────────────────
+//
+// Aquí había dos tarjetas ("Conversión 12/25", "Calidad 11/22") que respondían
+// CUÁNTO llevamos pero no SI VAMOS BIEN. El número que hace accionable el panel
+// es la diferencia contra lo que tocaría a esta hora — el mismo que el
+// supervisor sacaba a mano de la hoja de producción diaria.
+//
+// La barra lleva una marca en la posición de ese objetivo parcial: si el
+// relleno pasa la marca vamos sobrados, si se queda corto vamos tarde. Es la
+// lectura de un vistazo que un porcentaje suelto nunca da.
+function diaHTML_(data) {
+  const v    = data.vinsSummary || {};
+  const done = Number(v.convDone) || 0;
+  const meta = Number(v.metaDia ?? v.metaConv ?? cfg("META_DIARIA")) || 0;
 
-  return `<div class="lvGoals">${tiles.map(t => {
-    const meta = Number(t.meta) || 0;
-    const pct  = meta > 0 ? Math.min(Math.round(t.done / meta * 100), 100) : 0;
-    const done = pct >= 100;
+  const frac     = fracJornada_();
+  const esperado = Math.round(meta * frac);
+  const delta    = done - esperado;
+  const pct      = meta > 0 ? Math.min(100, Math.round(done / meta * 100)) : 0;
+
+  // Sin objetivo (domingo) no hay nada contra qué comparar: decirlo es más
+  // honesto que pintar un 0 % en rojo.
+  const sinMeta = meta <= 0;
+  const tone = sinMeta        ? "var(--muted)"
+             : delta >= 0     ? "var(--dv-good)"
+             : delta >= -Math.max(1, meta * 0.1) ? "var(--warn)"
+             : "var(--dv-serious, var(--danger))";
+
+  const veredicto = sinMeta
+    ? `<span class="lvDay__flat">Hoy no hay objetivo de producción</span>`
+    : `<b>${delta >= 0 ? "+" : "−"}${Math.abs(delta)}</b>
+       <span>${delta >= 0 ? "por encima" : "por debajo"} de lo esperado a esta hora (${esperado})</span>`;
+
+  return `
+  <div class="lvDay" style="--dayTone:${tone};">
+    <div class="lvDay__head">
+      <div class="lvDay__num"><b id="liveKpiConv">${done}</b><span class="lvDay__of">/ ${meta}</span></div>
+      <div class="lvDay__label">carros<br>convertidos hoy</div>
+      <div class="lvDay__verdict">${veredicto}</div>
+    </div>
+    <div class="lvDay__track">
+      <i style="width:${pct}%;"></i>
+      ${sinMeta || frac >= 1 ? "" : `<u style="left:${(frac * 100).toFixed(1)}%;" title="Lo esperado a esta hora: ${esperado}"></u>`}
+    </div>
+    ${sparkHTML_(data.pulso)}
+    ${funnelHTML_(v)}
+  </div>`;
+}
+
+// ── 1b. Pulso por hora: el ritmo real del taller ──────────────────────
+//
+// Réplica en vivo de los "cortes diarios" que el taller llevaba en la hoja de
+// cálculo. El dato siempre estuvo en la base (la hora en que cerró la última
+// mitad de cada carro); lo que faltaba era mirarlo por hora en vez de sumarlo
+// todo en un único total que oculta si el turno noche produjo o no.
+function sparkHTML_(pulso) {
+  const conv = Array.isArray(pulso?.conv) ? pulso.conv : null;
+  if (!conv) return "";
+
+  const horas = horasJornada_();
+  const hNow  = horaPE_();
+  const idx   = horas.indexOf(hNow);
+  const max   = Math.max(1, ...horas.map(h => Number(conv[h]) || 0));
+  const hh    = (h) => String(h).padStart(2, "0");
+
+  const barras = horas.map((h, i) => {
+    const n = Number(conv[h]) || 0;
+    // "Todavía no ha pasado" no es lo mismo que "pasó y no salió nada": las
+    // horas futuras van atenuadas para no leerse como un bajón.
+    const futura = idx >= 0 && i > idx;
+    const cls = [futura ? "is-next" : "", i === idx ? "is-now" : ""].filter(Boolean).join(" ");
+    return `<i class="${cls}" style="height:${Math.max(n > 0 ? 12 : 2, n / max * 100)}%;"
+              title="${hh(h)}:00 · ${n} carro${n === 1 ? "" : "s"}"></i>`;
+  }).join("");
+
+  const ahora = idx >= 0 ? (Number(conv[hNow]) || 0) : null;
+  return `
+  <div class="lvSpark">
+    <div class="lvSpark__bars">${barras}</div>
+    <div class="lvSpark__axis">
+      <span>${hh(horas[0])}:00</span>
+      <span class="lvSpark__now">${ahora == null ? "fuera de jornada" : `esta hora · ${ahora}`}</span>
+      <span>${hh((horas[horas.length - 1] + 1) % 24)}:00</span>
+    </div>
+  </div>`;
+}
+
+// ── 1c. Embudo: el carro no termina cuando se convierte ───────────────
+//
+// Conversión y calidad estaban como dos metas paralelas, y se leían como dos
+// objetivos distintos cuando son dos etapas del MISMO carro. En embudo, la
+// diferencia entre lo convertido y lo aprobado se ve sola.
+//
+// No hay paso de "rechazados" porque hoy la base no registra el rechazo de QC
+// como tal: inventarlo aquí sería pintar un número que nadie puede auditar.
+function funnelHTML_(v) {
+  const pasos = [
+    { icon: "🔧", label: "Convertidos", n: Number(v.convDone) || 0,   id: "" },
+    { icon: "🕒", label: "En QC",       n: Number(v.calActive) || 0,  id: "" },
+    { icon: "✅", label: "Aprobados",   n: Number(v.calDone) || 0,    id: "liveKpiCal" },
+  ];
+  return `<div class="lvFunnel">${pasos.map((s, i) => `
+    ${i ? `<span class="lvFunnel__arrow" aria-hidden="true">→</span>` : ""}
+    <span class="lvFunnel__step">
+      <b${s.id ? ` id="${s.id}"` : ""}>${s.n}</b>
+      <em>${s.icon} ${escapeHtml(s.label)}</em>
+    </span>`).join("")}</div>`;
+}
+
+// ── 1d. El mes: el acumulado que vivía solo en la hoja de cálculo ─────
+function mesHTML_(data) {
+  const m = data.mes;
+  if (!m || !m.metaMes) return "";
+
+  const done  = Number(m.convDone) || 0;
+  const acum  = Number(m.metaAcum) || 0;
+  const total = Number(m.metaMes)  || 0;
+  const delta = done - acum;
+  const pct   = Math.min(100, Math.round(done / total * 100));
+  const pctEsp = Math.min(100, Math.round(acum / total * 100));
+  const ritmo = m.jornadas > 0 ? (done / m.jornadas) : 0;
+
+  const nombre = new Intl.DateTimeFormat("es-PE", { month: "long", timeZone: "UTC" })
+    .format(new Date(`${m.ym}-01T00:00:00Z`)).toUpperCase();
+
+  const tone = delta >= 0 ? "var(--dv-good)"
+             : delta >= -Math.max(1, acum * 0.05) ? "var(--warn)"
+             : "var(--dv-serious, var(--danger))";
+
+  return `
+  <div class="lvMonth" style="--monthTone:${tone};">
+    <div class="lvMonth__head">
+      <span class="lvMonth__name">${escapeHtml(nombre)}</span>
+      <span class="lvMonth__num">
+        ${m.parcial ? `<abbr title="El acumulado de días anteriores no se pudo leer completo: este número es un piso, no el total exacto.">≥</abbr>` : ""}<b>${done}</b>
+        <span>/ ${total}</span>
+      </span>
+      <span class="lvMonth__delta"><b>${delta >= 0 ? "+" : "−"}${Math.abs(delta)}</b> vs. ${acum} esperados</span>
+    </div>
+    <div class="lvMonth__track">
+      <i style="width:${pct}%;"></i>
+      <u style="left:${pctEsp}%;" title="Objetivo acumulado a hoy: ${acum}"></u>
+    </div>
+    <div class="lvMonth__foot">
+      Ritmo ${ritmo.toFixed(1)} carros/jornada · ${m.jornadas} de ${m.jornadasMes} jornadas
+    </div>
+  </div>`;
+}
+
+// ── 1e. Carros a medias: la mitad que quedó esperando ─────────────────
+//
+// El LIVE agrupa por persona, así que nadie podía preguntarle "¿qué carro está
+// parado?". El backend ya lo sabía — calculaba por VIN qué mitades estaban
+// cerradas y tiraba todo menos el contador.
+//
+// Solo se listan los carros cuya otra mitad NO tiene a nadie encima. Un carro
+// con motor cerrado y tanque en curso es un carro normal a media mañana; si
+// entrara en la lista, un día cualquiera diría "12 carros a medias" y el aviso
+// dejaría de significar nada. Los que sí tienen a alguien se cuentan aparte,
+// en una línea, para que no parezca que se los comió el filtro.
+function mediosHTML_(data) {
+  const lista   = Array.isArray(data.carrosMedios) ? data.carrosMedios : [];
+  const parados = lista.filter(c => !c.faltaEnCurso);   // ya vienen del más antiguo al más nuevo
+  const enCurso = lista.length - parados.length;
+  if (!parados.length) return "";
+
+  const ahora  = Date.now();
+  const espera = (ms) => (ms ? fmtTiempo_(Math.max(0, ahora - ms)) : "—");
+  const TOPE   = 8;
+
+  const filas = parados.slice(0, TOPE).map(c => {
+    const rm = rolMeta(c.falta);
     return `
-    <div class="lvGoal${done ? " is-done" : ""}" style="--goalTone:${done ? "var(--dv-good)" : t.track};">
-      <div class="lvGoal__head">
-        <span class="lvGoal__label">${t.icon} ${escapeHtml(t.label)}</span>
-        ${done ? `<span class="lvGoal__flag">META</span>` : `<span class="lvGoal__pct">${pct}%</span>`}
-      </div>
-      <div class="lvGoal__num">
-        <b id="${t.id}">${t.done}</b><span class="lvGoal__of">/ ${meta}</span>
-      </div>
-      <div class="lvGoal__track"><i style="width:${pct}%;"></i></div>
-      <div class="lvGoal__foot">${t.curso > 0 ? `⚙️ ${t.curso} en curso` : "&nbsp;"}</div>
+    <div class="lvMedios__row">
+      <span class="lvVin" title="${escapeHtml(c.vin)}">${escapeHtml(c.vin)}</span>
+      <span class="lvMedios__falta" style="--faltaTone:${rm.color};">
+        falta ${rm.icon} ${escapeHtml(rm.label)}
+      </span>
+      <span class="lvMedios__ago" title="Desde que cerró la otra mitad">⏳ ${escapeHtml(espera(c.cerroMs))}</span>
+      ${c.cerroNombre ? `<span class="lvMedios__who">cerró ${escapeHtml(primerNombre_(c.cerroNombre))}</span>` : ""}
     </div>`;
-  }).join("")}</div>`;
+  }).join("");
+
+  const pie = [
+    parados.length > TOPE ? `y ${parados.length - TOPE} más` : "",
+    enCurso > 0 ? `Otro${enCurso === 1 ? "" : "s"} ${enCurso} con la otra mitad en curso` : "",
+  ].filter(Boolean).join(" · ");
+
+  return `
+  <details class="lvMedios"${mediosOpen_ ? " open" : ""}>
+    <summary>⏸ ${parados.length} carro${parados.length === 1 ? "" : "s"} esperando la otra mitad · el más antiguo lleva ${escapeHtml(espera(parados[0].cerroMs))}</summary>
+    ${filas}
+    ${pie ? `<div class="lvMedios__mas">${escapeHtml(pie)}</div>` : ""}
+  </details>`;
 }
 
 // ── 2. Pulso del taller: barra segmentada + filtros ───────────────────
@@ -299,6 +520,8 @@ function cardHTML_(t, metaTec) {
 
   const asgActual = (t.asignacionesHoy || []).find(a => a.vin === t.vinActivo && a.estado !== "FINALIZADO");
   const tiempo = asgActual?.running_since ? fmtTiempo_(asgActual.tiempo_ms, asgActual.running_since) : "";
+  // Un ramal se nombra por su marca, no por el código que la base le inventó.
+  const etq = etiquetaTrabajo_(t.vinActivo, t.tipoRamalActivo || asgActual?.tipo_ramal);
 
   const clases = ["lvCard"];
   if (off)   clases.push("is-off");
@@ -322,7 +545,7 @@ function cardHTML_(t, metaTec) {
     ${off ? "" : `
     <div class="lvCard__row lvCard__row--vin">
       ${t.vinActivo
-        ? `<span class="lvVin">${escapeHtml(t.vinActivo)}</span>${t.vinArrastre ? `<span class="lvVin__old" title="Trabajo abierto un día anterior — no suma a la producción de hoy">ayer</span>` : ""}`
+        ? `<span class="lvVin${etq.esRamal ? " lvVin--ramal" : ""}" title="${escapeHtml(etq.titulo)}">${escapeHtml(etq.texto)}</span>${t.vinArrastre ? `<span class="lvVin__old" title="Trabajo abierto un día anterior — no suma a la producción de hoy">ayer</span>` : ""}`
         : dupla
           // El ayudante no tiene OT propia: el carro es del compañero. Sin esta
           // línea su card se lee "sin VIN activo", o sea parado, cuando en
@@ -367,6 +590,9 @@ function bindLive_(container, techs, metaTec) {
   const off = container.querySelector(".lvOff");
   if (off) off.addEventListener("toggle", () => { offOpen_ = off.open; });
 
+  const medios = container.querySelector(".lvMedios");
+  if (medios) medios.addEventListener("toggle", () => { mediosOpen_ = medios.open; });
+
   container.querySelectorAll(".lvCard:not(.is-off)").forEach(card => {
     const abrir = () => {
       const tech = techs.find(t => `${t.userId}__${t.rol}` === card.dataset.techkey);
@@ -393,6 +619,10 @@ function openLiveDetail_(tech) {
   const asgList = Array.isArray(tech.asignacionesHoy) ? tech.asignacionesHoy : [];
   const cars    = carsOf_(tech);
   const enCurso = enCursoOf_(tech);
+  // Un ramalero no cierra carros, cierra ramales. Decirle "carros" a su trabajo
+  // es la clase de detalle por el que la gente deja de creerle al panel.
+  const unidad  = String(tech.rol || "").toUpperCase() === "RAMALERO"
+    ? ["ramal", "ramales"] : ["carro", "carros"];
 
   if (!asgList.length) {
     body.innerHTML = `<div class="small">Sin asignaciones hoy.</div>`;
@@ -401,7 +631,7 @@ function openLiveDetail_(tech) {
     const orden = a => (a.estado === "FINALIZADO" ? 0 : a.arrastre ? 2 : 1);
     const filas = [...asgList].sort((a, b) => orden(a) - orden(b));
     const summary = `<div class="lvDetail__sum">
-      <span><b>${cars}</b> carro${cars !== 1 ? "s" : ""} cerrado${cars !== 1 ? "s" : ""} hoy</span>
+      <span><b>${cars}</b> ${cars === 1 ? unidad[0] : unidad[1]} cerrado${cars !== 1 ? "s" : ""} hoy</span>
       ${enCurso > 0 ? `<span>⚙️ <b>${enCurso}</b> en curso</span>` : ""}
     </div>`;
     body.innerHTML = summary + filas.map(renderDetailRow_).join("");
@@ -413,7 +643,11 @@ function openLiveDetail_(tech) {
 
 function renderDetailRow_(a) {
   const em  = estadoMeta(a.estado);
-  const vin = a.vin || (a.tipo_ramal ? `RAMAL: ${a.tipo_ramal}` : "–");
+  // Antes: `a.vin || (a.tipo_ramal ? …)`. El fallback no se disparaba NUNCA,
+  // porque un ramal también trae vin — el código inventado. Resultado: cuatro
+  // filas de `RAMAL-1790686306788-46NX` y ninguna forma de saber qué se armó.
+  const etq = etiquetaTrabajo_(a.vin, a.tipo_ramal);
+  const vin = etq.texto || "–";
   const tiempoTotal = fmtTiempo_(a.tiempo_ms, a.estado === "TRABAJANDO" ? a.running_since : null);
   const inicioStr = a.fecha_asignacion ? fmtFechaHora_(a.fecha_asignacion) : null;
   const finStr    = a.estado === "FINALIZADO" && a.updated_at ? fmtFechaHora_(a.updated_at) : null;
@@ -421,7 +655,7 @@ function renderDetailRow_(a) {
   return `
   <div class="lvDetail__row${a.arrastre ? " is-old" : ""}">
     <div class="lvDetail__top">
-      <span class="lvDetail__vin">${escapeHtml(vin)}</span>
+      <span class="lvDetail__vin" title="${escapeHtml(etq.titulo || vin)}">${escapeHtml(vin)}</span>
       ${a.arrastre ? `<span class="lvVin__old" title="Abierto un día anterior — no suma a hoy">ayer</span>` : ""}
       <span class="lvDetail__time">⏱ ${escapeHtml(tiempoTotal)}</span>
     </div>
@@ -436,7 +670,7 @@ function renderDetailRow_(a) {
 // La jornada del taller es en hora Perú, no la del navegador ni UTC. Comparar
 // contra `toISOString()` (UTC) hacía pasar por "hoy" todo lo ocurrido después de
 // las 19:00 del día anterior — el mismo desfase que rompía el filtro del backend.
-const TZ_PE = "America/Lima";
+// (TZ_PE se declara arriba, con los helpers de jornada que también la usan.)
 const _fDiaPE  = new Intl.DateTimeFormat("sv-SE", { timeZone: TZ_PE });
 const _fHoraPE = new Intl.DateTimeFormat("es-PE", { timeZone: TZ_PE, hour: "2-digit", minute: "2-digit" });
 
