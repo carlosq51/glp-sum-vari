@@ -300,16 +300,26 @@ async function armarMapaZonas_() {
     // taller, trabajándose, y en la pantalla no estaba en ningún sitio.
     //
     // Estos aparecen solos, marcados con `auto`. Sale en Zona Libre quien
-    // tenga una ASIGNACIÓN ACTIVA y ninguna de las 15 plazas.
+    // tenga trabajo ABIERTO y ninguna de las 15 plazas.
+    //
+    // Abierto quiere decir: al menos uno de los dos puestos SIN terminar. La
+    // asignación de quien ya cerró su lado sigue viva en la base (`activo`
+    // solo se apaga al revocar o al liberar el puesto, nunca al finalizar),
+    // así que mirar solo "tiene asignación" metía aquí carros acabados —un
+    // carro con delantero y tanquero en verde no tiene nada que repartir ni
+    // a quién mover, y llenaba la lista de ruido.
     //
     // Esto NO deshace supabase/zona-libre.sql: aquella resta metía todo VIN
     // con OT viva, tocado o no —18 de 30 carros, muchos que nadie había
-    // visto—. La condición de aquí es trabajo real sobre el carro, y se
-    // apaga sola cuando ese trabajo se cierra. Un carro sin nadie encima
-    // sigue sin aparecer si nadie lo puso.
-    const vinsAuto = [...tecnicosMap.keys()].filter(
-      v => v && !vinZonaSet.has(v) && !vinsLibre.includes(v)
-    );
+    // visto—. La condición de aquí es trabajo en curso sobre el carro, y se
+    // apaga sola en cuanto el segundo puesto cierra. Un carro sin nadie
+    // encima sigue sin aparecer si nadie lo puso.
+    const trabajoAbierto_ = t => !!t &&
+      ((t.delantero && !t.delantero_fin) || (t.tanquero && !t.tanquero_fin));
+
+    const vinsAuto = [...tecnicosMap.entries()]
+      .filter(([v, t]) => v && !vinZonaSet.has(v) && !vinsLibre.includes(v) && trabajoAbierto_(t))
+      .map(([v]) => v);
 
     // Quién ya está en manos de calidad. Consulta acotada a los de Zona
     // Libre, que son unos pocos.

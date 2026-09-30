@@ -258,15 +258,18 @@ export async function montarPuestos_(contenedor, zona, cbs = {}, fresco = false)
     return;
   }
 
-  // El panel del despacho solo lista carros con alguien encima. Un carro que
-  // se conoce por VIN y no sale ahí es uno con los dos puestos vacíos —el
-  // colocado a mano en Zona Libre, típicamente—, y ese es justo al que hay que
-  // poder ponerle el primer técnico. Sin este respaldo la hoja salía en blanco
-  // y no había forma de empezar.
-  const carro = carroDePanel_(panel, zona)
-    || (zona.vin ? { zona_id: zona.zonaId, vin: zona.vin, puestos: { MOTOR: null, TANQUE: null } } : null);
+  const carro = carroDePanel_(panel, zona);
   if (!carro?.vin) {
-    contenedor.innerHTML = "";
+    // Un carro que se sabe por VIN y que el panel no conoce NO se dibuja con
+    // los puestos vacíos. Se probó, y era peor que no enseñar nada: la hoja
+    // ofrecía "Poner" sobre puestos que en la base estaban ocupados, el índice
+    // único contestaba 409 y quedaba pareciendo que el botón estaba roto.
+    // Aquí no se sabe, y lo que se dice es que no se sabe.
+    contenedor.innerHTML = zona.vin
+      ? `<div class="zdTitulo">Técnicos del carro</div>
+         <div class="zdError small">Este carro no aparece en el despacho, así que
+         desde aquí no se le pueden tocar los puestos.</div>`
+      : "";
     return;
   }
 

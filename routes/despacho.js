@@ -30,7 +30,7 @@ import {
   motivoDuplaAuto_, motivoAyudaManual_, vinDeDuplaApoyo_, validarAyudante_,
 } from "../lib/despacho.js";
 import { construirPool_, generarPropuestas_, puntuar_, ESPERA_TOPE_MIN } from "../lib/despacho-motor.js";
-import { estadoGeneralDeConversion_ } from "../lib/utils.js";
+import { estadoGeneralDeConversion_, fechaPeruMenosDias_ } from "../lib/utils.js";
 
 // El modelo de emparejamiento vive donde lo deja routes/ml.js al entrenar.
 const PAIRING_MODEL_PATH = "./pairing-model.json";
@@ -2162,13 +2162,44 @@ export function scheduleMotor_() {
 async function zonasConPuestos_(props) {
   const h = supabaseHeaders_();
 
-  const zonaRows = await fetch(
-    `${SB()}/rest/v1/conversion_zonas?select=zona_id,vin,registrado_at&order=zona_id.asc`,
-    { headers: h },
-  ).then(r => r.ok ? r.json() : []).catch(() => []);
+  // Qué carros conoce esta función. Hasta el 30-09-2026 eran solo dos cosas:
+  // los que ocupan plaza y los que tienen una propuesta CONFIRMADA de HOY.
+  // Zona Libre no entraba, y por eso la hoja del mapa mentía: abrir un carro
+  // de ahí devolvía null, se pintaban dos "Puesto vacío" y al darle Poner el
+  // servidor contestaba 409 —el índice único (work_order_id, rol_trabajo)
+  // sabía que el puesto estaba tomado aunque la pantalla dijera que no—.
+  //
+  // El caso real que lo destapó: un carro cuyas propuestas del día habían
+  // EXPIRADO. La propuesta expira; la asignación sigue viva. Filtrar por
+  // CONFIRMADA borraba el carro del panel con los dos técnicos dentro.
+  //
+  // Ahora entran también:
+  //   · los colocados a mano en Zona Libre (tabla zona_libre)
+  //   · toda OT de conversión sin terminar dentro de la ventana del mapa
+  //
+  // La segunda cubre exactamente los que el mapa saca solo en Zona Libre: ahí
+  // solo va quien tiene un puesto SIN cerrar, y una OT pasa a FINALIZADO solo
+  // cuando los dos cerraron (estadoGeneralDeConversion_), así que ninguno de
+  // esos carros puede quedar fuera de un `neq.FINALIZADO`.
+  const { MAPA_VENTANA_DIAS } = await getConfig_();
+  const corte = fechaPeruMenosDias_(Number(MAPA_VENTANA_DIAS) || 30);
+
+  const [zonaRows, libreRows, abiertas] = await Promise.all([
+    fetch(`${SB()}/rest/v1/conversion_zonas?select=zona_id,vin,registrado_at&order=zona_id.asc`,
+      { headers: h }).then(r => r.ok ? r.json() : []).catch(() => []),
+    fetch(`${SB()}/rest/v1/zona_libre?select=vin`,
+      { headers: h }).then(r => r.ok ? r.json() : []).catch(() => []),
+    fetch(`${SB()}/rest/v1/work_orders?tipo_ot=eq.CONVERSION&estado_general=neq.FINALIZADO` +
+      `&fecha_creacion=gte.${corte}T00:00:00&select=vin&limit=200`,
+      { headers: h }).then(r => r.ok ? r.json() : []).catch(() => []),
+  ]);
+
+  const libreVins = [...new Set(libreRows.map(l => l.vin).filter(Boolean))];
 
   const vins = [...new Set([
     ...zonaRows.map(z => z.vin),
+    ...libreVins,
+    ...abiertas.map(w => w.vin),
     ...props.map(p => p.vin),
   ].filter(Boolean))];
 
@@ -2302,12 +2333,17 @@ async function zonasConPuestos_(props) {
     };
   });
 
-  // Carros con gente encima pero sin plaza física: la zona 16.
-  const sinZona = [...puestos.keys()]
+  // La zona 16: carros sin plaza física.
+  //
+  // Los colocados a mano van aunque no tengan a nadie encima — ahí es donde
+  // hay que poder poner al PRIMER técnico, y si no salen aquí la hoja del mapa
+  // no encuentra el carro y se queda sin nada que enseñar.
+  const sinZona = [...new Set([...puestos.keys(), ...libreVins])]
     .filter(vin => !enZona.has(vin))
     .map(vin => ({
       zona_id: 16, vin, modelo: modelos.get(vin) || "",
-      registrado_at: null, espera: null, puestos: puestos.get(vin),
+      registrado_at: null, espera: null,
+      puestos: puestos.get(vin) || { ...vacio },
     }));
 
   return { zonas, sinZona };
