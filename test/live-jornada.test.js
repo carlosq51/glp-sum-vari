@@ -4,7 +4,7 @@
 // supervisor toma decisiones igual.
 import { describe, it, expect } from "vitest";
 import { jornadasDelMes_ } from "../routes/supervisor.js";
-import { slugMarca_ } from "../lib/utils.js";
+import { slugMarca_, jornadaPeru_ } from "../lib/utils.js";
 import { GRUPOS_OFICIO, grupoDeRol_ } from "../public/js/core/domain-meta.js";
 import {
   etiquetaTrabajo_, hhmmAMin_, minAHhmm_, minutosPE_,
@@ -308,5 +308,42 @@ describe('indiceBloque_ · la franja de noche', () => {
   it('las dos horas antes del turno anunciado cuentan en la primera franja', () => {
     expect(en('05:00')).toBe(0);
     expect(en('06:59')).toBe(0);
+  });
+});
+
+// El taller se queda amanecido y la jornada cruza la medianoche. Esto es lo
+// que decide en que dia suma un cierre, y hasta el 30-09-2026 estaba mal: se
+// contaba por fecha civil y cada noche se partia en dos pestañas.
+describe('jornadaPeru_', () => {
+  const en = (iso) => jornadaPeru_('05:00', new Date(iso));
+
+  it('el cierre de la 01:00 cuenta para la jornada que empezo el dia anterior', () => {
+    expect(en('2026-09-30T01:00:00-05:00')).toBe('2026-09-29');
+    expect(en('2026-09-30T00:40:00-05:00')).toBe('2026-09-29');
+  });
+
+  it('la jornada cambia cuando abre el taller, no a medianoche', () => {
+    expect(en('2026-09-30T04:59:00-05:00')).toBe('2026-09-29');
+    expect(en('2026-09-30T05:00:00-05:00')).toBe('2026-09-30');
+  });
+
+  it('el resto del dia es su propia jornada', () => {
+    expect(en('2026-09-30T13:00:00-05:00')).toBe('2026-09-30');
+    expect(en('2026-09-30T23:30:00-05:00')).toBe('2026-09-30');
+  });
+
+  it('cruza el fin de mes por la jornada, no por el calendario', () => {
+    // Lo cerrado a la 01:00 del 1 de octubre lo hizo el turno del 30 de
+    // septiembre: suma en septiembre, o el mes no cuadra con sus dias.
+    expect(en('2026-10-01T01:00:00-05:00')).toBe('2026-09-30');
+  });
+
+  it('respeta un inicio de jornada distinto', () => {
+    expect(jornadaPeru_('06:00', new Date('2026-09-30T05:30:00-05:00'))).toBe('2026-09-29');
+    expect(jornadaPeru_('06:00', new Date('2026-09-30T06:30:00-05:00'))).toBe('2026-09-30');
+  });
+
+  it('una hora mal escrita no tira la cuenta: cae al 05:00 de siempre', () => {
+    expect(jornadaPeru_('', new Date('2026-09-30T01:00:00-05:00'))).toBe('2026-09-29');
   });
 });

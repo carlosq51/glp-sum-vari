@@ -4,7 +4,7 @@ import { addServerTiming_ } from "../lib/timing.js";
 import { getConfig_, CONFIG_DEFAULTS } from "../lib/config.js";
 import { cachedByTopics_ } from "../lib/poll-cache.js";
 import { jornadaFecha_, esDuplaApoyo_, vinDeDuplaApoyo_ } from "../lib/despacho.js";
-import { fechaPeruMenosDias_, normalizeModelo_ } from "../lib/utils.js";
+import { fechaPeruMenosDias_, normalizeModelo_, jornadaPeru_ } from "../lib/utils.js";
 
 const router = Router();
 
@@ -649,7 +649,10 @@ async function convMesPrevio_(SUPABASE_URL, headers, cfg, ym, hoy00) {
   });
   if (!r.ok) return { convDone: 0, truncado: false, ok: false };
 
-  const diaPE = (ms) => new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Lima" }).format(new Date(ms));
+  // Por jornada, no por fecha civil: si no, el carro cerrado a la 01:00 del 1
+  // de octubre se contaría en octubre cuando lo hizo el turno del 30 de
+  // septiembre, y el acumulado del mes no cuadraría con la suma de sus días.
+  const diaPE = (ms) => jornadaPeru_(cfg.LIVE_JORNADA_INICIO || "05:00", new Date(ms));
   const porWo = new Map();
   for (const a of r.rows) {
     const rol = String(a.rol_trabajo || "").toUpperCase();
@@ -680,10 +683,31 @@ async function armarLiveSupervisor_() {
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const headers = supabaseHeaders_();
 
-    // Fecha actual en hora Perú (UTC-5) para que el LIVE funcione hasta medianoche local
-    const todayStr = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Lima" }).format(new Date());
-    const thirtyDaysAgo = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Lima" })
-      .format(new Date(Date.now() - 30 * 24 * 3600 * 1000));
+    // Config central (defaults + app_config, cacheado 60s en lib/config).
+    // Se lee ANTES que las fechas porque el corte de jornada sale de ella.
+    const cfg = await getConfig_();
+
+    // ── El día del LIVE es la JORNADA, no la fecha del calendario ────────────
+    //
+    // El taller se queda amanecido: abre a las 05:00 y arrastra hasta las 02:00
+    // del día siguiente. Hasta el 30-09-2026 aquí se usaba la fecha civil, y eso
+    // partía cada jornada en dos pestañas: la del 30 abría con las mitades que
+    // se habían cerrado entre medianoche y las 02:00 —trabajo de la noche del
+    // 29— ya puestas en la franja de noche, y el 29 cerraba sin ellas.
+    //
+    // Con la jornada, el cierre de la 01:00 del 30 suma donde lo hizo su turno:
+    // el 29. Ver jornadaPeru_ en lib/utils.js.
+    // Normalizada a HH:MM de dos dígitos: además de la cuenta, esta hora se
+    // pega dentro de un literal timestamptz ("…T05:00:00-05:00"), y un "5:00"
+    // suelto haría que Postgres rechazara la consulta entera.
+    const INICIO_JORNADA = (() => {
+      const m = /^(\d{1,2}):(\d{2})$/.exec(String(cfg.LIVE_JORNADA_INICIO || "").trim());
+      return m ? `${String(m[1]).padStart(2, "0")}:${m[2]}` : "05:00";
+    })();
+    const jornadaStr = jornadaPeru_(INICIO_JORNADA);
+    /** La jornada a la que pertenece un instante cualquiera. */
+    const jornadaDe_ = (ms) => (ms ? jornadaPeru_(INICIO_JORNADA, new Date(ms)) : "");
+    const thirtyDaysAgo = fechaPeruMenosDias_(30);
 
     // IMPORTANTE: las columnas de fecha son timestamptz y el servidor Postgres corre
     // en UTC. Un literal sin offset ("2026-08-06T00:00:00") se interpreta como UTC,
@@ -691,9 +715,12 @@ async function armarLiveSupervisor_() {
     // previa. El corte de jornada SIEMPRE tiene que llevar el offset de Perú.
     // Perú no aplica horario de verano, así que -05:00 es constante.
     const PE_OFFSET  = "-05:00";
-    const inicioDia_ = (ymd) => encodeURIComponent(`${ymd}T00:00:00${PE_OFFSET}`);
-    const hoy00      = inicioDia_(todayStr);
-    const hace30d00  = inicioDia_(thirtyDaysAgo);
+    // La ventana ya no arranca a medianoche sino a la hora en que abre el
+    // taller: lo de antes de las 05:00 pertenece a la jornada anterior y entra
+    // por su propia pestaña, no por esta.
+    const inicioJornada_ = (ymd) => encodeURIComponent(`${ymd}T${INICIO_JORNADA}:00${PE_OFFSET}`);
+    const hoy00      = inicioJornada_(jornadaStr);
+    const hace30d00  = inicioJornada_(thirtyDaysAgo);
 
     const selectFields =
       `id,work_order_id,user_id,tipo_ot,rol_trabajo,estado_actual,running_since,tiempo_trab_ms,fecha_asignacion,updated_at,activo,` +
@@ -710,9 +737,6 @@ async function armarLiveSupervisor_() {
 
     // Q3: Todos los usuarios activos con rol técnico (para mostrar DESCONECTADO)
     const url3 = `${SUPABASE_URL}/rest/v1/usuarios?select=id,nombre,email,rol,especialidad&activo=eq.true&rol=in.(TECNICO,CALIDAD,RAMALERO)&order=nombre.asc`;
-
-    // Config central (defaults + app_config, cacheado 60s en lib/config)
-    const cfg = await getConfig_();
 
     // Q5: Trabajos de días anteriores que siguen abiertos ("arrastre").
     // NO cuentan como producción de hoy (ni finalizados ni en proceso): solo sirven
@@ -840,9 +864,9 @@ async function armarLiveSupervisor_() {
     // Un carro se convierte el día en que cierra su ÚLTIMA mitad: por eso se
     // guarda el cierre más tardío (`ultFinMs`) y no basta con que alguna mitad
     // haya cerrado hoy — si no, el carro sumaría el día de cada mitad.
-    const diaPE_ = (iso) => (iso
-      ? new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Lima" }).format(new Date(iso))
-      : "");
+    // Y el día de ese cierre es el de su JORNADA, no el del calendario: la
+    // mitad cerrada a la 01:00 la cerró el turno de la noche anterior, y ahí
+    // es donde tiene que sumar. Ver jornadaDe_ arriba.
     // Guardado por rol y no como dos booleanos sueltos: para decir QUÉ mitad
     // falta y QUIÉN cerró la otra hace falta el cuándo y el quién, no solo el si.
     const vinConv = {}; // vin → { roles: {MOTOR|TANQUE: {fin, ms, nombre}}, hasActive, ultFinMs }
@@ -881,7 +905,7 @@ async function armarLiveSupervisor_() {
       }
     }
     const convCompleto_ = (v) => ROLES_CONV.every(r => v.roles[r]?.fin);
-    const cerradoHoy_   = (v) => convCompleto_(v) && diaPE_(v.ultFinMs) === todayStr;
+    const cerradoHoy_   = (v) => convCompleto_(v) && jornadaDe_(v.ultFinMs) === jornadaStr;
 
     const convDone   = Object.values(vinConv).filter(cerradoHoy_).length;
     const convActive = Object.values(vinConv).filter(v => !convCompleto_(v)).length;
@@ -891,8 +915,8 @@ async function armarLiveSupervisor_() {
     // ── Forma de la jornada y acumulado del mes ───────────────────────────────
     // El objetivo del sábado es medio: sin esto el panel marca rojo cada sábado
     // por un objetivo que nadie se ha propuesto cumplir.
-    const ym     = todayStr.slice(0, 7);
-    const diaHoy = Number(todayStr.slice(8, 10));
+    const ym     = jornadaStr.slice(0, 7);
+    const diaHoy = Number(jornadaStr.slice(8, 10));
     const { transcurridas, totales, pesoHoy } =
       jornadasDelMes_(ym, diaHoy, Number(cfg.JORNADA_SABADO_FACTOR) || 0);
     const metaDia = Math.round(metaConv * pesoHoy);
@@ -900,7 +924,7 @@ async function armarLiveSupervisor_() {
     // Cache propio y sin topics: los días ya cerrados no cambian, así que no
     // tiene sentido que un cierre de HOY los invalide y obligue a releer el mes.
     const mesPrevio = await cachedByTopics_(
-      `supervisor:live:mes:${ym}:${todayStr}`, [], cfg.LIVE_CACHE_MES_MS,
+      `supervisor:live:mes:${ym}:${jornadaStr}`, [], cfg.LIVE_CACHE_MES_MS,
       () => convMesPrevio_(SUPABASE_URL, headers, cfg, ym, hoy00),
     ).catch(() => ({ convDone: 0, truncado: false, ok: false }));
 
@@ -929,7 +953,7 @@ async function armarLiveSupervisor_() {
     const cierres = { conv: [], cal: [] };
     for (const v of Object.values(vinConv)) if (cerradoHoy_(v)) cierres.conv.push(v.ultFinMs);
     for (const v of Object.values(vinCal)) {
-      if (v.done && diaPE_(v.ultFinMs) === todayStr) cierres.cal.push(v.ultFinMs);
+      if (v.done && jornadaDe_(v.ultFinMs) === jornadaStr) cierres.cal.push(v.ultFinMs);
     }
     cierres.conv.sort((a, b) => a - b);
     cierres.cal.sort((a, b) => a - b);
@@ -1112,7 +1136,7 @@ async function armarLiveSupervisor_() {
 
     const duration = Date.now() - t1;
     return {
-      ok: true, techs, fecha: todayStr, vinsSummary,
+      ok: true, techs, fecha: jornadaStr, vinsSummary,
       mes, cierres, carrosMedios,
       _timing: `${duration}ms`,
     };
@@ -1122,13 +1146,15 @@ async function armarLiveSupervisor_() {
 router.get("/api/supervisor/live", async (req, res) => {
   try {
     const cfg = await getConfig_();
-    // La fecha peruana entra en la clave, y es la fecha CIVIL — la misma que
-    // usa el payload (todayStr), no la jornada de despacho con corte a las
-    // 06:00. Con la de jornada, entre medianoche y las 6 la clave diría "ayer"
-    // mientras el contenido ya sería de hoy, y el cache serviría el día
-    // equivocado.
+    // La clave lleva la MISMA fecha que el payload, y desde que el LIVE cuenta
+    // por jornada esa fecha es la de la jornada, no la civil. La regla es que
+    // clave y contenido se muevan juntos: con la civil, a las 00:30 la clave
+    // saltaría de día mientras el contenido sigue siendo de la jornada de
+    // anoche, y el cache serviría la pestaña equivocada justo en la madrugada
+    // que se acaba de arreglar.
     const payload = await cachedByTopics_(
-      `supervisor:live:${fechaPeruMenosDias_(0)}`, TOPICS_LIVE, cfg.SRV_CACHE_PESADO_MS,
+      `supervisor:live:${jornadaPeru_(cfg.LIVE_JORNADA_INICIO || "05:00")}`,
+      TOPICS_LIVE, cfg.SRV_CACHE_PESADO_MS,
       armarLiveSupervisor_,
       { bypass: req.query.fresh === "1" },
     );
