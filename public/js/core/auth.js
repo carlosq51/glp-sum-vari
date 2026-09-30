@@ -9,11 +9,15 @@ import { $, el_ } from "./dom.js";
 const EMAIL_KEY = "glp_email";
 
 export function effectiveModulos(profile) {
-  // Consulta de VIN la tiene todo el mundo: saber si un carro lleva GLP no es
-  // un permiso, es información que cualquiera del taller necesita. Lo que sí
-  // depende del rol es el detalle (quién lo trabajó y cuándo), y eso lo
-  // decide la propia vista.
-  return [...new Set([...modulosConcedidos_(profile), ...MODULES_VIRTUALES])];
+  // Consulta de VIN es una cartilla más del hub, no un permiso. A quien solo
+  // tiene un módulo —el técnico, el movilizador— le estorbaba: entraba a
+  // trabajar y se topaba con un hub de dos tarjetas en vez de con su vista.
+  // Por eso solo se añade a quien ya pasa por el hub porque tiene varios
+  // módulos. El detalle que se ve dentro (quién lo trabajó y cuándo) lo sigue
+  // decidiendo la propia vista según el rol.
+  const concedidos = [...new Set(modulosConcedidos_(profile))];
+  if (concedidos.length < 2) return concedidos;
+  return [...new Set([...concedidos, ...MODULES_VIRTUALES])];
 }
 
 function modulosConcedidos_(profile) {
