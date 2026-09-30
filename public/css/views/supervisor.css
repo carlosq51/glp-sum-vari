@@ -1410,3 +1410,43 @@ button[data-suptrack].active {
   color: var(--muted);
   opacity: .8;
 }
+
+/* ── Los dos gráficos del bloque de cortes ────────────────────────────────
+   Uno al lado del otro en pantalla ancha y apilados en el celular. Son DOS
+   y no uno porque no comparten unidad: arriba mitades, abajo carros.
+
+   La ALTURA vive aquí, en el contenedor, y el <canvas> no la declara. Con
+   maintainAspectRatio:false Chart.js dimensiona el canvas al contenedor; si
+   el contenedor la tomara del canvas, cada frame crecería un poco y el
+   gráfico se iría hacia abajo sin parar. Misma trampa que en la tendencia. */
+.lvCortesCharts {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin-top: 12px;
+}
+@media (min-width: 720px) {
+  .lvCortesCharts { grid-template-columns: 1fr 1fr; }
+}
+.lvCortesFig { margin: 0; }
+.lvCortesFig__cap {
+  margin-bottom: 6px;
+  font-size: 10px;
+  font-weight: var(--fw-black);
+  letter-spacing: .5px;
+  color: var(--text);
+}
+.lvCortesFig__cap em {
+  font-style: normal;
+  font-weight: var(--fw-bold);
+  letter-spacing: 0;
+  color: var(--muted);
+}
+.lvCortesFig__box {
+  position: relative;
+  height: 190px;
+  padding: 6px 4px 2px;
+  border: 1px solid var(--surfaceLine);
+  border-radius: var(--radiusSm);
+  background: var(--surface);
+}

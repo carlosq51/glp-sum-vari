@@ -22,6 +22,9 @@ import { rolMeta, estadoMeta, grupoDeRol_ } from "../../core/domain-meta.js";
 import { cfg } from "../../core/config.js";
 import { relTimeText, startRelTimeTicker, countUp, skeletonHTML } from "../../core/ui-dynamics.js";
 import { clasificarDuplas_, renderDuplasPanel_, cumplioMeta_, ROLES_DUPLA } from "./sup-duplas.js";
+import {
+  cortesChartsHTML_, montarCortesCharts_, destruirCortesCharts_,
+} from "./sup-live-cortes-chart.js";
 
 let liveActive_   = false;
 let liveLastData_ = null;   // último fetch, para re-abrir detalle actualizado
@@ -30,6 +33,10 @@ let rolFilter_    = null;   // "MOTOR"|"TANQUE"|"CALIDAD"|"RAMALERO"|null
 let offOpen_      = false;  // bloque "sin actividad hoy" desplegado (sobrevive al polling)
 let mediosOpen_   = false;  // bloque "carros a medias" desplegado (idem)
 let cortesOpen_   = false;  // tabla de cortes por técnico desplegada (idem)
+// Series de los dos gráficos de cortes. Las calcula cortesHTML_ junto con las
+// filas de la tabla para que gráfico y tabla no puedan discrepar, y las
+// recoge el montaje de abajo cuando el HTML ya está en el DOM.
+let seriesCortes_ = null;
 
 let _prevKpi = { conv: null, cal: null }; // para animar los números al cambiar
 
@@ -350,6 +357,32 @@ export function cortesHTML_(data, techs) {
     return out;
   };
 
+  // ── Las series de los dos gráficos ──────────────────────────────────
+  //
+  // Se calculan AQUÍ y no en el módulo del gráfico, aunque el gráfico viva
+  // aparte: son exactamente los mismos números que las filas de abajo. Si se
+  // contaran dos veces, una tabla y un gráfico podrían acabar diciendo cosas
+  // distintas en la misma pantalla, y no habría forma de saber cuál miente.
+  //
+  // El puesto se decide por el rol crudo: en conversión solo hay MOTOR
+  // (delantero) y TANQUE (tanquero) — los demás roles ya quedaron fuera al
+  // separar `conv` de `apoyo`.
+  const sumaSi_ = (pred) => {
+    const out = vacio_();
+    for (const f of conv) {
+      if (!pred(String(f.t.rol || "").toUpperCase())) continue;
+      for (let i = 0; i < nb; i++) out[i] += f.celdas[i];
+    }
+    return out;
+  };
+  seriesCortes_ = {
+    labels:    bloques.map(b => String(b.label).split("–")[0]),
+    delantero: sumaSi_(r => r === "MOTOR"),
+    tanquero:  sumaSi_(r => r === "TANQUE"),
+    bruta:     porBloque_(data?.cierres?.conv),
+    final:     porBloque_(data?.cierres?.cal),
+  };
+
   // Una franja que nadie usó no merece la misma tinta que una con producción.
   const usadas = subtotal_(filas);
   const ahora  = indiceBloque_(minutosPE_(), bloques);
@@ -433,6 +466,7 @@ export function cortesHTML_(data, techs) {
     <summary>🕐 Cortes del día · producción por técnico</summary>
     ${tablaConv}
     ${tablaApoyo}
+    ${cortesChartsHTML_()}
     <div class="lvCortes__nota">
       Cada columna es la franja que <b>empieza</b> a esa hora. Arriba, cada fila cuenta
       <b>mitades</b> (el motor de un carro, o su tanque); el carro entero lo cierran dos
@@ -766,8 +800,19 @@ function bindLive_(container, techs, metaTec) {
   const medios = container.querySelector(".lvMedios");
   if (medios) medios.addEventListener("toggle", () => { mediosOpen_ = medios.open; });
 
+  // Los gráficos solo se montan con el bloque ABIERTO. Un canvas dentro de un
+  // <details> cerrado mide 0×0, y Chart.js dibujaría contra ese cero: al
+  // desplegarlo saldría un gráfico aplastado hasta que algo forzara un
+  // resize. Montarlo al abrir cuesta unos milisegundos y siempre sale bien.
   const cortes = container.querySelector(".lvCortes");
-  if (cortes) cortes.addEventListener("toggle", () => { cortesOpen_ = cortes.open; });
+  if (cortes) {
+    cortes.addEventListener("toggle", () => {
+      cortesOpen_ = cortes.open;
+      if (cortes.open) montarCortesCharts_(seriesCortes_);
+      else destruirCortesCharts_();
+    });
+    if (cortes.open) montarCortesCharts_(seriesCortes_);
+  }
 
   container.querySelectorAll(".lvCard:not(.is-off)").forEach(card => {
     const abrir = () => {
@@ -926,4 +971,8 @@ export async function enterLive_() {
 export function exitLive_() {
   liveActive_ = false;
   stopPoll("POLL_SUP_LIVE_MS");
+  // Chart.js guarda sus instancias en un registro propio y engancha listeners
+  // de resize y de tema: sin este destroy quedan vivas sobre un DOM que ya no
+  // existe, y cada entrada al LIVE deja un par más detrás.
+  destruirCortesCharts_();
 }
