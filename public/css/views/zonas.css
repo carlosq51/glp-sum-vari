@@ -434,6 +434,15 @@
   font-size: var(--fs-2xs);
   color: var(--muted);
 }
+/* El puesto que falta, en ambar: es lo unico de este chip sobre lo que hay
+   algo que hacer, y tiene que distinguirse del nombre de quien ya esta. */
+.zonaLibreVinFalta {
+  font-family: var(--font-body);
+  font-weight: 800;
+  font-size: var(--fs-2xs);
+  color: var(--st-wait);
+  white-space: nowrap;
+}
 
 /* ── Leyenda (pills) ── */
 .zonasLeyenda {

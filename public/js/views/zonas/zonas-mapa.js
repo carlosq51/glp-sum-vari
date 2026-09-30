@@ -97,6 +97,14 @@ function renderMapa_(container, zonas, sinZona, readOnly) {
       // es justo lo que hacía inútil la lista.
       const t = v.tecnicos || null;
       const gente = [t?.delantero, t?.tanquero].filter(Boolean).join(" · ");
+      // El puesto que falta se dice con todas las letras. Es la mitad de la
+      // razón de esta lista: un carro cuyo delantero cerró y que nunca tuvo
+      // tanquero se ve igual que uno normal si solo se pintan los nombres, y
+      // es justo el que hay que atender. Solo se marca cuando ya hay alguien
+      // en el carro — el colocado a mano y vacío se ve vacío de por sí.
+      const falta = t
+        ? [!t.delantero && "delantero", !t.tanquero && "tanquero"].filter(Boolean)
+        : [];
       return `<span class="zonaLibreVin zonaLibreVin--${css}${v.auto ? " zonaLibreVin--auto" : ""}${roClass}"
                 data-vin="${escapeHtml(v.vin)}"
                 data-zona="16"
@@ -104,6 +112,7 @@ function renderMapa_(container, zonas, sinZona, readOnly) {
                 data-estado="${v.estado}">
         ${escapeHtml(v.vin)}
         ${gente ? `<span class="zonaLibreVinGente">${escapeHtml(gente)}</span>` : ""}
+        ${falta.length ? `<span class="zonaLibreVinFalta">falta ${escapeHtml(falta.join(" y "))}</span>` : ""}
         <span class="zonaLibreVinEstado">${v.estado === "FINALIZADO" ? "✅" : "🔧"}</span>
       </span>`;
     }).join("");

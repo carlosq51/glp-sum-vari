@@ -302,12 +302,21 @@ async function armarMapaZonas_() {
     // Estos aparecen solos, marcados con `auto`. Sale en Zona Libre quien
     // tenga trabajo ABIERTO y ninguna de las 15 plazas.
     //
-    // Abierto quiere decir: al menos uno de los dos puestos SIN terminar. La
-    // asignación de quien ya cerró su lado sigue viva en la base (`activo`
-    // solo se apaga al revocar o al liberar el puesto, nunca al finalizar),
-    // así que mirar solo "tiene asignación" metía aquí carros acabados —un
-    // carro con delantero y tanquero en verde no tiene nada que repartir ni
-    // a quién mover, y llenaba la lista de ruido.
+    // Abierto quiere decir: el carro NO tiene sus dos puestos cerrados.
+    //
+    // Y un puesto VACÍO no está cerrado: está sin hacer. El caso que obligó a
+    // escribirlo así es el del delantero que acaba un carro al que nunca le
+    // pusieron tanquero — el día que se midió eran 5 carros, todos de ese
+    // mismo día. Pedir "una asignación viva y sin terminar" los dejaba fuera
+    // justo a ellos, que son los que MÁS necesitan salir aquí: el motor no se
+    // los va a repartir a nadie porque no tienen plaza, así que ese tanquero
+    // solo puede ponerlo una persona, y para eso tiene que poder verlos.
+    //
+    // La condición de cierre es estrecha a propósito: los DOS puestos con
+    // nombre y los DOS terminados. La asignación de quien ya cerró su lado
+    // sigue viva en la base (`activo` solo se apaga al revocar o al liberar el
+    // puesto, nunca al finalizar), así que mirar solo "tiene asignación"
+    // metía aquí carros acabados y llenaba la lista de ruido.
     //
     // Esto NO deshace supabase/zona-libre.sql: aquella resta metía todo VIN
     // con OT viva, tocado o no —18 de 30 carros, muchos que nadie había
@@ -315,7 +324,7 @@ async function armarMapaZonas_() {
     // apaga sola en cuanto el segundo puesto cierra. Un carro sin nadie
     // encima sigue sin aparecer si nadie lo puso.
     const trabajoAbierto_ = t => !!t &&
-      ((t.delantero && !t.delantero_fin) || (t.tanquero && !t.tanquero_fin));
+      !(t.delantero && t.delantero_fin && t.tanquero && t.tanquero_fin);
 
     const vinsAuto = [...tecnicosMap.entries()]
       .filter(([v, t]) => v && !vinZonaSet.has(v) && !vinsLibre.includes(v) && trabajoAbierto_(t))
