@@ -87,12 +87,19 @@ async function cargarPanel_({ fresco = false } = {}) {
   return d;
 }
 
-/** El carro de esta zona dentro del panel, con sus dos puestos resueltos. */
+/**
+ * El carro de esta zona dentro del panel, con sus dos puestos resueltos.
+ *
+ * El respaldo por zona_id solo vale para las 15 plazas, donde zona_id
+ * identifica UN carro. En la 16 caben varios: buscar por ahí devolvería el
+ * primero de la lista y se acabarían moviendo los técnicos de otro carro.
+ */
 function carroDePanel_(panel, { zonaId, vin }) {
   const donde = [...(panel.zonas || []), ...(panel.sinZona || [])];
-  return (vin && donde.find(z => z.vin === vin))
-      || donde.find(z => z.zona_id === zonaId)
-      || null;
+  const porVin = vin ? donde.find(z => z.vin === vin) : null;
+  if (porVin) return porVin;
+  if (zonaId >= 1 && zonaId <= 15) return donde.find(z => z.zona_id === zonaId) || null;
+  return null;
 }
 
 // ─── Render ──────────────────────────────────────────────────────────────────
@@ -251,7 +258,13 @@ export async function montarPuestos_(contenedor, zona, cbs = {}, fresco = false)
     return;
   }
 
-  const carro = carroDePanel_(panel, zona);
+  // El panel del despacho solo lista carros con alguien encima. Un carro que
+  // se conoce por VIN y no sale ahí es uno con los dos puestos vacíos —el
+  // colocado a mano en Zona Libre, típicamente—, y ese es justo al que hay que
+  // poder ponerle el primer técnico. Sin este respaldo la hoja salía en blanco
+  // y no había forma de empezar.
+  const carro = carroDePanel_(panel, zona)
+    || (zona.vin ? { zona_id: zona.zonaId, vin: zona.vin, puestos: { MOTOR: null, TANQUE: null } } : null);
   if (!carro?.vin) {
     contenedor.innerHTML = "";
     return;

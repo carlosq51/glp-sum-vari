@@ -83,15 +83,27 @@ function renderMapa_(container, zonas, sinZona, readOnly) {
       const roClass = readOnly ? " readOnly" : "";
       // Quién lo puso ahí y cuándo, en el tooltip: ahora que es una decisión
       // de alguien y no un residuo del cálculo, hay a quién preguntarle.
-      const quien = v.registrado_por
-        ? `Puesto por ${v.registrado_por}${v.registrado_at ? ` · ${new Date(v.registrado_at).toLocaleDateString("es-PE")}` : ""}`
-        : "";
-      return `<span class="zonaLibreVin zonaLibreVin--${css}${roClass}"
+      //
+      // El automático no tiene a quién señalar —nadie lo colocó, está aquí
+      // porque tiene gente encima y ninguna plaza—, así que el tooltip dice
+      // eso mismo en vez de callar.
+      const quien = v.auto
+        ? "Con técnico y sin plaza. Aparece solo; el motor no le reparte carros."
+        : v.registrado_por
+          ? `Puesto por ${v.registrado_por}${v.registrado_at ? ` · ${new Date(v.registrado_at).toLocaleDateString("es-PE")}` : ""}`
+          : "";
+      // Los nombres van en el chip, no solo en la hoja: el carro sin plaza se
+      // mira para saber QUIÉN está en él, y abrir uno por uno para averiguarlo
+      // es justo lo que hacía inútil la lista.
+      const t = v.tecnicos || null;
+      const gente = [t?.delantero, t?.tanquero].filter(Boolean).join(" · ");
+      return `<span class="zonaLibreVin zonaLibreVin--${css}${v.auto ? " zonaLibreVin--auto" : ""}${roClass}"
                 data-vin="${escapeHtml(v.vin)}"
                 data-zona="16"
                 ${quien ? `title="${escapeHtml(quien)}"` : ""}
                 data-estado="${v.estado}">
         ${escapeHtml(v.vin)}
+        ${gente ? `<span class="zonaLibreVinGente">${escapeHtml(gente)}</span>` : ""}
         <span class="zonaLibreVinEstado">${v.estado === "FINALIZADO" ? "✅" : "🔧"}</span>
       </span>`;
     }).join("");
@@ -107,7 +119,7 @@ function renderMapa_(container, zonas, sinZona, readOnly) {
         <div class="zonaLibreHeader">
           <div class="zonaLibreHeaderLeft">
             <div class="zonaLibreTitle">ZONA LIBRE</div>
-            <div class="zonaLibreSub">Área de desborde · se asigna a mano</div>
+            <div class="zonaLibreSub">Área de desborde · a mano, o carros con técnico y sin plaza</div>
           </div>
           ${sinZonaCount ? `<span class="zonaLibreBadge">${sinZonaCount} carro${sinZonaCount !== 1 ? "s" : ""}</span>` : ""}
         </div>
@@ -137,7 +149,8 @@ function openActionSheet_(zona, onRefresh) {
   const css     = ESTADO_CSS[zona.estado] || "libre";
   const label   = ESTADO_LABEL[zona.estado] || "Libre";
   const hasVin  = !!zona.vin;
-  const zonaNom = zona.zona_id === 16 ? "Zona Libre" : `Zona ${zona.zona_id}`;
+  const esLibre = zona.zona_id === 16;
+  const zonaNom = esLibre ? "Zona Libre" : `Zona ${zona.zona_id}`;
 
   // Mover técnicos es cosa de supervisión. Para el movilizador la hoja sigue
   // siendo exactamente la de antes: asignar carro y liberar plaza.
@@ -165,9 +178,11 @@ function openActionSheet_(zona, onRefresh) {
 
       <div class="zonasActionBtns">
         <button class="zonasActionBtn" id="zonasActionAsignarBtn" type="button">
-          Asignar carro a esta zona
+          ${esLibre
+            ? `Darle una plaza <span class="zdNota">(entra al reparto del motor)</span>`
+            : "Asignar carro a esta zona"}
         </button>
-        ${hasVin ? `
+        ${hasVin && !esLibre ? `
           <button class="zonasActionBtn zonasActionBtn--danger" id="zonasActionLiberarBtn" type="button">
             Liberar zona <span class="zdNota">(saca el carro de la plaza)</span>
           </button>
@@ -200,7 +215,11 @@ function openActionSheet_(zona, onRefresh) {
 
   sheet.querySelector("#zonasActionAsignarBtn").addEventListener("click", () => {
     closeActionSheet_();
-    openPickerForZone_(zona.zona_id, onRefresh);
+    // Desde Zona Libre el carro ya se sabe: lo que falta es el sitio. Se abre
+    // el mapa para tocar la plaza, no un formulario para volver a teclear el
+    // VIN que está escrito dos renglones más arriba.
+    if (esLibre && zona.vin) openZonaPicker(zona.vin, _zonaData, onRefresh);
+    else openPickerForZone_(zona.zona_id, onRefresh);
   });
 
   const liberarBtn = sheet.querySelector("#zonasActionLiberarBtn");
@@ -520,7 +539,19 @@ function bindMapaClicks_(container, onZoneAction) {
     if (libVin) {
       const vin = libVin.dataset.vin;
       if (!vin) return;
-      openZonaPicker(vin, _zonaData, doRefresh_);
+      // Para supervisión, un carro de Zona Libre abre la MISMA hoja que una
+      // plaza: el motor no le va a repartir a nadie —no está en las 15—, así
+      // que si alguien tiene que ponerle o quitarle técnicos es a mano, y este
+      // es el único sitio donde ese carro se ve. Al movilizador le sigue
+      // saliendo el picker directo, que es lo único que necesita.
+      if (puedeDespachar_()) {
+        openActionSheet_(
+          { zona_id: 16, vin, estado: libVin.dataset.estado || "EN_CONVERSION" },
+          doRefresh_,
+        );
+      } else {
+        openZonaPicker(vin, _zonaData, doRefresh_);
+      }
     }
   };
 

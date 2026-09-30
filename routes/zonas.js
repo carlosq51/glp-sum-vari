@@ -281,20 +281,42 @@ async function armarMapaZonas_() {
     //
     // Antes esto era una RESTA: todo VIN con OT viva que no ocupara plaza
     // caía aquí solo. Por eso había carros que nadie había visto nunca y
-    // otros que llevaban meses sin poder salir. Ahora es una lista: está
-    // quien alguien puso, y punto.
+    // otros que llevaban meses sin poder salir. Ahora la lista tiene dos
+    // orígenes, y los dos exigen que alguien haya hecho algo con el carro:
+    // el que un movilizador colocó a mano (`zona_libre`) y el que tiene
+    // técnicos trabajándolo sin plaza (más abajo, `auto`).
     //
-    // Se cae de la lista por dos motivos:
+    // Un carro colocado a mano se cae de la lista por dos motivos:
     //   · El carro ya entró en calidad — se fue del área de conversión.
     //   · Se le dio una plaza de las 15 — no puede estar en dos sitios.
     const vinsLibre = [...new Set(libreRows.map(l => l.vin).filter(Boolean))];
 
+    // ─── Los que caen aquí sin que nadie los ponga ─────────────────────
+    //
+    // Un carro con gente encima y sin plaza no lo veía nadie. El motor solo
+    // mira conversion_zonas, así que para el reparto no existe —eso está
+    // bien, es justo lo que se quiere— pero tampoco salía en el mapa, y
+    // entonces tampoco había dónde tocarle los técnicos. Estaba en el
+    // taller, trabajándose, y en la pantalla no estaba en ningún sitio.
+    //
+    // Estos aparecen solos, marcados con `auto`. Sale en Zona Libre quien
+    // tenga una ASIGNACIÓN ACTIVA y ninguna de las 15 plazas.
+    //
+    // Esto NO deshace supabase/zona-libre.sql: aquella resta metía todo VIN
+    // con OT viva, tocado o no —18 de 30 carros, muchos que nadie había
+    // visto—. La condición de aquí es trabajo real sobre el carro, y se
+    // apaga sola cuando ese trabajo se cierra. Un carro sin nadie encima
+    // sigue sin aparecer si nadie lo puso.
+    const vinsAuto = [...tecnicosMap.keys()].filter(
+      v => v && !vinZonaSet.has(v) && !vinsLibre.includes(v)
+    );
+
     // Quién ya está en manos de calidad. Consulta acotada a los de Zona
     // Libre, que son unos pocos.
     let enCalidad = new Set();
-    if (vinsLibre.length) {
+    if (vinsLibre.length || vinsAuto.length) {
       try {
-        const q = vinsLibre.map(v => `"${v}"`).join(",");
+        const q = [...vinsLibre, ...vinsAuto].map(v => `"${v}"`).join(",");
         const r = await fetch(
           `${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CALIDAD&vin=in.(${q})&select=vin`,
           { method: "GET", headers }
@@ -303,23 +325,36 @@ async function armarMapaZonas_() {
       } catch {}
     }
 
+    const filaLibre_ = (vin, extra) => ({
+      vin,
+      estado: (woEstadoMap.get(vin) || "").toUpperCase() === "FINALIZADO"
+        ? "FINALIZADO" : "EN_CONVERSION",
+      tecnicos: tecnicosMap.get(vin) || null,
+      modelo:   modeloMap.get(vin) || null,
+      ...extra,
+    });
+
     const sin_zona = [];
     const aSoltar = [];
     for (const l of libreRows) {
       const vin = l.vin;
       if (!vin) continue;
       if (enCalidad.has(vin) || vinZonaSet.has(vin)) { aSoltar.push(vin); continue; }
-      const eg = woEstadoMap.get(vin);
-      sin_zona.push({
-        vin,
-        estado: (eg || "").toUpperCase() === "FINALIZADO" ? "FINALIZADO" : "EN_CONVERSION",
-        tecnicos: tecnicosMap.get(vin) || null,
-        modelo:   modeloMap.get(vin) || null,
+      sin_zona.push(filaLibre_(vin, {
+        auto: false,
         registrado_por: l.registrado_por || "",
         registrado_at:  l.registrado_at || null,
-      });
+      }));
     }
     sin_zona.sort((a, b) => new Date(a.registrado_at || 0) - new Date(b.registrado_at || 0));
+
+    // Los automáticos van DESPUÉS de los colocados a mano y sin fecha de
+    // registro: no hay una persona ni un momento detrás, así que ordenarlos
+    // con los otros fingiría un dato que no existe.
+    for (const vin of vinsAuto) {
+      if (enCalidad.has(vin)) continue;
+      sin_zona.push(filaLibre_(vin, { auto: true, registrado_por: "", registrado_at: null }));
+    }
 
     // Los que ya no pintan nada aquí se borran, para que la tabla no crezca
     // con carros que se fueron hace meses. Va suelto y sin esperar: quien

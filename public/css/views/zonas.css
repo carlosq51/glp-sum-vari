@@ -424,7 +424,16 @@
 .zonaLibreVin:active { transform: scale(.97); }
 .zonaLibreVin.readOnly { cursor: default; pointer-events: none; }
 .zonaLibreVin--finalizado { border-color: rgba(34,197,94,.45); }
+/* El que aparece solo —tiene técnico y no tiene plaza— se dibuja punteado:
+   nadie lo colocó ahí, y no se va a quedar cuando ese trabajo cierre. */
+.zonaLibreVin--auto { border-style: dashed; }
 .zonaLibreVinEstado { font-size: 12px; }
+.zonaLibreVinGente {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+}
 
 /* ── Leyenda (pills) ── */
 .zonasLeyenda {
