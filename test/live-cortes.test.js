@@ -180,7 +180,27 @@ describe("cortesHTML_", () => {
     expect(html).toContain("23:00–01:00");
   });
 
+  it("lo que se cerró al día siguiente no se apunta en este día", () => {
+    // Una mitad empezada el martes y cerrada el miércoles por la mañana llega
+    // con estado FINALIZADO porque la fila se creó el martes. Al cierre del
+    // martes estaba ABIERTA: si contara aquí, el día pasado se apuntaría un
+    // cierre que no fue suyo, y encima en la franja que tocara por la hora del
+    // miércoles. El backend la marca y la tabla la ignora.
+    const tarde = { ...cierre(MEDIODIA), cerradoDespues: true };
+    const html = cortesHTML_({ cierres: { conv: [], cal: [] } }, [
+      { userId: "x", nombre: "TRASNOCHADO", rol: "MOTOR", estadoActivo: "TRABAJANDO",
+        asignacionesHoy: [cierre(MANANA), tarde] },
+    ]);
+    const desde = html.indexOf("TRASNOCHADO");
+    const fila  = html.slice(desde, html.indexOf("</tr>", desde));
+    // Una sola mitad contada, no dos: una celda con 1 y el total a 1.
+    expect(fila.match(/>1</g) || []).toHaveLength(2);
+    expect(fila).not.toContain(">2<");
+
+  });
+
   it("sin gente de apoyo solo se pinta una tabla", () => {
+
     const html = cortesHTML_({ cierres: { conv: [], cal: [] } }, [tec("SOLO MOTOR", "MOTOR", [MANANA])]);
     expect(html.match(/<table/g)).toHaveLength(1);
     expect(html).not.toContain("🤝 Apoyo");

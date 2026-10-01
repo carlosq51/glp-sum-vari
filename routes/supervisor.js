@@ -747,6 +747,26 @@ async function armarLiveSupervisor_(fechaPedida = null) {
     const fin00      = inicioJornada_(masDias_(jornadaStr, 1));
     const topeAsig_  = esHoy ? "" : `&fecha_asignacion=lt.${fin00}`;
     const topeUpd_   = esHoy ? "" : `&updated_at=lt.${fin00}`;
+    // El instante en que esa jornada terminó, para poder preguntar por una fila
+    // "¿esto se cerró DENTRO del día que estoy mirando?".
+    const finMs = Date.parse(`${masDias_(jornadaStr, 1)}T${INICIO_JORNADA}:00${PE_OFFSET}`);
+
+    /**
+     * ¿Esta fila se cerró DESPUÉS de la jornada que se está mirando?
+     *
+     * Pasa de verdad: una mitad que se empieza el martes y se queda abierta la
+     * cierra alguien el miércoles por la mañana. La fila entra por Q1 (se creó
+     * el martes) y llega con estado FINALIZADO, así que sin esta pregunta el
+     * martes se apuntaba un cierre que no fue suyo — y encima en la franja que
+     * tocara por la hora del miércoles. Al cierre del martes ese trabajo
+     * estaba ABIERTO, y así es como tiene que contar.
+     *
+     * Hoy nunca aplica: nada se cierra en el futuro.
+     */
+    const cerradoDespues_ = (asg) =>
+      !esHoy && asg.estado_actual === "FINALIZADO" &&
+      Number.isFinite(finMs) && (Date.parse(asg.updated_at || "") || 0) >= finMs;
+
 
 
 
@@ -922,7 +942,8 @@ async function armarLiveSupervisor_(fechaPedida = null) {
       const user   = Array.isArray(asg.usuarios) ? asg.usuarios[0] : (asg.usuarios || {});
       const tipoOt = (asg.tipo_ot || "CONVERSION").toUpperCase(); // las hermanas ya vienen filtradas
       const rol    = (asg.rol_trabajo || "").toUpperCase();
-      const done   = asg.estado_actual === "FINALIZADO";
+      const done   = asg.estado_actual === "FINALIZADO" && !cerradoDespues_(asg);
+
       const ms     = Date.parse(asg.updated_at || "") || 0;
       if (tipoOt === "CONVERSION") {
         if (!vinConv[vin]) vinConv[vin] = { roles: {}, hasActive: false, ultFinMs: 0 };
@@ -1045,7 +1066,9 @@ async function armarLiveSupervisor_(fechaPedida = null) {
         tipo_ramal: wo.tipo_ramal || "",
         tipo_ot: asg.tipo_ot || "",
         estado: asg.estado_actual,
+        cerradoDespues: cerradoDespues_(asg),
         tiempo_ms: asg.tiempo_trab_ms || 0,
+
         running_since: asg.running_since,
         updated_at: asg.updated_at,
         fecha_asignacion: asg.fecha_asignacion,
@@ -1060,8 +1083,10 @@ async function armarLiveSupervisor_(fechaPedida = null) {
 
     for (const tech of techMap.values()) {
       const asgList = tech.assignments;
-      const finalizados = asgList.filter(a => a.estado === "FINALIZADO");
-      const activos     = asgList.filter(a => a.estado !== "FINALIZADO");
+      // Cerrado al día siguiente = abierto al cierre de ESTA jornada.
+      const finalizados = asgList.filter(a => a.estado === "FINALIZADO" && !a.cerradoDespues);
+      const activos     = asgList.filter(a => a.estado !== "FINALIZADO" || a.cerradoDespues);
+
 
       // El VIN/estado activo actual (el más reciente no finalizado). Se prefiere
       // lo de hoy; el arrastre solo entra si el técnico no abrió nada hoy.

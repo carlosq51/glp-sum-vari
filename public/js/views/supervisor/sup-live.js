@@ -605,7 +605,11 @@ export function construirModelo_(data, techs) {
     const celdas = vacio_();
     let fuera = 0;   // cerrado fuera de las franjas configuradas
     for (const a of (t.asignacionesHoy || [])) {
-      if (a.estado !== "FINALIZADO" || !a.updated_at) continue;
+      // `cerradoDespues` lo marca el backend: la mitad se cerró al día
+      // siguiente, así que al cierre de ESTA jornada seguía abierta y su hora
+      // de cierre no pertenece a ninguna franja de este día.
+      if (a.estado !== "FINALIZADO" || a.cerradoDespues || !a.updated_at) continue;
+
       const i = nb ? indiceBloque_(minutosPE_(new Date(a.updated_at)), bloques) : -1;
       if (i < 0) { fuera++; continue; }
       celdas[i]++;
@@ -1398,7 +1402,9 @@ function renderDetailRow_(a) {
   // filas de `RAMAL-1790686306788-46NX` y ninguna forma de saber qué se armó.
   const etq = etiquetaTrabajo_(a.vin, a.tipo_ramal);
   const vin = etq.texto || "–";
+  const tarde = !!a.cerradoDespues;
   const tiempoTotal = fmtTiempo_(a.tiempo_ms, a.estado === "TRABAJANDO" ? a.running_since : null);
+
   const inicioStr = a.fecha_asignacion ? fmtFechaHora_(a.fecha_asignacion) : null;
   const finStr    = a.estado === "FINALIZADO" && a.updated_at ? fmtFechaHora_(a.updated_at) : null;
 
@@ -1407,6 +1413,8 @@ function renderDetailRow_(a) {
     <div class="lvDetail__top">
       <span class="lvDetail__vin" title="${escapeHtml(etq.titulo || vin)}">${escapeHtml(vin)}</span>
       ${a.arrastre ? `<span class="lvVin__old" title="Abierto un día anterior — no suma a hoy">ayer</span>` : ""}
+      ${tarde ? `<span class="lvVin__old" title="Se cerró después de esta jornada: al cierre del día seguía abierto y no suma aquí">cerró después</span>` : ""}
+
       <span class="lvDetail__time">⏱ ${escapeHtml(tiempoTotal)}</span>
     </div>
     <div class="lvDetail__meta small">
