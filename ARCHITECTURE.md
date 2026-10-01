@@ -154,7 +154,12 @@ GET  /api/push/vapid-public-key    → clave pública VAPID para el cliente
 POST /api/push/subscribe           → guarda suscripción del browser
 
 ── Supervisor ────────────────────────────────────────────────────────────
-GET  /api/supervisor/live          → snapshot en tiempo real de todos
+GET  /api/supervisor/live          → snapshot de la jornada de todos.
+                                     `?fecha=YYYY-MM-DD` devuelve una jornada
+                                     ya cerrada (hasta 120 días atrás) y marca
+                                     `esHoy:false`: el tablero entra en modo
+                                     histórico y apaga el polling.
+
 POST /api/supervisor/report        → reporte histórico con filtros
 
 ── Admin ─────────────────────────────────────────────────────────────────

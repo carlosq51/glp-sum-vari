@@ -290,131 +290,12 @@ button[data-suptrack].active {
 .lvBar__btn:hover  { background: var(--glass); }
 .lvBar__btn:active { transform: rotate(90deg); }
 
-/* ── 1. El día: hecho vs. lo esperado a esta hora ── */
-.lvDay {
-  padding: 12px 14px;
-  margin-bottom: 10px;
-  background: var(--glass);
-  border: 1px solid var(--surfaceLine);
-  border-radius: var(--radiusSm);
-  border-top: 3px solid var(--dayTone);
-}
-.lvDay__head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-.lvDay__num { display: flex; align-items: baseline; gap: 4px; }
-.lvDay__num b {
-  font-size: 38px;
-  font-weight: var(--fw-black);
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-  color: var(--text);
-}
-.lvDay__of { font-size: var(--fs-sm); font-weight: var(--fw-bold); opacity: .4; }
-.lvDay__label {
-  font-size: 10px;
-  line-height: 1.25;
-  font-weight: var(--fw-black);
-  letter-spacing: .5px;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-.lvDay__verdict {
-  margin-left: auto;
-  text-align: right;
-  max-width: 58%;
-  font-size: var(--fs-2xs);
-  color: var(--muted);
-}
-.lvDay__verdict b {
-  display: block;
-  font-size: var(--fs-lg);
-  font-weight: var(--fw-black);
-  font-variant-numeric: tabular-nums;
-  color: var(--dayTone);
-}
-.lvDay__flat { font-style: italic; }
-
-/* La marca (u) es el objetivo parcial: si el relleno no la alcanza, vamos
-   tarde. Sobresale por arriba y por abajo para que se vea sobre el relleno. */
-.lvDay__track {
-  position: relative;
-  height: 9px;
-  margin-top: 10px;
-  background: var(--ring-track);
-  border-radius: 5px;
-}
-.lvDay__track > i {
-  display: block;
-  height: 100%;
-  border-radius: 5px;
-  background: var(--dayTone);
-  transition: width .6s var(--ease-out, ease);
-}
-.lvDay__track > u {
-  position: absolute;
-  top: -3px;
-  bottom: -3px;
-  width: 2px;
-  border-radius: 1px;
-  background: var(--text);
-  opacity: .55;
-  transform: translateX(-1px);
-}
-
-/* ── 1b. Pulso por hora (los "cortes diarios", en vivo) ── */
-.lvSpark { margin-top: 12px; }
-.lvSpark__bars {
-  display: flex;
-  align-items: flex-end;
-  gap: 2px;
-  height: 34px;
-}
-.lvSpark__bars > i {
-  flex: 1;
-  min-width: 3px;
-  border-radius: 2px 2px 0 0;
-  background: var(--track-motor);
-  opacity: .75;
-  transition: height .5s var(--ease-out, ease);
-}
-/* Una hora que todavía no ha llegado no es una hora sin producción. */
-.lvSpark__bars > i.is-next { opacity: .16; }
-.lvSpark__bars > i.is-now  { background: var(--accent); opacity: 1; }
-.lvSpark__axis {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 4px;
-  font-size: 9px;
-  font-weight: var(--fw-bold);
-  letter-spacing: .4px;
-  font-variant-numeric: tabular-nums;
-  color: var(--muted);
-}
-.lvSpark__now { color: var(--accent); font-weight: var(--fw-black); }
-
 /* ── 1b-bis. Cortes del día (la 2ª hoja del taller) ──
    Son tablas de reporte, no tarjetas: densas, de ancho de CONTENIDO y
    alineadas a la izquierda. Con width:100% las seis columnas numéricas se
    repartían una pantalla de escritorio entera y quedaban cinco dígitos
    flotando en medio de la nada. */
 .lvCortes { margin-top: 12px; }
-.lvCortes > summary {
-  cursor: pointer;
-  list-style: none;
-  padding: 4px 0;
-  font-size: var(--fs-2xs);
-  font-weight: var(--fw-black);
-  letter-spacing: .4px;
-  color: var(--muted);
-}
-.lvCortes > summary::-webkit-details-marker { display: none; }
-.lvCortes > summary::before { content: "▸ "; opacity: .6; }
-.lvCortes[open] > summary::before { content: "▾ "; }
-
 .lvCortes__bloque { margin-bottom: 12px; }
 .lvCortes__cap {
   margin-bottom: 4px;
@@ -547,32 +428,6 @@ button[data-suptrack].active {
   .lvVivo { animation: none; }
 }
 
-/* ── 1c. Embudo: convertidos → en QC → aprobados ── */
-.lvFunnel {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid var(--surfaceLine);
-}
-.lvFunnel__step { display: flex; align-items: baseline; gap: 5px; }
-.lvFunnel__step b {
-  font-size: var(--fs-lg);
-  font-weight: var(--fw-black);
-  font-variant-numeric: tabular-nums;
-}
-.lvFunnel__step em {
-  font-style: normal;
-  font-size: 10px;
-  font-weight: var(--fw-bold);
-  letter-spacing: .3px;
-  white-space: nowrap;
-  color: var(--muted);
-}
-.lvFunnel__arrow { font-size: var(--fs-xs); opacity: .3; }
-
 /* ── 1d. El mes ── */
 .lvMonth {
   padding: 9px 12px;
@@ -636,20 +491,6 @@ button[data-suptrack].active {
 
 /* ── 1e. Carros a medias ── */
 .lvMedios { margin-bottom: 10px; }
-.lvMedios > summary {
-  cursor: pointer;
-  list-style: none;
-  padding: 6px 10px;
-  border-radius: var(--radiusSm);
-  font-size: var(--fs-2xs);
-  font-weight: var(--fw-bold);
-  color: var(--warn);
-  background: var(--warnBg);
-}
-.lvMedios > summary::-webkit-details-marker { display: none; }
-.lvMedios > summary::before { content: "▸ "; opacity: .6; }
-.lvMedios[open] > summary::before { content: "▾ "; }
-.lvMedios[open] > summary { margin-bottom: 6px; }
 .lvMedios__row {
   display: flex;
   align-items: center;
@@ -679,41 +520,6 @@ button[data-suptrack].active {
 .lvMedios__who { font-size: 10px; white-space: nowrap; color: var(--muted); }
 .lvMedios__mas { padding: 2px 10px; font-size: var(--fs-2xs); color: var(--muted); }
 
-/* ── 2. Pulso del taller ── */
-.lvPulse {
-  margin-bottom: 10px;
-}
-.lvPulse__track {
-  display: flex;
-  height: 8px;
-  border-radius: 4px;
-  overflow: hidden;
-  background: var(--ring-track);
-}
-.lvPulse__track > i {
-  height: 100%;
-  min-width: 3px;
-  transition: width .5s var(--ease-out, ease);
-}
-/* Separación entre segmentos sin depender del color de fondo de la página:
-   el borde transparente deja ver el track. */
-.lvPulse__track > i + i {
-  border-left: 2px solid transparent;
-  background-clip: padding-box;
-}
-.lvPulse__chips {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 5px;
-  margin-top: 7px;
-}
-.lvPulse__total {
-  margin-left: auto;
-  font-size: 10px;
-  opacity: .35;
-  white-space: nowrap;
-}
 .lvChip {
   font: inherit;
   font-size: var(--fs-2xs);
@@ -1409,44 +1215,4 @@ button[data-suptrack].active {
 .dupla-chip--done {
   color: var(--muted);
   opacity: .8;
-}
-
-/* ── Los dos gráficos del bloque de cortes ────────────────────────────────
-   Uno al lado del otro en pantalla ancha y apilados en el celular. Son DOS
-   y no uno porque no comparten unidad: arriba mitades, abajo carros.
-
-   La ALTURA vive aquí, en el contenedor, y el <canvas> no la declara. Con
-   maintainAspectRatio:false Chart.js dimensiona el canvas al contenedor; si
-   el contenedor la tomara del canvas, cada frame crecería un poco y el
-   gráfico se iría hacia abajo sin parar. Misma trampa que en la tendencia. */
-.lvCortesCharts {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 12px;
-  margin-top: 12px;
-}
-@media (min-width: 720px) {
-  .lvCortesCharts { grid-template-columns: 1fr 1fr; }
-}
-.lvCortesFig { margin: 0; }
-.lvCortesFig__cap {
-  margin-bottom: 6px;
-  font-size: 10px;
-  font-weight: var(--fw-black);
-  letter-spacing: .5px;
-  color: var(--text);
-}
-.lvCortesFig__cap em {
-  font-style: normal;
-  font-weight: var(--fw-bold);
-  letter-spacing: 0;
-  color: var(--muted);
-}
-.lvCortesFig__box {
-  position: relative;
-  height: 190px;
-  padding: 6px 4px 2px;
-  border: 1px solid var(--surfaceLine);
-  border-radius: var(--radiusSm);
-  background: var(--surface);
 }

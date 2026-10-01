@@ -1,0 +1,445 @@
+/* =====================================================================
+   views/sup-live.css — El TABLERO del LIVE (barra de mando, segmentadores,
+   KPIs y rejilla de visuales).
+
+   Qué vive aquí y qué sigue en supervisor.css
+   -------------------------------------------
+   Aquí está el CHASIS del tablero: lo que ordena la pantalla. Las piezas de
+   dentro que ya existían y no han cambiado de forma (la matriz de cortes, las
+   cards de técnico, el mes, los carros a medias, el modal de detalle) siguen
+   en views/supervisor.css, donde llevan meses. Partirlo así evita un archivo
+   de 1.800 líneas y deja claro qué es estructura y qué es contenido.
+
+   Se apoya en las primitivas de components/dashboard.css (.statTile) y en los
+   badges de modo de views/sup-dashboard.css (.supModeBadge): el LIVE y el
+   REPORTE son el mismo tablero visto por dos sitios, y no tendría sentido que
+   un "EN VIVO" se pintara distinto en cada panel.
+   ===================================================================== */
+
+.lvDash { display: flex; flex-direction: column; gap: 12px; }
+
+/* ── Barra de mando ───────────────────────────────────────────────────
+   Primero en la pantalla porque es lo primero que hay que saber: un 12/25 no
+   significa nada si no se sabe de qué jornada es. */
+.lvCmd {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  background: var(--grad-surface-v, var(--surface));
+  border: 1px solid var(--surfaceLine);
+  box-shadow: var(--elev-1);
+}
+
+.lvCmd__title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+.lvCmd__icon { font-size: var(--fs-lg); line-height: 1; }
+.lvCmd__title b {
+  display: block;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-black);
+  letter-spacing: .2px;
+  text-transform: capitalize;
+}
+.lvCmd__title em {
+  display: block;
+  font-style: normal;
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+  text-transform: capitalize;
+}
+
+/* El selector de jornada: un control, no cuatro botones sueltos. */
+.lvCmd__dates {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--pillBg);
+  border: 1px solid var(--pillLine);
+}
+.lvCmd__nav,
+.lvCmd__hoy,
+.lvCmd__btn {
+  font: inherit;
+  cursor: pointer;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  padding: 5px 9px;
+  font-weight: var(--fw-extrabold);
+  font-size: var(--fs-xs);
+  transition: background var(--dur-fast), color var(--dur-fast), opacity var(--dur-fast);
+}
+.lvCmd__nav:hover:not(:disabled),
+.lvCmd__hoy:hover:not(:disabled) { background: var(--glass); }
+.lvCmd__nav:disabled,
+.lvCmd__hoy:disabled { opacity: .3; cursor: default; }
+
+/* El input de fecha va dentro del grupo, así que pelea contra las reglas
+   globales de inputs.css (width:100%, height:var(--h-input), appearance:none).
+   Se le devuelve el ancho de contenido y el selector nativo: sin
+   `appearance:auto` Chrome esconde el icono del calendario y la única forma de
+   cambiar de día sería teclear la fecha a mano. */
+.lvCmd__date {
+  font: inherit;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-bold);
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  padding: 2px 4px;
+  width: auto;
+  min-width: 112px;
+  height: auto;
+  flex: 0 0 auto;
+  cursor: pointer;
+  appearance: auto;
+  -webkit-appearance: auto;
+  /* El calendario nativo lo pinta el navegador: sin esto sale blanco sobre
+     blanco en tema noche, porque no sabe en qué tema está la página. */
+  color-scheme: dark;
+}
+:root[data-theme="day"] .lvCmd__date { color-scheme: light; }
+.lvCmd__date:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.lvCmd__date::-webkit-calendar-picker-indicator { opacity: .6; cursor: pointer; }
+.lvCmd__date::-webkit-calendar-picker-indicator:hover { opacity: 1; }
+
+
+.lvCmd__hoy.is-on { color: var(--accent); }
+
+.lvCmd__status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  font-size: var(--fs-2xs);
+}
+.lvCmd__ago { color: var(--muted); white-space: nowrap; }
+
+.lvCmd__btn {
+  border: 1px solid var(--pillLine);
+  background: var(--pillBg);
+  font-size: var(--fs-sm);
+  line-height: 1;
+  padding: 6px 9px;
+}
+.lvCmd__btn:hover  { background: var(--glass); }
+.lvCmd__btn:active { transform: rotate(90deg); }
+/* Hay un fetch en vuelo: el botón lo dice girando, sin robar el foco. */
+.lvCmd__btn.is-busy { animation: lvSpin 900ms linear infinite; pointer-events: none; opacity: .7; }
+@keyframes lvSpin { to { transform: rotate(360deg); } }
+
+/* ── Segmentadores ────────────────────────────────────────────────────
+   Una fila por dimensión y encima de todo lo que recortan: un filtro que vive
+   debajo de lo que filtra obliga a descubrirlo por accidente. */
+.lvSlice {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 9px 12px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--surfaceLine);
+}
+.lvSlice__row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+.lvSlice__tag {
+  font-size: 9px;
+  font-weight: var(--fw-black);
+  letter-spacing: .8px;
+  text-transform: uppercase;
+  color: var(--muted);
+  min-width: 46px;
+}
+.lvSlice__none { font-size: var(--fs-2xs); color: var(--muted); font-style: italic; }
+
+/* La barra del taller: proporción de gente activa, en pausa y sin iniciar. */
+.lvSlice__pulse {
+  display: flex;
+  height: 7px;
+  flex: 1 1 120px;
+  min-width: 80px;
+  margin-left: 6px;
+  border-radius: 99px;
+  overflow: hidden;
+  background: var(--ring-track);
+}
+.lvSlice__pulse > i { height: 100%; min-width: 2px; }
+/* Separación entre segmentos sin depender del fondo de la página. */
+.lvSlice__pulse > i + i { box-shadow: -2px 0 0 var(--surface); }
+.lvSlice__total {
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-black);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* Fila de filtros activos: qué está puesto y cómo quitarlo. */
+.lvSlice__row--on { padding-top: 6px; border-top: 1px dashed var(--surfaceLine); }
+.lvPill {
+  font: inherit;
+  cursor: pointer;
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-extrabold);
+  padding: 3px 9px;
+  border-radius: 99px;
+  color: var(--accent);
+  background: var(--accentBg, var(--pillBg));
+  border: 1px solid var(--accent);
+  transition: opacity var(--dur-fast);
+}
+.lvPill:hover { opacity: .75; }
+.lvPill--clear {
+  color: var(--muted);
+  background: var(--pillBg);
+  border-color: var(--pillLine);
+}
+
+/* ── Fila de KPIs ─────────────────────────────────────────────────────
+   El héroe a la izquierda y los secundarios en rejilla. El héroe es el único
+   con veredicto porque es el único que tiene contra qué compararse. */
+.lvKpis { display: grid; grid-template-columns: 1fr; gap: 10px; }
+@media (min-width: 860px) {
+  .lvKpis { grid-template-columns: minmax(260px, 1fr) 2fr; align-items: stretch; }
+}
+
+.lvKpi--hero {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  background: var(--grad-surface-v, var(--surface));
+  border: 1px solid var(--surfaceLine);
+  border-left: 4px solid var(--kpiTone, var(--accent));
+  box-shadow: var(--elev-1);
+}
+.lvKpi__label {
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-black);
+  letter-spacing: .9px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.lvKpi__num { display: flex; align-items: baseline; gap: 5px; }
+.lvKpi__num b {
+  font-size: 40px;
+  line-height: 1;
+  font-weight: var(--fw-black);
+  color: var(--kpiTone, var(--text));
+  font-variant-numeric: tabular-nums;
+}
+.lvKpi__num span { font-size: var(--fs-md); font-weight: var(--fw-bold); opacity: .42; }
+.lvKpi__verdict {
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+.lvKpi__verdict b {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-black);
+  color: var(--kpiTone, var(--text));
+}
+.lvKpi__flat { font-style: italic; }
+
+/* La marca (u) es el objetivo parcial: si el relleno no la alcanza, vamos
+   tarde. Es la lectura de un vistazo que un porcentaje suelto no da. */
+.lvKpi__track {
+  position: relative;
+  height: 9px;
+  margin-top: auto;
+  border-radius: 99px;
+  background: var(--ring-track);
+  overflow: visible;
+}
+.lvKpi__track > i {
+  display: block;
+  height: 100%;
+  border-radius: 99px;
+  background: var(--kpiTone, var(--accent));
+  transition: width var(--dur-slower) var(--ease-out);
+}
+.lvKpi__track > u {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  background: var(--text);
+  opacity: .55;
+  border-radius: 2px;
+}
+
+.lvKpis__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+/* Un tile que avisa de algo parado lleva el aviso en el borde, no en el número:
+   un número en rojo se confunde con "mal dato". */
+.statTile--warnEdge { border-left: 3px solid var(--warn); }
+
+/* ── Rejilla de visuales ──────────────────────────────────────────────*/
+.lvDash__grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+@media (min-width: 900px) {
+  .lvDash__grid { grid-template-columns: 1fr 1fr; }
+  .lvTile--wide { grid-column: 1 / -1; }
+}
+
+.lvTile {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-radius: var(--radius);
+  background: var(--grad-surface-v, var(--surface));
+  border: 1px solid var(--surfaceLine);
+  box-shadow: var(--elev-1);
+  padding: 12px 14px 14px;
+  transition: box-shadow var(--dur-base), border-color var(--dur-base);
+}
+.lvTile:hover { box-shadow: var(--elev-2); }
+/* Las piezas que ya traen su propio marco (duplas, grilla de técnicos) no
+   llevan otro encima: dos bordes concéntricos no añaden información. */
+.lvTile--bare { background: none; border: 0; box-shadow: none; padding: 0; }
+.lvTile--bare > .lvTile__head { padding: 0 2px; }
+
+.lvTile__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.lvTile__titles { min-width: 0; }
+.lvTile__title {
+  margin: 0;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-extrabold);
+  letter-spacing: .2px;
+}
+.lvTile__sub {
+  margin: 2px 0 0;
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+  line-height: 1.35;
+}
+.lvTile__foco {
+  font: inherit;
+  cursor: pointer;
+  margin-left: auto;
+  flex-shrink: 0;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  padding: 3px 7px;
+  font-size: var(--fs-xs);
+  transition: color var(--dur-fast), background var(--dur-fast), border-color var(--dur-fast);
+}
+.lvTile__foco:hover { color: var(--accent); background: var(--pillBg); border-color: var(--pillLine); }
+
+.lvTile__body { min-width: 0; }
+/* La ALTURA del gráfico vive aquí, nunca en el canvas: con
+   maintainAspectRatio:false el canvas se mide contra su contenedor, y si el
+   contenedor se midiera contra el canvas crecerían el uno al otro sin parar. */
+.lvTile__box { position: relative; height: 230px; }
+.lvTile--wide .lvTile__box { height: 260px; }
+
+/* Modo foco: un solo visual, a tablero completo. La matriz de cortes con 24
+   filas y seis franjas no se lee en media rejilla. */
+.lvDash__grid.is-foco > .lvTile:not(.is-foco) { display: none; }
+.lvDash__grid.is-foco > .lvTile.is-foco { grid-column: 1 / -1; }
+.lvDash__grid.is-foco > .lvTile.is-foco .lvTile__box { height: min(62vh, 560px); }
+
+/* ── Embudo (dentro de su tile) ───────────────────────────────────────
+   En barras y no en tres números seguidos: la diferencia entre convertido y
+   aprobado es la pregunta, y una diferencia se ve, no se calcula. */
+.lvFunnel { display: flex; flex-direction: column; gap: 7px; }
+.lvFunnel__step {
+  display: grid;
+  grid-template-columns: 112px 1fr auto;
+  align-items: center;
+  gap: 8px;
+}
+.lvFunnel__lbl { font-size: var(--fs-2xs); color: var(--muted); white-space: nowrap; }
+.lvFunnel__bar {
+  height: 10px;
+  border-radius: 99px;
+  background: var(--ring-track);
+  overflow: hidden;
+}
+.lvFunnel__bar > i {
+  display: block;
+  height: 100%;
+  border-radius: 99px;
+  background: var(--track-motor, var(--accent));
+  transition: width var(--dur-slower) var(--ease-out);
+}
+.lvFunnel__step b {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-black);
+  font-variant-numeric: tabular-nums;
+  min-width: 28px;
+  text-align: right;
+}
+
+/* ── Cruce de filtros en la matriz ────────────────────────────────────*/
+.lvCortes__sort {
+  font: inherit;
+  cursor: pointer;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  font-weight: inherit;
+  letter-spacing: inherit;
+}
+.lvCortes__sort:hover { color: var(--accent); }
+
+/* La columna elegida se realza; las demás no se tocan. */
+.lvCortes__tbl .is-sel { background: var(--accentBg, var(--pillBg)) !important; }
+/* La persona elegida: borde de acento a la izquierda de su fila. */
+.lvCortes__tbl tbody tr.is-sel th[scope="row"] { box-shadow: inset 3px 0 0 var(--accent); }
+.lvCortes__tbl th[scope="row"] { cursor: pointer; }
+.lvCortes__tbl tbody tr:hover th[scope="row"] { color: var(--accent); }
+
+.lvCard.is-sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+
+/* ── Drill-down de los KPIs ───────────────────────────────────────────*/
+.lvDrill__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--surfaceLine);
+  font-size: var(--fs-xs);
+}
+.lvDrill__row > span:last-child { color: var(--muted); white-space: nowrap; }
+.lvDrill__row code { font-size: .92em; font-weight: var(--fw-extrabold); }
+.lvDrill__empty { padding: 18px; text-align: center; opacity: .5; }
+
+@media (prefers-reduced-motion: reduce) {
+  .lvCmd__btn.is-busy { animation: none; }
+  .lvKpi__track > i, .lvFunnel__bar > i { transition: none; }
+}

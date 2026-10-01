@@ -1,15 +1,41 @@
 // =========================
 // public/js/views/supervisor/sup-live.js
-// Panel LIVE del supervisor — foto de la jornada de HOY.
+// Tablero LIVE del supervisor — la jornada del taller en una sola pantalla.
+//
+// QUÉ ES
+// ------
+// Un tablero al modo Power BI: una barra de mando arriba (qué jornada se está
+// mirando), una fila de segmentadores, una fila de KPIs y una rejilla de
+// visuales que se filtran entre sí. Antes era una pila de bloques: cada uno
+// contestaba bien su pregunta, pero no se podían cruzar — no había forma de
+// decir "esto, pero solo del tanquero" o "esto, pero solo la franja de noche".
 //
 // Alcance de datos (lo define el backend, ver routes/supervisor.js):
-//   · carros CERRADOS hoy      → cuentan 1 c/u (ya no hay medios carros)
-//   · trabajos ABIERTOS hoy    → "en curso"
-//   · trabajos de días previos → NO suman; solo indican en qué está parado
-//     alguien que hoy no abrió nada (se marcan "ayer").
+//   · carros CERRADOS en la jornada  → cuentan 1 c/u (ya no hay medios carros)
+//   · trabajos ABIERTOS               → "en curso"
+//   · trabajos de días previos        → NO suman; solo indican en qué está
+//     parado alguien que hoy no abrió nada (se marcan "ayer"). En una jornada
+//     pasada no viajan: lo que alguien tenga abierto esta tarde no dice nada
+//     de lo que hizo el martes.
 //
-// Jerarquía visual: 1) meta del día  2) pulso del taller  3) duplas  4) técnicos.
-// Todo lo secundario (historial de asignaciones) vive en el modal de detalle.
+// EL FILTRO DE FECHA
+// ------------------
+// El LIVE solo sabía mirar la jornada en curso, y la pregunta que más se hacía
+// en el taller era "¿cómo nos fue ayer a esta misma hora?". La fecha viaja al
+// endpoint (`?fecha=`) y con ella el panel pasa a modo histórico: se apaga el
+// polling, se apaga el latido y desaparece todo lo que es estado de AHORA
+// (quién está dentro del taller, qué arrastra abierto). Lo que queda es la
+// producción de ese día, que es un hecho cerrado.
+//
+// EL CRUCE DE FILTROS
+// -------------------
+// Hay dos naturalezas de dato y se filtran distinto, a propósito:
+//   · por técnico   (mitades, matriz de cortes, cards, gráfico de puestos)
+//     → responde a rol, estado y a la persona seleccionada
+//   · por carro/VIN (convertidos, aprobados, ritmo, acumulado, carros a medias)
+//     → es del taller y NO se puede repartir por persona: un carro lo cierran
+//       dos. Esos visuales llevan dicho "del taller" en su subtítulo en vez de
+//       fingir un filtro que mentiría.
 // =========================
 
 import { getJSON } from "../../core/api.js";
@@ -21,24 +47,31 @@ import { startPoll, stopPoll } from "../../core/poll.js";
 import { rolMeta, estadoMeta, grupoDeRol_ } from "../../core/domain-meta.js";
 import { cfg } from "../../core/config.js";
 import { relTimeText, startRelTimeTicker, countUp, skeletonHTML } from "../../core/ui-dynamics.js";
+import { openDrilldown } from "../../core/drilldown.js";
 import { clasificarDuplas_, renderDuplasPanel_, cumplioMeta_, ROLES_DUPLA } from "./sup-duplas.js";
-import {
-  cortesChartsHTML_, montarCortesCharts_, destruirCortesCharts_,
-} from "./sup-live-cortes-chart.js";
+import { CANVAS, montarLiveCharts_, destruirLiveCharts_ } from "./sup-live-charts.js";
 
 let liveActive_   = false;
 let liveLastData_ = null;   // último fetch, para re-abrir detalle actualizado
+
+
+// ── Segmentadores ─────────────────────────────────────────────────────
+// Todos sobreviven al polling: un re-render no puede deshacer lo que el
+// supervisor acaba de elegir.
 let estadoFilter_ = null;   // "TRABAJANDO"|"PAUSADO"|"SIN_INICIAR"|"STALLED"|"META_OK"|null
 let rolFilter_    = null;   // "MOTOR"|"TANQUE"|"CALIDAD"|"RAMALERO"|null
-let offOpen_      = false;  // bloque "sin actividad hoy" desplegado (sobrevive al polling)
-let mediosOpen_   = false;  // bloque "carros a medias" desplegado (idem)
-let cortesOpen_   = false;  // tabla de cortes por técnico desplegada (idem)
-// Series de los dos gráficos de cortes. Las calcula cortesHTML_ junto con las
-// filas de la tabla para que gráfico y tabla no puedan discrepar, y las
-// recoge el montaje de abajo cuando el HTML ya está en el DOM.
-let seriesCortes_ = null;
+let franjaFilter_ = null;   // índice de franja de la jornada
+let techFilter_   = null;   // "userId__rol" de la persona seleccionada
+let fechaSel_     = null;   // null = jornada en curso; "YYYY-MM-DD" = día cerrado
+let esHoy_        = true;   // lo confirma el backend en cada respuesta
+let cargando_     = false;  // hay un fetch en vuelo (lo pinta la barra de mando)
 
-let _prevKpi = { conv: null, cal: null }; // para animar los números al cambiar
+// Orden de la matriz: por nombre, por total o por una franja concreta.
+let orden_ = { col: "total", dir: "desc" };
+
+let focoTile_   = null;     // visual maximizado (el "modo foco" de Power BI)
+let offOpen_    = false;    // bloque "sin actividad" desplegado
+let _prevKpi    = { conv: null, cal: null }; // para animar los números al cambiar
 
 const ORDEN_ROLES = ["MOTOR", "TANQUE", "CALIDAD", "RAMALERO"];
 
@@ -48,7 +81,8 @@ const STALL_SIN_INI_MS = 60 * 60_000;
 
 // ── API ───────────────────────────────────────────────────────────────
 async function fetchLive_() {
-  return getJSON("/api/supervisor/live").catch(() => null);
+  const q = fechaSel_ ? `?fecha=${encodeURIComponent(fechaSel_)}` : "";
+  return getJSON(`/api/supervisor/live${q}`).catch(() => null);
 }
 
 // ── La jornada, en minutos ───────────────────────────────────────────────
@@ -65,10 +99,12 @@ const TZ_PE = "America/Lima";
 
 function horaPE_() { return Math.floor(minutosPE_() / 60); }
 
+function inicioJornadaMin_() { return hhmmAMin_(cfg("LIVE_JORNADA_INICIO")) ?? 300; }
+
 /** Las horas que componen la jornada, en orden: [5,6,…,23,0]. */
 function horasJornada_() {
-  const ini = hhmmAMin_(cfg("LIVE_JORNADA_INICIO")) ?? 300;
-  const fin = hhmmAMin_(cfg("LIVE_JORNADA_FIN"))    ?? 60;
+  const ini = inicioJornadaMin_();
+  const fin = hhmmAMin_(cfg("LIVE_JORNADA_FIN")) ?? 60;
   const h0  = Math.floor(ini / 60);
   const total = (((Math.floor(fin / 60) - h0) % 24) + 24) % 24 || 24;
   return Array.from({ length: total }, (_, i) => (h0 + i) % 24);
@@ -78,15 +114,33 @@ function horasJornada_() {
  * Qué fracción de la jornada va consumida (0…1).
  *
  * Fuera de la ventana devuelve 1: si ya son las 03:00 la jornada terminó, y el
- * objetivo del día era el objetivo entero, no una parte de él.
+ * objetivo del día era el objetivo entero, no una parte de él. En una jornada
+ * pasada es 1 por definición — ese día ya se acabó.
  */
 function fracJornada_() {
-  const ini = hhmmAMin_(cfg("LIVE_JORNADA_INICIO")) ?? 300;
-  let   fin = hhmmAMin_(cfg("LIVE_JORNADA_FIN"))    ?? 60;
+  if (!esHoy_) return 1;
+  const ini = inicioJornadaMin_();
+  let   fin = hhmmAMin_(cfg("LIVE_JORNADA_FIN")) ?? 60;
   if (fin <= ini) fin += 1440;          // la jornada cruza la medianoche
   let ahora = minutosPE_();
   if (ahora < ini) ahora += 1440;       // estamos en la cola de la jornada de ayer
   return Math.max(0, Math.min(1, (ahora - ini) / (fin - ini)));
+}
+
+/**
+ * La jornada en curso, en hora Perú: la fecha a la que pertenece AHORA.
+ *
+ * No es la fecha civil. A la 01:00 del día 30 el taller sigue en la jornada del
+ * 29, y es la del 29 la que tiene que salir marcada como "HOY" en el selector.
+ */
+function jornadaHoyPE_() {
+  return diaPE_(new Date(Date.now() - inicioJornadaMin_() * 60_000));
+}
+
+/** "2026-09-28" + n días. Date.UTC normaliza mes, año y bisiestos. */
+function masDias_(ymd, n) {
+  const [a, m, d] = String(ymd).split("-").map(Number);
+  return new Date(Date.UTC(a, m - 1, d + n)).toISOString().slice(0, 10);
 }
 
 // ── Helpers de dominio ────────────────────────────────────────────────
@@ -95,6 +149,9 @@ function enCursoOf_(t) { return Number(t.virtualHoy ?? t.activosHoy ?? 0) || 0; 
 
 /** Trabajo abierto más reciente + cuánto lleva sin cambiar de estado. */
 function stallInfo_(t) {
+  // En una jornada cerrada no hay nada "sin movimiento": el movimiento se mide
+  // contra el reloj de ahora, y ese reloj no aplica a un día que ya pasó.
+  if (!esHoy_) return null;
   if (t.estadoActivo !== "PAUSADO" && t.estadoActivo !== "SIN_INICIAR") return null;
   const abierto = (t.asignacionesHoy || [])
     .filter(a => a.estado !== "FINALIZADO")
@@ -105,13 +162,27 @@ function stallInfo_(t) {
   return ms > limit ? { ms, mins: Math.floor(ms / 60_000) } : null;
 }
 
-/** ¿La card pasa los filtros activos del header? */
+const keyTech_ = (t) => `${t.userId}__${t.rol}`;
+
+/** ¿La persona pasa los segmentadores activos? */
 function pasaFiltros_(t, metaTec) {
+  if (techFilter_ && keyTech_(t) !== techFilter_) return false;
   if (rolFilter_ && String(t.rol || "").toUpperCase() !== rolFilter_) return false;
   if (!estadoFilter_) return true;
   if (estadoFilter_ === "STALLED") return !!stallInfo_(t);
   if (estadoFilter_ === "META_OK") return cumplioMeta_(t, metaTec);
   return t.estadoActivo === estadoFilter_;
+}
+
+function hayFiltros_() {
+  return !!(estadoFilter_ || rolFilter_ || techFilter_ || franjaFilter_ != null);
+}
+
+function limpiarFiltros_() {
+  estadoFilter_ = null;
+  rolFilter_    = null;
+  techFilter_   = null;
+  franjaFilter_ = null;
 }
 
 // Etiquetas cortas de estado para la card (el label completo queda en el modal)
@@ -130,37 +201,99 @@ function fmtFechaCorta_(ymd) {
   return m ? `${m[3]}/${m[2]}` : String(ymd || "");
 }
 
+/** "2026-08-05" → "miércoles 5 de agosto" */
+function fmtFechaLarga_(ymd) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(ymd || ""));
+  if (!m) return String(ymd || "");
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  return new Intl.DateTimeFormat("es-PE", {
+    weekday: "long", day: "numeric", month: "long", timeZone: "UTC",
+  }).format(d);
+}
+
 // ── Render principal ──────────────────────────────────────────────────
 function renderLive_(container, data) {
   if (!container) return;
   if (!data?.ok) {
-    container.innerHTML = `<div class="lvEmpty">⚠️ ${escapeHtml(data?.error || "Error cargando datos.")}</div>`;
+    container.innerHTML = `
+      ${cmdHTML_(data || {})}
+      <div class="lvEmpty">⚠️ ${escapeHtml(data?.error || "Error cargando datos.")}</div>`;
+    bindCmd_(container);
     return;
   }
 
+  // El backend manda qué jornada armó: con él se decide si esto es un panel en
+  // vivo o la foto de un día cerrado, y de ahí cuelga medio comportamiento.
+  esHoy_ = data.esHoy !== false;
+
   const techs = Array.isArray(data.techs) ? data.techs : [];
   if (!techs.length) {
-    container.innerHTML = `<div class="lvEmpty">Sin actividad registrada hoy.</div>`;
+    container.innerHTML = `
+      ${cmdHTML_(data)}
+      <div class="lvEmpty">Sin actividad registrada ${esHoy_ ? "hoy" : `el ${escapeHtml(fmtFechaCorta_(data.fecha))}`}.</div>`;
+    bindCmd_(container);
     return;
   }
 
   const metaTec = Number(cfg("META_CARROS_TEC")) || 2;
   const duplas  = clasificarDuplas_(techs, metaTec);
+  const modelo  = construirModelo_(data, techs);
 
-  const nowIso = new Date().toISOString();
-  const html = `
-    ${headerHTML_(data, nowIso)}
-    ${diaHTML_(data)}
-    ${cortesHTML_(data, techs)}
-    ${mesHTML_(data)}
-    ${mediosHTML_(data)}
-    ${pulsoHTML_(techs, duplas, metaTec)}
-    ${renderDuplasPanel_(duplas)}
-    ${rolesTabsHTML_(techs)}
-    ${listaHTML_(techs, metaTec)}
-  `;
 
-  container.innerHTML = html;
+  const nowIso  = new Date().toISOString();
+  const duplasHTML = esHoy_ ? renderDuplasPanel_(duplas) : "";
+
+  container.innerHTML = `
+  <div class="lvDash">
+    ${cmdHTML_(data, nowIso)}
+    ${slicersHTML_(techs, duplas, metaTec, modelo)}
+    ${kpisHTML_(data, techs, modelo)}
+    <div class="lvDash__grid${focoTile_ ? " is-foco" : ""}">
+      ${tileHTML_({
+        id: "ritmo", titulo: "Ritmo de la jornada",
+        sub: "carros convertidos en cada hora · del taller",
+        span: 2, body: canvasHTML_(CANVAS.ritmo),
+      })}
+      ${tileHTML_({
+        id: "acum", titulo: "Acumulado contra el objetivo",
+        sub: "lo cerrado hasta cada hora · del taller",
+        body: canvasHTML_(CANVAS.acum),
+      })}
+      ${tileHTML_({
+        id: "puestos", titulo: "Mitades por puesto",
+        sub: `delantero y tanquero en cada franja${filtroNota_()}`,
+        body: canvasHTML_(CANVAS.puestos),
+      })}
+      ${tileHTML_({
+        id: "prod", titulo: "Bruta y final",
+        sub: "convertidos contra aprobados por calidad · del taller",
+        body: canvasHTML_(CANVAS.prod),
+      })}
+      ${tileHTML_({
+        id: "embudo", titulo: "Embudo y acumulado del mes",
+        sub: "el carro no termina cuando se convierte",
+        body: `${funnelHTML_(data.vinsSummary || {})}${mesHTML_(data)}`,
+      })}
+      ${modelo.nb && modelo.filas.length ? tileHTML_({
+        id: "cortes", titulo: "Cortes por técnico",
+
+        sub: `quién cerró qué y en qué franja${filtroNota_()}`,
+        span: 2, body: cortesTablasHTML_(modelo),
+      }) : ""}
+      ${mediosTile_(data)}
+      ${duplasHTML ? tileHTML_({
+        id: "duplas", titulo: "Cierre por duplas",
+        sub: `meta ${metaTec} carros completos por técnico`,
+        span: 2, bare: true, body: duplasHTML,
+      }) : ""}
+      ${tileHTML_({
+        id: "tecnicos", titulo: "Técnicos",
+        sub: "toca una card para ver su día",
+        span: 2, bare: true,
+        body: `${rolesTabsHTML_(techs)}${listaHTML_(techs, metaTec)}`,
+      })}
+    </div>
+  </div>`;
 
   // Números de meta animados (count-up desde el valor anterior)
   const vsum = data.vinsSummary || {};
@@ -168,31 +301,145 @@ function renderLive_(container, data) {
   countUp(container.querySelector("#liveKpiCal"),  vsum.calDone  || 0, { from: _prevKpi.cal  });
   _prevKpi = { conv: vsum.convDone || 0, cal: vsum.calDone || 0 };
 
-  bindLive_(container, techs, metaTec);
+  montarLiveCharts_(modelo.series, { onFranja: (i) => toggleFranja_(i) });
+  bindLive_(container, techs, metaTec, data);
 }
 
-// ── 0. Barra superior: fecha + frescura + refresh ─────────────────────
-function headerHTML_(data, nowIso) {
+/** Aviso de que un visual por técnico está recortado por los segmentadores. */
+function filtroNota_() {
+  const partes = [];
+  if (techFilter_) partes.push("1 técnico");
+  if (rolFilter_)  partes.push(rolMeta(rolFilter_).label.toLowerCase());
+  if (estadoFilter_) partes.push("por estado");
+  return partes.length ? ` · filtrado: ${partes.join(" · ")}` : "";
+}
+
+// ── 0. Barra de mando: qué jornada se mira y en qué modo ──────────────
+//
+// Es lo primero de la pantalla porque es lo primero que hay que saber: un 12/25
+// no significa nada si no se sabe de qué día es. En vivo lleva latido y la
+// frescura del dato; en histórico, la fecha en largo y ni una pista de tiempo
+// real, que sería mentira.
+function cmdHTML_(data, nowIso = new Date().toISOString()) {
+  const hoy    = jornadaHoyPE_();
+  const fecha  = data?.fecha || fechaSel_ || hoy;
+  const enVivo = esHoy_ && !fechaSel_;
+  const puedeAvanzar = !!fechaSel_ && fechaSel_ < hoy;
+
   return `
-  <div class="lvBar">
-    <span class="lvBar__date">${escapeHtml(fmtFechaCorta_(data.fecha))}</span>
-    <span class="lvBar__live"><i class="lvBar__beat"></i>EN VIVO</span>
-    <span class="lvBar__ago">Actualizado <span id="liveLastUpdate" data-reltime="${nowIso}">${relTimeText(nowIso)}</span></span>
-    <button type="button" id="btnLiveRefresh" class="lvBar__btn" title="Actualizar ahora" aria-label="Actualizar">↻</button>
+  <div class="lvCmd">
+    <div class="lvCmd__title">
+      <span class="lvCmd__icon" aria-hidden="true">${enVivo ? "📡" : "🗓"}</span>
+      <span>
+        <b>${escapeHtml(enVivo ? "Jornada en curso" : fmtFechaLarga_(fecha))}</b>
+        <em>${escapeHtml(enVivo ? fmtFechaLarga_(fecha) : "jornada cerrada")}</em>
+      </span>
+    </div>
+
+    <div class="lvCmd__dates" role="group" aria-label="Jornada que se está mirando">
+      <button type="button" class="lvCmd__nav" data-dia="-1" title="Jornada anterior" aria-label="Jornada anterior">◀</button>
+      <input type="date" id="lvFecha" class="lvCmd__date" value="${escapeHtml(fecha)}" max="${escapeHtml(hoy)}"
+        title="Elegir jornada" aria-label="Elegir jornada" />
+      <button type="button" class="lvCmd__nav" data-dia="1" title="Jornada siguiente" aria-label="Jornada siguiente"
+        ${puedeAvanzar ? "" : "disabled"}>▶</button>
+      <button type="button" class="lvCmd__hoy${enVivo ? " is-on" : ""}" data-dia="hoy"
+        title="Volver a la jornada en curso" ${enVivo ? "disabled" : ""}>HOY</button>
+    </div>
+
+    <div class="lvCmd__status">
+      ${enVivo
+        ? `<span class="supModeBadge supModeBadge--live"><i class="supLiveDot"></i>EN VIVO</span>
+           <span class="lvCmd__ago">Actualizado <span id="liveLastUpdate" data-reltime="${nowIso}">${relTimeText(nowIso)}</span></span>`
+        : `<span class="supModeBadge supModeBadge--hist">🗄 HISTÓRICO</span>
+           <span class="lvCmd__ago">Sin refresco automático</span>`}
+      <button type="button" id="btnLiveRefresh" class="lvCmd__btn${cargando_ ? " is-busy" : ""}"
+        title="Volver a leer los datos" aria-label="Actualizar">↻</button>
+    </div>
   </div>`;
 }
 
-// ── 1. El día: ¿vamos a tiempo? ───────────────────────────────────────
+// ── 0b. Segmentadores: una fila, encima de todo lo que recortan ───────
+function slicersHTML_(techs, duplas, metaTec, modelo) {
+  const conteo = e => techs.filter(t => t.estadoActivo === e).length;
+  const stalled = techs.filter(t => stallInfo_(t)).length;
+
+  const estados = [
+    { f: "TRABAJANDO",  n: conteo("TRABAJANDO"),  tone: "var(--ok)",    label: "activos" },
+    { f: "PAUSADO",     n: conteo("PAUSADO"),     tone: "var(--warn)",  label: "pausados" },
+    { f: "SIN_INICIAR", n: conteo("SIN_INICIAR"), tone: "var(--muted)", label: "sin iniciar" },
+  ].filter(s => s.n > 0);
+
+  const chips = estados.map(s => chipHTML_("estado", s.f, s.tone, `${s.n} ${s.label}`));
+  if (stalled > 0)           chips.push(chipHTML_("estado", "STALLED", "var(--dv-serious)", `⚠️ ${stalled} sin mov.`));
+  if (duplas.totalMeta > 0)  chips.push(chipHTML_("estado", "META_OK", "var(--note)", `🤝 ${duplas.totalMeta} en meta ${metaTec}`));
+
+  const franjas = modelo.bloques.map((b, i) => chipHTML_(
+    "franja", String(i),
+    i === modelo.ahora ? "var(--accent)" : "var(--note)",
+    escapeHtml(String(b.label).split("–")[0]) + (i === modelo.ahora ? " ●" : ""),
+    franjaFilter_ === i,
+  ));
+
+  const tech = techFilter_ ? techs.find(t => keyTech_(t) === techFilter_) : null;
+
+  return `
+  <div class="lvSlice">
+    <div class="lvSlice__row">
+      <span class="lvSlice__tag">Estado</span>
+      ${chips.join("") || `<span class="lvSlice__none">sin actividad</span>`}
+      ${pulseHTML_(techs)}
+    </div>
+    ${franjas.length ? `
+    <div class="lvSlice__row">
+      <span class="lvSlice__tag">Franja</span>
+      ${franjas.join("")}
+    </div>` : ""}
+    ${hayFiltros_() ? `
+    <div class="lvSlice__row lvSlice__row--on">
+      <span class="lvSlice__tag">Filtros</span>
+      ${tech ? `<button type="button" class="lvPill" data-quitar="tech">👤 ${escapeHtml(primerNombre_(tech.nombre || tech.email))} ✕</button>` : ""}
+      ${rolFilter_ ? `<button type="button" class="lvPill" data-quitar="rol">${rolMeta(rolFilter_).icon} ${escapeHtml(rolMeta(rolFilter_).label)} ✕</button>` : ""}
+      ${estadoFilter_ ? `<button type="button" class="lvPill" data-quitar="estado">${escapeHtml(estadoFilter_.replace("_", " "))} ✕</button>` : ""}
+      ${franjaFilter_ != null ? `<button type="button" class="lvPill" data-quitar="franja">🕐 ${escapeHtml(String(modelo.bloques[franjaFilter_]?.label || ""))} ✕</button>` : ""}
+      <button type="button" class="lvPill lvPill--clear" data-quitar="todo">Limpiar todo</button>
+    </div>` : ""}
+  </div>`;
+}
+
+/** La barra segmentada del taller: cuánta gente activa, pausada y sin iniciar. */
+function pulseHTML_(techs) {
+  const conteo = e => techs.filter(t => t.estadoActivo === e).length;
+  const segs = [
+    { n: conteo("TRABAJANDO"),  tone: "var(--ok)",    label: "activos" },
+    { n: conteo("PAUSADO"),     tone: "var(--warn)",  label: "pausados" },
+    { n: conteo("SIN_INICIAR"), tone: "var(--muted)", label: "sin iniciar" },
+  ].filter(s => s.n > 0);
+  const enPista = segs.reduce((s, x) => s + x.n, 0);
+
+  return `
+  <span class="lvSlice__pulse" role="img"
+    aria-label="${segs.map(s => `${s.n} ${s.label}`).join(", ") || "sin gente en pista"}">
+    ${enPista > 0
+      ? segs.map(s => `<i style="width:${(s.n / enPista * 100).toFixed(2)}%;background:${s.tone};" title="${s.n} ${s.label}"></i>`).join("")
+      : `<i style="width:100%;background:var(--ring-track);"></i>`}
+  </span>
+  <span class="lvSlice__total">${enPista} en pista</span>`;
+}
+
+function chipHTML_(tipo, valor, tone, texto, activo = null) {
+  const on = activo == null ? estadoFilter_ === valor : activo;
+  return `<button type="button" class="lvChip${on ? " is-on" : ""}" data-filtro="${tipo}" data-valor="${escapeHtml(valor)}"
+    style="--chipTone:${tone};" aria-pressed="${on}">${texto}</button>`;
+}
+
+// ── 1. La fila de KPIs ────────────────────────────────────────────────
 //
-// Aquí había dos tarjetas ("Conversión 12/25", "Calidad 11/22") que respondían
-// CUÁNTO llevamos pero no SI VAMOS BIEN. El número que hace accionable el panel
-// es la diferencia contra lo que tocaría a esta hora — el mismo que el
-// supervisor sacaba a mano de la hoja de producción diaria.
-//
-// La barra lleva una marca en la posición de ese objetivo parcial: si el
-// relleno pasa la marca vamos sobrados, si se queda corto vamos tarde. Es la
-// lectura de un vistazo que un porcentaje suelto nunca da.
-function diaHTML_(data) {
+// Cada tile contesta una pregunta y ninguna repite a otra. El de arriba a la
+// izquierda es el único que lleva veredicto, porque es el único que tiene
+// contra qué compararse: lo que tocaría a esta hora. Un porcentaje suelto
+// ("48 %") se lee igual a las 07:00 que a las 22:00 y no dice nada sobre lo
+// que hay que hacer.
+function kpisHTML_(data, techs, modelo) {
   const v    = data.vinsSummary || {};
   const done = Number(v.convDone) || 0;
   const meta = Number(v.metaDia ?? v.metaConv ?? cfg("META_DIARIA")) || 0;
@@ -201,90 +448,298 @@ function diaHTML_(data) {
   const esperado = Math.round(meta * frac);
   const delta    = done - esperado;
   const pct      = meta > 0 ? Math.min(100, Math.round(done / meta * 100)) : 0;
+  const pctEsp   = meta > 0 ? Math.min(100, Math.round(esperado / meta * 100)) : 0;
 
   // Sin objetivo (domingo) no hay nada contra qué comparar: decirlo es más
   // honesto que pintar un 0 % en rojo.
   const sinMeta = meta <= 0;
-  const tone = sinMeta        ? "var(--muted)"
-             : delta >= 0     ? "var(--dv-good)"
+  const tone = sinMeta    ? "var(--muted)"
+             : delta >= 0 ? "var(--dv-good)"
              : delta >= -Math.max(1, meta * 0.1) ? "var(--warn)"
              : "var(--dv-serious, var(--danger))";
 
   const veredicto = sinMeta
-    ? `<span class="lvDay__flat">Hoy no hay objetivo de producción</span>`
+    ? `<span class="lvKpi__flat">No había objetivo de producción</span>`
     : `<b>${delta >= 0 ? "+" : "−"}${Math.abs(delta)}</b>
-       <span>${delta >= 0 ? "por encima" : "por debajo"} de lo esperado a esta hora (${esperado})</span>`;
+       <span>${delta >= 0 ? "por encima" : "por debajo"} de lo esperado ${esHoy_ ? "a esta hora" : "al cierre"} (${esperado})</span>`;
+
+  const medios = (Array.isArray(data.carrosMedios) ? data.carrosMedios : []).filter(c => !c.faltaEnCurso);
+  const enCurso = techs.reduce((s, t) => s + enCursoOf_(t), 0);
+  const franja  = franjaFilter_ != null ? modelo.bloques[franjaFilter_] : null;
+  const mitadesFranja = franjaFilter_ != null
+    ? modelo.series.delantero[franjaFilter_] + modelo.series.tanquero[franjaFilter_]
+    : modelo.totales.mitades;
+
+  const tile = ({ id, label, valor, unidad = "", pie = "", clase = "", drill = "" }) => `
+    <${drill ? "button type=\"button\"" : "div"} class="statTile ${clase}${drill ? " statTile--tap" : ""}"
+      ${drill ? `data-drill="${drill}"` : ""}>
+      <div class="statTile__label">${label}</div>
+      <div class="statTile__value">${valor}${unidad ? `<span class="unit">${unidad}</span>` : ""}</div>
+      ${pie ? `<div class="statTile__foot">${pie}</div>` : ""}
+    </${drill ? "button" : "div"}>`;
+
+  const m = data.mes;
+  const mesDelta = m?.metaMes ? (Number(m.convDone) || 0) - (Number(m.metaAcum) || 0) : null;
 
   return `
-  <div class="lvDay" style="--dayTone:${tone};">
-    <div class="lvDay__head">
-      <div class="lvDay__num"><b id="liveKpiConv">${done}</b><span class="lvDay__of">/ ${meta}</span></div>
-      <div class="lvDay__label">carros<br>convertidos hoy</div>
-      <div class="lvDay__verdict">${veredicto}</div>
+  <div class="lvKpis">
+    <div class="lvKpi lvKpi--hero" style="--kpiTone:${tone};">
+      <div class="lvKpi__label">Carros convertidos</div>
+      <div class="lvKpi__num"><b id="liveKpiConv">${done}</b><span>/ ${meta}</span></div>
+      <div class="lvKpi__verdict">${veredicto}</div>
+      <div class="lvKpi__track" title="${pct}% del objetivo del día">
+        <i style="width:${pct}%;"></i>
+        ${sinMeta || pctEsp >= 100 ? "" : `<u style="left:${pctEsp}%;" title="Lo esperado ${esHoy_ ? "a esta hora" : "al cierre"}: ${esperado}"></u>`}
+      </div>
     </div>
-    <div class="lvDay__track">
-      <i style="width:${pct}%;"></i>
-      ${sinMeta || frac >= 1 ? "" : `<u style="left:${(frac * 100).toFixed(1)}%;" title="Lo esperado a esta hora: ${esperado}"></u>`}
+
+    <div class="lvKpis__grid">
+      ${tile({
+        label: "Aprobados por calidad", valor: `<b id="liveKpiCal">${Number(v.calDone) || 0}</b>`,
+        pie: `${Number(v.calActive) || 0} en QC ahora`, drill: "cal",
+      })}
+      ${tile({
+        label: franja ? `Mitades · ${escapeHtml(franja.label)}` : "Mitades cerradas",
+        valor: mitadesFranja, unidad: "½",
+        pie: `${modelo.filas.filter(f => f.total > 0).length} técnicos produjeron`,
+        drill: "mitades",
+      })}
+      ${tile({
+        label: "Trabajos en curso", valor: enCurso,
+        pie: `${techs.filter(t => t.estadoActivo === "TRABAJANDO").length} técnicos trabajando`,
+        drill: "curso",
+      })}
+      ${tile({
+        label: "Esperando la otra mitad", valor: medios.length,
+        pie: medios.length ? `el más antiguo lleva ${escapeHtml(fmtTiempo_(Math.max(0, Date.now() - (medios[0].cerroMs || 0))))}` : "ningún carro parado",
+        clase: medios.length ? "statTile--warnEdge" : "", drill: medios.length ? "medios" : "",
+      })}
+      ${m?.metaMes ? tile({
+        label: `Mes · ${escapeHtml(String(m.ym || ""))}`,
+        valor: `${m.parcial ? "≥" : ""}${Number(m.convDone) || 0}`, unidad: `/ ${m.metaMes}`,
+        pie: `${mesDelta >= 0 ? "+" : "−"}${Math.abs(mesDelta)} vs. ${m.metaAcum} esperados`,
+      }) : ""}
     </div>
-    ${sparkHTML_(data.cierres)}
-    ${funnelHTML_(v)}
   </div>`;
 }
 
-// ── 1b. Pulso por hora: el ritmo real del taller ──────────────────────
+// ── 2. El contenedor de cada visual ───────────────────────────────────
 //
-// Réplica en vivo de los "cortes diarios" que el taller llevaba en la hoja de
-// cálculo. El dato siempre estuvo en la base (la hora en que cerró la última
-// mitad de cada carro); lo que faltaba era mirarlo por hora en vez de sumarlo
-// todo en un único total que oculta si el turno noche produjo o no.
-function sparkHTML_(cierres) {
-  const lista = Array.isArray(cierres?.conv) ? cierres.conv : null;
-  if (!lista) return "";
+// Todos los visuales llevan el mismo marco: título, subtítulo que dice su
+// alcance y botón de foco. El foco existe porque la matriz de cortes con 24
+// filas y seis franjas no cabe en media rejilla, y antes la única salida era
+// hacer scroll dentro de un bloque de 200 px.
+function tileHTML_({ id, titulo, sub = "", span = 1, bare = false, body = "" }) {
+  const foco = focoTile_ === id;
+  const cls = ["lvTile"];
+  if (span === 2) cls.push("lvTile--wide");
+  if (bare) cls.push("lvTile--bare");
+  if (foco) cls.push("is-foco");
 
-  // El servidor manda los instantes, no un conteo: agrupar por hora es cosa de
-  // quien pinta. Ver cortesHTML_, que agrupa los MISMOS datos por turno.
-  const conv = new Array(24).fill(0);
-  for (const ms of lista) conv[Math.floor(minutosPE_(new Date(ms)) / 60) % 24]++;
+  return `
+  <section class="${cls.join(" ")}" data-tile="${id}">
+    <header class="lvTile__head">
+      <div class="lvTile__titles">
+        <h4 class="lvTile__title">${escapeHtml(titulo)}</h4>
+        ${sub ? `<p class="lvTile__sub">${escapeHtml(sub)}</p>` : ""}
+      </div>
+      <button type="button" class="lvTile__foco" data-foco="${id}"
+        title="${foco ? "Volver al tablero" : "Ver solo este visual"}"
+        aria-pressed="${foco}">${foco ? "✕" : "⛶"}</button>
+    </header>
+    <div class="lvTile__body">${body}</div>
+  </section>`;
+}
+
+function canvasHTML_(id) {
+  return `<div class="lvTile__box"><canvas id="${id}"></canvas></div>`;
+}
+
+// ── 3. El modelo de la jornada ────────────────────────────────────────
+//
+// Un solo sitio que cuenta, y todos los visuales leen de él. Antes la tabla
+// contaba sus celdas y el gráfico recibía unas series calculadas al paso: si
+// alguna de las dos cuentas se hubiera tocado por separado, tabla y gráfico
+// habrían dicho cosas distintas en la misma pantalla y no habría forma de
+// saber cuál mentía.
+//
+// Qué responde a los segmentadores y qué no:
+//   · filas, mitades y el gráfico de puestos → sí (son por técnico)
+//   · carros convertidos, aprobados, ritmo y acumulado → no, es del taller:
+//     un carro lo cierran dos personas y no se puede repartir por cabeza
+export function construirModelo_(data, techs) {
+  const bloques = bloquesJornada_(cfg("LIVE_CORTES"));
+  const nb      = bloques.length;
+  const vacio_  = () => new Array(nb).fill(0);
+  const suma_   = (arr) => arr.reduce((s, n) => s + n, 0);
+  const metaTec = Number(cfg("META_CARROS_TEC")) || 2;
+
+  // Quien no marcó nada no es una fila vacía: es alguien que no vino.
+  // Los segmentadores se aplican con la MISMA regla que a las cards: si la
+  // matriz y la grilla filtraran distinto, el tablero se contradiría consigo
+  // mismo en la misma pantalla.
+  const enPista  = techs.filter(t => t.estadoActivo !== "DESCONECTADO");
+  const visibles = enPista.filter(t => pasaFiltros_(t, metaTec));
+
+
+  const filas = visibles.map(t => {
+    const celdas = vacio_();
+    let fuera = 0;   // cerrado fuera de las franjas configuradas
+    for (const a of (t.asignacionesHoy || [])) {
+      if (a.estado !== "FINALIZADO" || !a.updated_at) continue;
+      const i = nb ? indiceBloque_(minutosPE_(new Date(a.updated_at)), bloques) : -1;
+      if (i < 0) { fuera++; continue; }
+      celdas[i]++;
+    }
+    return { t, celdas, fuera, total: suma_(celdas) + fuera };
+  });
+
+  ordenarFilas_(filas);
+
+  const esConversion_ = (f) => grupoDeRol_(f.t.rol)?.id === "CONVERSION";
+  const conv  = filas.filter(esConversion_);
+  const apoyo = filas.filter(f => !esConversion_(f));
+
+  const subtotal_ = (lista) => {
+    const out = vacio_();
+    for (const f of lista) for (let i = 0; i < nb; i++) out[i] += f.celdas[i];
+    return out;
+  };
+
+  // Las cifras de VIN: carros enteros y aprobaciones, no mitades.
+  const porBloque_ = (lista) => {
+    const out = vacio_();
+    for (const ms of (Array.isArray(lista) ? lista : [])) {
+      const i = nb ? indiceBloque_(minutosPE_(new Date(ms)), bloques) : -1;
+      if (i >= 0) out[i]++;
+    }
+    return out;
+  };
+
+  // El puesto se decide por el rol crudo: en conversión solo hay MOTOR
+  // (delantero) y TANQUE (tanquero) — los demás roles ya quedaron fuera al
+  // separar `conv` de `apoyo`.
+  const sumaSi_ = (pred) => {
+    const out = vacio_();
+    for (const f of conv) {
+      if (!pred(String(f.t.rol || "").toUpperCase())) continue;
+      for (let i = 0; i < nb; i++) out[i] += f.celdas[i];
+    }
+    return out;
+  };
+
+  const ahora   = nb && esHoy_ ? indiceBloque_(minutosPE_(), bloques) : -1;
+  const usadas  = subtotal_(filas);
+  const ramales = apoyo.filter(f => grupoDeRol_(f.t.rol)?.id === "RAMALES");
+  const calidad = apoyo.filter(f => grupoDeRol_(f.t.rol)?.id !== "RAMALES");
+
+  return {
+    bloques, nb, filas, conv, apoyo, ramales, calidad, usadas,
+    ahora: ahora >= 0 ? ahora : null,
+    subtotal_, porBloque_,
+    totales: {
+      mitades:   suma_(subtotal_(conv)),
+      carros:    (Array.isArray(data?.cierres?.conv) ? data.cierres.conv.length : 0),
+      aprobados: (Array.isArray(data?.cierres?.cal) ? data.cierres.cal.length : 0),
+      ramales:   suma_(subtotal_(ramales)),
+    },
+    series: {
+      labels:      bloques.map(b => String(b.label).split("–")[0]),
+      delantero:   sumaSi_(r => r === "MOTOR"),
+      tanquero:    sumaSi_(r => r === "TANQUE"),
+      bruta:       porBloque_(data?.cierres?.conv),
+      final:       porBloque_(data?.cierres?.cal),
+      franjaSel:   franjaFilter_,
+      franjaAhora: ahora >= 0 ? ahora : null,
+      horas:       seriesHoras_(data, bloques),
+      acum:        seriesAcum_(data),
+    },
+  };
+}
+
+function ordenarFilas_(filas) {
+  const nombre_ = (f) => String(f.t.nombre || f.t.email || "");
+  const valor_  = (f) => (orden_.col === "total" ? f.total
+                        : orden_.col === "nombre" ? 0
+                        : (f.celdas[orden_.col] || 0));
+  const signo = orden_.dir === "asc" ? -1 : 1;
+
+  if (orden_.col === "nombre") {
+    filas.sort((a, b) => nombre_(a).localeCompare(nombre_(b)) * (orden_.dir === "asc" ? 1 : -1));
+    return;
+  }
+  // Igual que en la hoja del taller: los de más producción arriba, los de cero
+  // al final, y a igualdad por nombre para que el orden no baile entre pasadas.
+  filas.sort((a, b) => (valor_(b) - valor_(a)) * signo || nombre_(a).localeCompare(nombre_(b)));
+}
+
+/** Carros cerrados en cada HORA de la jornada, y a qué franja pertenece cada hora. */
+function seriesHoras_(data, bloques) {
+  const lista = Array.isArray(data?.cierres?.conv) ? data.cierres.conv : null;
+  if (!lista) return null;
+
+  const porHora = new Array(24).fill(0);
+  for (const ms of lista) porHora[Math.floor(minutosPE_(new Date(ms)) / 60) % 24]++;
 
   const horas = horasJornada_();
   const hNow  = horaPE_();
-  const idx   = horas.indexOf(hNow);
-  const max   = Math.max(1, ...horas.map(h => Number(conv[h]) || 0));
-  const hh    = (h) => String(h).padStart(2, "0");
+  const idx   = esHoy_ ? horas.indexOf(hNow) : -1;
 
-  const barras = horas.map((h, i) => {
-    const n = Number(conv[h]) || 0;
-    // "Todavía no ha pasado" no es lo mismo que "pasó y no salió nada": las
-    // horas futuras van atenuadas para no leerse como un bajón.
-    const futura = idx >= 0 && i > idx;
-    const cls = [futura ? "is-next" : "", i === idx ? "is-now" : ""].filter(Boolean).join(" ");
-    return `<i class="${cls}" style="height:${Math.max(n > 0 ? 12 : 2, n / max * 100)}%;"
-              title="${hh(h)}:00 · ${n} carro${n === 1 ? "" : "s"}"></i>`;
-  }).join("");
-
-  const ahora = idx >= 0 ? (Number(conv[hNow]) || 0) : null;
-  return `
-  <div class="lvSpark">
-    <div class="lvSpark__bars">${barras}</div>
-    <div class="lvSpark__axis">
-      <span>${hh(horas[0])}:00</span>
-      <span class="lvSpark__now">${ahora == null ? "fuera de jornada" : `esta hora · ${ahora}`}</span>
-      <span>${hh((horas[horas.length - 1] + 1) % 24)}:00</span>
-    </div>
-  </div>`;
+  return {
+    labels:   horas.map(h => `${String(h).padStart(2, "0")}:00`),
+    conv:     horas.map(h => porHora[h] || 0),
+    // Para que un click en la hora elija la franja que el taller sí usa.
+    franjaDe: horas.map(h => (bloques.length ? indiceBloque_(h * 60, bloques) : -1)).map(i => (i >= 0 ? i : null)),
+    idxAhora: idx >= 0 ? idx : null,
+  };
 }
 
-// ── 1b-bis. Cortes del día: quién cerró qué y en qué turno ────────────
+/**
+ * Acumulado real contra la línea del objetivo, hora a hora.
+ *
+ * La línea del objetivo es recta porque el objetivo del taller es diario, no
+ * horario: repartirlo en partes iguales es la única lectura que no inventa un
+ * perfil de producción que nadie ha pactado. El trazo real se corta en la hora
+ * en curso (null hacia adelante) para que no se lea como un estancamiento lo
+ * que todavía no ha pasado.
+ */
+function seriesAcum_(data) {
+  const lista = Array.isArray(data?.cierres?.conv) ? data.cierres.conv : [];
+  const v     = data?.vinsSummary || {};
+  const meta  = Number(v.metaDia ?? v.metaConv ?? cfg("META_DIARIA")) || 0;
+
+  const porHora = new Array(24).fill(0);
+  for (const ms of lista) porHora[Math.floor(minutosPE_(new Date(ms)) / 60) % 24]++;
+
+  const horas = horasJornada_();
+  const idx   = esHoy_ ? horas.indexOf(horaPE_()) : horas.length - 1;
+
+  let acc = 0;
+  const real = horas.map((h, i) => {
+    acc += porHora[h] || 0;
+    return idx >= 0 && i > idx ? null : acc;
+  });
+
+  const n = horas.length;
+  return {
+    labels:   horas.map(h => `${String(h).padStart(2, "0")}:00`),
+    real,
+    objetivo: horas.map((_, i) => Math.round(meta * (i + 1) / n)),
+    idxAhora: idx >= 0 && idx < n - 1 ? idx : null,
+  };
+}
+
+// ── 4. La matriz de cortes ────────────────────────────────────────────
 //
 // La segunda hoja del taller ("CORTES DIARIOS · PRODUCCIÓN POR TÉCNICO"), en
-// vivo. El sparkline de arriba dice a qué ritmo va el taller; esto dice QUIÉN
-// lo movió y en qué franja, que es lo que se mira cuando el ritmo cae.
+// vivo. Los gráficos dicen a qué ritmo va el taller; esto dice QUIÉN lo movió
+// y en qué franja, que es lo que se mira cuando el ritmo cae.
 //
 // Son DOS TABLAS, no una con secciones. La primera es la del taller: los que
 // convierten carros, que es lo que se mide todos los días. La segunda junta
 // calidad y ramales, que son apoyo y cuentan en otra unidad.
 //
-// El intento anterior las metía en una sola tabla con cabeceras de grupo, y no
+// Un intento anterior las metía en una sola tabla con cabeceras de grupo, y no
 // se entendía: la cabecera "CONVERSIÓN 10 13 · · · 7 30" se leía como una
 // persona más, pero en negrita, encima de la gente. Un subtotal va DEBAJO de lo
 // que suma, no encima — ahora vive en el pie, donde nadie lo confunde con una
@@ -311,101 +766,44 @@ function presenciaHTML_(t) {
   return `<i class="lvVivo${pausa ? " is-pausa" : ""}" role="img" aria-label="${escapeHtml(texto)}" title="${escapeHtml(texto)}"></i>`;
 }
 
-export function cortesHTML_(data, techs) {
-  const bloques = bloquesJornada_(cfg("LIVE_CORTES"));
-  if (!bloques.length) return "";
+/** Las dos tablas + la nota. Lee del modelo; no cuenta nada por su cuenta. */
+export function cortesTablasHTML_(modelo) {
+  const { bloques, nb, filas, conv, ramales, calidad, apoyo, usadas, ahora, subtotal_, porBloque_ } = modelo;
+  if (!nb || !filas.length) return "";
 
-  const nb     = bloques.length;
-  const vacio_ = () => new Array(nb).fill(0);
-  const suma_  = (arr) => arr.reduce((s, n) => s + n, 0);
-
-  // Quien no marcó nada hoy no es una fila vacía: es alguien que no vino.
-  const enPista = techs.filter(t => t.estadoActivo !== "DESCONECTADO");
-  if (!enPista.length) return "";
-
-  const filas = enPista.map(t => {
-    const celdas = vacio_();
-    let fuera = 0;   // cerrado fuera de las franjas configuradas
-    for (const a of (t.asignacionesHoy || [])) {
-      if (a.estado !== "FINALIZADO" || !a.updated_at) continue;
-      const i = indiceBloque_(minutosPE_(new Date(a.updated_at)), bloques);
-      if (i < 0) { fuera++; continue; }
-      celdas[i]++;
-    }
-    return { t, celdas, fuera, total: suma_(celdas) + fuera };
-  });
-  // Igual que en la hoja: los de más producción arriba, los de cero al final.
-  filas.sort((a, b) => b.total - a.total || (a.t.nombre || "").localeCompare(b.t.nombre || ""));
-
-  const esConversion_ = (f) => grupoDeRol_(f.t.rol)?.id === "CONVERSION";
-  const conv  = filas.filter(esConversion_);
-  const apoyo = filas.filter(f => !esConversion_(f));
-
-  const subtotal_ = (lista) => {
-    const out = vacio_();
-    for (const f of lista) for (let i = 0; i < nb; i++) out[i] += f.celdas[i];
-    return out;
-  };
-
-  // Las cifras de VIN: carros enteros y aprobaciones, no mitades.
-  const porBloque_ = (lista) => {
-    const out = vacio_();
-    for (const ms of (Array.isArray(lista) ? lista : [])) {
-      const i = indiceBloque_(minutosPE_(new Date(ms)), bloques);
-      if (i >= 0) out[i]++;
-    }
-    return out;
-  };
-
-  // ── Las series de los dos gráficos ──────────────────────────────────
-  //
-  // Se calculan AQUÍ y no en el módulo del gráfico, aunque el gráfico viva
-  // aparte: son exactamente los mismos números que las filas de abajo. Si se
-  // contaran dos veces, una tabla y un gráfico podrían acabar diciendo cosas
-  // distintas en la misma pantalla, y no habría forma de saber cuál miente.
-  //
-  // El puesto se decide por el rol crudo: en conversión solo hay MOTOR
-  // (delantero) y TANQUE (tanquero) — los demás roles ya quedaron fuera al
-  // separar `conv` de `apoyo`.
-  const sumaSi_ = (pred) => {
-    const out = vacio_();
-    for (const f of conv) {
-      if (!pred(String(f.t.rol || "").toUpperCase())) continue;
-      for (let i = 0; i < nb; i++) out[i] += f.celdas[i];
-    }
-    return out;
-  };
-  seriesCortes_ = {
-    labels:    bloques.map(b => String(b.label).split("–")[0]),
-    delantero: sumaSi_(r => r === "MOTOR"),
-    tanquero:  sumaSi_(r => r === "TANQUE"),
-    bruta:     porBloque_(data?.cierres?.conv),
-    final:     porBloque_(data?.cierres?.cal),
-  };
-
-  // Una franja que nadie usó no merece la misma tinta que una con producción.
-  const usadas = subtotal_(filas);
-  const ahora  = indiceBloque_(minutosPE_(), bloques);
-  const colCls_ = (i) => (usadas[i] === 0 ? "is-vacio" : "");
+  const suma_   = (arr) => arr.reduce((s, n) => s + n, 0);
+  const colCls_ = (i) => [
+    usadas[i] === 0 ? "is-vacio" : "",
+    franjaFilter_ === i ? "is-sel" : "",
+  ].filter(Boolean).join(" ");
 
   const cero_  = `<i class="lvCortes__cero">·</i>`;
   const celda_ = (n, i) => `<td class="${colCls_(i)}">${n > 0 ? n : cero_}</td>`;
   const fila_  = (arr) => arr.map(celda_).join("");
 
+  const flecha_ = (col) => (orden_.col === col ? (orden_.dir === "desc" ? " ▾" : " ▴") : "");
+
   const cabecera_ = `
     <tr>
-      <th scope="col">Técnico</th>
-      ${bloques.map((b, i) => `<th scope="col" class="${[colCls_(i), i === ahora ? "is-ahora" : ""].filter(Boolean).join(" ")}"
-           title="${escapeHtml(b.label)}${i === ahora ? " · franja en curso" : ""}">${escapeHtml(b.label.split("–")[0])}</th>`).join("")}
-      <th scope="col" class="lvCortes__tot">TOT</th>
+      <th scope="col" class="lvCortes__th">
+        <button type="button" class="lvCortes__sort" data-orden="nombre">Técnico${flecha_("nombre")}</button>
+      </th>
+      ${bloques.map((b, i) => `<th scope="col" class="${[colCls_(i), i === ahora ? "is-ahora" : ""].filter(Boolean).join(" ")}">
+           <button type="button" class="lvCortes__sort" data-orden="${i}" data-franja="${i}"
+             title="${escapeHtml(b.label)}${i === ahora ? " · franja en curso" : ""} — toca para filtrar u ordenar">${escapeHtml(b.label.split("–")[0])}${flecha_(i)}</button>
+         </th>`).join("")}
+      <th scope="col" class="lvCortes__tot">
+        <button type="button" class="lvCortes__sort" data-orden="total">TOT${flecha_("total")}</button>
+      </th>
     </tr>`;
 
   const cuerpo_ = (lista) => lista.map(({ t, celdas, fuera, total }) => {
     const rm     = rolMeta(t.rol);
     const nombre = t.nombre || t.email || "—";
+    const sel    = techFilter_ === keyTech_(t);
     return `
-    <tr class="${total === 0 ? "is-cero" : ""}">
-      <th scope="row" title="${escapeHtml(nombre)} — ${escapeHtml(rm.label)}">
+    <tr class="${[total === 0 ? "is-cero" : "", sel ? "is-sel" : ""].filter(Boolean).join(" ")}" data-techrow="${escapeHtml(keyTech_(t))}">
+      <th scope="row" title="${escapeHtml(nombre)} — ${escapeHtml(rm.label)} · toca para filtrar el tablero por esta persona">
         ${presenciaHTML_(t)}<span class="lvCortes__rol" style="color:${rm.color};">${rm.icon}</span>${escapeHtml(nombre)}
       </th>
       ${fila_(celdas)}
@@ -442,15 +840,12 @@ export function cortesHTML_(data, techs) {
     titulo: "🔧 Técnicos de conversión",
     unidad: "mitades de carro cerradas",
     secciones: [{ lista: conv, cierre: { label: "Mitades cerradas", arr: subtotal_(conv) } }],
-    pie: [{ label: "🚗 Carros completos", arr: porBloque_(data.cierres?.conv) }],
+    pie: [{ label: "🚗 Carros completos", arr: modelo.series.bruta }],
   }) : "";
 
   // Ramales arriba con su subtotal, calidad al fondo. Así "Aprobados QC" queda
   // pegado a las filas que lo producen en vez de flotando debajo de una lista
   // mezclada, que era lo que hacía el total ilegible.
-  const ramales = apoyo.filter(f => grupoDeRol_(f.t.rol)?.id === "RAMALES");
-  const calidad = apoyo.filter(f => grupoDeRol_(f.t.rol)?.id !== "RAMALES");
-
   const tablaApoyo = apoyo.length ? tabla_({
     titulo: "🤝 Apoyo",
     unidad: "ramales armados e inspecciones",
@@ -458,26 +853,37 @@ export function cortesHTML_(data, techs) {
       ...(ramales.length ? [{ lista: ramales, cierre: { label: "🔗 Ramales armados", arr: subtotal_(ramales) } }] : []),
       ...(calidad.length ? [{ lista: calidad }] : []),
     ],
-    pie: calidad.length ? [{ label: "✅ Aprobados QC", arr: porBloque_(data.cierres?.cal) }] : [],
+    pie: calidad.length ? [{ label: "✅ Aprobados QC", arr: modelo.series.final }] : [],
+
   }) : "";
 
   return `
-  <details class="lvCortes"${cortesOpen_ ? " open" : ""}>
-    <summary>🕐 Cortes del día · producción por técnico</summary>
+  <div class="lvCortes">
     ${tablaConv}
     ${tablaApoyo}
-    ${cortesChartsHTML_()}
     <div class="lvCortes__nota">
       Cada columna es la franja que <b>empieza</b> a esa hora. Arriba, cada fila cuenta
       <b>mitades</b> (el motor de un carro, o su tanque); el carro entero lo cierran dos
       personas, por eso «Carros completos» es menor que «Mitades cerradas».
-      El punto <i class="lvVivo" aria-hidden="true"></i> marca a quien está en el taller ahora.
+      Toca un <b>nombre</b> para filtrar el tablero por esa persona y una <b>cabecera</b>
+      para ordenar o quedarte con una franja.
+      ${esHoy_ ? `El punto <i class="lvVivo" aria-hidden="true"></i> marca a quien está en el taller ahora.` : ""}
     </div>
-  </details>
-`;
+  </div>`;
 }
 
-// ── 1c. Embudo: el carro no termina cuando se convierte ───────────────
+/**
+ * Compatibilidad: la tabla a partir de (data, techs).
+ *
+ * Es la puerta que usan las pruebas y la que deja claro que la tabla es una
+ * función pura de sus datos. El tablero usa el modelo directamente para no
+ * contar dos veces.
+ */
+export function cortesHTML_(data, techs) {
+  return cortesTablasHTML_(construirModelo_(data, techs));
+}
+
+// ── 5. Embudo: el carro no termina cuando se convierte ────────────────
 //
 // Conversión y calidad estaban como dos metas paralelas, y se leían como dos
 // objetivos distintos cuando son dos etapas del MISMO carro. En embudo, la
@@ -489,17 +895,18 @@ function funnelHTML_(v) {
   const pasos = [
     { icon: "🔧", label: "Convertidos", n: Number(v.convDone) || 0,   id: "" },
     { icon: "🕒", label: "En QC",       n: Number(v.calActive) || 0,  id: "" },
-    { icon: "✅", label: "Aprobados",   n: Number(v.calDone) || 0,    id: "liveKpiCal" },
+    { icon: "✅", label: "Aprobados",   n: Number(v.calDone) || 0,    id: "" },
   ];
-  return `<div class="lvFunnel">${pasos.map((s, i) => `
-    ${i ? `<span class="lvFunnel__arrow" aria-hidden="true">→</span>` : ""}
-    <span class="lvFunnel__step">
-      <b${s.id ? ` id="${s.id}"` : ""}>${s.n}</b>
-      <em>${s.icon} ${escapeHtml(s.label)}</em>
-    </span>`).join("")}</div>`;
+  const max = Math.max(1, ...pasos.map(p => p.n));
+  return `<div class="lvFunnel">${pasos.map(s => `
+    <div class="lvFunnel__step">
+      <span class="lvFunnel__lbl">${s.icon} ${escapeHtml(s.label)}</span>
+      <span class="lvFunnel__bar"><i style="width:${(s.n / max * 100).toFixed(1)}%;"></i></span>
+      <b>${s.n}</b>
+    </div>`).join("")}</div>`;
 }
 
-// ── 1d. El mes: el acumulado que vivía solo en la hoja de cálculo ─────
+// ── 5b. El mes: el acumulado que vivía solo en la hoja de cálculo ─────
 function mesHTML_(data) {
   const m = data.mes;
   if (!m || !m.metaMes) return "";
@@ -539,7 +946,7 @@ function mesHTML_(data) {
   </div>`;
 }
 
-// ── 1e. Carros a medias: la mitad que quedó esperando ─────────────────
+// ── 5c. Carros a medias: la mitad que quedó esperando ─────────────────
 //
 // El LIVE agrupa por persona, así que nadie podía preguntarle "¿qué carro está
 // parado?". El backend ya lo sabía — calculaba por VIN qué mitades estaban
@@ -550,9 +957,9 @@ function mesHTML_(data) {
 // entrara en la lista, un día cualquiera diría "12 carros a medias" y el aviso
 // dejaría de significar nada. Los que sí tienen a alguien se cuentan aparte,
 // en una línea, para que no parezca que se los comió el filtro.
-function mediosHTML_(data) {
+function mediosTile_(data) {
   const lista   = Array.isArray(data.carrosMedios) ? data.carrosMedios : [];
-  const parados = lista.filter(c => !c.faltaEnCurso);   // ya vienen del más antiguo al más nuevo
+  const parados = lista.filter(c => !c.faltaEnCurso);   // del más antiguo al más nuevo
   const enCurso = lista.length - parados.length;
   if (!parados.length) return "";
 
@@ -578,65 +985,21 @@ function mediosHTML_(data) {
     enCurso > 0 ? `Otro${enCurso === 1 ? "" : "s"} ${enCurso} con la otra mitad en curso` : "",
   ].filter(Boolean).join(" · ");
 
-  return `
-  <details class="lvMedios"${mediosOpen_ ? " open" : ""}>
-    <summary>⏸ ${parados.length} carro${parados.length === 1 ? "" : "s"} esperando la otra mitad · el más antiguo lleva ${escapeHtml(espera(parados[0].cerroMs))}</summary>
-    ${filas}
-    ${pie ? `<div class="lvMedios__mas">${escapeHtml(pie)}</div>` : ""}
-  </details>`;
+  return tileHTML_({
+    id: "medios",
+    titulo: `Esperando la otra mitad · ${parados.length}`,
+    sub: `el más antiguo lleva ${espera(parados[0].cerroMs)}`,
+    body: `${filas}${pie ? `<div class="lvMedios__mas">${escapeHtml(pie)}</div>` : ""}`,
+  });
 }
 
-// ── 2. Pulso del taller: barra segmentada + filtros ───────────────────
-function pulsoHTML_(techs, duplas, metaTec) {
-  const conteo = e => techs.filter(t => t.estadoActivo === e).length;
-  const activos  = conteo("TRABAJANDO");
-  const pausados = conteo("PAUSADO");
-  const sinIni   = conteo("SIN_INICIAR");
-  const stalled  = techs.filter(t => stallInfo_(t)).length;
-  const enPista  = activos + pausados + sinIni;
-
-  const segs = [
-    { f: "TRABAJANDO",  n: activos,  tone: "var(--ok)",    label: "activos" },
-    { f: "PAUSADO",     n: pausados, tone: "var(--warn)",  label: "pausados" },
-    { f: "SIN_INICIAR", n: sinIni,   tone: "var(--muted)", label: "sin iniciar" },
-  ];
-
-  const chips = segs.filter(s => s.n > 0).map(s => chipHTML_(s.f, s.tone, `${s.n} ${s.label}`));
-  if (stalled > 0) {
-    chips.push(chipHTML_("STALLED", "var(--dv-serious)", `⚠️ ${stalled} sin mov.`));
-  }
-  if (duplas.totalMeta > 0) {
-    chips.push(chipHTML_("META_OK", "var(--note)", `🤝 ${duplas.totalMeta} en meta ${metaTec}`));
-  }
-
-  return `
-  <div class="lvPulse">
-    <div class="lvPulse__track" role="img" aria-label="${activos} trabajando, ${pausados} pausados, ${sinIni} sin iniciar">
-      ${enPista > 0
-        ? segs.filter(s => s.n > 0).map(s =>
-            `<i style="width:${(s.n / enPista * 100).toFixed(2)}%;background:${s.tone};" title="${s.n} ${s.label}"></i>`).join("")
-        : `<i style="width:100%;background:var(--ring-track);"></i>`}
-    </div>
-    <div class="lvPulse__chips">
-      ${chips.join("")}
-      <span class="lvPulse__total">${enPista} en pista</span>
-    </div>
-  </div>`;
-}
-
-function chipHTML_(filtro, tone, texto) {
-  const on = estadoFilter_ === filtro;
-  return `<button type="button" class="lvChip${on ? " is-on" : ""}" data-estado-filter="${filtro}"
-    style="--chipTone:${tone};" aria-pressed="${on}">${texto}</button>`;
-}
-
-// ── 3. Tabs por especialidad (filtran, ya no colapsan) ────────────────
+// ── 6. Tabs por especialidad (filtran la grilla) ──────────────────────
 function rolesTabsHTML_(techs) {
   const presentes = ORDEN_ROLES.filter(r => techs.some(t => String(t.rol || "").toUpperCase() === r));
   if (presentes.length < 2) return "";
 
   const tab = (rol, label, icon, tone, n) => `
-    <button type="button" class="lvTab${rolFilter_ === rol ? " is-on" : ""}" data-rol-filter="${rol || ""}"
+    <button type="button" class="lvTab${rolFilter_ === rol ? " is-on" : ""}" data-filtro="rol" data-valor="${rol || ""}"
       style="--tabTone:${tone};" aria-pressed="${rolFilter_ === rol}">
       ${icon} ${escapeHtml(label)} <b>${n}</b>
     </button>`;
@@ -654,21 +1017,21 @@ function rolesTabsHTML_(techs) {
   </div>`;
 }
 
-// ── 4. Grid plano de técnicos ─────────────────────────────────────────
+// ── 7. Grid de técnicos ───────────────────────────────────────────────
 function listaHTML_(techs, metaTec) {
   const visibles = techs.filter(t => pasaFiltros_(t, metaTec));
   if (!visibles.length) {
     return `<div class="lvEmpty">Nadie coincide con el filtro.</div>`;
   }
   // Los desconectados al final y en su propio bloque atenuado
-  const enPista      = visibles.filter(t => t.estadoActivo !== "DESCONECTADO");
+  const enPista       = visibles.filter(t => t.estadoActivo !== "DESCONECTADO");
   const desconectados = visibles.filter(t => t.estadoActivo === "DESCONECTADO");
 
   return `
     <div class="lvGrid">${enPista.map(t => cardHTML_(t, metaTec)).join("")}</div>
     ${desconectados.length ? `
     <details class="lvOff"${offOpen_ ? " open" : ""}>
-      <summary>Sin actividad hoy · ${desconectados.length}</summary>
+      <summary>Sin actividad ${esHoy_ ? "hoy" : "ese día"} · ${desconectados.length}</summary>
       <div class="lvGrid">${desconectados.map(t => cardHTML_(t, metaTec)).join("")}</div>
     </details>` : ""}`;
 }
@@ -734,12 +1097,13 @@ function cardHTML_(t, metaTec) {
   if (off)   clases.push("is-off");
   if (stall) clases.push("is-stalled");
   if (libre) clases.push("is-libre");
+  if (techFilter_ === keyTech_(t)) clases.push("is-sel");
 
   return `
   <article class="${clases.join(" ")}" style="--rolTone:${rm.color};--estadoTone:${em.color};"
-    data-techkey="${escapeHtml(t.userId + "__" + t.rol)}"
+    data-techkey="${escapeHtml(keyTech_(t))}"
     tabindex="${off ? -1 : 0}" role="${off ? "presentation" : "button"}"
-    title="${escapeHtml(nombre)}${off ? " — sin actividad hoy" : " — ver detalle del día"}">
+    title="${escapeHtml(nombre)}${off ? " — sin actividad" : " — ver detalle de la jornada"}">
 
     <div class="lvCard__row">
       <span class="lvCard__dot"></span>
@@ -774,49 +1138,133 @@ function cardHTML_(t, metaTec) {
   </article>`;
 }
 
-// ── Bindings ──────────────────────────────────────────────────────────
-function bindLive_(container, techs, metaTec) {
-  container.querySelector("#btnLiveRefresh")?.addEventListener("click", () => refreshLive_().catch(() => {}));
+// ── 8. Interacción ────────────────────────────────────────────────────
 
-  container.querySelectorAll("[data-estado-filter]").forEach(btn => {
+function repintar_() {
+  const container = document.getElementById("liveContainer");
+  if (container && liveLastData_) renderLive_(container, liveLastData_);
+}
+
+function toggleFranja_(i) {
+  if (i == null) return;
+  franjaFilter_ = franjaFilter_ === i ? null : i;
+  repintar_();
+}
+
+/** Cambia de jornada: null = la de ahora. Vuelve a consultar el servidor. */
+async function irAFecha_(ymd) {
+  const hoy = jornadaHoyPE_();
+  const destino = !ymd || ymd >= hoy ? null : ymd;
+  if (destino === fechaSel_) return;
+  fechaSel_ = destino;
+  // Los filtros son del día que se estaba mirando: al cambiar de jornada se
+  // quedan sin sentido (la persona seleccionada puede no haber venido ese día).
+  limpiarFiltros_();
+  focoTile_ = null;
+
+  // El polling solo tiene sentido sobre la jornada en curso: un día cerrado no
+  // se mueve, y refrescarlo cada cinco minutos sería pedirle al servidor que
+  // rearme el mismo informe para nada.
+  if (fechaSel_) stopPoll("POLL_SUP_LIVE_MS");
+
+  await refreshLive_();
+  if (!fechaSel_) startPoll("POLL_SUP_LIVE_MS", () => refreshLive_(), { immediate: false });
+}
+
+/** La barra de mando se liga aparte: también existe cuando el fetch falló. */
+function bindCmd_(container) {
+  container.querySelector("#btnLiveRefresh")?.addEventListener("click", () => {
+    refreshLive_().catch(() => {});
+  });
+
+  container.querySelector("#lvFecha")?.addEventListener("change", (e) => {
+    irAFecha_(e.target.value || null).catch(() => {});
+  });
+
+  container.querySelectorAll("[data-dia]").forEach(btn => {
     btn.addEventListener("click", () => {
-      const f = btn.dataset.estadoFilter;
-      estadoFilter_ = estadoFilter_ === f ? null : f;
-      renderLive_(container, liveLastData_);
+      const d = btn.dataset.dia;
+      if (d === "hoy") { irAFecha_(null).catch(() => {}); return; }
+      const base = fechaSel_ || jornadaHoyPE_();
+      irAFecha_(masDias_(base, Number(d))).catch(() => {});
+    });
+  });
+}
+
+function bindLive_(container, techs, metaTec, data) {
+  bindCmd_(container);
+
+  // Segmentadores: estado, rol y franja comparten mecánica (toca para poner,
+  // toca otra vez para quitar). Un solo listener evita tener tres casi iguales.
+  container.querySelectorAll("[data-filtro]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const tipo = btn.dataset.filtro;
+      const val  = btn.dataset.valor || null;
+      if (tipo === "estado") estadoFilter_ = estadoFilter_ === val ? null : val;
+      if (tipo === "rol")    rolFilter_    = rolFilter_ === val ? null : val;
+      if (tipo === "franja") { toggleFranja_(Number(val)); return; }
+      repintar_();
     });
   });
 
-  container.querySelectorAll("[data-rol-filter]").forEach(btn => {
+  container.querySelectorAll("[data-quitar]").forEach(btn => {
     btn.addEventListener("click", () => {
-      const r = btn.dataset.rolFilter || null;
-      rolFilter_ = rolFilter_ === r ? null : r;
-      renderLive_(container, liveLastData_);
+      const q = btn.dataset.quitar;
+      if (q === "todo")   limpiarFiltros_();
+      if (q === "tech")   techFilter_   = null;
+      if (q === "rol")    rolFilter_    = null;
+      if (q === "estado") estadoFilter_ = null;
+      if (q === "franja") franjaFilter_ = null;
+      repintar_();
+    });
+  });
+
+  // Modo foco: un visual a pantalla de tablero. La matriz de cortes con 24
+  // filas y seis franjas no se lee en media rejilla.
+  container.querySelectorAll("[data-foco]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      focoTile_ = focoTile_ === btn.dataset.foco ? null : btn.dataset.foco;
+      repintar_();
+    });
+  });
+
+  // Cabeceras de la matriz: ordenar. El click con Alt/⌘ filtra por la franja,
+  // que es la otra cosa que se quiere hacer con una columna.
+  container.querySelectorAll("[data-orden]").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      const raw = btn.dataset.orden;
+      const col = raw === "nombre" || raw === "total" ? raw : Number(raw);
+      if ((e.altKey || e.metaKey) && btn.dataset.franja != null) {
+        toggleFranja_(Number(btn.dataset.franja));
+        return;
+      }
+      orden_ = orden_.col === col
+        ? { col, dir: orden_.dir === "desc" ? "asc" : "desc" }
+        : { col, dir: col === "nombre" ? "asc" : "desc" };
+      repintar_();
+    });
+  });
+
+  // Fila de la matriz: filtra el tablero por esa persona (cross-filter).
+  container.querySelectorAll("[data-techrow]").forEach(tr => {
+    tr.querySelector("th[scope=row]")?.addEventListener("click", () => {
+      const k = tr.dataset.techrow;
+      techFilter_ = techFilter_ === k ? null : k;
+      repintar_();
     });
   });
 
   const off = container.querySelector(".lvOff");
   if (off) off.addEventListener("toggle", () => { offOpen_ = off.open; });
 
-  const medios = container.querySelector(".lvMedios");
-  if (medios) medios.addEventListener("toggle", () => { mediosOpen_ = medios.open; });
-
-  // Los gráficos solo se montan con el bloque ABIERTO. Un canvas dentro de un
-  // <details> cerrado mide 0×0, y Chart.js dibujaría contra ese cero: al
-  // desplegarlo saldría un gráfico aplastado hasta que algo forzara un
-  // resize. Montarlo al abrir cuesta unos milisegundos y siempre sale bien.
-  const cortes = container.querySelector(".lvCortes");
-  if (cortes) {
-    cortes.addEventListener("toggle", () => {
-      cortesOpen_ = cortes.open;
-      if (cortes.open) montarCortesCharts_(seriesCortes_);
-      else destruirCortesCharts_();
-    });
-    if (cortes.open) montarCortesCharts_(seriesCortes_);
-  }
+  // KPI tiles: el drill-down de los números agregados.
+  container.querySelectorAll("[data-drill]").forEach(btn => {
+    btn.addEventListener("click", () => abrirDrill_(btn.dataset.drill, data, techs));
+  });
 
   container.querySelectorAll(".lvCard:not(.is-off)").forEach(card => {
     const abrir = () => {
-      const tech = techs.find(t => `${t.userId}__${t.rol}` === card.dataset.techkey);
+      const tech = techs.find(t => keyTech_(t) === card.dataset.techkey);
       if (tech) openLiveDetail_(tech);
     };
     card.addEventListener("click", abrir);
@@ -826,7 +1274,64 @@ function bindLive_(container, techs, metaTec) {
   });
 }
 
-// ── Modal de detalle del día ───────────────────────────────────────────
+// ── 9. Drill-down de los KPIs ─────────────────────────────────────────
+//
+// Un número agregado sin forma de abrirlo obliga a creérselo. Estos cuatro son
+// los que el supervisor cuestiona en voz alta ("¿qué 14 aprobados?"), así que
+// son los que se abren.
+function abrirDrill_(cual, data, techs) {
+  const fila = (izq, der) => `
+    <div class="lvDrill__row"><span>${izq}</span><span>${der}</span></div>`;
+  const vacio = `<div class="lvDrill__empty">Nada que mostrar.</div>`;
+
+  if (cual === "cal" || cual === "mitades") {
+    const esCal = cual === "cal";
+    const lista = esCal
+      ? (Array.isArray(data.cierres?.cal) ? data.cierres.cal : [])
+      : (Array.isArray(data.cierres?.conv) ? data.cierres.conv : []);
+    const html = lista.length
+      ? [...lista].sort((a, b) => b - a)
+          .map(ms => fila(esCal ? "✅ Carro aprobado" : "🚗 Carro convertido", escapeHtml(fmtFechaHora_(new Date(ms).toISOString())))).join("")
+      : vacio;
+    openDrilldown({
+      title: esCal ? "Aprobados por calidad" : "Carros convertidos",
+      subtitle: `jornada del ${fmtFechaCorta_(data.fecha)} · hora de cierre`,
+      badge: lista.length, html,
+    });
+    return;
+  }
+
+  if (cual === "curso") {
+    const abiertos = techs.flatMap(t => (t.asignacionesHoy || [])
+      .filter(a => a.estado !== "FINALIZADO" && !a.arrastre)
+      .map(a => ({ t, a })));
+    const html = abiertos.length
+      ? abiertos.map(({ t, a }) => fila(
+          `${rolMeta(t.rol).icon} ${escapeHtml(t.nombre || t.email || "—")}`,
+          `<code>${escapeHtml(etiquetaTrabajo_(a.vin, a.tipo_ramal).texto || "—")}</code> · ${escapeHtml(estadoMeta(a.estado).label)}`,
+        )).join("")
+      : vacio;
+    openDrilldown({ title: "Trabajos en curso", badge: abiertos.length, html });
+    return;
+  }
+
+  if (cual === "medios") {
+    const parados = (Array.isArray(data.carrosMedios) ? data.carrosMedios : []).filter(c => !c.faltaEnCurso);
+    const html = parados.length
+      ? parados.map(c => fila(
+          `<code>${escapeHtml(c.vin)}</code> falta ${rolMeta(c.falta).icon} ${escapeHtml(rolMeta(c.falta).label)}`,
+          `⏳ ${escapeHtml(fmtTiempo_(Math.max(0, Date.now() - (c.cerroMs || 0))))}${c.cerroNombre ? ` · cerró ${escapeHtml(primerNombre_(c.cerroNombre))}` : ""}`,
+        )).join("")
+      : vacio;
+    openDrilldown({
+      title: "Carros esperando la otra mitad",
+      subtitle: "solo los que no tienen a nadie en la mitad que falta",
+      badge: parados.length, html,
+    });
+  }
+}
+
+// ── 10. Modal de detalle del día ───────────────────────────────────────
 function openLiveDetail_(tech) {
   const modal = document.getElementById("liveDetailModal");
   const title = document.getElementById("liveDetailTitle");
@@ -846,13 +1351,13 @@ function openLiveDetail_(tech) {
     ? ["ramal", "ramales"] : ["carro", "carros"];
 
   if (!asgList.length) {
-    body.innerHTML = `<div class="small">Sin asignaciones hoy.</div>`;
+    body.innerHTML = `<div class="small">Sin asignaciones ${esHoy_ ? "hoy" : "esa jornada"}.</div>`;
   } else {
     // Cerrados hoy primero, luego lo abierto, y el arrastre al final
     const orden = a => (a.estado === "FINALIZADO" ? 0 : a.arrastre ? 2 : 1);
     const filas = [...asgList].sort((a, b) => orden(a) - orden(b));
     const summary = `<div class="lvDetail__sum">
-      <span><b>${cars}</b> ${cars === 1 ? unidad[0] : unidad[1]} cerrado${cars !== 1 ? "s" : ""} hoy</span>
+      <span><b>${cars}</b> ${cars === 1 ? unidad[0] : unidad[1]} cerrado${cars !== 1 ? "s" : ""}</span>
       ${enCurso > 0 ? `<span>⚙️ <b>${enCurso}</b> en curso</span>` : ""}
     </div>`;
     body.innerHTML = summary + filas.map(renderDetailRow_).join("");
@@ -916,18 +1421,19 @@ function closeLiveDetail_() {
   modal.setAttribute("aria-hidden", "true");
   modal.classList.remove("show");
   // Si hubo actualización mientras el modal estaba abierto, aplicarla ahora
-  if (liveLastData_) {
-    const container = document.getElementById("liveContainer");
-    if (container) renderLive_(container, liveLastData_);
-  }
+  repintar_();
 }
 
-// ── Ciclo de vida ─────────────────────────────────────────────────────
+// ── 11. Ciclo de vida ─────────────────────────────────────────────────
 async function refreshLive_() {
   if (!liveActive_) return;
   const container = document.getElementById("liveContainer");
   if (!container) return;
+
+  cargando_ = true;
+  container.querySelector("#btnLiveRefresh")?.classList.add("is-busy");
   const data = await fetchLive_();
+  cargando_ = false;
   liveLastData_ = data;
 
   // Si hay un modal abierto, NO re-renderizar para no interrumpir al usuario
@@ -964,8 +1470,9 @@ export async function enterLive_() {
   }
 
   await refreshLive_();
-  // Polling gobernado por config; se pausa en background (core/poll.js)
-  startPoll("POLL_SUP_LIVE_MS", () => refreshLive_(), { immediate: false });
+  // Polling gobernado por config; se pausa en background (core/poll.js). Sobre
+  // una jornada cerrada no se arranca: no hay nada que refrescar.
+  if (!fechaSel_) startPoll("POLL_SUP_LIVE_MS", () => refreshLive_(), { immediate: false });
 }
 
 export function exitLive_() {
@@ -974,5 +1481,5 @@ export function exitLive_() {
   // Chart.js guarda sus instancias en un registro propio y engancha listeners
   // de resize y de tema: sin este destroy quedan vivas sobre un DOM que ya no
   // existe, y cada entrada al LIVE deja un par más detrás.
-  destruirCortesCharts_();
+  destruirLiveCharts_();
 }

@@ -24,10 +24,14 @@ const TOPICS_LIVE = ["asignaciones", "work_orders", "despacho", "zonas"];
  * Nunca lanza: el LIVE es anterior al módulo de despacho y tiene que seguir
  * pintándose aunque esas tablas no existan o el módulo esté apagado.
  */
-async function duplasAutoDeHoy_(SUPABASE_URL, headers) {
+async function duplasAutoDeHoy_(SUPABASE_URL, headers, jornada = null) {
   const vacio = new Map();
   try {
-    const fecha = jornadaFecha_();
+    // La jornada llega como argumento desde que el LIVE puede mirar días ya
+    // cerrados: la tabla está indexada por jornada_fecha, así que la misma
+    // consulta sirve para hoy y para el martes pasado.
+    const fecha = jornada || jornadaFecha_();
+
     const r = await fetch(
       `${SUPABASE_URL}/rest/v1/despacho_duplas?jornada_fecha=eq.${fecha}` +
       `&or=(motivo.like.AUTO_CARRO_EXTRA*,motivo.like.AYUDA_MANUAL*)` +
@@ -677,8 +681,9 @@ async function convMesPrevio_(SUPABASE_URL, headers, cfg, ym, hoy00) {
 // de Supabase por pasada y la vista la tienen abierta varios supervisores a la
 // vez, cada uno repitiéndola entera cada ciclo. La invalidación por evento la
 // mantiene al día — ver lib/poll-cache.js.
-async function armarLiveSupervisor_() {
+async function armarLiveSupervisor_(fechaPedida = null) {
   {
+
     const t1 = Date.now();
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const headers = supabaseHeaders_();
@@ -704,10 +709,26 @@ async function armarLiveSupervisor_() {
       const m = /^(\d{1,2}):(\d{2})$/.exec(String(cfg.LIVE_JORNADA_INICIO || "").trim());
       return m ? `${String(m[1]).padStart(2, "0")}:${m[2]}` : "05:00";
     })();
-    const jornadaStr = jornadaPeru_(INICIO_JORNADA);
+    // ── Qué jornada se está mirando ──────────────────────────────────────────
+    //
+    // Por defecto la de ahora, pero el panel puede pedir una pasada: el
+    // supervisor quiere comparar los cortes de hoy con los del sábado sin
+    // salirse del LIVE. Un día cerrado se arma igual que el de hoy, con dos
+    // diferencias: la ventana tiene tope por arriba (si no, el "arrastre" de
+    // esta tarde entraría en la foto del martes) y lo que es estado de AHORA
+    // —quién está dentro del taller— no se inventa para un día que ya pasó.
+    const jornadaHoy = jornadaPeru_(INICIO_JORNADA);
+    const jornadaStr = fechaPedida || jornadaHoy;
+    const esHoy      = jornadaStr === jornadaHoy;
     /** La jornada a la que pertenece un instante cualquiera. */
     const jornadaDe_ = (ms) => (ms ? jornadaPeru_(INICIO_JORNADA, new Date(ms)) : "");
-    const thirtyDaysAgo = fechaPeruMenosDias_(30);
+    /** "2026-09-28" + n días, en el calendario (Date.UTC normaliza mes y año). */
+    const masDias_ = (ymd, n) => {
+      const [a, m, d] = String(ymd).split("-").map(Number);
+      return new Date(Date.UTC(a, m - 1, d + n)).toISOString().slice(0, 10);
+    };
+    const thirtyDaysAgo = esHoy ? fechaPeruMenosDias_(30) : masDias_(jornadaStr, -30);
+
 
     // IMPORTANTE: las columnas de fecha son timestamptz y el servidor Postgres corre
     // en UTC. Un literal sin offset ("2026-08-06T00:00:00") se interpreta como UTC,
@@ -721,6 +742,13 @@ async function armarLiveSupervisor_() {
     const inicioJornada_ = (ymd) => encodeURIComponent(`${ymd}T${INICIO_JORNADA}:00${PE_OFFSET}`);
     const hoy00      = inicioJornada_(jornadaStr);
     const hace30d00  = inicioJornada_(thirtyDaysAgo);
+    // El cierre de la ventana. Para hoy no hace falta (nada está en el futuro),
+    // y ponerlo igual costaría un filtro más en cada consulta.
+    const fin00      = inicioJornada_(masDias_(jornadaStr, 1));
+    const topeAsig_  = esHoy ? "" : `&fecha_asignacion=lt.${fin00}`;
+    const topeUpd_   = esHoy ? "" : `&updated_at=lt.${fin00}`;
+
+
 
     const selectFields =
       `id,work_order_id,user_id,tipo_ot,rol_trabajo,estado_actual,running_since,tiempo_trab_ms,fecha_asignacion,updated_at,activo,` +
@@ -728,12 +756,14 @@ async function armarLiveSupervisor_() {
       `work_orders(id,vin,tipo_ramal,tipo_ot,estado_general)`;
 
     // Q1: Asignaciones creadas hoy (activas o no)
-    let url1 = `${SUPABASE_URL}/rest/v1/asignaciones?select=${selectFields}&activo=eq.true&fecha_asignacion=gte.${hoy00}&order=updated_at.desc`;
+    let url1 = `${SUPABASE_URL}/rest/v1/asignaciones?select=${selectFields}&activo=eq.true&fecha_asignacion=gte.${hoy00}${topeAsig_}&order=updated_at.desc`;
+
 
     // Q2: Trabajos empezados días anteriores pero finalizados HOY (cuentan como carro de hoy)
     // `activo=eq.true` igual que Q1: sin él, un carro anulado que se cerró hoy
     // entraba por esta puerta aunque Q1 lo estuviera excluyendo.
-    let url2 = `${SUPABASE_URL}/rest/v1/asignaciones?select=${selectFields}&activo=eq.true&estado_actual=eq.FINALIZADO&updated_at=gte.${hoy00}&fecha_asignacion=lt.${hoy00}&order=updated_at.desc`;
+    let url2 = `${SUPABASE_URL}/rest/v1/asignaciones?select=${selectFields}&activo=eq.true&estado_actual=eq.FINALIZADO&updated_at=gte.${hoy00}${topeUpd_}&fecha_asignacion=lt.${hoy00}&order=updated_at.desc`;
+
 
     // Q3: Todos los usuarios activos con rol técnico (para mostrar DESCONECTADO)
     const url3 = `${SUPABASE_URL}/rest/v1/usuarios?select=id,nombre,email,rol,especialidad&activo=eq.true&rol=in.(TECNICO,CALIDAD,RAMALERO)&order=nombre.asc`;
@@ -743,14 +773,19 @@ async function armarLiveSupervisor_() {
     // para saber en qué está parado ahora mismo un técnico que no abrió nada hoy.
     const url5 = `${SUPABASE_URL}/rest/v1/asignaciones?select=${selectFields}&activo=eq.true&estado_actual=in.(TRABAJANDO,PAUSADO,SIN_INICIAR)&fecha_asignacion=lt.${hoy00}&order=updated_at.desc`;
 
+    // El arrastre y la asistencia son estado de AHORA MISMO, no del día que se
+    // está mirando: en una jornada pasada no se piden. Lo que un técnico tenga
+    // abierto esta tarde no dice nada de lo que hizo el martes, y pintar "está
+    // en el taller" sobre un día cerrado sería afirmar algo que nadie midió.
     const [resp1, resp2, resp3, resp5, duplasAuto, asistencia] = await Promise.all([
       fetch(url1, { method: "GET", headers }),
       fetch(url2, { method: "GET", headers }),
       fetch(url3, { method: "GET", headers }),
-      fetch(url5, { method: "GET", headers }),
-      duplasAutoDeHoy_(SUPABASE_URL, headers),
-      asistenciaDeHoy_(SUPABASE_URL, headers),
+      esHoy ? fetch(url5, { method: "GET", headers }) : null,
+      duplasAutoDeHoy_(SUPABASE_URL, headers, jornadaStr),
+      esHoy ? asistenciaDeHoy_(SUPABASE_URL, headers) : new Map(),
     ]);
+
     if (!resp1.ok) {
       const text = await resp1.text().catch(() => "");
       throw new Error(`Supabase Q1: ${resp1.status} ${text.slice(0, 200)}`);
@@ -759,8 +794,9 @@ async function armarLiveSupervisor_() {
       resp1.json(),
       resp2.json().catch(() => []),
       resp3.json().catch(() => []),
-      resp5.json().catch(() => []),
+      resp5 ? resp5.json().catch(() => []) : [],
     ]);
+
 
     // Q4: último rol_trabajo conocido, SOLO de los técnicos con especialidad
     // AMBOS — son los únicos para los que se consulta (ver defaultRolTrabajo_).
@@ -845,7 +881,12 @@ async function armarLiveSupervisor_() {
         const u = `${SUPABASE_URL}/rest/v1/asignaciones?` +
           `select=id,work_order_id,rol_trabajo,estado_actual,updated_at,work_orders(vin)` +
           `&tipo_ot=eq.CONVERSION&activo=eq.true&estado_actual=eq.FINALIZADO` +
+          // En un día pasado, la mitad que se cerró DESPUÉS no puede entrar: si
+          // entrara, el carro saldría completo en una foto en la que todavía
+          // estaba a medias.
+          topeUpd_ +
           `&work_order_id=in.(${trozo.join(",")})`;
+
         return fetch(u, { method: "GET", headers })
           .then(r => (r.ok ? r.json() : []))
           .catch(() => []);
@@ -1136,28 +1177,67 @@ async function armarLiveSupervisor_() {
 
     const duration = Date.now() - t1;
     return {
-      ok: true, techs, fecha: jornadaStr, vinsSummary,
+      ok: true, techs, fecha: jornadaStr, esHoy, vinsSummary,
       mes, cierres, carrosMedios,
       _timing: `${duration}ms`,
     };
+
   }
+}
+
+/**
+ * La jornada que pide el panel, o null para "la de ahora".
+ *
+ * Se valida aquí y no en el armado porque el valor entra en la clave del cache:
+ * un "2026-9-1" o un "../../etc" sueltos ensuciarían el cache con una entrada
+ * por cada variante. Tampoco se admite el futuro — no hay nada que mirar — ni
+ * más atrás del tope: el LIVE lee la jornada entera por técnico, y dejar pedir
+ * 2019 es un escaneo gratis para cualquiera con la sesión abierta.
+ */
+const LIVE_DIAS_ATRAS = 120;
+
+export function jornadaPedida_(req, hoyStr) {
+  const q = String(req?.query?.fecha || "").trim();
+
+  if (!q) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(q)) return null;
+  if (q > hoyStr) return null;                       // el futuro no tiene cortes
+  const [a, m, d] = q.split("-").map(Number);
+  const ms = Date.UTC(a, m - 1, d);
+  if (!Number.isFinite(ms)) return null;
+  // Fecha real (un "2026-02-31" se normaliza a marzo y no es el día que pidió).
+  if (new Date(ms).toISOString().slice(0, 10) !== q) return null;
+  const [ha, hm, hd] = hoyStr.split("-").map(Number);
+  const dias = Math.round((Date.UTC(ha, hm - 1, hd) - ms) / 86_400_000);
+  if (dias > LIVE_DIAS_ATRAS) return null;
+  return q === hoyStr ? null : q;
 }
 
 router.get("/api/supervisor/live", async (req, res) => {
   try {
     const cfg = await getConfig_();
+
     // La clave lleva la MISMA fecha que el payload, y desde que el LIVE cuenta
     // por jornada esa fecha es la de la jornada, no la civil. La regla es que
     // clave y contenido se muevan juntos: con la civil, a las 00:30 la clave
     // saltaría de día mientras el contenido sigue siendo de la jornada de
     // anoche, y el cache serviría la pestaña equivocada justo en la madrugada
     // que se acaba de arreglar.
+    const hoyStr = jornadaPeru_(cfg.LIVE_JORNADA_INICIO || "05:00");
+    const fecha  = jornadaPedida_(req, hoyStr);
+
+    // Una jornada cerrada ya no se mueve: se cachea mucho más tiempo que la de
+    // hoy, y por eso cada fecha lleva su propia clave. Las de días pasados
+    // siguen escuchando los mismos topics porque un cierre tardío (alguien que
+    // olvidó cerrar y lo hace al día siguiente) sí cambia la foto de ayer.
     const payload = await cachedByTopics_(
-      `supervisor:live:${jornadaPeru_(cfg.LIVE_JORNADA_INICIO || "05:00")}`,
-      TOPICS_LIVE, cfg.SRV_CACHE_PESADO_MS,
-      armarLiveSupervisor_,
+      `supervisor:live:${fecha || hoyStr}`,
+      TOPICS_LIVE,
+      fecha ? cfg.LIVE_CACHE_MES_MS : cfg.SRV_CACHE_PESADO_MS,
+      () => armarLiveSupervisor_(fecha),
       { bypass: req.query.fresh === "1" },
     );
+
     return res.json(payload);
   } catch (e) {
     console.error("[GET /api/supervisor/live]", e.message);

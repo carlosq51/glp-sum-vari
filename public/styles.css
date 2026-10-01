@@ -59,6 +59,11 @@
 @import url("./css/views/supervisor.css");
 @import url("./css/views/sup-kpis.css");
 @import url("./css/views/sup-dashboard.css");
+/* Tablero LIVE: va DESPUÉS de supervisor.css y sup-dashboard.css porque es el
+   chasis que coloca piezas definidas allí (la matriz de cortes, las cards de
+   técnico, los badges de modo) y en un par de sitios las ajusta. */
+@import url("./css/views/sup-live.css");
+
 @import url("./css/views/ramalero.css");
 /* Ramales: va después de ramalero.css porque el panel se embebe dentro
    de esa vista además de vivir en su página propia (/ramales). */
