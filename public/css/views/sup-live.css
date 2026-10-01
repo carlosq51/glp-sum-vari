@@ -531,3 +531,13 @@
 }
 /* En modo foco el rótulo sobra: no hay nada que separar. */
 .lvDash__grid.is-foco > .lvDash__sep { display: none; }
+
+/* La segunda fila de carros (la final, con control de calidad) comparte el
+   realce de la primera pero no su color: son dos cosas distintas y el taller
+   las nombra distinto. La línea gruesa va DEBAJO de la segunda, que es donde
+   acaba lo que se cuenta en carros. */
+.lvResumen__tbl tr.is-head th[scope="row"],
+.lvResumen__tbl tr.is-head td { border-bottom: 0; }
+.lvResumen__tbl tr.is-final th[scope="row"],
+.lvResumen__tbl tr.is-final td { border-bottom: 2px solid var(--surfaceLine); }
+.lvResumen__tbl tr.is-final .lvCortes__tot { color: var(--track-calidad, var(--ok)); }

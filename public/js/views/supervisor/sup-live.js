@@ -309,7 +309,8 @@ function renderLive_(container, data) {
       })}
       ${tileHTML_({
         id: "prod", titulo: "Bruta y final",
-        sub: "convertidos contra aprobados por calidad · del taller",
+        sub: "carros con las dos mitades contra carros ya con calidad · del taller",
+
         body: canvasHTML_(CANVAS.prod),
       })}
       ${tileHTML_({
@@ -517,7 +518,8 @@ function kpisHTML_(data, techs, modelo) {
   return `
   <div class="lvKpis">
     <div class="lvKpi lvKpi--hero" style="--kpiTone:${tone};">
-      <div class="lvKpi__label">Carros convertidos</div>
+      <div class="lvKpi__label">Conversión bruta</div>
+
       <div class="lvKpi__num"><b id="liveKpiConv">${done}</b><span>/ ${meta}</span></div>
       <div class="lvKpi__verdict">${veredicto}</div>
       <div class="lvKpi__track" title="${pct}% del objetivo del día">
@@ -528,9 +530,13 @@ function kpisHTML_(data, techs, modelo) {
 
     <div class="lvKpis__grid">
       ${tile({
-        label: "Aprobados por calidad", valor: `<b id="liveKpiCal">${Number(v.calDone) || 0}</b>`,
-        pie: `${Number(v.calActive) || 0} en QC ahora`, drill: "cal",
+        // El mismo nombre que la tabla: bruta es el carro con sus dos mitades;
+        // final es ese carro ya con control de calidad. Que el KPI dijera
+        // "aprobados" y la tabla "final" obligaba a adivinar si eran lo mismo.
+        label: "Conversión final", valor: `<b id="liveKpiCal">${Number(v.calDone) || 0}</b>`,
+        pie: `con control de calidad · ${Number(v.calActive) || 0} en QC ahora`, drill: "cal",
       })}
+
       ${tile({
         label: franja ? `Mitades · ${escapeHtml(franja.label)}` : "Mitades cerradas",
         valor: mitadesFranja, unidad: "½",
@@ -869,15 +875,25 @@ function resumenHTML_(modelo) {
             <th scope="col" class="lvCortes__tot">TOTAL</th>
           </tr>
         </thead>
+        <!-- Arriba, EL CARRO. Son dos cosas distintas y el taller las nombra
+             distinto: bruta es el carro con sus dos mitades cerradas; final es
+             ese mismo carro ya pasado por control de calidad. Mezclarlas —o
+             dejar la de calidad abajo, como si fuera "lo que produjo un
+             puesto"— borra justo la diferencia que el taller mide. -->
         <tbody>
-          ${fila_({ icon: "🚗", tone: "var(--accent)", label: "Carros convertidos", unidad: "carros completos",
-                    arr: series.bruta, cls: "is-head" })}
+          ${fila_({ icon: "🚗", tone: "var(--accent)", label: "Conversión bruta",
+                    unidad: "carro con motor y tanque cerrados", arr: series.bruta, cls: "is-head" })}
+          ${fila_({ icon: "✅", tone: rCal.color, label: "Conversión final",
+                    unidad: "carro con control de calidad", arr: series.final, cls: "is-head is-final" })}
         </tbody>
+        <!-- Abajo, EL TRABAJO DE CADA PUESTO, en la unidad de cada uno. Las dos
+             mitades de un carro salen aquí en Motor y en Tanque, y su
+             inspección en Calidad: por eso esto no se suma con lo de arriba. -->
         <tbody>
-          ${fila_({ icon: rMotor.icon, tone: rMotor.color, label: rMotor.label, unidad: "mitades", arr: series.delantero })}
-          ${fila_({ icon: rTanque.icon, tone: rTanque.color, label: rTanque.label, unidad: "mitades", arr: series.tanquero })}
-          ${ramales.length ? fila_({ icon: rRamal.icon, tone: rRamal.color, label: "Ramales", unidad: "armados", arr: ramalesArr }) : ""}
-          ${fila_({ icon: rCal.icon, tone: rCal.color, label: "Calidad", unidad: "aprobados", arr: series.final })}
+          ${fila_({ icon: rMotor.icon, tone: rMotor.color, label: rMotor.label, unidad: "mitades cerradas", arr: series.delantero })}
+          ${fila_({ icon: rTanque.icon, tone: rTanque.color, label: rTanque.label, unidad: "mitades cerradas", arr: series.tanquero })}
+          ${ramales.length ? fila_({ icon: rRamal.icon, tone: rRamal.color, label: "Ramales", unidad: "ramales armados", arr: ramalesArr }) : ""}
+          ${fila_({ icon: rCal.icon, tone: rCal.color, label: rCal.label, unidad: "inspecciones cerradas", arr: series.final })}
         </tbody>
         <tfoot>
           <tr class="is-fuerte">
@@ -886,14 +902,19 @@ function resumenHTML_(modelo) {
             <td class="lvCortes__tot">${suma_(total)}</td>
           </tr>
         </tfoot>
+
       </table>
     </div>
     <div class="lvCortes__nota">
       Cada columna es el corte que <b>empieza</b> a esa hora.
-      Los carros van arriba y <b>no</b> entran en el total de abajo: un carro son
-      las dos mitades que ya están contadas en delantero y tanquero, y sumarlo
-      otra vez sería contar el mismo trabajo dos veces.
+      Arriba se cuentan <b>carros</b>: <b>bruta</b> es el carro con motor y tanque
+      cerrados, y <b>final</b> es ese carro ya con control de calidad.
+      Abajo se cuenta lo que cerró <b>cada puesto</b>, en su propia unidad — las
+      dos mitades de un carro salen en Motor y en Tanque, y su inspección en
+      Calidad. Por eso las dos mitades <b>no</b> se suman con los carros: sería
+      contar el mismo trabajo dos veces.
     </div>
+
   </div>`;
 }
 
@@ -1030,10 +1051,11 @@ export function cortesHTML_(data, techs) {
 // como tal: inventarlo aquí sería pintar un número que nadie puede auditar.
 function funnelHTML_(v) {
   const pasos = [
-    { icon: "🔧", label: "Convertidos", n: Number(v.convDone) || 0,   id: "" },
-    { icon: "🕒", label: "En QC",       n: Number(v.calActive) || 0,  id: "" },
-    { icon: "✅", label: "Aprobados",   n: Number(v.calDone) || 0,    id: "" },
+    { icon: "🚗", label: "Bruta",  n: Number(v.convDone) || 0 },
+    { icon: "🕒", label: "En QC",  n: Number(v.calActive) || 0 },
+    { icon: "✅", label: "Final",  n: Number(v.calDone) || 0 },
   ];
+
   const max = Math.max(1, ...pasos.map(p => p.n));
   return `<div class="lvFunnel">${pasos.map(s => `
     <div class="lvFunnel__step">
@@ -1428,10 +1450,13 @@ function abrirDrill_(cual, data, techs) {
       : (Array.isArray(data.cierres?.conv) ? data.cierres.conv : []);
     const html = lista.length
       ? [...lista].sort((a, b) => b - a)
-          .map(ms => fila(esCal ? "✅ Carro aprobado" : "🚗 Carro convertido", escapeHtml(fmtFechaHora_(new Date(ms).toISOString())))).join("")
+          .map(ms => fila(esCal ? "✅ Carro con control de calidad" : "🚗 Carro con motor y tanque cerrados",
+                          escapeHtml(fmtFechaHora_(new Date(ms).toISOString())))).join("")
+
       : vacio;
     openDrilldown({
-      title: esCal ? "Aprobados por calidad" : "Carros convertidos",
+      title: esCal ? "Conversión final · con control de calidad" : "Conversión bruta",
+
       subtitle: `jornada del ${fmtFechaCorta_(data.fecha)} · hora de cierre`,
       badge: lista.length, html,
     });

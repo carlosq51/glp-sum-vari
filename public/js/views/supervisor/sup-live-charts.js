@@ -341,8 +341,11 @@ export function montarLiveCharts_(series, hooks = null) {
 
 
   barras_(CANVAS.prod, [
-    { label: "Convertidos", data: series.bruta, color: cMotor },
-    { label: "Aprobados",   data: series.final, color: cCalidad },
+    // Los mismos nombres que la tabla de cifras: bruta (carro con sus dos
+    // mitades) y final (ese carro ya con control de calidad).
+    { label: "Bruta", data: series.bruta, color: cMotor },
+    { label: "Final", data: series.final, color: cCalidad },
+
   ], series.labels, colors, { sel, onIndex: onFranja, ahora: series.franjaAhora });
 
   // Chart.js pinta los colores resueltos, no las var(): al cambiar de tema hay
