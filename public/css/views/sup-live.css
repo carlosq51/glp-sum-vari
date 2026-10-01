@@ -463,3 +463,71 @@
   .lvCmd__btn.is-busy { animation: none; }
   .lvKpi__track > i, .lvFunnel__bar > i { transition: none; }
 }
+
+/* ── El día en cifras ─────────────────────────────────────────────────
+   Es LO PRIMERO del tablero. Un gráfico enseña una forma; para decir "van 22
+   y en el corte de las 13:00 salieron 11" hace falta el número, y el número
+   se lee en una tabla. Hereda de .lvCortes__tbl (misma retícula que la tabla
+   por técnico) y solo cambia el peso: aquí hay seis filas, no veinticuatro,
+   así que cada cifra puede ser grande. */
+.lvResumen__tbl { font-size: var(--fs-sm); }
+.lvResumen__tbl th[scope="row"] {
+  max-width: none;
+  white-space: nowrap;
+  font-weight: var(--fw-extrabold);
+}
+.lvResumen__tbl th[scope="row"] em {
+  display: block;
+  font-style: normal;
+  font-size: 9px;
+  font-weight: var(--fw-bold);
+  letter-spacing: .3px;
+  color: var(--muted);
+}
+.lvResumen__ico { margin-right: 6px; }
+.lvResumen__tbl td {
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--fw-extrabold);
+  font-size: var(--fs-md);
+  padding: 7px 10px;
+}
+.lvResumen__tbl .lvCortes__tot { font-size: var(--fs-lg); font-weight: var(--fw-black); }
+
+/* Los carros van arriba y separados: no entran en el total del pie, porque un
+   carro SON las dos mitades que ya están contadas debajo. */
+.lvResumen__tbl tr.is-head th[scope="row"],
+.lvResumen__tbl tr.is-head td {
+  background: var(--accentBg, var(--pillBg));
+  border-bottom: 2px solid var(--surfaceLine);
+}
+.lvResumen__tbl tr.is-head td { font-size: var(--fs-lg); }
+.lvResumen__tbl tr.is-head .lvCortes__tot { font-size: 26px; color: var(--accent); }
+.lvResumen__tbl tfoot .lvCortes__tot { font-size: var(--fs-lg); }
+
+/* ── Rótulo que separa las cifras de los gráficos ─────────────────────
+   Los gráficos no son otra sección de datos: son la misma cifra dibujada. El
+   rótulo lo dice para que nadie los lea como un número nuevo. */
+.lvDash__sep {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--surfaceLine);
+}
+.lvDash__sep > span {
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-black);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.lvDash__sep > em {
+  font-style: normal;
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+  opacity: .72;
+}
+/* En modo foco el rótulo sobra: no hay nada que separar. */
+.lvDash__grid.is-foco > .lvDash__sep { display: none; }

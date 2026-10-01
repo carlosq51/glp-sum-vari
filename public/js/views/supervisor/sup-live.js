@@ -259,35 +259,16 @@ function renderLive_(container, data) {
     ${slicersHTML_(techs, duplas, metaTec, modelo)}
     ${kpisHTML_(data, techs, modelo)}
     <div class="lvDash__grid${focoTile_ ? " is-foco" : ""}">
-      ${tileHTML_({
-        id: "ritmo", titulo: "Ritmo de la jornada",
-        sub: "carros convertidos en cada hora · del taller",
-        span: 2, body: canvasHTML_(CANVAS.ritmo),
-      })}
-      ${tileHTML_({
-        id: "acum", titulo: "Acumulado contra el objetivo",
-        sub: "lo cerrado hasta cada hora · del taller",
-        body: canvasHTML_(CANVAS.acum),
-      })}
-      ${tileHTML_({
-        id: "puestos", titulo: "Mitades por puesto",
-        sub: `delantero y tanquero en cada franja${filtroNota_()}`,
-        body: canvasHTML_(CANVAS.puestos),
-      })}
-      ${tileHTML_({
-        id: "prod", titulo: "Bruta y final",
-        sub: "convertidos contra aprobados por calidad · del taller",
-        body: canvasHTML_(CANVAS.prod),
-      })}
-      ${tileHTML_({
-        id: "embudo", titulo: "Embudo y acumulado del mes",
-        sub: "el carro no termina cuando se convierte",
-        body: `${funnelHTML_(data.vinsSummary || {})}${mesHTML_(data)}`,
-      })}
-      ${modelo.nb && modelo.filas.length ? tileHTML_({
-        id: "cortes", titulo: "Cortes por técnico",
 
-        sub: `quién cerró qué y en qué franja${filtroNota_()}`,
+      <!-- ── Las cifras. Primero, y por delante de cualquier gráfico. ── -->
+      ${modelo.nb ? tileHTML_({
+        id: "resumen", titulo: "El día en cifras",
+        sub: `conversiones y producción, corte a corte${filtroNota_()}`,
+        span: 2, body: resumenHTML_(modelo),
+      }) : ""}
+      ${modelo.nb && modelo.filas.length ? tileHTML_({
+        id: "cortes", titulo: "Producción por técnico",
+        sub: `quién cerró qué y en qué corte${filtroNota_()}`,
         span: 2, body: cortesTablasHTML_(modelo),
       }) : ""}
       ${mediosTile_(data)}
@@ -301,6 +282,39 @@ function renderLive_(container, data) {
         sub: "toca una card para ver su día",
         span: 2, bare: true,
         body: `${rolesTabsHTML_(techs)}${listaHTML_(techs, metaTec)}`,
+      })}
+
+      <!-- ── Los gráficos. Complemento: enseñan la FORMA de lo de arriba (si
+           el ritmo cae, si una mitad se queda atrás), no cifras nuevas. Por
+           eso van al final y bajo su propio rótulo. ── -->
+      <div class="lvDash__sep">
+        <span>Gráficos</span>
+        <em>la forma de las mismas cifras · ningún número nuevo</em>
+      </div>
+      ${tileHTML_({
+        id: "ritmo", titulo: "Ritmo de la jornada",
+        sub: "carros convertidos en cada hora · del taller",
+        span: 2, body: canvasHTML_(CANVAS.ritmo),
+      })}
+      ${tileHTML_({
+        id: "acum", titulo: "Acumulado contra el objetivo",
+        sub: "lo cerrado hasta cada hora · del taller",
+        body: canvasHTML_(CANVAS.acum),
+      })}
+      ${tileHTML_({
+        id: "puestos", titulo: "Mitades por puesto",
+        sub: `delantero y tanquero en cada corte${filtroNota_()}`,
+        body: canvasHTML_(CANVAS.puestos),
+      })}
+      ${tileHTML_({
+        id: "prod", titulo: "Bruta y final",
+        sub: "convertidos contra aprobados por calidad · del taller",
+        body: canvasHTML_(CANVAS.prod),
+      })}
+      ${tileHTML_({
+        id: "embudo", titulo: "Embudo y acumulado del mes",
+        sub: "el carro no termina cuando se convierte",
+        body: `${funnelHTML_(data.vinsSummary || {})}${mesHTML_(data)}`,
       })}
     </div>
   </div>`;
@@ -797,7 +811,91 @@ function presenciaHTML_(t) {
   return `<i class="lvVivo${pausa ? " is-pausa" : ""}" role="img" aria-label="${escapeHtml(texto)}" title="${escapeHtml(texto)}"></i>`;
 }
 
+// ── 3b. El día en cifras ──────────────────────────────────────────────
+//
+// LO PRIMERO DE LA PANTALLA, por delante de cualquier gráfico. Un gráfico
+// ayuda a ver una forma; para decir "hoy van 22 y en el corte de las 13:00
+// salieron 11" hace falta el número, y el número se lee en una tabla.
+//
+// Las cuatro preguntas que se hacen todos los días viven aquí juntas, y por
+// eso es UNA tabla y no cuatro tarjetas: así se cruzan solas.
+//   · conversiones totales   → la fila de arriba, columna TOT
+//   · conversiones por corte → esa misma fila, por columnas
+//   · producción total       → el pie
+//   · producción por rol     → una fila por puesto
+//
+// El pie NO suma los carros: un carro ES sus dos mitades, y sumarlo encima de
+// ellas contaría el mismo trabajo dos veces. Por eso los carros van arriba,
+// separados por una línea, y el pie solo suma lo que cada persona cerró.
+function resumenHTML_(modelo) {
+  const { bloques, nb, series, subtotal_, ramales, ahora } = modelo;
+  if (!nb) return "";
+
+  const suma_ = (arr) => arr.reduce((s, n) => s + n, 0);
+  const rMotor = rolMeta("MOTOR"), rTanque = rolMeta("TANQUE");
+  const rRamal = rolMeta("RAMALERO"), rCal = rolMeta("CALIDAD");
+
+  const ramalesArr = subtotal_(ramales);
+  const total = bloques.map((_, i) =>
+    series.delantero[i] + series.tanquero[i] + ramalesArr[i] + series.final[i]);
+
+  const colCls_ = (i) => (franjaFilter_ === i ? "is-sel" : "");
+  const cero_   = `<i class="lvCortes__cero">·</i>`;
+
+  const fila_ = ({ icon, tone, label, unidad, arr, cls = "" }) => `
+    <tr class="${cls}">
+      <th scope="row">
+        <span class="lvResumen__ico" style="color:${tone};">${icon}</span>
+        ${escapeHtml(label)}<em>${escapeHtml(unidad)}</em>
+      </th>
+      ${arr.map((n, i) => `<td class="${colCls_(i)}">${n > 0 ? n : cero_}</td>`).join("")}
+      <td class="lvCortes__tot">${suma_(arr)}</td>
+    </tr>`;
+
+  return `
+  <div class="lvResumen">
+    <div class="lvCortes__scroll">
+      <table class="lvCortes__tbl lvResumen__tbl">
+        <thead>
+          <tr>
+            <th scope="col">Corte</th>
+            ${bloques.map((b, i) => `<th scope="col" class="${[colCls_(i), i === ahora ? "is-ahora" : ""].filter(Boolean).join(" ")}">
+                <button type="button" class="lvCortes__sort" data-filtro="franja" data-valor="${i}"
+                  title="${escapeHtml(b.label)}${i === ahora ? " · corte en curso" : ""} — toca para quedarte con este corte">${escapeHtml(b.label.split("–")[0])}</button>
+              </th>`).join("")}
+            <th scope="col" class="lvCortes__tot">TOTAL</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${fila_({ icon: "🚗", tone: "var(--accent)", label: "Carros convertidos", unidad: "carros completos",
+                    arr: series.bruta, cls: "is-head" })}
+        </tbody>
+        <tbody>
+          ${fila_({ icon: rMotor.icon, tone: rMotor.color, label: rMotor.label, unidad: "mitades", arr: series.delantero })}
+          ${fila_({ icon: rTanque.icon, tone: rTanque.color, label: rTanque.label, unidad: "mitades", arr: series.tanquero })}
+          ${ramales.length ? fila_({ icon: rRamal.icon, tone: rRamal.color, label: "Ramales", unidad: "armados", arr: ramalesArr }) : ""}
+          ${fila_({ icon: rCal.icon, tone: rCal.color, label: "Calidad", unidad: "aprobados", arr: series.final })}
+        </tbody>
+        <tfoot>
+          <tr class="is-fuerte">
+            <th scope="row">Producción del taller<em>cierres de todos los puestos</em></th>
+            ${total.map((n, i) => `<td class="${colCls_(i)}">${n > 0 ? n : cero_}</td>`).join("")}
+            <td class="lvCortes__tot">${suma_(total)}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    <div class="lvCortes__nota">
+      Cada columna es el corte que <b>empieza</b> a esa hora.
+      Los carros van arriba y <b>no</b> entran en el total de abajo: un carro son
+      las dos mitades que ya están contadas en delantero y tanquero, y sumarlo
+      otra vez sería contar el mismo trabajo dos veces.
+    </div>
+  </div>`;
+}
+
 /** Las dos tablas + la nota. Lee del modelo; no cuenta nada por su cuenta. */
+
 export function cortesTablasHTML_(modelo) {
   const { bloques, nb, filas, conv, ramales, calidad, apoyo, usadas, ahora, subtotal_, porBloque_ } = modelo;
   if (!nb || !filas.length) return "";
