@@ -40,20 +40,23 @@
   min-width: 0;
 }
 .lvCmd__icon { font-size: var(--fs-lg); line-height: 1; }
+/* Sin `text-transform: capitalize`: ponía mayúscula en CADA palabra y el
+   título salía "Jornada En Curso · Jueves, 1 De Octubre". La inicial la pone
+   quien escribe el texto, que es el único que sabe dónde empieza la frase. */
 .lvCmd__title b {
   display: block;
   font-size: var(--fs-md);
   font-weight: var(--fw-black);
   letter-spacing: .2px;
-  text-transform: capitalize;
 }
+
 .lvCmd__title em {
   display: block;
   font-style: normal;
   font-size: var(--fs-2xs);
   color: var(--muted);
-  text-transform: capitalize;
 }
+
 
 /* El selector de jornada: un control, no cuatro botones sueltos. */
 .lvCmd__dates {
@@ -292,6 +295,23 @@
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 10px;
 }
+/* Los tiles que abren drill-down son <button>, y la regla global de
+   components/buttons.css les clava `height: var(--h-btn)`, `white-space:
+   nowrap` y centrado: con eso la etiqueta y el pie se salían de la caja y
+   `overflow:hidden` los recortaba — el tile quedaba en un número suelto sin
+   decir de qué. Un tile no es un botón de barra: se le devuelve la altura de
+   su contenido. */
+.lvKpis__grid > button.statTile {
+  height: auto;
+  min-height: 0;
+  align-items: stretch;
+  justify-content: flex-start;
+  white-space: normal;
+  overflow: visible;
+  letter-spacing: normal;
+  font-size: var(--fs-body);
+}
+
 /* Un tile que avisa de algo parado lleva el aviso en el borde, no en el número:
    un número en rojo se confunde con "mal dato". */
 .statTile--warnEdge { border-left: 3px solid var(--warn); }

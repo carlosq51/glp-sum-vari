@@ -195,21 +195,31 @@ const ESTADO_CORTO = {
   DESCONECTADO:  "—",
 };
 
+/** "2026-09" → "setiembre" (el mes en palabras; "2026-09" no es un mes, es una clave). */
+function nombreMes_(ym) {
+  if (!/^\d{4}-\d{2}$/.test(String(ym || ""))) return String(ym || "");
+  return new Intl.DateTimeFormat("es-PE", { month: "long", timeZone: "UTC" })
+    .format(new Date(`${ym}-01T00:00:00Z`));
+}
+
 /** "2026-08-05" → "05/08" */
+
 function fmtFechaCorta_(ymd) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(ymd || ""));
   return m ? `${m[3]}/${m[2]}` : String(ymd || "");
 }
 
-/** "2026-08-05" → "miércoles 5 de agosto" */
+/** "2026-08-05" → "Miércoles 5 de agosto" (solo la inicial en mayúscula). */
 function fmtFechaLarga_(ymd) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(ymd || ""));
   if (!m) return String(ymd || "");
   const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
-  return new Intl.DateTimeFormat("es-PE", {
+  const txt = new Intl.DateTimeFormat("es-PE", {
     weekday: "long", day: "numeric", month: "long", timeZone: "UTC",
   }).format(d);
+  return txt.charAt(0).toUpperCase() + txt.slice(1);
 }
+
 
 // ── Render principal ──────────────────────────────────────────────────
 function renderLive_(container, data) {
@@ -406,9 +416,17 @@ function slicersHTML_(techs, duplas, metaTec, modelo) {
   </div>`;
 }
 
-/** La barra segmentada del taller: cuánta gente activa, pausada y sin iniciar. */
+/**
+ * La barra segmentada del taller: cuánta gente activa, pausada y sin iniciar.
+ *
+ * Solo en vivo. En una jornada cerrada todo el mundo acabó o no vino, así que
+ * la barra sale vacía y el contador en "0 en pista" — un cero que no informa de
+ * nada y que encima se lee como si el taller hubiera estado parado.
+ */
 function pulseHTML_(techs) {
+  if (!esHoy_) return "";
   const conteo = e => techs.filter(t => t.estadoActivo === e).length;
+
   const segs = [
     { n: conteo("TRABAJANDO"),  tone: "var(--ok)",    label: "activos" },
     { n: conteo("PAUSADO"),     tone: "var(--warn)",  label: "pausados" },
@@ -515,7 +533,8 @@ function kpisHTML_(data, techs, modelo) {
         clase: medios.length ? "statTile--warnEdge" : "", drill: medios.length ? "medios" : "",
       })}
       ${m?.metaMes ? tile({
-        label: `Mes · ${escapeHtml(String(m.ym || ""))}`,
+        label: `Mes · ${escapeHtml(nombreMes_(m.ym))}`,
+
         valor: `${m.parcial ? "≥" : ""}${Number(m.convDone) || 0}`, unidad: `/ ${m.metaMes}`,
         pie: `${mesDelta >= 0 ? "+" : "−"}${Math.abs(mesDelta)} vs. ${m.metaAcum} esperados`,
       }) : ""}
@@ -836,12 +855,17 @@ export function cortesTablasHTML_(modelo) {
       </div>
     </div>`;
 
+  // Con un filtro por persona puesto, las mitades de arriba son suyas pero los
+  // carros completos siguen siendo los del taller: un carro lo cierran dos y no
+  // se puede partir por cabeza. Sin decirlo, la fila se leería como "este
+  // señor cerró 22 carros".
   const tablaConv = conv.length ? tabla_({
     titulo: "🔧 Técnicos de conversión",
     unidad: "mitades de carro cerradas",
     secciones: [{ lista: conv, cierre: { label: "Mitades cerradas", arr: subtotal_(conv) } }],
-    pie: [{ label: "🚗 Carros completos", arr: modelo.series.bruta }],
+    pie: [{ label: `🚗 Carros completos${techFilter_ ? " <em>del taller</em>" : ""}`, arr: modelo.series.bruta }],
   }) : "";
+
 
   // Ramales arriba con su subtotal, calidad al fondo. Así "Aprobados QC" queda
   // pegado a las filas que lo producen en vez de flotando debajo de una lista
