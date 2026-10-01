@@ -1456,9 +1456,17 @@ async function refreshLive_() {
 
   cargando_ = true;
   container.querySelector("#btnLiveRefresh")?.classList.add("is-busy");
+  // Qué jornada se pidió. Al volver hay que comprobar que siga siendo la que
+  // interesa: una pasada del polling puede estar EN VUELO cuando el supervisor
+  // cambia de día, y al aterrizar pisaría la jornada que acaba de elegir. Se
+  // veía como un panel con la cabecera de ayer y los números de hoy — el peor
+  // fallo posible aquí, porque no parece un fallo, parece un dato.
+  const pedida = fechaSel_;
   const data = await fetchLive_();
+  if (pedida !== fechaSel_) return;      // llegó tarde: esta respuesta ya no es
   cargando_ = false;
   liveLastData_ = data;
+
 
   // Si hay un modal abierto, NO re-renderizar para no interrumpir al usuario
   const modalOpen = document.getElementById("liveDetailModal")?.classList.contains("show");
