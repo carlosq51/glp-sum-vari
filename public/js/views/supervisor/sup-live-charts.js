@@ -330,10 +330,15 @@ export function montarLiveCharts_(series, hooks = null) {
 
   if (series.acum) acumulado_(CANVAS.acum, series.acum, colors);
 
+  // Los nombres salen de los MISMOS rótulos que la tabla y las pestañas de
+  // rol (ROL_META). El taller dice "delantero" y "tanquero", pero la app
+  // entera dice Motor y Tanque: dos vocabularios en una pantalla obligan a
+  // traducir mentalmente para comparar una barra con su fila.
   barras_(CANVAS.puestos, [
-    { label: "Delantero", data: series.delantero, color: cMotor },
-    { label: "Tanquero",  data: series.tanquero,  color: cTanque },
+    { label: series.rotulos?.motor  || "Motor",  data: series.delantero, color: cMotor },
+    { label: series.rotulos?.tanque || "Tanque", data: series.tanquero,  color: cTanque },
   ], series.labels, colors, { sel, onIndex: onFranja, ahora: series.franjaAhora });
+
 
   barras_(CANVAS.prod, [
     { label: "Convertidos", data: series.bruta, color: cMotor },

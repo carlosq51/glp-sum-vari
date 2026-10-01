@@ -303,7 +303,8 @@ function renderLive_(container, data) {
       })}
       ${tileHTML_({
         id: "puestos", titulo: "Mitades por puesto",
-        sub: `delantero y tanquero en cada corte${filtroNota_()}`,
+        sub: `mitades cerradas en cada corte${filtroNota_()}`,
+
         body: canvasHTML_(CANVAS.puestos),
       })}
       ${tileHTML_({
@@ -694,7 +695,9 @@ export function construirModelo_(data, techs) {
       tanquero:    sumaSi_(r => r === "TANQUE"),
       bruta:       porBloque_(data?.cierres?.conv),
       final:       porBloque_(data?.cierres?.cal),
+      rotulos:     { motor: rolMeta("MOTOR").label, tanque: rolMeta("TANQUE").label },
       franjaSel:   franjaFilter_,
+
       franjaAhora: ahora >= 0 ? ahora : null,
       horas:       seriesHoras_(data, bloques),
       acum:        seriesAcum_(data),
