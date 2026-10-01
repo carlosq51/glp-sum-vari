@@ -523,10 +523,18 @@ function kpisHTML_(data, techs, modelo) {
         drill: "mitades",
       })}
       ${tile({
-        label: "Trabajos en curso", valor: enCurso,
-        pie: `${techs.filter(t => t.estadoActivo === "TRABAJANDO").length} técnicos trabajando`,
+        // En una jornada cerrada "en curso" no significa nada —el día terminó—
+        // y el pie decía "0 técnicos trabajando" junto a un 16, que es la clase
+        // de contradicción por la que se deja de creer en un panel. Lo que ese
+        // número cuenta ahí es lo que quedó abierto cuando acabó el día.
+        label: esHoy_ ? "Trabajos en curso" : "Abiertos al cierre",
+        valor: enCurso,
+        pie: esHoy_
+          ? `${techs.filter(t => t.estadoActivo === "TRABAJANDO").length} técnicos trabajando`
+          : "se cerraron después o siguen abiertos",
         drill: "curso",
       })}
+
       ${tile({
         label: "Esperando la otra mitad", valor: medios.length,
         pie: medios.length ? `el más antiguo lleva ${escapeHtml(fmtTiempo_(Math.max(0, Date.now() - (medios[0].cerroMs || 0))))}` : "ningún carro parado",
