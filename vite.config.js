@@ -73,7 +73,10 @@ export default defineConfig({
         // no se abren nunca desde dentro de la PWA: cada una tiene su URL y
         // su público. Precachearlas engordaría la instalación de todos los
         // técnicos con páginas que no van a usar.
-        globIgnores: ['**/{invitado,marcar,qr-tv,tv,despacho-admin}.html'],
+        //
+        // heic-to (libheif en WASM, ~3 MB) tampoco: solo lo baja quien suba un
+        // HEIC que su navegador no abre (ver core/image-compress.js).
+        globIgnores: ['**/{invitado,marcar,qr-tv,tv,despacho-admin}.html', '**/heic-to-*.js'],
       },
       manifest: {
         name: 'Registro GLP',

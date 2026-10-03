@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 
-const { dimensionesDestino, bytesLegibles, ahorroLegible, LADO_MAX } =
+const { dimensionesDestino, bytesLegibles, ahorroLegible, LADO_MAX, esFirmaHeic } =
   await import("../public/js/core/image-compress.js");
 
 // Lo que estos tests fijan es una sola idea: que una foto encoja por su lado
@@ -85,5 +85,25 @@ describe("ahorroLegible", () => {
 
   it("sin argumentos devuelve algo mostrable en vez de romper la tarjeta", () => {
     expect(ahorroLegible()).toBe("0 B");
+  });
+});
+
+describe("esFirmaHeic", () => {
+  const cabecera = (marca) =>
+    new Uint8Array([0, 0, 0, 0x1c, ...[..."ftyp" + marca].map((c) => c.charCodeAt(0))]);
+
+  it("reconoce un HEIC aunque Android no mande tipo ni extensión", () => {
+    expect(esFirmaHeic(cabecera("heic"))).toBe(true);
+    expect(esFirmaHeic(cabecera("mif1"))).toBe(true);
+  });
+
+  it("un JPEG o un MP4 no pasan por HEIC", () => {
+    expect(esFirmaHeic(new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0]))).toBe(false);
+    expect(esFirmaHeic(cabecera("isom"))).toBe(false);
+  });
+
+  it("menos de 12 bytes no alcanza para decidir", () => {
+    expect(esFirmaHeic(new Uint8Array(4))).toBe(false);
+    expect(esFirmaHeic(null)).toBe(false);
   });
 });

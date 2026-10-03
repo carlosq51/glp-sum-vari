@@ -206,12 +206,59 @@ function base64_(blob) {
   });
 }
 
+// ─── HEIC ───────────────────────────────────────────────────────────────────
+//
+// Safari abre HEIC solo; Chrome en Android no, y hay Android que los guarda
+// (Samsung, Xiaomi… con "ahorro de espacio"). Para esos se usa libheif en
+// WebAssembly (heic-to). Pesa ~3 MB, así que se carga con import() SOLO cuando
+// el navegador ya falló con un HEIC: nadie más lo descarga y, por pasar de
+// 2 MB, Workbox tampoco lo mete en el precache de la PWA.
+//
+// El servidor no puede hacer esto: un HEIC de 3,5 MB lo tumbó por memoria
+// cuatro veces el 2026-10-03, y desde entonces los rechaza. El celular tiene
+// gigas; el servidor, 512 MB.
+
 const MSG_HEIC =
   "La foto está en formato HEIC y este celular no la pudo convertir. " +
   "En la cámara cambia el formato a JPG (Ajustes → Formato de imagen / \"Más compatible\") y vuelve a tomarla.";
 
-function esHeic_(file) {
-  return /heic|heif/i.test(file?.type || "") || /\.(heic|heif)$/i.test(file?.name || "");
+/** Firma HEIF en los primeros 12 bytes: "ftyp" + marca (heic, heix, mif1…). */
+export function esFirmaHeic(bytes) {
+  if (!bytes || bytes.length < 12) return false;
+  const txt = (a, b) => String.fromCharCode(...bytes.slice(a, b));
+  if (txt(4, 8) !== "ftyp") return false;
+  return /^(heic|heix|hevc|hevx|heim|heis|hevm|hevs|mif1|msf1)/.test(txt(8, 12));
+}
+
+/** Por tipo, por extensión o —cuando Android no manda ninguno— por la firma. */
+async function esHeic_(file) {
+  if (/heic|heif/i.test(file?.type || "") || /\.(heic|heif)$/i.test(file?.name || "")) return true;
+  try {
+    return esFirmaHeic(new Uint8Array(await file.slice(0, 12).arrayBuffer()));
+  } catch {
+    return false;
+  }
+}
+
+/** Mismo contrato que decodificar_, vía libheif. */
+async function decodificarHeic_(file) {
+  let heicTo;
+  try {
+    ({ heicTo } = await import("heic-to"));
+  } catch {
+    // Sin señal para bajar el convertidor: eso sí se arregla reintentando.
+    const e = new Error("No se pudo descargar el convertidor de fotos HEIC. Revisa la señal.");
+    e.propagar = true;
+    throw e;
+  }
+  // libheif aplica la rotación del contenedor (irot/imir) al decodificar.
+  const bmp = await heicTo({ blob: file, type: "bitmap" });
+  return {
+    fuente: bmp,
+    ancho: bmp.width,
+    alto: bmp.height,
+    liberar: () => { try { bmp.close?.(); } catch { /* ya cerrado */ } },
+  };
 }
 
 // ─── API pública ────────────────────────────────────────────────────────────
@@ -219,17 +266,18 @@ function esHeic_(file) {
 /**
  * comprimirImagen — deja una foto lista para subir.
  *
- * Nunca falla por culpa del formato: si no se puede decodificar (un HEIC en
- * Android, un TIFF, un canvas bloqueado) devuelve el archivo original marcado
- * con `comprimida:false`, y el servidor se encarga. Lo único que puede lanzar
- * es no poder leer el archivo del disco.
+ * Si el navegador no puede decodificar (un TIFF, un canvas bloqueado) devuelve
+ * el archivo original marcado con `comprimida:false`, y el servidor se encarga.
+ * Los HEIC son la excepción: se convierten aquí con libheif y, si ni así, lanza
+ * con `sinReintento` (el servidor no los acepta). También lanza si no se puede
+ * leer el archivo o bajar el convertidor.
  *
  * @param {File|Blob} file
  * @param {object}   [opts]
  * @param {number}   [opts.ladoMax=LADO_MAX]
  * @param {number}   [opts.presupuesto=PRESUPUESTO_BYTES]
  * @param {number}   [opts.calidad=CALIDAD_INICIAL]
- * @param {function} [opts.onEtapa] recibe "decodificando" | "comprimiendo"
+ * @param {function} [opts.onEtapa] recibe "decodificando" | "convirtiendo" | "comprimiendo"
  * @returns {Promise<{b64:string, mimeType:string, bytes:number, bytesOriginales:number, comprimida:boolean, ancho:number, alto:number}>}
  */
 export async function comprimirImagen(file, opts = {}) {
@@ -259,12 +307,18 @@ export async function comprimirImagen(file, opts = {}) {
   const pareceImagen =
     /^image\//i.test(tipoOriginal) ||
     /\.(jpe?g|png|webp|heic|heif|gif|bmp|avif)$/i.test(file.name || "");
-  if (!pareceImagen) return await original();
+  if (!pareceImagen && !(await esHeic_(file))) return await original();
 
   let abierta = null;
   try {
     onEtapa?.("decodificando");
-    abierta = await decodificar_(file);
+    try {
+      abierta = await decodificar_(file);
+    } catch (err) {
+      if (!(await esHeic_(file))) throw err;
+      onEtapa?.("convirtiendo");
+      abierta = await decodificarHeic_(file);
+    }
     if (!abierta.ancho || !abierta.alto) throw new Error("La imagen no tiene dimensiones válidas.");
 
     onEtapa?.("comprimiendo");
@@ -295,10 +349,12 @@ export async function comprimirImagen(file, opts = {}) {
       ancho,
       alto,
     };
-  } catch {
-    // HEIC que este navegador no abre: el servidor lo rechazaría igual, así
-    // que se avisa sin gastar los datos del técnico en mandarlo.
-    if (esHeic_(file)) {
+  } catch (err) {
+    if (err?.propagar) throw err;
+    // HEIC que ni libheif pudo abrir (o el celular se quedó sin memoria): el
+    // servidor lo rechazaría igual, así que se avisa sin gastar los datos del
+    // técnico en mandarlo.
+    if (await esHeic_(file)) {
       const e = new Error(MSG_HEIC);
       e.sinReintento = true;
       throw e;

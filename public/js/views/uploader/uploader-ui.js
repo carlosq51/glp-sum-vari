@@ -144,6 +144,7 @@ export function initUploaderUI(root, options = {}) {
   /** Texto de la etapa en curso. El técnico necesita saber si ya salió de su teléfono. */
   const ETAPAS = {
     decodificando: "Abriendo foto…",
+    convirtiendo: "Convirtiendo foto HEIC…",
     comprimiendo: "Comprimiendo…",
     upload: "Subiendo…",
   };
