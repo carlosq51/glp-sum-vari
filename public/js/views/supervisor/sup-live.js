@@ -64,6 +64,7 @@ let franjaFilter_ = null;   // índice de franja de la jornada
 let techFilter_   = null;   // "userId__rol" de la persona seleccionada
 let fechaSel_     = null;   // null = jornada en curso; "YYYY-MM-DD" = día cerrado
 let esHoy_        = true;   // lo confirma el backend en cada respuesta
+let tiemposMedios_ = null;  // { MOTOR, TANQUE } ms medios de una mitad, de los 30 días previos
 let cargando_     = false;  // hay un fetch en vuelo (lo pinta la barra de mando)
 
 // Orden de la matriz: por nombre, por total o por una franja concreta.
@@ -236,6 +237,7 @@ function renderLive_(container, data) {
   // El backend manda qué jornada armó: con él se decide si esto es un panel en
   // vivo o la foto de un día cerrado, y de ahí cuelga medio comportamiento.
   esHoy_ = data.esHoy !== false;
+  tiemposMedios_ = data.tiemposMedios || null;
 
   const techs = Array.isArray(data.techs) ? data.techs : [];
   if (!techs.length) {
@@ -902,13 +904,38 @@ function seriesAcum_(data) {
  * llenar la tabla de puntos rojos el día que el despacho esté apagado sería
  * afirmar una ausencia que nadie ha comprobado.
  */
+/**
+ * El punto de la fila: cómo va la mitad que tiene abierta, contra el tiempo
+ * medio de su puesto en los 30 días anteriores.
+ *   verde (late) → trabajando y aún por debajo de la media
+ *   rojo  (late) → trabajando y ya por encima
+ *   amarillo     → en pausa o con el carro sin iniciar
+ *   sin punto    → no tiene nada abierto
+ * Solo en vivo: en un día cerrado no hay "ahora". Sin media (calidad, ramales,
+ * o si el cálculo falló) no hay rojo, solo verde o amarillo.
+ */
 function presenciaHTML_(t) {
-  const estado = String(t.asistencia || "").toUpperCase();
-  if (!estado || estado === "FUERA") return "";
-  const pausa = estado === "PAUSA";
-  const desde = t.asistenciaAt ? ` (entró ${fmtFechaHora_(t.asistenciaAt)})` : "";
-  const texto = `${pausa ? "En pausa" : "En el taller"}${desde}`;
-  return `<i class="lvVivo${pausa ? " is-pausa" : ""}" role="img" aria-label="${escapeHtml(texto)}" title="${escapeHtml(texto)}"></i>`;
+  if (!esHoy_) return "";
+  const abiertas = (t.asignacionesHoy || []).filter(a => a.estado !== "FINALIZADO" || a.cerradoDespues);
+  const a = abiertas.find(x => x.vin === t.vinActivo) || abiertas[0];
+  if (!a) return "";
+
+  const etq   = etiquetaTrabajo_(a.vin, a.tipo_ramal).texto || "su carro";
+  const media = tiemposMedios_?.[String(t.rol || "").toUpperCase()] || null;
+  const ms    = (Number(a.tiempo_ms) || 0)
+              + (a.estado === "TRABAJANDO" && a.running_since ? Math.max(0, Date.now() - new Date(a.running_since).getTime()) : 0);
+  const lleva = `lleva ${fmtTiempo_(ms)}${media ? ` · media del puesto ${fmtTiempo_(media)}` : ""}`;
+
+  let cls, texto;
+  if (a.estado === "TRABAJANDO") {
+    const tarde = media && ms > media;
+    cls   = tarde ? "is-tarde" : "";
+    texto = `${tarde ? "Pasó la media" : "En tiempo"} en ${etq} · ${lleva}`;
+  } else {
+    cls   = "is-pausa";
+    texto = `${a.estado === "PAUSADO" ? "En pausa" : "Sin iniciar"} en ${etq} · ${lleva}`;
+  }
+  return `<i class="lvVivo ${cls}" role="img" aria-label="${escapeHtml(texto)}" title="${escapeHtml(texto)}"></i>`;
 }
 
 // ── 3b. El día en cifras ──────────────────────────────────────────────
@@ -1116,7 +1143,13 @@ export function cortesTablasHTML_(modelo) {
       personas, por eso «Carros completos» es menor que «Mitades cerradas».
       Toca un <b>nombre</b> para filtrar el tablero por esa persona y una <b>cabecera</b>
       para ordenar o quedarte con un corte.
-      ${esHoy_ ? `El punto <i class="lvVivo" aria-hidden="true"></i> marca a quien está en el taller ahora.` : ""}
+      ${esHoy_ ? `El punto dice cómo va lo que tiene abierto contra la media de su puesto en los 30 días previos${
+        tiemposMedios_?.MOTOR || tiemposMedios_?.TANQUE
+          ? ` (${[["MOTOR", tiemposMedios_.MOTOR], ["TANQUE", tiemposMedios_.TANQUE]].filter(([, m]) => m)
+              .map(([r, m]) => `${escapeHtml(rolMeta(r).label.toLowerCase())} ${escapeHtml(fmtTiempo_(m))}`).join(" · ")})` : ""}:
+        <i class="lvVivo" aria-hidden="true"></i> en tiempo,
+        <i class="lvVivo is-tarde" aria-hidden="true"></i> pasó la media,
+        <i class="lvVivo is-pausa" aria-hidden="true"></i> en pausa o sin iniciar; sin punto, no tiene nada abierto.` : ""}
     </div>
   </div>`;
 }
@@ -1129,6 +1162,7 @@ export function cortesTablasHTML_(modelo) {
  * contar dos veces.
  */
 export function cortesHTML_(data, techs) {
+  if (data && "tiemposMedios" in data) tiemposMedios_ = data.tiemposMedios;
   return cortesTablasHTML_(construirModelo_(data, techs));
 }
 

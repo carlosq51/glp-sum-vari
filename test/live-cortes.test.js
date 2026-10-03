@@ -5,8 +5,8 @@
 //     que armó 8 ramales encabezara el día por encima de quien cerró 3 carros
 //   · un carro lo cierran DOS personas, así que la suma de mitades nunca es el
 //     número de carros
-//   · quien está dentro del taller se marca, y no saber dónde está alguien no
-//     es lo mismo que saber que se fue
+//   · el punto de cada fila compara lo que tiene abierto con la media de su
+//     puesto, y sin media no se inventa el rojo
 import { describe, it, expect, beforeAll } from "vitest";
 
 let cortesHTML_;
@@ -96,33 +96,52 @@ describe("cortesHTML_", () => {
     expect(fila.slice(0, 400).match(/>1</g) || []).toHaveLength(3);
   });
 
-  it("marca con un punto vivo a quien está en el taller", () => {
-    const html = cortesHTML_({ cierres: { conv: [], cal: [] } }, [
-      tec("DENTRO", "MOTOR", [MANANA], { asistencia: "PRESENTE", asistenciaAt: MANANA }),
-    ]);
-    expect(html).toContain('class="lvVivo"');
-    expect(html).toContain("En el taller");
+  // El punto compara la mitad abierta con la media del puesto. Se mira solo la
+  // tabla: la nota del pie lleva puntos de muestra como leyenda.
+  const tabla_ = (h) => h.slice(0, h.indexOf("lvCortes__nota"));
+  const MEDIA  = { MOTOR: 60 * 60_000, TANQUE: 90 * 60_000 };   // 1 h y 1 h 30
+  const abierta = (estado, minutos) => ({
+    vin: "VIN1", estado, tiempo_ms: minutos * 60_000, running_since: null, updated_at: MANANA,
+  });
+  const con = (nombre, rol, a) => tec(nombre, rol, [MANANA], {
+    vinActivo: "VIN1", asignacionesHoy: [cierre(MANANA), a],
   });
 
-  it("distingue estar en pausa de estar trabajando", () => {
-    const html = cortesHTML_({ cierres: { conv: [], cal: [] } }, [
-      tec("PARADO", "MOTOR", [MANANA], { asistencia: "PAUSA" }),
-    ]);
-    expect(html).toContain("lvVivo is-pausa");
-    expect(html).toContain("En pausa");
+  it("verde mientras la mitad abierta va por debajo de la media del puesto", () => {
+    const html = cortesHTML_({ cierres: { conv: [], cal: [] }, tiemposMedios: MEDIA },
+      [con("RAPIDO", "MOTOR", abierta("TRABAJANDO", 40))]);
+    expect(tabla_(html)).toContain('class="lvVivo "');
+    expect(tabla_(html)).toContain("En tiempo");
   });
 
-  it("sin marca no pinta nada: no saber dónde está alguien no es saber que se fue", () => {
-    // Es el caso del módulo de despacho apagado. Marcar a todo el taller como
-    // ausente sería afirmar algo que nadie ha comprobado.
-    // Se mira solo la tabla: la nota del pie lleva un punto de muestra como
-    // leyenda, y ese sí tiene que estar siempre.
-    const tabla_ = (h) => h.slice(0, h.indexOf("lvCortes__nota"));
-    const sinDato = cortesHTML_({ cierres: { conv: [], cal: [] } }, [tec("X", "MOTOR", [MANANA])]);
-    const fuera   = cortesHTML_({ cierres: { conv: [], cal: [] } },
-      [tec("Y", "MOTOR", [MANANA], { asistencia: "FUERA" })]);
-    expect(tabla_(sinDato)).not.toContain("lvVivo");
-    expect(tabla_(fuera)).not.toContain("lvVivo");
+  it("rojo cuando pasa la media, y la media es la de SU puesto", () => {
+    // 70 min: pasa la del motor (60) pero no la del tanque (90).
+    const motor  = cortesHTML_({ cierres: { conv: [], cal: [] }, tiemposMedios: MEDIA },
+      [con("LENTO", "MOTOR", abierta("TRABAJANDO", 70))]);
+    const tanque = cortesHTML_({ cierres: { conv: [], cal: [] }, tiemposMedios: MEDIA },
+      [con("NORMAL", "TANQUE", abierta("TRABAJANDO", 70))]);
+    expect(tabla_(motor)).toContain("lvVivo is-tarde");
+    expect(tabla_(tanque)).not.toContain("is-tarde");
+  });
+
+  it("amarillo en pausa, aunque lleve más que la media", () => {
+    const html = cortesHTML_({ cierres: { conv: [], cal: [] }, tiemposMedios: MEDIA },
+      [con("PARADO", "MOTOR", abierta("PAUSADO", 120))]);
+    expect(tabla_(html)).toContain("lvVivo is-pausa");
+    expect(tabla_(html)).toContain("En pausa");
+  });
+
+  it("sin nada abierto no hay punto", () => {
+    const html = cortesHTML_({ cierres: { conv: [], cal: [] }, tiemposMedios: MEDIA },
+      [tec("LIBRE", "MOTOR", [MANANA])]);
+    expect(tabla_(html)).not.toContain("lvVivo");
+  });
+
+  it("sin media no hay rojo: no se inventa el listón", () => {
+    const html = cortesHTML_({ cierres: { conv: [], cal: [] }, tiemposMedios: null },
+      [con("SIN DATO", "MOTOR", abierta("TRABAJANDO", 500))]);
+    expect(tabla_(html)).toContain("lvVivo");
+    expect(tabla_(html)).not.toContain("is-tarde");
   });
 
   it("quien no vino hoy no ocupa una fila", () => {

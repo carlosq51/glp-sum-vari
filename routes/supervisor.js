@@ -588,6 +588,44 @@ async function modelosDeVins_(SUPABASE_URL, headers, cfg, vins) {
   return vinsMap;
 }
 
+/**
+ * Tiempo medio de una mitad (motor o tanque) en las jornadas anteriores.
+ *
+ * Es el listón del punto de la tabla por técnico: verde mientras la mitad que
+ * tiene abierta va por debajo, rojo cuando lo pasa. Se mide con tiempo_trab_ms,
+ * que ya descuenta las pausas.
+ *
+ * Solo días cerrados (antes de `hasta`): así el listón no se mueve durante la
+ * jornada y se puede cachear horas. Fuera de rango (<10 min o >8 h) se
+ * descarta: son cronómetros olvidados o cierres de prueba, y un solo 30 h
+ * movería la media de todo el mes.
+ */
+const TIEMPO_MITAD_MIN_MS = 10 * 60_000;
+const TIEMPO_MITAD_MAX_MS = 8 * 60 * 60_000;
+
+async function tiemposMediosConv_(SUPABASE_URL, headers, desde, hasta) {
+  const acc = { MOTOR: { s: 0, n: 0 }, TANQUE: { s: 0, n: 0 } };
+  const PAGINA = 1000;   // el tope de filas de PostgREST: se pagina para no recortar en silencio
+  for (let off = 0; off < 10 * PAGINA; off += PAGINA) {
+    const url = `${SUPABASE_URL}/rest/v1/asignaciones?select=rol_trabajo,tiempo_trab_ms` +
+      `&activo=eq.true&estado_actual=eq.FINALIZADO&rol_trabajo=in.(MOTOR,TANQUE)` +
+      `&updated_at=gte.${desde}&updated_at=lt.${hasta}` +
+      `&order=id.asc&limit=${PAGINA}&offset=${off}`;
+    const r = await fetch(url, { headers });
+    if (!r.ok) throw new Error(`tiempos medios: ${r.status}`);
+    const filas = await r.json();
+    for (const f of filas) {
+      const ms = Number(f.tiempo_trab_ms) || 0;
+      const a  = acc[String(f.rol_trabajo || "").toUpperCase()];
+      if (!a || ms < TIEMPO_MITAD_MIN_MS || ms > TIEMPO_MITAD_MAX_MS) continue;
+      a.s += ms; a.n++;
+    }
+    if (filas.length < PAGINA) break;
+  }
+  const media = (a) => (a.n ? Math.round(a.s / a.n) : null);
+  return { MOTOR: media(acc.MOTOR), TANQUE: media(acc.TANQUE), n: { MOTOR: acc.MOTOR.n, TANQUE: acc.TANQUE.n } };
+}
+
 async function asistenciaDeHoy_(SUPABASE_URL, headers, fecha = jornadaFecha_()) {
   try {
     const r = await fetch(
@@ -1005,6 +1043,13 @@ async function armarLiveSupervisor_(fechaPedida = null) {
       () => convMesPrevio_(SUPABASE_URL, headers, cfg, ym, hoy00),
     ).catch(() => ({ convDone: 0, truncado: false, ok: false }));
 
+    // El listón del punto de la tabla por técnico. Si falla, el punto se queda
+    // en verde/amarillo sin rojo: mejor eso que inventar un tiempo medio.
+    const tiemposMedios = await cachedByTopics_(
+      `supervisor:live:tiempos:${jornadaStr}`, [], cfg.LIVE_CACHE_MES_MS,
+      () => tiemposMediosConv_(SUPABASE_URL, headers, hace30d00, hoy00),
+    ).catch(() => null);
+
     const mes = {
       ym,
       convDone:    mesPrevio.convDone + convDone,
@@ -1267,7 +1312,7 @@ async function armarLiveSupervisor_(fechaPedida = null) {
     const duration = Date.now() - t1;
     return {
       ok: true, techs, fecha: jornadaStr, esHoy, vinsSummary,
-      mes, cierres, cierresDet, carrosMedios, asistenciaConv,
+      mes, cierres, cierresDet, carrosMedios, asistenciaConv, tiemposMedios,
       _timing: `${duration}ms`,
     };
 

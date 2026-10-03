@@ -407,9 +407,9 @@ button[data-suptrack].active {
 }
 .lvCortes__nota b { font-weight: var(--fw-bold); }
 
-/* ── Presencia: quién está DENTRO del taller ahora (marcaje de despacho) ──
-   Late, porque es el único dato de toda la tabla que cambia sin que nadie
-   cierre nada: lo demás es producción ya hecha. */
+/* ── El punto: cómo va la mitad abierta contra la media del puesto ──
+   Late mientras trabaja, porque es el único dato de la tabla que cambia sin
+   que nadie cierre nada: lo demás es producción ya hecha. */
 .lvVivo {
   display: inline-block;
   width: 6px;
@@ -420,9 +420,10 @@ button[data-suptrack].active {
   vertical-align: middle;
   animation: livePulse 1.8s ease-in-out infinite;
 }
+.lvVivo.is-tarde { background: var(--danger); }
 .lvVivo.is-pausa {
   background: var(--warn);
-  animation: none;   /* en pausa está, pero no está produciendo */
+  animation: none;   /* tiene carro, pero no está produciendo */
 }
 @media (prefers-reduced-motion: reduce) {
   .lvVivo { animation: none; }
