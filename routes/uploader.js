@@ -18,8 +18,8 @@ const router = Router();
 const R2_ACTIONS = new Set(["getStatus", "uploadOne", "uploadFalla", "uploadCalidad", "uploadConformidad", "deleteSlot", "uploadAvatar"]);
 
 router.post("/api/uploader/proxy", async (req, res) => {
+  const body = req.body || {};
   try {
-    const body   = req.body || {};
     const action = String(body.action || "").trim();
     const { action: _omit, ...payload } = body;
 
@@ -58,6 +58,12 @@ router.post("/api/uploader/proxy", async (req, res) => {
 
     return res.json(result);
   } catch (e) {
+    // Con 200 y ok:false el cliente lo muestra tal cual y NO reintenta:
+    // reintentar un HEIC daría el mismo no.
+    if (e.code === "FOTO_HEIC") {
+      console.warn("[R2_UPLOADER] HEIC rechazado:", body.vin || "", body.slot || "");
+      return res.json({ ok: false, error: e.message });
+    }
     console.error("[R2_UPLOADER] ERROR:", e.message);
     return res.status(500).json({ ok: false, error: String(e.message || e) });
   }

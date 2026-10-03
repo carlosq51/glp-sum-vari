@@ -542,6 +542,12 @@ export function initUploaderUI(root, options = {}) {
         setText(outId, `✅ Guardado: ${slot} (${ahorroLegible(j.foto)})`);
         return j;
       } catch (e) {
+        // La foto no sirve tal como está (HEIC): reintentar daría lo mismo.
+        if (e?.sinReintento) {
+          marcarSlot(slot, "error", e.message);
+          setText(outId, `❌ ${slot}: ${e.message}`);
+          return { ok: false, error: e.message };
+        }
         const quedan = 1 + REINTENTOS_AUTO - intento;
         if (quedan > 0) {
           marcarSlot(slot, "trabajando", `Sin señal — reintentando (${intento}/${REINTENTOS_AUTO})…`);

@@ -12,7 +12,12 @@
 // =========================
 
 import { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectCommand } from "@aws-sdk/client-s3";
-import { normalizeImage } from "./lib/image-optimize.js";
+import { normalizeImage, isHeicBuffer_ } from "./lib/image-optimize.js";
+
+/** Mensaje para el técnico: lo único que arregla esto es cambiar la cámara. */
+export const MSG_FOTO_HEIC =
+  "La foto está en formato HEIC y este celular no la pudo convertir. " +
+  "En la cámara cambia el formato a JPG (Ajustes → Formato de imagen / \"Más compatible\") y vuelve a tomarla.";
 
 let _client = null;
 
@@ -91,6 +96,14 @@ async function put(key, b64OrBuffer, contentType = "image/jpeg") {
   if (raw.length > 2 * 1024 * 1024) {
     const rssMb = (process.memoryUsage().rss / 1048576).toFixed(0);
     console.log(`[R2] original pesado ${key}: ${(raw.length / 1048576).toFixed(1)}MB ${contentType} · rss ${rssMb}MB`);
+  }
+
+  // Un HEIC que el celular no pudo abrir no se convierte aquí (ver
+  // image-optimize): guardarlo crudo dejaría una foto que Chrome no muestra.
+  if (isHeicBuffer_(raw) || /heic|heif/i.test(contentType || "")) {
+    const e = new Error(MSG_FOTO_HEIC);
+    e.code = "FOTO_HEIC";
+    throw e;
   }
 
   // Red de seguridad: re-comprime TODO (atrapa HEIC de iPhone y originales sin

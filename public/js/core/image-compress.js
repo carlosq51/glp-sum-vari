@@ -11,9 +11,11 @@
 // red, que es justo lo caro.
 //
 // Aquí no se pregunta el formato: se intenta decodificar y ya. Safari en iPhone
-// —el único navegador donde aparecen HEIC— sabe decodificarlos perfectamente.
-// El que no puede es Android, y ahí el archivo nunca es HEIC. Subir el original
-// queda como último recurso, no como primera reacción.
+// sabe decodificarlos perfectamente. Android también puede guardar HEIC
+// (Samsung, Xiaomi… con "ahorro de espacio") y su navegador NO lo abre: ese
+// caso se corta aquí con un mensaje, porque el servidor tampoco lo convierte
+// (2026-10-03: heic-convert lo tumbaba por memoria). Subir el original queda
+// como último recurso, solo para formatos que el servidor sí sabe abrir.
 // =========================
 
 /**
@@ -204,6 +206,14 @@ function base64_(blob) {
   });
 }
 
+const MSG_HEIC =
+  "La foto está en formato HEIC y este celular no la pudo convertir. " +
+  "En la cámara cambia el formato a JPG (Ajustes → Formato de imagen / \"Más compatible\") y vuelve a tomarla.";
+
+function esHeic_(file) {
+  return /heic|heif/i.test(file?.type || "") || /\.(heic|heif)$/i.test(file?.name || "");
+}
+
 // ─── API pública ────────────────────────────────────────────────────────────
 
 /**
@@ -286,8 +296,15 @@ export async function comprimirImagen(file, opts = {}) {
       alto,
     };
   } catch {
-    // Formato que el navegador no abre, canvas bloqueado, memoria: da igual el
-    // motivo. El original sube y el servidor lo normaliza.
+    // HEIC que este navegador no abre: el servidor lo rechazaría igual, así
+    // que se avisa sin gastar los datos del técnico en mandarlo.
+    if (esHeic_(file)) {
+      const e = new Error(MSG_HEIC);
+      e.sinReintento = true;
+      throw e;
+    }
+    // Otro formato que el navegador no abre, canvas bloqueado, memoria: da
+    // igual el motivo. El original sube y el servidor lo normaliza.
     return await original();
   } finally {
     abierta?.liberar();
