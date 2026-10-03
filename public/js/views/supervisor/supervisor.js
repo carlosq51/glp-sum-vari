@@ -117,10 +117,15 @@ function bindSupDrill_() {
 
 function setSupTrack_(t) {
   supTrack = (t === "CALIDAD" || t === "RAMAL") ? t : "CONVERSION";
+  pintarTrack_();
+  fetchSupervisorReport_().catch(() => {});
+}
+
+/** Marca el track activo en los botones y la píldora, sin pedir datos. */
+function pintarTrack_() {
   document.querySelectorAll("[data-suptrack]").forEach((b) => b.classList.toggle("active", b.dataset.suptrack === supTrack));
   const pill = document.getElementById("supTrackPill");
   if (pill) pill.textContent = supTrack === "CONVERSION" ? "CONVERSIÓN (MOTOR + TANQUE)" : supTrack === "CALIDAD" ? "CALIDAD" : "RAMAL";
-  fetchSupervisorReport_().catch(() => {});
 }
 
 function supervisorDebounceFetch_() {
@@ -507,6 +512,27 @@ export function init() {
   document.querySelectorAll("[data-suptrack]").forEach((btn) =>
     btn.addEventListener("click", () => setSupTrack_(btn.dataset.suptrack))
   );
+
+  // Desde la tabla del LIVE: el reporte de un técnico en esa jornada. Se
+  // rellenan los filtros y se entra por la pestaña, que es la que pide los
+  // datos: así sale una sola petición y el reporte queda como si el
+  // supervisor lo hubiera filtrado a mano (y puede seguir tocándolo).
+  document.addEventListener("sup:reporte-tecnico", (e) => {
+    const { nombre = "", rol = "", fecha = "" } = e.detail || {};
+    const set_ = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+    set_("supName", nombre);
+    set_("supVin", "");
+    set_("supMonth", "");
+    set_("supFrom", fecha);
+    set_("supTo", fecha);
+
+    const r = String(rol).toUpperCase();
+    supTrack = r === "CALIDAD" ? "CALIDAD" : r === "RAMALERO" ? "RAMAL" : "CONVERSION";
+    pintarTrack_();
+
+    document.querySelector('.sup-tab[data-suptab="REPORTE"]')?.click();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
 
   document.getElementById("btnSupApply")?.addEventListener("click", () => fetchSupervisorReport_().catch(() => {}));
 

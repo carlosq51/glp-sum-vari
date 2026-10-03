@@ -1074,7 +1074,7 @@ export function cortesTablasHTML_(modelo) {
     const sel    = techFilter_ === keyTech_(t);
     return `
     <tr class="${[total === 0 ? "is-cero" : "", sel ? "is-sel" : ""].filter(Boolean).join(" ")}" data-techrow="${escapeHtml(keyTech_(t))}">
-      <th scope="row" title="${escapeHtml(nombre)} — ${escapeHtml(rm.label)} · toca para filtrar el tablero por esta persona">
+      <th scope="row" title="${escapeHtml(nombre)} — ${escapeHtml(rm.label)} · toca para ver su reporte">
         ${presenciaHTML_(t)}<span class="lvCortes__rol" style="color:${rm.color};">${rm.icon}</span>${escapeHtml(nombre)}
       </th>
       ${fila_(celdas)}
@@ -1141,7 +1141,7 @@ export function cortesTablasHTML_(modelo) {
       Cada columna es el corte que <b>empieza</b> a esa hora. Arriba, cada fila cuenta
       <b>mitades</b> (el motor de un carro, o su tanque); el carro entero lo cierran dos
       personas, por eso «Carros completos» es menor que «Mitades cerradas».
-      Toca un <b>nombre</b> para filtrar el tablero por esa persona y una <b>cabecera</b>
+      Toca un <b>nombre</b> para abrir su reporte de la jornada y una <b>cabecera</b>
       para ordenar o quedarte con un corte.
       ${esHoy_ ? `El punto dice cómo va lo que tiene abierto contra la media de su puesto en los 30 días previos${
         tiemposMedios_?.MOTOR || tiemposMedios_?.TANQUE
@@ -1459,12 +1459,16 @@ function bindLive_(container, techs, metaTec, data) {
     });
   });
 
-  // Fila de la matriz: filtra el tablero por esa persona (cross-filter).
+  // Fila de la matriz: abre el REPORTE de esa persona en esta jornada. Filtrar
+  // el LIVE por una sola persona enseñaba poco; el reporte trae cada OT con
+  // sus tiempos. Va por evento porque supervisor.js ya importa este módulo.
   container.querySelectorAll("[data-techrow]").forEach(tr => {
     tr.querySelector("th[scope=row]")?.addEventListener("click", () => {
-      const k = tr.dataset.techrow;
-      techFilter_ = techFilter_ === k ? null : k;
-      repintar_();
+      const t = techs.find(x => keyTech_(x) === tr.dataset.techrow);
+      if (!t) return;
+      document.dispatchEvent(new CustomEvent("sup:reporte-tecnico", {
+        detail: { nombre: t.nombre || t.email || "", rol: t.rol || "", fecha: data.fecha || jornadaHoyPE_() },
+      }));
     });
   });
 
