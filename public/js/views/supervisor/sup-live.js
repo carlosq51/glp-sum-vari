@@ -70,6 +70,7 @@ let cargando_     = false;  // hay un fetch en vuelo (lo pinta la barra de mando
 let orden_ = { col: "total", dir: "desc" };
 
 let focoTile_   = null;     // visual maximizado (el "modo foco" de Power BI)
+let vistaGrafico_ = "jornada"; // pestaña del panel de gráficos
 let _prevKpi    = { conv: null, cal: null }; // para animar los números al cambiar
 
 const ORDEN_ROLES = ["MOTOR", "TANQUE", "CALIDAD", "RAMALERO"];
@@ -281,33 +282,7 @@ function renderLive_(container, data) {
         <span>Gráficos</span>
         <em>la forma de las mismas cifras · ningún número nuevo</em>
       </div>
-      ${tileHTML_({
-        id: "ritmo", titulo: "Ritmo de la jornada",
-        sub: "carros convertidos en cada hora · del taller",
-        span: 2, body: canvasHTML_(CANVAS.ritmo),
-      })}
-      ${tileHTML_({
-        id: "acum", titulo: "Acumulado contra el objetivo",
-        sub: "lo cerrado hasta cada hora · del taller",
-        body: canvasHTML_(CANVAS.acum),
-      })}
-      ${tileHTML_({
-        id: "puestos", titulo: "Mitades por puesto",
-        sub: `mitades cerradas en cada corte${filtroNota_()}`,
-
-        body: canvasHTML_(CANVAS.puestos),
-      })}
-      ${tileHTML_({
-        id: "prod", titulo: "Bruta y final",
-        sub: "carros con las dos mitades contra carros ya con calidad · del taller",
-
-        body: canvasHTML_(CANVAS.prod),
-      })}
-      ${tileHTML_({
-        id: "embudo", titulo: "Embudo y acumulado del mes",
-        sub: "el carro no termina cuando se convierte",
-        body: `${funnelHTML_(data.vinsSummary || {})}${mesHTML_(data)}`,
-      })}
+      ${graficoTileHTML_(data)}
     </div>
   </div>`;
 
@@ -615,6 +590,33 @@ function tileHTML_({ id, titulo, sub = "", span = 1, bare = false, body = "" }) 
     </header>
     <div class="lvTile__body">${body}</div>
   </section>`;
+}
+
+// Un solo gráfico con pestañas en vez de cinco tiles: se mira uno a la vez, y
+// cinco a la vez obligaban a bajar media pantalla para llegar al que importaba.
+// Solo el canvas de la vista elegida está en el DOM; los demás no se montan
+// (barras_ y acumulado_ se saltan el canvas que no encuentran).
+const VISTAS_GRAFICO = [
+  { id: "jornada", tab: "Jornada",       titulo: "Ritmo de la jornada",          sub: () => "carros convertidos en cada hora · del taller" },
+  { id: "acum",    tab: "Acumulado",     titulo: "Acumulado contra el objetivo", sub: () => "lo cerrado hasta cada hora · del taller" },
+  { id: "puestos", tab: "Por puesto",    titulo: "Mitades por puesto",           sub: () => `motores y tanques cerrados en cada corte${filtroNota_()}` },
+  { id: "prod",    tab: "Bruta y final", titulo: "Bruta y final",                sub: () => "carros con las dos mitades contra carros ya con calidad · del taller" },
+  { id: "mes",     tab: "Embudo y mes",  titulo: "Embudo y acumulado del mes",   sub: () => "el carro no termina cuando se convierte" },
+];
+
+function graficoTileHTML_(data) {
+  const v = VISTAS_GRAFICO.find(x => x.id === vistaGrafico_) || VISTAS_GRAFICO[0];
+  const canvas = { jornada: CANVAS.ritmo, acum: CANVAS.acum, puestos: CANVAS.puestos, prod: CANVAS.prod }[v.id];
+  const tabs = `
+    <div class="lvTabs lvTabs--graf" role="tablist">
+      ${VISTAS_GRAFICO.map(x => `
+        <button type="button" class="lvTab${x.id === v.id ? " is-on" : ""}" role="tab"
+          data-grafico="${x.id}" aria-selected="${x.id === v.id}" style="--tabTone:var(--accent);">${escapeHtml(x.tab)}</button>`).join("")}
+    </div>`;
+  return tileHTML_({
+    id: "graficos", titulo: v.titulo, sub: v.sub(), span: 2,
+    body: tabs + (canvas ? canvasHTML_(canvas) : `${funnelHTML_(data.vinsSummary || {})}${mesHTML_(data)}`),
+  });
 }
 
 function canvasHTML_(id) {
@@ -1381,6 +1383,13 @@ function bindLive_(container, techs, metaTec, data) {
     tr.querySelector("th[scope=row]")?.addEventListener("click", () => {
       const k = tr.dataset.techrow;
       techFilter_ = techFilter_ === k ? null : k;
+      repintar_();
+    });
+  });
+
+  container.querySelectorAll("[data-grafico]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      vistaGrafico_ = btn.dataset.grafico;
       repintar_();
     });
   });

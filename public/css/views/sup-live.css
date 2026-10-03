@@ -609,3 +609,8 @@ button.lvKpi--tap:hover { border-top-color: var(--accent); border-right-color: v
 .lvResumen__tbl tr.is-final th[scope="row"],
 .lvResumen__tbl tr.is-final td { border-bottom: 2px solid var(--surfaceLine); }
 .lvResumen__tbl tr.is-final .lvCortes__tot { color: var(--track-calidad, var(--ok)); }
+
+/* Pestañas del panel de gráficos: van pegadas al gráfico que cambian. La
+   altura la devuelve aquí porque buttons.css les clava la de un botón. */
+.lvTabs--graf { margin: 0 0 10px; }
+.lvTabs--graf .lvTab { height: auto; min-height: 0; }
