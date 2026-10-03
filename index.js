@@ -137,11 +137,15 @@ app.use(despachoRouter);
 app.use(invitadoRouter);
 
 // ── Start server ──────────────────────────────────────────────────────────────
-app.listen(PORT, "0.0.0.0", () => {
+app.listen(PORT, "0.0.0.0", async () => {
   console.log(`Servidor corriendo en puerto ${PORT}`);
   console.log(`Ábrelo desde tu celular con: http://192.168.18.121:${PORT}`);
+  // El disco de Render se borra en cada reinicio: el modelo se restaura de
+  // Supabase ANTES de programar el reentrenamiento. Sin el await, el
+  // programador miraba el disco vacío y reentrenaba ~8 000 carros en cada
+  // arranque — en medio de una racha de caídas por memoria, lo peor posible.
   if (!existsSync("./pairing-model.json")) {
-    loadPairingModelFromSupabase_().catch(() => {});
+    await loadPairingModelFromSupabase_().catch(() => {});
   }
   scheduleAutoRetrain_();
   scheduleAutoNormalize_();

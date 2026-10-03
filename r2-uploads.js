@@ -86,6 +86,13 @@ async function put(key, b64OrBuffer, contentType = "image/jpeg") {
     ? b64OrBuffer
     : Buffer.from(b64OrBuffer, "base64");
 
+  // Si llega algo pesado es que el celular no pudo comprimir: queda en el log
+  // qué foto y qué formato entró, por si el servidor se cae justo después.
+  if (raw.length > 2 * 1024 * 1024) {
+    const rssMb = (process.memoryUsage().rss / 1048576).toFixed(0);
+    console.log(`[R2] original pesado ${key}: ${(raw.length / 1048576).toFixed(1)}MB ${contentType} · rss ${rssMb}MB`);
+  }
+
   // Red de seguridad: re-comprime TODO (atrapa HEIC de iPhone y originales sin
   // comprimir cuando el canvas del cliente falló). Nunca lanza — fallback al original.
   const { buffer: body, contentType: finalType, optimized } = await normalizeImage(raw, contentType);

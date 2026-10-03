@@ -908,7 +908,7 @@ router.post("/api/evento", async (req, res) => {
           woPatch.fecha_sin_calidad = new Date().toISOString();
         }
         await supabasePatch_("work_orders", { id: workOrderId }, woPatch);
-        console.log(`[EVENTO] estado_general actualizado: ${estadoGeneral} (motor=${motor}, tanque=${tanque})`);
+        console.log(`[EVENTO] estado_general actualizado: ${estadoGeneral}`);
       } catch (err) {
         console.warn("[EVENTO] No se pudo actualizar estado_general:", err.message);
       }
