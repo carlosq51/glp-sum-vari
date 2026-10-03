@@ -783,7 +783,7 @@ async function armarLiveSupervisor_(fechaPedida = null) {
 
     const selectFields =
       `id,work_order_id,user_id,tipo_ot,rol_trabajo,estado_actual,running_since,tiempo_trab_ms,fecha_asignacion,updated_at,activo,` +
-      `usuarios!inner(id,nombre,email),` +
+      `usuarios!inner(id,nombre,email,activo),` +
       `work_orders(id,vin,tipo_ramal,tipo_ot,estado_general)`;
 
     // Q1: Asignaciones creadas hoy (activas o no)
@@ -1086,6 +1086,7 @@ async function armarLiveSupervisor_(fechaPedida = null) {
           email: user.email || "",
           rol: asg.rol_trabajo || "",
           assignments: [],
+          inactivo: user.activo === false,
         });
       }
 
@@ -1115,6 +1116,13 @@ async function armarLiveSupervisor_(fechaPedida = null) {
       // Cerrado al día siguiente = abierto al cierre de ESTA jornada.
       const finalizados = asgList.filter(a => a.estado === "FINALIZADO" && !a.cerradoDespues);
       const activos     = asgList.filter(a => a.estado !== "FINALIZADO" || a.cerradoDespues);
+
+      // Desactivado en Admin = ya no trabaja aquí. Sus OTs viejas siguen
+      // abiertas y antes lo pintaban como técnico "en curso" con 1000+ min
+      // parado. Solo se queda si cerró algo ESA jornada: eso es producción
+      // real del día (una jornada pasada, o el día que se fue) y sin él la
+      // tabla por técnico no cuadraría con la bruta.
+      if (tech.inactivo && !finalizados.length) continue;
 
 
       // El VIN/estado activo actual (el más reciente no finalizado). Se prefiere
