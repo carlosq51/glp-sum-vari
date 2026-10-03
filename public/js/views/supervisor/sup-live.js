@@ -360,48 +360,69 @@ function slicersHTML_(techs, duplas, metaTec, modelo) {
     { f: "SIN_INICIAR", n: conteo("SIN_INICIAR"), tone: "var(--muted)", label: "sin iniciar" },
   ].filter(s => s.n > 0);
 
-  const chips = estados.map(s => chipHTML_("estado", s.f, s.tone, `${s.n} ${s.label}`));
+  // Leyenda de la barra: cada cifra abre a esas personas. Va sin marco ni
+  // relleno de color porque informa; los controles con marco son los filtros.
+  const item = (valor, tone, texto, title = "", on = false) => `
+    <button type="button" class="lvTeam__item${on ? " is-on" : ""}" data-filtro="estado" data-valor="${valor}"
+      style="--itemTone:${tone};"${title ? ` title="${escapeHtml(title)}"` : ""}${on ? ` aria-pressed="true"` : ""}>${texto}</button>`;
+
+  const leyenda = estados.map(s => item(s.f, s.tone, `<i></i><b>${s.n}</b> ${s.label}`));
   // Los parados son un subconjunto de pausados y sin iniciar, no un estado más:
   // sin el title, 14 + 8 + 6 no cuadra con el total y parece un error.
-  if (stalled > 0)           chips.push(chipHTML_("estado", "STALLED", "var(--dv-serious)", `⚠️ ${stalled} parados`,
-    null, `De los pausados y sin iniciar: ${stalled} llevan más de ${STALL_PAUSADO_MS / 60_000} min en pausa o ${STALL_SIN_INI_MS / 60_000} min sin iniciar`));
-  if (duplas.totalMeta > 0)  chips.push(chipHTML_("estado", "META_OK", "var(--note)", `🤝 ${duplas.totalMeta} en meta ${metaTec}`));
+  if (stalled > 0) leyenda.push(item("STALLED", "var(--dv-serious)", `⚠️ <b>${stalled}</b> parados`,
+    `De los pausados y sin iniciar: ${stalled} llevan más de ${STALL_PAUSADO_MS / 60_000} min en pausa o ${STALL_SIN_INI_MS / 60_000} min sin iniciar`));
+  if (duplas.totalMeta > 0) leyenda.push(item("META_OK", "var(--note)", `🤝 <b>${duplas.totalMeta}</b> en meta ${metaTec}`,
+    "Filtra el tablero a quienes ya cumplieron la meta", estadoFilter_ === "META_OK"));
 
-  const franjas = modelo.bloques.map((b, i) => chipHTML_(
-    "franja", String(i),
-    i === modelo.ahora ? "var(--accent)" : "var(--note)",
-    escapeHtml(String(b.label).split("–")[0]) + (i === modelo.ahora ? " ●" : ""),
-    franjaFilter_ === i,
-  ));
+  const enTurno = techs.filter(t => ["TRABAJANDO", "PAUSADO", "SIN_INICIAR"].includes(t.estadoActivo)).length;
+  const conActividad = techs.filter(t => t.estadoActivo !== "DESCONECTADO").length;
+
+  // Control segmentado: "todos" quita el filtro (data-quitar), el resto lo pone.
+  const seg = (tag, todos, opciones) => `
+    <div class="lvSeg">
+      <span class="lvSlice__tag">${tag}</span>
+      <div class="lvSeg__group" role="group" aria-label="${tag}">
+        <button type="button" class="lvSeg__btn${todos.on ? " is-on" : ""}" data-quitar="${todos.quitar}" aria-pressed="${todos.on}">${todos.label}</button>
+        ${opciones.join("")}
+      </div>
+    </div>`;
+  const segBtn = (tipo, valor, texto, on, title = "") => `
+    <button type="button" class="lvSeg__btn${on ? " is-on" : ""}" data-filtro="${tipo}" data-valor="${escapeHtml(valor)}"
+      aria-pressed="${on}"${title ? ` title="${escapeHtml(title)}"` : ""}>${texto}</button>`;
+
+  const presentes = ORDEN_ROLES.filter(r => techs.some(t => String(t.rol || "").toUpperCase() === r));
+  const delRol = r => techs.filter(t => String(t.rol || "").toUpperCase() === r && t.estadoActivo !== "DESCONECTADO").length;
+  const puestos = presentes.length < 2 ? "" : seg("Puesto", { label: "Todos", quitar: "rol", on: !rolFilter_ },
+    presentes.map(r => segBtn("rol", r, `${rolMeta(r).icon} ${escapeHtml(rolMeta(r).label)} <em>${delRol(r)}</em>`, rolFilter_ === r)));
+
+  const cortes = !modelo.bloques.length ? "" : seg("Corte", { label: "Todo el día", quitar: "franja", on: franjaFilter_ == null },
+    modelo.bloques.map((b, i) => segBtn("franja", String(i),
+      `${escapeHtml(String(b.label).split("–")[0])}${i === modelo.ahora ? `<i class="lvSeg__now" aria-label="en curso"></i>` : ""}`,
+      franjaFilter_ === i, `${b.label}${i === modelo.ahora ? " · corte en curso" : ""}`)));
 
   const tech = techFilter_ ? techs.find(t => keyTech_(t) === techFilter_) : null;
 
   return `
   <div class="lvSlice">
-    <div class="lvSlice__row">
-      <span class="lvSlice__tag" title="Cuántos técnicos hay en cada estado ahora mismo">Técnicos</span>
-      ${chipHTML_("estado", "TODOS", "var(--accent)", `👥 Ver todos · ${techs.filter(t => t.estadoActivo !== "DESCONECTADO").length}`, false,
-        "Las tarjetas de cada técnico: carro actual, tiempo y carros del día")}
-      ${chips.join("") || `<span class="lvSlice__none">sin actividad</span>`}
+    <section class="lvTeam" aria-label="Técnicos">
+      <div class="lvTeam__head">
+        <span class="lvSlice__tag">Técnicos</span>
+        ${esHoy_
+          ? `<span class="lvTeam__num" title="Marcaron hoy y aún no cerraron su día"><b>${enTurno}</b> en turno</span>`
+          : `<span class="lvTeam__num"><b>${conActividad}</b> con actividad</span>`}
+        <button type="button" class="lvTeam__all" data-filtro="estado" data-valor="TODOS"
+          title="Las tarjetas de cada técnico: carro actual, tiempo y carros del día">Ver todos (${conActividad}) →</button>
+      </div>
       ${pulseHTML_(techs)}
-    </div>
-    ${rolesChipsHTML_(techs) ? `
-    <div class="lvSlice__row">
-      <span class="lvSlice__tag">Puesto</span>
-      ${rolesChipsHTML_(techs)}
-    </div>` : ""}
-    ${franjas.length ? `
-    <div class="lvSlice__row">
-      <span class="lvSlice__tag">Corte</span>
-      ${franjas.join("")}
-    </div>` : ""}
-    ${hayFiltros_() ? `
-    <div class="lvSlice__row lvSlice__row--on">
-      <span class="lvSlice__tag">Filtros</span>
+      <div class="lvTeam__legend">${leyenda.join("") || `<span class="lvSlice__none">sin actividad</span>`}</div>
+    </section>
+
+    ${puestos || cortes ? `<section class="lvFilters" aria-label="Filtros">${puestos}${cortes}</section>` : ""}
+
+    ${tech || estadoFilter_ ? `
+    <div class="lvSlice__on">
       ${tech ? `<button type="button" class="lvPill" data-quitar="tech">👤 ${escapeHtml(primerNombre_(tech.nombre || tech.email))} ✕</button>` : ""}
-      ${rolFilter_ ? `<button type="button" class="lvPill" data-quitar="rol">${rolMeta(rolFilter_).icon} ${escapeHtml(rolMeta(rolFilter_).label)} ✕</button>` : ""}
-      ${estadoFilter_ ? `<button type="button" class="lvPill" data-quitar="estado">${escapeHtml(estadoFilter_.replace("_", " "))} ✕</button>` : ""}
-      ${franjaFilter_ != null ? `<button type="button" class="lvPill" data-quitar="franja">🕐 ${escapeHtml(String(modelo.bloques[franjaFilter_]?.label || ""))} ✕</button>` : ""}
+      ${estadoFilter_ === "META_OK" ? `<button type="button" class="lvPill" data-quitar="estado">🤝 en meta ✕</button>` : ""}
       <button type="button" class="lvPill lvPill--clear" data-quitar="todo">Limpiar todo</button>
     </div>` : ""}
   </div>`;
@@ -431,14 +452,7 @@ function pulseHTML_(techs) {
     ${enPista > 0
       ? segs.map(s => `<i style="width:${(s.n / enPista * 100).toFixed(2)}%;background:${s.tone};" title="${s.n} ${s.label}"></i>`).join("")
       : `<i style="width:100%;background:var(--ring-track);"></i>`}
-  </span>
-  <span class="lvSlice__total" title="Técnicos que marcaron hoy y aún no cerraron su día">${enPista} técnicos en turno</span>`;
-}
-
-function chipHTML_(tipo, valor, tone, texto, activo = null, title = "") {
-  const on = activo == null ? estadoFilter_ === valor : activo;
-  return `<button type="button" class="lvChip${on ? " is-on" : ""}" data-filtro="${tipo}" data-valor="${escapeHtml(valor)}"
-    style="--chipTone:${tone};" aria-pressed="${on}"${title ? ` title="${escapeHtml(title)}"` : ""}>${texto}</button>`;
+  </span>`;
 }
 
 // ── 1. La fila de KPIs ────────────────────────────────────────────────
@@ -1123,31 +1137,6 @@ function mesHTML_(data) {
       Ritmo ${ritmo.toFixed(1)} carros/jornada · ${m.jornadas} de ${m.jornadasMes} jornadas
     </div>
   </div>`;
-}
-
-// ── 5c. Carros a medias: la mitad que quedó esperando ─────────────────
-//
-// El LIVE agrupa por persona, así que nadie podía preguntarle "¿qué carro está
-// parado?". El backend ya lo sabía — calculaba por VIN qué mitades estaban
-// cerradas y tiraba todo menos el contador.
-//
-// Solo se listan los carros cuya otra mitad NO tiene a nadie encima. Un carro
-// con motor cerrado y tanque en curso es un carro normal a media mañana; si
-// entrara en la lista, un día cualquiera diría "12 carros a medias" y el aviso
-// dejaría de significar nada. Los que sí tienen a alguien se cuentan aparte,
-// en una línea, para que no parezca que se los comió el filtro.
-// ── 6. Puesto: segmentador por especialidad ───────────────────────────
-// Antes eran pestañas encima de las tarjetas; las tarjetas pasaron a popup y
-// el filtro por puesto sube a los segmentadores, que es lo que recorta.
-function rolesChipsHTML_(techs) {
-  const presentes = ORDEN_ROLES.filter(r => techs.some(t => String(t.rol || "").toUpperCase() === r));
-  if (presentes.length < 2) return "";
-  const activosDe = rol => techs.filter(t =>
-    String(t.rol || "").toUpperCase() === rol && t.estadoActivo !== "DESCONECTADO").length;
-  return presentes.map(r => {
-    const m = rolMeta(r);
-    return chipHTML_("rol", r, m.color, `${m.icon} ${escapeHtml(m.label)} ${activosDe(r)}`, rolFilter_ === r);
-  }).join("");
 }
 
 // ── 7. Tarjetas de técnicos (dentro del popup) ────────────────────────

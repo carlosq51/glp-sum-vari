@@ -147,20 +147,121 @@
 /* ── Segmentadores ────────────────────────────────────────────────────
    Una fila por dimensión y encima de todo lo que recortan: un filtro que vive
    debajo de lo que filtra obliga a descubrirlo por accidente. */
+/* Dos bloques: a la izquierda QUIÉN está (informa, cada cifra abre su lista);
+   a la derecha QUÉ se mira (filtros que recortan el tablero). Antes eran tres
+   filas de pastillas de colores y no se distinguía qué informaba y qué filtraba. */
 .lvSlice {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  padding: 9px 12px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px 18px;
+  padding: 12px 14px;
   border-radius: var(--radius);
   background: var(--surface);
   border: 1px solid var(--surfaceLine);
 }
-.lvSlice__row {
-  display: flex;
+@media (min-width: 1000px) {
+  .lvSlice { grid-template-columns: minmax(300px, 1fr) auto; align-items: start; }
+  .lvFilters { padding-left: 18px; border-left: 1px solid var(--surfaceLine); }
+}
+
+.lvTeam { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.lvTeam__head { display: flex; align-items: baseline; gap: 10px; }
+.lvTeam__num { font-size: var(--fs-xs); color: var(--muted); font-weight: var(--fw-bold); }
+.lvTeam__num b {
+  font-size: var(--fs-xl, 22px);
+  font-weight: var(--fw-black);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  margin-right: 2px;
+}
+.lvTeam__all,
+.lvTeam__item {
+  font: inherit;
+  height: auto;
+  min-height: 0;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  transition: background var(--dur-fast);
+}
+.lvTeam__all {
+  margin-left: auto;
+  padding: 4px 8px;
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-extrabold);
+  color: var(--accent);
+}
+.lvTeam__all:hover,
+.lvTeam__item:hover { background: var(--glass); }
+
+.lvTeam__legend { display: flex; flex-wrap: wrap; gap: 2px 4px; margin-left: -6px; }
+.lvTeam__item {
+  display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 5px;
+  padding: 3px 6px;
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-bold);
+  color: var(--muted);
+}
+.lvTeam__item b { color: var(--itemTone, var(--text)); font-weight: var(--fw-black); font-size: var(--fs-xs); }
+.lvTeam__item > i { width: 8px; height: 8px; border-radius: 50%; background: var(--itemTone); }
+.lvTeam__item.is-on { background: var(--pillBg); box-shadow: inset 0 0 0 1px var(--itemTone); }
+
+/* Filtros: controles segmentados neutros, como el selector de fecha. El color
+   queda para el elegido, que es lo único que hace falta ver de un vistazo. */
+.lvFilters { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.lvSeg { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.lvSeg .lvSlice__tag { min-width: 46px; }
+.lvSeg__group {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--pillBg);
+  border: 1px solid var(--pillLine);
+  overflow-x: auto;
+  scrollbar-width: none;
+  min-width: 0;
+}
+.lvSeg__group::-webkit-scrollbar { display: none; }
+.lvSeg__btn {
+  font: inherit;
+  height: auto;
+  min-height: 0;
+  flex: 0 0 auto;
+  white-space: nowrap;
+  cursor: pointer;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-extrabold);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: background var(--dur-fast), color var(--dur-fast);
+}
+.lvSeg__btn em { font-style: normal; opacity: .6; }
+.lvSeg__btn:hover:not(.is-on) { color: var(--text); background: var(--glass); }
+.lvSeg__btn.is-on {
+  color: var(--accent);
+  background: var(--surface);
+  box-shadow: var(--elev-1);
+}
+/* El corte en curso: un punto, no otro color de pastilla. */
+.lvSeg__now { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+
+.lvSlice__on {
+  grid-column: 1 / -1;
+  display: flex;
   flex-wrap: wrap;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--surfaceLine);
 }
 .lvSlice__tag {
   font-size: 9px;
@@ -175,10 +276,7 @@
 /* La barra del taller: proporción de gente activa, en pausa y sin iniciar. */
 .lvSlice__pulse {
   display: flex;
-  height: 7px;
-  flex: 1 1 120px;
-  min-width: 80px;
-  margin-left: 6px;
+  height: 8px;
   border-radius: 99px;
   overflow: hidden;
   background: var(--ring-track);
@@ -186,15 +284,6 @@
 .lvSlice__pulse > i { height: 100%; min-width: 2px; }
 /* Separación entre segmentos sin depender del fondo de la página. */
 .lvSlice__pulse > i + i { box-shadow: -2px 0 0 var(--surface); }
-.lvSlice__total {
-  font-size: var(--fs-2xs);
-  font-weight: var(--fw-black);
-  color: var(--muted);
-  white-space: nowrap;
-}
-
-/* Fila de filtros activos: qué está puesto y cómo quitarlo. */
-.lvSlice__row--on { padding-top: 6px; border-top: 1px dashed var(--surfaceLine); }
 .lvPill {
   font: inherit;
   cursor: pointer;
