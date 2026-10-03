@@ -92,7 +92,7 @@
    Se le devuelve el ancho de contenido y el selector nativo: sin
    `appearance:auto` Chrome esconde el icono del calendario y la única forma de
    cambiar de día sería teclear la fecha a mano. */
-.lvCmd__date {
+.lvCmd__dates input.lvCmd__date {   /* `.lvCmd__date` solo perdía contra inputs.css */
   font: inherit;
   font-size: var(--fs-xs);
   font-weight: var(--fw-bold);
@@ -112,7 +112,9 @@
      blanco en tema noche, porque no sabe en qué tema está la página. */
   color-scheme: dark;
 }
-:root[data-theme="day"] .lvCmd__date { color-scheme: light; }
+:root[data-theme="day"] .lvCmd__dates input.lvCmd__date { color-scheme: light; }
+.lvCmd__dates input.lvCmd__date:hover,
+.lvCmd__dates input.lvCmd__date:focus { border: 0; box-shadow: none; }
 .lvCmd__date:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .lvCmd__date::-webkit-calendar-picker-indicator { opacity: .6; cursor: pointer; }
 .lvCmd__date::-webkit-calendar-picker-indicator:hover { opacity: 1; }
@@ -216,9 +218,30 @@
    El héroe a la izquierda y los secundarios en rejilla. El héroe es el único
    con veredicto porque es el único que tiene contra qué compararse. */
 .lvKpis { display: grid; grid-template-columns: 1fr; gap: 10px; }
-@media (min-width: 860px) {
-  .lvKpis { grid-template-columns: minmax(260px, 1fr) 2fr; align-items: stretch; }
+
+/* Las dos producciones, lado a lado y del mismo tamaño: son LAS cifras del
+   día. Lo demás va debajo y más pequeño, porque explica estas dos. */
+.lvKpis__heroes { display: grid; grid-template-columns: 1fr; gap: 10px; }
+@media (min-width: 700px) {
+  .lvKpis__heroes { grid-template-columns: 1fr 1fr; }
 }
+.lvKpi__hint { font-size: var(--fs-2xs); color: var(--muted); margin-top: -4px; }
+
+/* El héroe de calidad abre el detalle: es <button>, y buttons.css le pondría
+   altura fija, centrado y nowrap. Se le devuelve la forma de tarjeta. */
+button.lvKpi--tap {
+  font: inherit;
+  color: var(--text);
+  text-align: left;
+  height: auto;
+  min-height: 0;
+  align-items: stretch;
+  justify-content: flex-start;
+  white-space: normal;
+  letter-spacing: normal;
+  cursor: pointer;
+}
+button.lvKpi--tap:hover { border-top-color: var(--accent); border-right-color: var(--accent); border-bottom-color: var(--accent); }
 
 .lvKpi--hero {
   position: relative;

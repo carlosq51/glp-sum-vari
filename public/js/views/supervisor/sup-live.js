@@ -396,7 +396,10 @@ function slicersHTML_(techs, duplas, metaTec, modelo) {
   ].filter(s => s.n > 0);
 
   const chips = estados.map(s => chipHTML_("estado", s.f, s.tone, `${s.n} ${s.label}`));
-  if (stalled > 0)           chips.push(chipHTML_("estado", "STALLED", "var(--dv-serious)", `⚠️ ${stalled} sin mov.`));
+  // Los parados son un subconjunto de pausados y sin iniciar, no un estado más:
+  // sin el title, 14 + 8 + 6 no cuadra con el total y parece un error.
+  if (stalled > 0)           chips.push(chipHTML_("estado", "STALLED", "var(--dv-serious)", `⚠️ ${stalled} parados`,
+    null, `De los pausados y sin iniciar: ${stalled} llevan más de ${STALL_PAUSADO_MS / 60_000} min en pausa o ${STALL_SIN_INI_MS / 60_000} min sin iniciar`));
   if (duplas.totalMeta > 0)  chips.push(chipHTML_("estado", "META_OK", "var(--note)", `🤝 ${duplas.totalMeta} en meta ${metaTec}`));
 
   const franjas = modelo.bloques.map((b, i) => chipHTML_(
@@ -411,13 +414,13 @@ function slicersHTML_(techs, duplas, metaTec, modelo) {
   return `
   <div class="lvSlice">
     <div class="lvSlice__row">
-      <span class="lvSlice__tag">Estado</span>
+      <span class="lvSlice__tag" title="Cuántos técnicos hay en cada estado ahora mismo">Técnicos</span>
       ${chips.join("") || `<span class="lvSlice__none">sin actividad</span>`}
       ${pulseHTML_(techs)}
     </div>
     ${franjas.length ? `
     <div class="lvSlice__row">
-      <span class="lvSlice__tag">Franja</span>
+      <span class="lvSlice__tag">Corte</span>
       ${franjas.join("")}
     </div>` : ""}
     ${hayFiltros_() ? `
@@ -457,13 +460,13 @@ function pulseHTML_(techs) {
       ? segs.map(s => `<i style="width:${(s.n / enPista * 100).toFixed(2)}%;background:${s.tone};" title="${s.n} ${s.label}"></i>`).join("")
       : `<i style="width:100%;background:var(--ring-track);"></i>`}
   </span>
-  <span class="lvSlice__total">${enPista} en pista</span>`;
+  <span class="lvSlice__total" title="Técnicos que marcaron hoy y aún no cerraron su día">${enPista} técnicos en turno</span>`;
 }
 
-function chipHTML_(tipo, valor, tone, texto, activo = null) {
+function chipHTML_(tipo, valor, tone, texto, activo = null, title = "") {
   const on = activo == null ? estadoFilter_ === valor : activo;
   return `<button type="button" class="lvChip${on ? " is-on" : ""}" data-filtro="${tipo}" data-valor="${escapeHtml(valor)}"
-    style="--chipTone:${tone};" aria-pressed="${on}">${texto}</button>`;
+    style="--chipTone:${tone};" aria-pressed="${on}"${title ? ` title="${escapeHtml(title)}"` : ""}>${texto}</button>`;
 }
 
 // ── 1. La fila de KPIs ────────────────────────────────────────────────
@@ -515,32 +518,46 @@ function kpisHTML_(data, techs, modelo) {
   const m = data.mes;
   const mesDelta = m?.metaMes ? (Number(m.convDone) || 0) - (Number(m.metaAcum) || 0) : null;
 
+  // La final se lee contra la bruta: de los carros que ya tienen sus dos
+  // mitades, cuántos pasaron calidad. Contra la meta del día no dice nada
+  // nuevo, porque nunca puede ir por delante de la bruta.
+  const cal    = Number(v.calDone) || 0;
+  const pctCal = done > 0 ? Math.min(100, Math.round(cal / done * 100)) : 0;
+
   return `
   <div class="lvKpis">
-    <div class="lvKpi lvKpi--hero" style="--kpiTone:${tone};">
-      <div class="lvKpi__label">Conversión bruta</div>
-
-      <div class="lvKpi__num"><b id="liveKpiConv">${done}</b><span>/ ${meta}</span></div>
-      <div class="lvKpi__verdict">${veredicto}</div>
-      <div class="lvKpi__track" title="${pct}% del objetivo del día">
-        <i style="width:${pct}%;"></i>
-        ${sinMeta || pctEsp >= 100 ? "" : `<u style="left:${pctEsp}%;" title="Lo esperado ${esHoy_ ? "a esta hora" : "al cierre"}: ${esperado}"></u>`}
+    <div class="lvKpis__heroes">
+      <div class="lvKpi lvKpi--hero" style="--kpiTone:${tone};">
+        <div class="lvKpi__label">Producción bruta</div>
+        <div class="lvKpi__hint">carros con motor y tanque cerrados</div>
+        <div class="lvKpi__num"><b id="liveKpiConv">${done}</b><span>/ ${meta}</span></div>
+        <div class="lvKpi__verdict">${veredicto}</div>
+        <div class="lvKpi__track" title="${pct}% del objetivo del día">
+          <i style="width:${pct}%;"></i>
+          ${sinMeta || pctEsp >= 100 ? "" : `<u style="left:${pctEsp}%;" title="Lo esperado ${esHoy_ ? "a esta hora" : "al cierre"}: ${esperado}"></u>`}
+        </div>
       </div>
+
+      <button type="button" class="lvKpi lvKpi--hero lvKpi--tap" data-drill="cal" style="--kpiTone:var(--accent);">
+        <div class="lvKpi__label">Producción con control de calidad</div>
+        <div class="lvKpi__hint">carros que además pasaron calidad</div>
+        <div class="lvKpi__num"><b id="liveKpiCal">${cal}</b><span>/ ${done}</span></div>
+        <div class="lvKpi__verdict">
+          <span>${done > 0 ? `${pctCal}% de la bruta` : "aún no hay bruta"} · <b>${Number(v.calActive) || 0}</b> en control ahora</span>
+        </div>
+        <div class="lvKpi__track" title="${pctCal}% de la producción bruta ya pasó calidad">
+          <i style="width:${pctCal}%;"></i>
+        </div>
+      </button>
     </div>
 
     <div class="lvKpis__grid">
       ${tile({
-        // El mismo nombre que la tabla: bruta es el carro con sus dos mitades;
-        // final es ese carro ya con control de calidad. Que el KPI dijera
-        // "aprobados" y la tabla "final" obligaba a adivinar si eran lo mismo.
-        label: "Conversión final", valor: `<b id="liveKpiCal">${Number(v.calDone) || 0}</b>`,
-        pie: `con control de calidad · ${Number(v.calActive) || 0} en QC ahora`, drill: "cal",
-      })}
-
-      ${tile({
+        // Un carro lo convierten dos personas: el delantero cierra el motor y
+        // el tanquero el tanque. Cada uno de esos trabajos es una mitad.
         label: franja ? `Mitades · ${escapeHtml(franja.label)}` : "Mitades cerradas",
         valor: mitadesFranja, unidad: "½",
-        pie: `${modelo.filas.filter(f => f.total > 0).length} técnicos produjeron`,
+        pie: `trabajos de motor o tanque · ${modelo.filas.filter(f => f.total > 0).length} técnicos`,
         drill: "mitades",
       })}
       ${tile({
@@ -943,7 +960,7 @@ export function cortesTablasHTML_(modelo) {
       </th>
       ${bloques.map((b, i) => `<th scope="col" class="${[colCls_(i), i === ahora ? "is-ahora" : ""].filter(Boolean).join(" ")}">
            <button type="button" class="lvCortes__sort" data-orden="${i}" data-franja="${i}"
-             title="${escapeHtml(b.label)}${i === ahora ? " · franja en curso" : ""} — toca para filtrar u ordenar">${escapeHtml(b.label.split("–")[0])}${flecha_(i)}</button>
+             title="${escapeHtml(b.label)}${i === ahora ? " · corte en curso" : ""} — toca para filtrar u ordenar">${escapeHtml(b.label.split("–")[0])}${flecha_(i)}</button>
          </th>`).join("")}
       <th scope="col" class="lvCortes__tot">
         <button type="button" class="lvCortes__sort" data-orden="total">TOT${flecha_("total")}</button>
@@ -1020,11 +1037,11 @@ export function cortesTablasHTML_(modelo) {
     ${tablaConv}
     ${tablaApoyo}
     <div class="lvCortes__nota">
-      Cada columna es la franja que <b>empieza</b> a esa hora. Arriba, cada fila cuenta
+      Cada columna es el corte que <b>empieza</b> a esa hora. Arriba, cada fila cuenta
       <b>mitades</b> (el motor de un carro, o su tanque); el carro entero lo cierran dos
       personas, por eso «Carros completos» es menor que «Mitades cerradas».
       Toca un <b>nombre</b> para filtrar el tablero por esa persona y una <b>cabecera</b>
-      para ordenar o quedarte con una franja.
+      para ordenar o quedarte con un corte.
       ${esHoy_ ? `El punto <i class="lvVivo" aria-hidden="true"></i> marca a quien está en el taller ahora.` : ""}
     </div>
   </div>`;
