@@ -48,7 +48,7 @@ import { rolMeta, estadoMeta, grupoDeRol_ } from "../../core/domain-meta.js";
 import { cfg } from "../../core/config.js";
 import { relTimeText, startRelTimeTicker, countUp, skeletonHTML } from "../../core/ui-dynamics.js";
 import { openDrilldown, closeDrilldown } from "../../core/drilldown.js";
-import { clasificarDuplas_, renderDuplasPanel_, cumplioMeta_, ROLES_DUPLA } from "./sup-duplas.js";
+import { clasificarDuplas_, cumplioMeta_, ROLES_DUPLA } from "./sup-duplas.js";
 import { CANVAS, montarLiveCharts_, destruirLiveCharts_ } from "./sup-live-charts.js";
 
 let liveActive_   = false;
@@ -70,7 +70,6 @@ let cargando_     = false;  // hay un fetch en vuelo (lo pinta la barra de mando
 let orden_ = { col: "total", dir: "desc" };
 
 let focoTile_   = null;     // visual maximizado (el "modo foco" de Power BI)
-let offOpen_    = false;    // bloque "sin actividad" desplegado
 let _prevKpi    = { conv: null, cal: null }; // para animar los números al cambiar
 
 const ORDEN_ROLES = ["MOTOR", "TANQUE", "CALIDAD", "RAMALERO"];
@@ -252,7 +251,6 @@ function renderLive_(container, data) {
 
 
   const nowIso  = new Date().toISOString();
-  const duplasHTML = esHoy_ ? renderDuplasPanel_(duplas) : "";
 
   container.innerHTML = `
   <div class="lvDash">
@@ -272,18 +270,9 @@ function renderLive_(container, data) {
         sub: `quién cerró qué y en qué corte${filtroNota_()}`,
         span: 2, body: cortesTablasHTML_(modelo),
       }) : ""}
-      ${mediosTile_(data)}
-      ${duplasHTML ? tileHTML_({
-        id: "duplas", titulo: "Cierre por duplas",
-        sub: `meta ${metaTec} carros completos por técnico`,
-        span: 2, bare: true, body: duplasHTML,
-      }) : ""}
-      ${tileHTML_({
-        id: "tecnicos", titulo: "Técnicos",
-        sub: "toca una card para ver su día",
-        span: 2, bare: true,
-        body: `${rolesTabsHTML_(techs)}${listaHTML_(techs, metaTec)}`,
-      })}
+      <!-- Sin tiles de "esperando la otra mitad", duplas ni tarjetas de
+           técnicos: repetían lo que ya dicen los KPIs y la tabla. Viven en
+           los popups de sus chips y KPIs (abrirEstado_, abrirDrill_). -->
 
       <!-- ── Los gráficos. Complemento: enseñan la FORMA de lo de arriba (si
            el ritmo cae, si una mitad se queda atrás), no cifras nuevas. Por
@@ -416,9 +405,16 @@ function slicersHTML_(techs, duplas, metaTec, modelo) {
   <div class="lvSlice">
     <div class="lvSlice__row">
       <span class="lvSlice__tag" title="Cuántos técnicos hay en cada estado ahora mismo">Técnicos</span>
+      ${chipHTML_("estado", "TODOS", "var(--accent)", `👥 Ver todos · ${techs.filter(t => t.estadoActivo !== "DESCONECTADO").length}`, false,
+        "Las tarjetas de cada técnico: carro actual, tiempo y carros del día")}
       ${chips.join("") || `<span class="lvSlice__none">sin actividad</span>`}
       ${pulseHTML_(techs)}
     </div>
+    ${rolesChipsHTML_(techs) ? `
+    <div class="lvSlice__row">
+      <span class="lvSlice__tag">Puesto</span>
+      ${rolesChipsHTML_(techs)}
+    </div>` : ""}
     ${franjas.length ? `
     <div class="lvSlice__row">
       <span class="lvSlice__tag">Corte</span>
@@ -1138,80 +1134,31 @@ function mesHTML_(data) {
 // entrara en la lista, un día cualquiera diría "12 carros a medias" y el aviso
 // dejaría de significar nada. Los que sí tienen a alguien se cuentan aparte,
 // en una línea, para que no parezca que se los comió el filtro.
-function mediosTile_(data) {
-  const lista   = Array.isArray(data.carrosMedios) ? data.carrosMedios : [];
-  const parados = lista.filter(c => !c.faltaEnCurso);   // del más antiguo al más nuevo
-  const enCurso = lista.length - parados.length;
-  if (!parados.length) return "";
-
-  const ahora  = Date.now();
-  const espera = (ms) => (ms ? fmtTiempo_(Math.max(0, ahora - ms)) : "—");
-  const TOPE   = 8;
-
-  const filas = parados.slice(0, TOPE).map(c => {
-    const rm = rolMeta(c.falta);
-    return `
-    <div class="lvMedios__row">
-      <span class="lvVin" title="${escapeHtml(c.vin)}">${escapeHtml(c.vin)}</span>
-      <span class="lvMedios__falta" style="--faltaTone:${rm.color};">
-        falta ${rm.icon} ${escapeHtml(rm.label)}
-      </span>
-      <span class="lvMedios__ago" title="Desde que cerró la otra mitad">⏳ ${escapeHtml(espera(c.cerroMs))}</span>
-      ${c.cerroNombre ? `<span class="lvMedios__who">cerró ${escapeHtml(primerNombre_(c.cerroNombre))}</span>` : ""}
-    </div>`;
-  }).join("");
-
-  const pie = [
-    parados.length > TOPE ? `y ${parados.length - TOPE} más` : "",
-    enCurso > 0 ? `Otro${enCurso === 1 ? "" : "s"} ${enCurso} con la otra mitad en curso` : "",
-  ].filter(Boolean).join(" · ");
-
-  return tileHTML_({
-    id: "medios",
-    titulo: `Esperando la otra mitad · ${parados.length}`,
-    sub: `el más antiguo lleva ${espera(parados[0].cerroMs)}`,
-    body: `${filas}${pie ? `<div class="lvMedios__mas">${escapeHtml(pie)}</div>` : ""}`,
-  });
-}
-
-// ── 6. Tabs por especialidad (filtran la grilla) ──────────────────────
-function rolesTabsHTML_(techs) {
+// ── 6. Puesto: segmentador por especialidad ───────────────────────────
+// Antes eran pestañas encima de las tarjetas; las tarjetas pasaron a popup y
+// el filtro por puesto sube a los segmentadores, que es lo que recorta.
+function rolesChipsHTML_(techs) {
   const presentes = ORDEN_ROLES.filter(r => techs.some(t => String(t.rol || "").toUpperCase() === r));
   if (presentes.length < 2) return "";
-
-  const tab = (rol, label, icon, tone, n) => `
-    <button type="button" class="lvTab${rolFilter_ === rol ? " is-on" : ""}" data-filtro="rol" data-valor="${rol || ""}"
-      style="--tabTone:${tone};" aria-pressed="${rolFilter_ === rol}">
-      ${icon} ${escapeHtml(label)} <b>${n}</b>
-    </button>`;
-
   const activosDe = rol => techs.filter(t =>
     String(t.rol || "").toUpperCase() === rol && t.estadoActivo !== "DESCONECTADO").length;
-  const totalActivos = techs.filter(t => t.estadoActivo !== "DESCONECTADO").length;
-
-  return `<div class="lvTabs">
-    ${tab(null, "Todos", "👥", "var(--accent)", totalActivos)}
-    ${presentes.map(r => {
-      const m = rolMeta(r);
-      return tab(r, m.label, m.icon, m.color, activosDe(r));
-    }).join("")}
-  </div>`;
+  return presentes.map(r => {
+    const m = rolMeta(r);
+    return chipHTML_("rol", r, m.color, `${m.icon} ${escapeHtml(m.label)} ${activosDe(r)}`, rolFilter_ === r);
+  }).join("");
 }
 
-// ── 7. Grid de técnicos ───────────────────────────────────────────────
-function listaHTML_(techs, metaTec) {
-  const visibles = techs.filter(t => pasaFiltros_(t, metaTec));
-  if (!visibles.length) {
-    return `<div class="lvEmpty">Nadie coincide con el filtro.</div>`;
-  }
+// ── 7. Tarjetas de técnicos (dentro del popup) ────────────────────────
+function listaHTML_(lista, metaTec) {
+  if (!lista.length) return `<div class="lvDrill__empty">Nadie en este estado.</div>`;
   // Los desconectados al final y en su propio bloque atenuado
-  const enPista       = visibles.filter(t => t.estadoActivo !== "DESCONECTADO");
-  const desconectados = visibles.filter(t => t.estadoActivo === "DESCONECTADO");
+  const enPista       = lista.filter(t => t.estadoActivo !== "DESCONECTADO");
+  const desconectados = lista.filter(t => t.estadoActivo === "DESCONECTADO");
 
   return `
-    <div class="lvGrid">${enPista.map(t => cardHTML_(t, metaTec)).join("")}</div>
+    ${enPista.length ? `<div class="lvGrid">${enPista.map(t => cardHTML_(t, metaTec)).join("")}</div>` : ""}
     ${desconectados.length ? `
-    <details class="lvOff"${offOpen_ ? " open" : ""}>
+    <details class="lvOff">
       <summary>Sin actividad ${esHoy_ ? "hoy" : "ese día"} · ${desconectados.length}</summary>
       <div class="lvGrid">${desconectados.map(t => cardHTML_(t, metaTec)).join("")}</div>
     </details>` : ""}`;
@@ -1438,24 +1385,11 @@ function bindLive_(container, techs, metaTec, data) {
     });
   });
 
-  const off = container.querySelector(".lvOff");
-  if (off) off.addEventListener("toggle", () => { offOpen_ = off.open; });
-
   // KPI tiles: el drill-down de los números agregados.
   container.querySelectorAll("[data-drill]").forEach(btn => {
     btn.addEventListener("click", () => abrirDrill_(btn.dataset.drill, data, techs));
   });
 
-  container.querySelectorAll(".lvCard:not(.is-off)").forEach(card => {
-    const abrir = () => {
-      const tech = techs.find(t => keyTech_(t) === card.dataset.techkey);
-      if (tech) openLiveDetail_(tech);
-    };
-    card.addEventListener("click", abrir);
-    card.addEventListener("keydown", e => {
-      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); abrir(); }
-    });
-  });
 }
 
 // ── 9. Drill-down de los KPIs ─────────────────────────────────────────
@@ -1582,43 +1516,42 @@ function abrirDrill_(cual, data, techs) {
   }
 }
 
-/** Lista de técnicos de un chip de estado: activos, pausados, sin iniciar o parados. */
+/**
+ * Las tarjetas de técnicos de un chip: todos, activos, pausados, sin iniciar o
+ * parados. Antes la grilla vivía siempre abierta al pie del tablero y repetía
+ * lo que dicen los chips y la tabla; ahora se abre cuando se pregunta "¿quiénes?".
+ * Respeta el filtro de puesto, que es el que se pone para mirar a un grupo.
+ */
 function abrirEstado_(estado, techs) {
+  const metaTec = Number(cfg("META_CARROS_TEC")) || 2;
   const parados = estado === "STALLED";
+  const delPuesto = (t) => !rolFilter_ || String(t.rol || "").toUpperCase() === rolFilter_;
   const lista = techs
-    .filter(t => (parados ? !!stallInfo_(t) : t.estadoActivo === estado))
-    .map(t => ({ t, stall: stallInfo_(t) }))
-    .sort((a, b) => (b.stall?.ms || 0) - (a.stall?.ms || 0)
-      || String(a.t.nombre || "").localeCompare(String(b.t.nombre || "")));
+    .filter(t => delPuesto(t) && (estado === "TODOS" ? true
+      : parados ? !!stallInfo_(t) : t.estadoActivo === estado))
+    .sort((a, b) => (stallInfo_(b)?.ms || 0) - (stallInfo_(a)?.ms || 0));
 
   const titulos = {
+    TODOS:       "Técnicos",
     TRABAJANDO:  "Técnicos activos",
     PAUSADO:     "Técnicos en pausa",
     SIN_INICIAR: "Técnicos sin iniciar",
     STALLED:     "Técnicos parados",
   };
-  const html = lista.length
-    ? lista.map(({ t, stall }) => {
-        const etq = etiquetaTrabajo_(t.vinActivo, t.tipoRamalActivo).texto;
-        return `
-        <div class="lvDrill__row lvDrill__row--tap" data-techkey="${escapeHtml(keyTech_(t))}" role="button" tabindex="0">
-          <span>${rolMeta(t.rol).icon} ${escapeHtml(t.nombre || t.email || "—")}
-            <small class="lvDrill__rol">${escapeHtml(rolMeta(t.rol).label)}</small></span>
-          <span>${etq ? `<code>${escapeHtml(etq)}</code>` : ""}${stall ? ` · ⏳ ${escapeHtml(fmtTiempo_(stall.ms))}` : ""}</span>
-        </div>`;
-      }).join("")
-    : `<div class="lvDrill__empty">Nadie en este estado.</div>`;
+  const puesto = rolFilter_ ? ` · solo ${rolMeta(rolFilter_).label.toLowerCase()}` : "";
 
   const body = openDrilldown({
     title: titulos[estado] || "Técnicos",
-    subtitle: parados
+    subtitle: (parados
       ? `más de ${STALL_PAUSADO_MS / 60_000} min en pausa o ${STALL_SIN_INI_MS / 60_000} min sin iniciar · toca uno para ver su día`
-      : "toca uno para ver su día",
-    badge: lista.length, html,
+      : "toca uno para ver su día") + puesto,
+    badge: lista.filter(t => t.estadoActivo !== "DESCONECTADO").length,
+    html: listaHTML_(lista, metaTec),
+    wide: true,
   });
 
-  // El drill se pinta fuera del contenedor del LIVE: las filas se ligan aquí.
-  body.querySelectorAll(".lvDrill__row--tap[data-techkey]").forEach(row => {
+  // El drill se pinta fuera del contenedor del LIVE: las tarjetas se ligan aquí.
+  body.querySelectorAll(".lvCard:not(.is-off)").forEach(row => {
     const abrir = () => {
       const tech = techs.find(t => keyTech_(t) === row.dataset.techkey);
       if (!tech) return;

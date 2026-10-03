@@ -47,6 +47,8 @@
     border-radius: var(--radius);
     border-bottom: var(--border-w) solid var(--surfaceLine);
   }
+  /* Rejilla de tarjetas: a 680 px caben tres y la lista se hace eterna. */
+  .drill--wide .drill__panel { width: min(1100px, 94vw); }
   @keyframes drillUp {
     from { transform: translate(-50%, 24px); opacity: 0; }
     to   { transform: translate(-50%, 0);    opacity: 1; }

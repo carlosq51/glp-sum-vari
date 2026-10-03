@@ -53,9 +53,11 @@ function ensureSheet_() {
  * @param {string} [o.subtitle] contexto ("del 01/07 al 14/07")
  * @param {string|number} [o.badge] conteo mostrado junto al título
  * @param {string} o.html      contenido ya renderizado (la vista decide el formato)
+ * @param {boolean} [o.wide]  panel ancho en escritorio (rejillas de tarjetas)
  */
-export function openDrilldown({ title = "", subtitle = "", badge = "", html = "" } = {}) {
+export function openDrilldown({ title = "", subtitle = "", badge = "", html = "", wide = false } = {}) {
   const el = ensureSheet_();
+  el.classList.toggle("drill--wide", !!wide);   // para rejillas de tarjetas, no listas
   el.querySelector("#drillTitle").textContent = title;
   const sub = el.querySelector("#drillSubtitle");
   sub.textContent = subtitle;
