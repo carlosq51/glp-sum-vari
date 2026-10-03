@@ -256,7 +256,7 @@ function renderLive_(container, data) {
   container.innerHTML = `
   <div class="lvDash">
     ${cmdHTML_(data, nowIso)}
-    ${slicersHTML_(techs, duplas, metaTec, modelo)}
+    ${slicersHTML_(techs, duplas, metaTec, modelo, data)}
     ${kpisHTML_(data, techs, modelo)}
     <div class="lvDash__grid${focoTile_ ? " is-foco" : ""}">
 
@@ -350,7 +350,7 @@ function cmdHTML_(data, nowIso = new Date().toISOString()) {
 }
 
 // ── 0b. Segmentadores: una fila, encima de todo lo que recortan ───────
-function slicersHTML_(techs, duplas, metaTec, modelo) {
+function slicersHTML_(techs, duplas, metaTec, modelo, data = {}) {
   const conteo = e => techs.filter(t => t.estadoActivo === e).length;
   const stalled = techs.filter(t => stallInfo_(t)).length;
 
@@ -371,6 +371,15 @@ function slicersHTML_(techs, duplas, metaTec, modelo) {
   // sin el title, 14 + 8 + 6 no cuadra con el total y parece un error.
   if (stalled > 0) leyenda.push(item("STALLED", "var(--dv-serious)", `⚠️ <b>${stalled}</b> parados`,
     `De los pausados y sin iniciar: ${stalled} llevan más de ${STALL_PAUSADO_MS / 60_000} min en pausa o ${STALL_SIN_INI_MS / 60_000} min sin iniciar`));
+  // Faltas: solo si ese día alguien marcó el QR (si no, el servidor manda null
+  // y no hay contra qué cruzar). En vivo "no marcaron", porque aún pueden llegar.
+  const asis = data.asistenciaConv;
+  if (asis) {
+    const nF = asis.faltaron?.length || 0;
+    leyenda.push(item("FALTAS", nF ? "var(--danger)" : "var(--muted)",
+      `📋 <b>${asis.marcaron}/${asis.plantilla}</b> marcaron${nF ? ` · <b>${nF}</b> ${esHoy_ ? "sin llegar" : "faltaron"}` : ""}`,
+      `Técnicos de conversión que marcaron el QR ${esHoy_ ? "hoy" : "ese día"}`));
+  }
   if (duplas.totalMeta > 0) leyenda.push(item("META_OK", "var(--note)", `🤝 <b>${duplas.totalMeta}</b> en meta ${metaTec}`,
     "Filtra el tablero a quienes ya cumplieron la meta", estadoFilter_ === "META_OK"));
 
@@ -1369,6 +1378,7 @@ function bindLive_(container, techs, metaTec, data) {
       const val  = btn.dataset.valor || null;
       // Un chip de estado contesta "¿quiénes?": abre la lista. La meta sigue
       // filtrando, porque ahí lo que se quiere es ver sus duplas en el tablero.
+      if (tipo === "estado" && val === "FALTAS") { abrirFaltas_(data); return; }
       if (tipo === "estado" && val !== "META_OK") { abrirEstado_(val, techs); return; }
       if (tipo === "estado") estadoFilter_ = estadoFilter_ === val ? null : val;
       if (tipo === "rol")    rolFilter_    = rolFilter_ === val ? null : val;
@@ -1560,6 +1570,40 @@ function abrirDrill_(cual, data, techs) {
       badge: parados.length, html,
     });
   }
+}
+
+/**
+ * Asistencia de conversión: quién no marcó el QR y no trabajó (falta), y quién
+ * trabajó sin marcar — ese no es falta, pero el despacho no lo ve y no le
+ * reparte carro, así que conviene que el supervisor lo sepa.
+ */
+function abrirFaltas_(data) {
+  const a = data.asistenciaConv;
+  if (!a) return;
+  const persona = (p) => `
+    <div class="lvDrill__row">
+      <span>${rolMeta(p.rol).icon} ${escapeHtml(p.nombre || "—")}</span>
+      <span>${escapeHtml(rolMeta(p.rol).label)}</span>
+    </div>`;
+  const bloque = (titulo, nota, lista) => `
+    <div class="lvDrill__group">
+      <div class="lvDrill__groupHead"><span>${titulo}</span><span>${lista.length}</span></div>
+      ${nota ? `<div class="lvDrill__note">${nota}</div>` : ""}
+      ${lista.length ? lista.map(persona).join("") : `<div class="lvDrill__empty">Nadie.</div>`}
+    </div>`;
+  const porNombre = (l) => [...(l || [])].sort((x, y) => String(x.nombre).localeCompare(String(y.nombre)));
+
+  openDrilldown({
+    title: "Asistencia de conversión",
+    subtitle: `${a.marcaron} de ${a.plantilla} marcaron el QR ${esHoy_ ? "hoy" : `el ${fmtFechaCorta_(data.fecha)}`} · solo motor y tanque marcan`,
+    badge: a.faltaron.length,
+    html: bloque(esHoy_ ? "🚫 Sin llegar" : "🚫 Faltaron",
+                 esHoy_ ? "no marcaron el QR ni tienen trabajo hoy · pueden llegar más tarde" : "no marcaron el QR ni trabajaron",
+                 porNombre(a.faltaron))
+        + (a.sinMarcar.length ? bloque("⚠️ Trabajaron sin marcar el QR",
+                 "están en el taller, pero el despacho no les reparte carro hasta que marquen",
+                 porNombre(a.sinMarcar)) : ""),
+  });
 }
 
 /**

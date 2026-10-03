@@ -729,3 +729,4 @@ button.lvKpi--tap:hover { border-top-color: var(--accent); border-right-color: v
   font-variant-numeric: tabular-nums;
 }
 .lvTotals__item em { font-style: normal; opacity: .8; }
+.lvDrill__note { padding: 4px 4px 2px; font-size: var(--fs-2xs); color: var(--muted); }

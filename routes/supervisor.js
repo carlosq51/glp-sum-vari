@@ -588,11 +588,11 @@ async function modelosDeVins_(SUPABASE_URL, headers, cfg, vins) {
   return vinsMap;
 }
 
-async function asistenciaDeHoy_(SUPABASE_URL, headers) {
+async function asistenciaDeHoy_(SUPABASE_URL, headers, fecha = jornadaFecha_()) {
   try {
     const r = await fetch(
       `${SUPABASE_URL}/rest/v1/asistencia_jornada` +
-      `?jornada_fecha=eq.${jornadaFecha_()}&select=user_id,estado,ingreso_at`,
+      `?jornada_fecha=eq.${fecha}&select=user_id,estado,ingreso_at`,
       { headers },
     );
     if (!r.ok) return new Map();
@@ -804,17 +804,21 @@ async function armarLiveSupervisor_(fechaPedida = null) {
     // para saber en qué está parado ahora mismo un técnico que no abrió nada hoy.
     const url5 = `${SUPABASE_URL}/rest/v1/asignaciones?select=${selectFields}&activo=eq.true&estado_actual=in.(TRABAJANDO,PAUSADO,SIN_INICIAR)&fecha_asignacion=lt.${hoy00}&order=updated_at.desc`;
 
-    // El arrastre y la asistencia son estado de AHORA MISMO, no del día que se
-    // está mirando: en una jornada pasada no se piden. Lo que un técnico tenga
-    // abierto esta tarde no dice nada de lo que hizo el martes, y pintar "está
-    // en el taller" sobre un día cerrado sería afirmar algo que nadie midió.
+    // El arrastre es estado de AHORA MISMO, no del día que se está mirando: en
+    // una jornada pasada no se pide. Lo que un técnico tenga abierto esta tarde
+    // no dice nada de lo que hizo el martes.
+    //
+    // La asistencia sí se pide siempre, pero se usa distinto: quién marcó ese
+    // día (para las faltas) es un hecho del día; "está dentro ahora" solo se
+    // pinta en vivo, porque sobre un día cerrado sería afirmar algo que nadie
+    // midió. Hoy la clave es jornadaFecha_() —corte a las 06:00, ver arriba—.
     const [resp1, resp2, resp3, resp5, duplasAuto, asistencia] = await Promise.all([
       fetch(url1, { method: "GET", headers }),
       fetch(url2, { method: "GET", headers }),
       fetch(url3, { method: "GET", headers }),
       esHoy ? fetch(url5, { method: "GET", headers }) : null,
       duplasAutoDeHoy_(SUPABASE_URL, headers, jornadaStr),
-      esHoy ? asistenciaDeHoy_(SUPABASE_URL, headers) : new Map(),
+      asistenciaDeHoy_(SUPABASE_URL, headers, esHoy ? jornadaFecha_() : jornadaStr),
     ]);
 
     if (!resp1.ok) {
@@ -1180,12 +1184,39 @@ async function armarLiveSupervisor_(fechaPedida = null) {
     // null es "este módulo no sabe nada de esta persona" (no marcó nunca, o el
     // despacho está apagado) y FUERA es "marcó salida". Colapsarlos haría que,
     // con el despacho apagado, el taller entero apareciera como ausente.
-    if (asistencia.size) {
+    if (esHoy && asistencia.size) {
       for (const t of techs) {
         const a = asistencia.get(t.userId);
         t.asistencia   = a?.estado || null;
         t.asistenciaAt = a?.ingreso_at || null;
       }
+    }
+
+    // 4c. Faltas: la plantilla de conversión cruzada con el QR del día.
+    //
+    // Solo conversión (MOTOR/TANQUE): es la única que marca el QR, así que
+    // calidad o ramales "sin marca" no dirían nada. Si NADIE marcó ese día
+    // (domingo, despacho apagado, una jornada de antes del QR) no hay contra
+    // qué cruzar y se manda null: inventar 20 faltas sería peor que no decir nada.
+    //
+    // Quien trabajó sin marcar va aparte y no cuenta como falta: estuvo, pero
+    // el motor de despacho no lo ve y no le reparte carro.
+    let asistenciaConv = null;
+    if (asistencia.size) {
+      // El arrastre no cuenta: un carro abierto ayer no dice que hoy vino.
+      const conActividad = new Set([...techMap.values()]
+        .filter(t => t.assignments.some(a => !a.arrastre)).map(t => t.userId));
+      const plantilla = (allUsers || [])
+        .filter(u => u.rol === "TECNICO")
+        .map(u => ({ userId: u.id, nombre: u.nombre || u.email || "", rol: defaultRolTrabajo_(u) }));
+      const marcaron  = plantilla.filter(p => asistencia.has(p.userId));
+      const sinMarca  = plantilla.filter(p => !asistencia.has(p.userId));
+      asistenciaConv = {
+        plantilla: plantilla.length,
+        marcaron:  marcaron.length,
+        faltaron:  sinMarca.filter(p => !conActividad.has(p.userId)),
+        sinMarcar: sinMarca.filter(p => conActividad.has(p.userId)),
+      };
     }
 
     // 5. Dupla automática del carro extra (módulo de despacho)
@@ -1228,7 +1259,7 @@ async function armarLiveSupervisor_(fechaPedida = null) {
     const duration = Date.now() - t1;
     return {
       ok: true, techs, fecha: jornadaStr, esHoy, vinsSummary,
-      mes, cierres, cierresDet, carrosMedios,
+      mes, cierres, cierresDet, carrosMedios, asistenciaConv,
       _timing: `${duration}ms`,
     };
 
