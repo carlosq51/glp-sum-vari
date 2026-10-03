@@ -282,7 +282,7 @@ function renderLive_(container, data) {
         <span>Gráficos</span>
         <em>la forma de las mismas cifras · ningún número nuevo</em>
       </div>
-      ${graficoTileHTML_(data)}
+      ${graficoTileHTML_(data, modelo)}
     </div>
   </div>`;
 
@@ -618,7 +618,7 @@ const VISTAS_GRAFICO = [
   { id: "mes",     tab: "Embudo y mes",  titulo: "Embudo y acumulado del mes",   sub: () => "el carro no termina cuando se convierte" },
 ];
 
-function graficoTileHTML_(data) {
+function graficoTileHTML_(data, modelo) {
   const v = VISTAS_GRAFICO.find(x => x.id === vistaGrafico_) || VISTAS_GRAFICO[0];
   const canvas = { jornada: CANVAS.ritmo, acum: CANVAS.acum, puestos: CANVAS.puestos, prod: CANVAS.prod }[v.id];
   const tabs = `
@@ -629,8 +629,56 @@ function graficoTileHTML_(data) {
     </div>`;
   return tileHTML_({
     id: "graficos", titulo: v.titulo, sub: v.sub(), span: 2,
-    body: tabs + (canvas ? canvasHTML_(canvas) : `${funnelHTML_(data.vinsSummary || {})}${mesHTML_(data)}`),
+    body: tabs + totalesGraficoHTML_(v.id, data, modelo)
+      + (canvas ? canvasHTML_(canvas) : `${funnelHTML_(data.vinsSummary || {})}${mesHTML_(data)}`),
   });
+}
+
+/**
+ * El total del día de cada serie, encima del gráfico. Las barras enseñan la
+ * forma corte a corte; el total es la otra mitad de la pregunta y obligaba a
+ * sumar a ojo. Con un corte elegido se añade lo de ese corte al lado.
+ * Salen del mismo modelo que la tabla de cifras, no se recuentan aquí.
+ */
+function totalesGraficoHTML_(vista, data, modelo) {
+  const suma_ = (arr) => (arr || []).reduce((s, n) => s + n, 0);
+  const s   = modelo.series;
+  const sel = franjaFilter_;
+  const corte_ = (arr) => (sel != null && arr ? arr[sel] || 0 : null);
+
+  const v    = data.vinsSummary || {};
+  const meta = Number(v.metaDia ?? v.metaConv ?? cfg("META_DIARIA")) || 0;
+
+  const items = {
+    jornada: [{ label: "Carros del día", n: modelo.totales.carros, tone: "var(--track-motor)", corte: corte_(s.bruta) }],
+    acum: [
+      { label: "Cerrados", n: modelo.totales.carros, tone: "var(--track-motor)" },
+      { label: "Objetivo del día", n: meta, tone: "var(--muted)" },
+      { label: "Faltan", n: Math.max(0, meta - modelo.totales.carros), tone: "var(--muted)" },
+    ],
+    puestos: [
+      { label: s.rotulos.motor,  n: suma_(s.delantero), tone: "var(--track-motor)",  corte: corte_(s.delantero) },
+      { label: s.rotulos.tanque, n: suma_(s.tanquero),  tone: "var(--track-tanque)", corte: corte_(s.tanquero) },
+      { label: "Mitades", n: suma_(s.delantero) + suma_(s.tanquero), tone: "var(--text)",
+        corte: sel != null ? corte_(s.delantero) + corte_(s.tanquero) : null },
+    ],
+    prod: [
+      { label: "Bruta", n: modelo.totales.carros,    tone: "var(--track-motor)",   corte: corte_(s.bruta) },
+      { label: "Final", n: modelo.totales.aprobados, tone: "var(--track-calidad)", corte: corte_(s.final) },
+    ],
+  }[vista];
+  if (!items) return "";
+
+  const nombreCorte = sel != null ? String(modelo.bloques[sel]?.label || "").split("–")[0] : "";
+  return `
+    <div class="lvTotals">
+      <span class="lvSlice__tag">Total</span>
+      ${items.map(it => `
+        <span class="lvTotals__item" style="--totTone:${it.tone};">
+          <i></i>${escapeHtml(it.label)} <b>${it.n}</b>
+          ${it.corte != null ? `<em title="En el corte de las ${escapeHtml(nombreCorte)}">· ${it.corte} en ${escapeHtml(nombreCorte)}</em>` : ""}
+        </span>`).join("")}
+    </div>`;
 }
 
 function canvasHTML_(id) {

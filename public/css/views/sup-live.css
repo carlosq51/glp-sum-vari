@@ -703,3 +703,29 @@ button.lvKpi--tap:hover { border-top-color: var(--accent); border-right-color: v
    altura la devuelve aquí porque buttons.css les clava la de un botón. */
 .lvTabs--graf { margin: 0 0 10px; }
 .lvTabs--graf .lvTab { height: auto; min-height: 0; }
+
+/* Totales del día encima del gráfico: la cifra que las barras obligaban a sumar. */
+.lvTotals {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+  margin: 0 0 10px;
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+  font-weight: var(--fw-bold);
+}
+.lvTotals__item { display: inline-flex; align-items: baseline; gap: 5px; }
+.lvTotals__item > i {
+  align-self: center;
+  width: 9px; height: 9px;
+  border-radius: 2px;
+  background: var(--totTone);
+}
+.lvTotals__item b {
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-black);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.lvTotals__item em { font-style: normal; opacity: .8; }
