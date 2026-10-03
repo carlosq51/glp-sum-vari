@@ -472,26 +472,7 @@ async function armarReporteSupervisor_(payload) {
     if (wo.vin) vinsSet.add(wo.vin);
   });
 
-  // En trozos: un mes entero son cientos de VINs y un solo `in.(...)` produce
-  // una URL que el servidor rechaza por longitud.
-  const vinsMap = {};
-  const vinsArray = Array.from(vinsSet);
-  for (let i = 0; i < vinsArray.length; i += cfg.LIM_VINS_POR_CONSULTA) {
-    const trozo = vinsArray.slice(i, i + cfg.LIM_VINS_POR_CONSULTA);
-    const vinsUrl = `${SUPABASE_URL}/rest/v1/vins?select=vin,modelo,modelo_normalizado&vin=in.(${trozo.join(",")})`;
-    const vinsResp = await fetch(vinsUrl, { method: "GET", headers }).catch(() => null);
-    if (!vinsResp || !vinsResp.ok) continue;
-    const vinsData = await vinsResp.json().catch(() => []);
-    // Se manda el modelo CANÓNICO, no el de la factura. En vins conviven ~15
-    // escrituras del mismo carro ("X70FL 1.5T 6MT 4X2 FULL", "Jetour MEC",
-    // "X70 1,5T MEC 4X2 CONFORT"…) y mandar el crudo llenaba el filtro del
-    // reporte con seis "Jetour" distintos que son el mismo modelo.
-    // modelo_normalizado ya vive en la tabla; normalizeModelo_ cubre al VIN
-    // recién dado de alta que el normalizador diario aún no tocó.
-    (vinsData || []).forEach(v => {
-      vinsMap[v.vin] = v.modelo_normalizado || normalizeModelo_(v.modelo) || v.modelo || "";
-    });
-  }
+  const vinsMap = await modelosDeVins_(SUPABASE_URL, headers, cfg, vinsSet);
 
   // Mapear a formato esperado por el frontend
   let items = (raw || []).map(asg => {
@@ -577,6 +558,36 @@ async function armarReporteSupervisor_(payload) {
  * marcas y nadie sale señalado, que es mejor que marcar a todo el taller como
  * ausente.
  */
+/**
+ * VIN → modelo canónico. Lo usan el reporte y el LIVE.
+ *
+ * Se manda el modelo CANÓNICO, no el de la factura. En vins conviven ~15
+ * escrituras del mismo carro ("X70FL 1.5T 6MT 4X2 FULL", "Jetour MEC",
+ * "X70 1,5T MEC 4X2 CONFORT"…) y mandar el crudo llenaba el filtro del
+ * reporte con seis "Jetour" distintos que son el mismo modelo.
+ * modelo_normalizado ya vive en la tabla; normalizeModelo_ cubre al VIN
+ * recién dado de alta que el normalizador diario aún no tocó.
+ *
+ * En trozos: un mes entero son cientos de VINs y un solo `in.(...)` produce
+ * una URL que el servidor rechaza por longitud. Un trozo que falla deja sus
+ * VINs sin modelo en vez de tumbar la respuesta.
+ */
+async function modelosDeVins_(SUPABASE_URL, headers, cfg, vins) {
+  const vinsMap = {};
+  const vinsArray = Array.from(vins).filter(Boolean);
+  for (let i = 0; i < vinsArray.length; i += cfg.LIM_VINS_POR_CONSULTA) {
+    const trozo = vinsArray.slice(i, i + cfg.LIM_VINS_POR_CONSULTA);
+    const vinsUrl = `${SUPABASE_URL}/rest/v1/vins?select=vin,modelo,modelo_normalizado&vin=in.(${trozo.join(",")})`;
+    const vinsResp = await fetch(vinsUrl, { method: "GET", headers }).catch(() => null);
+    if (!vinsResp || !vinsResp.ok) continue;
+    const vinsData = await vinsResp.json().catch(() => []);
+    (vinsData || []).forEach(v => {
+      vinsMap[v.vin] = v.modelo_normalizado || normalizeModelo_(v.modelo) || v.modelo || "";
+    });
+  }
+  return vinsMap;
+}
+
 async function asistenciaDeHoy_(SUPABASE_URL, headers) {
   try {
     const r = await fetch(
@@ -1020,6 +1031,20 @@ async function armarLiveSupervisor_(fechaPedida = null) {
     cierres.conv.sort((a, b) => a - b);
     cierres.cal.sort((a, b) => a - b);
 
+    // El detalle de esos mismos cierres: qué carro y de qué modelo. Va aparte
+    // de `cierres` porque los gráficos y la matriz solo quieren los instantes.
+    const detConv = Object.entries(vinConv).filter(([, v]) => cerradoHoy_(v))
+      .map(([vin, v]) => ({ vin, ms: v.ultFinMs }));
+    const detCal  = Object.entries(vinCal)
+      .filter(([, v]) => v.done && jornadaDe_(v.ultFinMs) === jornadaStr)
+      .map(([vin, v]) => ({ vin, ms: v.ultFinMs }));
+    const modelos = await modelosDeVins_(SUPABASE_URL, headers, cfg,
+      new Set([...detConv, ...detCal].map(c => c.vin))).catch(() => ({}));
+    const cierresDet = {
+      conv: detConv.map(c => ({ ...c, modelo: modelos[c.vin] || "" })).sort((a, b) => b.ms - a.ms),
+      cal:  detCal.map(c => ({ ...c, modelo: modelos[c.vin] || "" })).sort((a, b) => b.ms - a.ms),
+    };
+
     // ── Carros a medias: una mitad cerrada y la otra no ───────────────────────
     // Es la pregunta que el LIVE no sabía responder ("¿qué carro está
     // esperando?") teniendo el dato en la mano: hasta ahora vinConv alimentaba
@@ -1203,7 +1228,7 @@ async function armarLiveSupervisor_(fechaPedida = null) {
     const duration = Date.now() - t1;
     return {
       ok: true, techs, fecha: jornadaStr, esHoy, vinsSummary,
-      mes, cierres, carrosMedios,
+      mes, cierres, cierresDet, carrosMedios,
       _timing: `${duration}ms`,
     };
 

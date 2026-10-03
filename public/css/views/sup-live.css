@@ -482,6 +482,51 @@ button.lvKpi--tap:hover { border-top-color: var(--accent); border-right-color: v
 .lvDrill__row code { font-size: .92em; font-weight: var(--fw-extrabold); }
 .lvDrill__empty { padding: 18px; text-align: center; opacity: .5; }
 
+/* Resumen por modelo: lo primero que se pregunta de la producción es "¿de qué?". */
+.lvDrill__models {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 0 10px;
+  border-bottom: 1px solid var(--surfaceLine);
+}
+.lvDrill__model {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-bold);
+  padding: 4px 10px;
+  border-radius: 99px;
+  background: var(--pillBg);
+  border: 1px solid var(--pillLine);
+}
+.lvDrill__model b { font-weight: var(--fw-black); color: var(--accent); margin-right: 2px; }
+
+/* Mitades agrupadas por técnico. */
+.lvDrill__group + .lvDrill__group { margin-top: 10px; }
+.lvDrill__groupHead {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 4px;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-black);
+  border-bottom: 1px solid var(--surfaceLine);
+}
+.lvDrill__groupHead > span:last-child { color: var(--muted); }
+.lvDrill__half,
+.lvDrill__ok {
+  margin-left: 6px;
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-extrabold);
+  padding: 1px 7px;
+  border-radius: 99px;
+}
+.lvDrill__half { color: var(--warn); border: 1px solid var(--warn); }
+.lvDrill__ok   { color: var(--muted); }
+
+.lvDrill__rol { margin-left: 6px; color: var(--muted); font-size: var(--fs-2xs); }
+.lvDrill__row--tap { cursor: pointer; }
+.lvDrill__row--tap:hover { background: var(--glass); }
+
 @media (prefers-reduced-motion: reduce) {
   .lvCmd__btn.is-busy { animation: none; }
   .lvKpi__track > i, .lvFunnel__bar > i { transition: none; }

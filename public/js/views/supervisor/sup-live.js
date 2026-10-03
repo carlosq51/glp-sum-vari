@@ -47,7 +47,7 @@ import { startPoll, stopPoll } from "../../core/poll.js";
 import { rolMeta, estadoMeta, grupoDeRol_ } from "../../core/domain-meta.js";
 import { cfg } from "../../core/config.js";
 import { relTimeText, startRelTimeTicker, countUp, skeletonHTML } from "../../core/ui-dynamics.js";
-import { openDrilldown } from "../../core/drilldown.js";
+import { openDrilldown, closeDrilldown } from "../../core/drilldown.js";
 import { clasificarDuplas_, renderDuplasPanel_, cumplioMeta_, ROLES_DUPLA } from "./sup-duplas.js";
 import { CANVAS, montarLiveCharts_, destruirLiveCharts_ } from "./sup-live-charts.js";
 
@@ -163,6 +163,7 @@ function stallInfo_(t) {
 }
 
 const keyTech_ = (t) => `${t.userId}__${t.rol}`;
+const esTecConversion_ = (t) => grupoDeRol_(t.rol)?.id === "CONVERSION";
 
 /** ¿La persona pasa los segmentadores activos? */
 function pasaFiltros_(t, metaTec) {
@@ -501,7 +502,10 @@ function kpisHTML_(data, techs, modelo) {
        <span>${delta >= 0 ? "por encima" : "por debajo"} de lo esperado ${esHoy_ ? "a esta hora" : "al cierre"} (${esperado})</span>`;
 
   const medios = (Array.isArray(data.carrosMedios) ? data.carrosMedios : []).filter(c => !c.faltaEnCurso);
-  const enCurso = techs.reduce((s, t) => s + enCursoOf_(t), 0);
+  // Solo conversión: un ramal o una revisión de calidad abiertos no son carros
+  // en curso, y sumarlos inflaba el número contra el que se lee la producción.
+  const techsConv = techs.filter(esTecConversion_);
+  const enCurso = techsConv.reduce((s, t) => s + enCursoOf_(t), 0);
   const franja  = franjaFilter_ != null ? modelo.bloques[franjaFilter_] : null;
   const mitadesFranja = franjaFilter_ != null
     ? modelo.series.delantero[franjaFilter_] + modelo.series.tanquero[franjaFilter_]
@@ -527,7 +531,7 @@ function kpisHTML_(data, techs, modelo) {
   return `
   <div class="lvKpis">
     <div class="lvKpis__heroes">
-      <div class="lvKpi lvKpi--hero" style="--kpiTone:${tone};">
+      <button type="button" class="lvKpi lvKpi--hero lvKpi--tap" data-drill="conv" style="--kpiTone:${tone};">
         <div class="lvKpi__label">Producción bruta</div>
         <div class="lvKpi__hint">carros con motor y tanque cerrados</div>
         <div class="lvKpi__num"><b id="liveKpiConv">${done}</b><span>/ ${meta}</span></div>
@@ -536,7 +540,7 @@ function kpisHTML_(data, techs, modelo) {
           <i style="width:${pct}%;"></i>
           ${sinMeta || pctEsp >= 100 ? "" : `<u style="left:${pctEsp}%;" title="Lo esperado ${esHoy_ ? "a esta hora" : "al cierre"}: ${esperado}"></u>`}
         </div>
-      </div>
+      </button>
 
       <button type="button" class="lvKpi lvKpi--hero lvKpi--tap" data-drill="cal" style="--kpiTone:var(--accent);">
         <div class="lvKpi__label">Producción con control de calidad</div>
@@ -556,8 +560,9 @@ function kpisHTML_(data, techs, modelo) {
         // Un carro lo convierten dos personas: el delantero cierra el motor y
         // el tanquero el tanque. Cada uno de esos trabajos es una mitad.
         label: franja ? `Mitades · ${escapeHtml(franja.label)}` : "Mitades cerradas",
-        valor: mitadesFranja, unidad: "½",
-        pie: `trabajos de motor o tanque · ${modelo.filas.filter(f => f.total > 0).length} técnicos`,
+        // Sin "½" al lado: "11 ½" se leía como once y medio.
+        valor: mitadesFranja,
+        pie: `motores o tanques terminados · ${modelo.conv.filter(f => f.total > 0).length} técnicos`,
         drill: "mitades",
       })}
       ${tile({
@@ -568,7 +573,7 @@ function kpisHTML_(data, techs, modelo) {
         label: esHoy_ ? "Trabajos en curso" : "Abiertos al cierre",
         valor: enCurso,
         pie: esHoy_
-          ? `${techs.filter(t => t.estadoActivo === "TRABAJANDO").length} técnicos trabajando`
+          ? `${techsConv.filter(t => t.estadoActivo === "TRABAJANDO").length} técnicos de conversión trabajando`
           : "se cerraron después o siguen abiertos",
         drill: "curso",
       })}
@@ -1376,6 +1381,9 @@ function bindLive_(container, techs, metaTec, data) {
     btn.addEventListener("click", () => {
       const tipo = btn.dataset.filtro;
       const val  = btn.dataset.valor || null;
+      // Un chip de estado contesta "¿quiénes?": abre la lista. La meta sigue
+      // filtrando, porque ahí lo que se quiere es ver sus duplas en el tablero.
+      if (tipo === "estado" && val !== "META_OK") { abrirEstado_(val, techs); return; }
       if (tipo === "estado") estadoFilter_ = estadoFilter_ === val ? null : val;
       if (tipo === "rol")    rolFilter_    = rolFilter_ === val ? null : val;
       if (tipo === "franja") { toggleFranja_(Number(val)); return; }
@@ -1460,28 +1468,92 @@ function abrirDrill_(cual, data, techs) {
     <div class="lvDrill__row"><span>${izq}</span><span>${der}</span></div>`;
   const vacio = `<div class="lvDrill__empty">Nada que mostrar.</div>`;
 
-  if (cual === "cal" || cual === "mitades") {
+  if (cual === "conv" || cual === "cal") {
     const esCal = cual === "cal";
-    const lista = esCal
-      ? (Array.isArray(data.cierres?.cal) ? data.cierres.cal : [])
-      : (Array.isArray(data.cierres?.conv) ? data.cierres.conv : []);
-    const html = lista.length
-      ? [...lista].sort((a, b) => b - a)
-          .map(ms => fila(esCal ? "✅ Carro con control de calidad" : "🚗 Carro con motor y tanque cerrados",
-                          escapeHtml(fmtFechaHora_(new Date(ms).toISOString())))).join("")
+    // `cierresDet` trae VIN y modelo; un servidor anterior solo mandaba los
+    // instantes, y con eso al menos se puede listar la hora.
+    const det = data.cierresDet?.[cual];
+    const lista = Array.isArray(det) ? det
+      : (Array.isArray(data.cierres?.[cual]) ? data.cierres[cual] : []).map(ms => ({ ms, vin: "", modelo: "" }));
 
+    const porModelo = new Map();
+    for (const c of lista) {
+      const m = c.modelo || "Sin modelo";
+      porModelo.set(m, (porModelo.get(m) || 0) + 1);
+    }
+    const resumen = det && lista.length ? `
+      <div class="lvDrill__models">
+        ${[...porModelo].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+          .map(([m, n]) => `<span class="lvDrill__model"><b>${n}</b> ${escapeHtml(m)}</span>`).join("")}
+      </div>` : "";
+
+    const html = lista.length
+      ? resumen + [...lista].sort((a, b) => b.ms - a.ms)
+          .map(c => fila(
+            c.vin
+              ? `${esCal ? "✅" : "🚗"} <code>${escapeHtml(c.vin)}</code> · ${escapeHtml(c.modelo || "sin modelo")}`
+              : (esCal ? "✅ Carro con control de calidad" : "🚗 Carro con motor y tanque cerrados"),
+            escapeHtml(fmtFechaHora_(new Date(c.ms).toISOString())))).join("")
       : vacio;
     openDrilldown({
-      title: esCal ? "Conversión final · con control de calidad" : "Conversión bruta",
-
-      subtitle: `jornada del ${fmtFechaCorta_(data.fecha)} · hora de cierre`,
+      title: esCal ? "Producción con control de calidad" : "Producción bruta",
+      subtitle: `jornada del ${fmtFechaCorta_(data.fecha)} · por modelo y hora de cierre`,
       badge: lista.length, html,
     });
     return;
   }
 
+  if (cual === "mitades") {
+    // Cada mitad es el motor o el tanque de un carro, cerrado por una persona.
+    // Se lista por técnico, y la que todavía espera su otra mitad va marcada:
+    // es la que aún no suma a la producción bruta.
+    const medios = new Map((Array.isArray(data.carrosMedios) ? data.carrosMedios : []).map(c => [c.vin, c]));
+    const bloques = bloquesJornada_(cfg("LIVE_CORTES"));
+    const enCorte_ = (a) => franjaFilter_ == null
+      || indiceBloque_(minutosPE_(new Date(a.updated_at)), bloques) === franjaFilter_;
+
+    const metaTec = Number(cfg("META_CARROS_TEC")) || 2;
+    const grupos = techs
+      .filter(t => esTecConversion_(t) && pasaFiltros_(t, metaTec))
+      .map(t => ({
+        t,
+        mitades: (t.asignacionesHoy || [])
+          .filter(a => a.estado === "FINALIZADO" && !a.cerradoDespues && a.updated_at && enCorte_(a))
+          .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at)),
+      }))
+      .filter(g => g.mitades.length)
+      .sort((a, b) => b.mitades.length - a.mitades.length
+        || String(a.t.nombre || "").localeCompare(String(b.t.nombre || "")));
+
+    const total = grupos.reduce((s, g) => s + g.mitades.length, 0);
+    const html = grupos.length
+      ? grupos.map(({ t, mitades }) => `
+          <div class="lvDrill__group">
+            <div class="lvDrill__groupHead">
+              <span>${rolMeta(t.rol).icon} ${escapeHtml(t.nombre || t.email || "—")}</span>
+              <span>${mitades.length} ${mitades.length === 1 ? "mitad" : "mitades"}</span>
+            </div>
+            ${mitades.map(a => {
+              const medio = medios.get(a.vin);
+              const nota = medio
+                ? `<span class="lvDrill__half" title="El carro aún no cuenta en la producción bruta">½ falta ${escapeHtml(rolMeta(medio.falta).label.toLowerCase())}${medio.faltaEnCurso ? " (en curso)" : ""}</span>`
+                : `<span class="lvDrill__ok">carro completo</span>`;
+              return fila(`<code>${escapeHtml(a.vin || "—")}</code> ${nota}`,
+                          escapeHtml(fmtFechaHora_(a.updated_at)));
+            }).join("")}
+          </div>`).join("")
+      : vacio;
+    const corte = franjaFilter_ != null ? bloques[franjaFilter_]?.label : null;
+    openDrilldown({
+      title: "Mitades cerradas",
+      subtitle: `motor o tanque terminado, por técnico${corte ? ` · corte ${corte}` : ""} · ½ = el carro espera su otra mitad`,
+      badge: total, html,
+    });
+    return;
+  }
+
   if (cual === "curso") {
-    const abiertos = techs.flatMap(t => (t.asignacionesHoy || [])
+    const abiertos = techs.filter(esTecConversion_).flatMap(t => (t.asignacionesHoy || [])
       .filter(a => a.estado !== "FINALIZADO" && !a.arrastre)
       .map(a => ({ t, a })));
     const html = abiertos.length
@@ -1490,7 +1562,7 @@ function abrirDrill_(cual, data, techs) {
           `<code>${escapeHtml(etiquetaTrabajo_(a.vin, a.tipo_ramal).texto || "—")}</code> · ${escapeHtml(estadoMeta(a.estado).label)}`,
         )).join("")
       : vacio;
-    openDrilldown({ title: "Trabajos en curso", badge: abiertos.length, html });
+    openDrilldown({ title: "Trabajos en curso", subtitle: "solo técnicos de conversión", badge: abiertos.length, html });
     return;
   }
 
@@ -1508,6 +1580,56 @@ function abrirDrill_(cual, data, techs) {
       badge: parados.length, html,
     });
   }
+}
+
+/** Lista de técnicos de un chip de estado: activos, pausados, sin iniciar o parados. */
+function abrirEstado_(estado, techs) {
+  const parados = estado === "STALLED";
+  const lista = techs
+    .filter(t => (parados ? !!stallInfo_(t) : t.estadoActivo === estado))
+    .map(t => ({ t, stall: stallInfo_(t) }))
+    .sort((a, b) => (b.stall?.ms || 0) - (a.stall?.ms || 0)
+      || String(a.t.nombre || "").localeCompare(String(b.t.nombre || "")));
+
+  const titulos = {
+    TRABAJANDO:  "Técnicos activos",
+    PAUSADO:     "Técnicos en pausa",
+    SIN_INICIAR: "Técnicos sin iniciar",
+    STALLED:     "Técnicos parados",
+  };
+  const html = lista.length
+    ? lista.map(({ t, stall }) => {
+        const etq = etiquetaTrabajo_(t.vinActivo, t.tipoRamalActivo).texto;
+        return `
+        <div class="lvDrill__row lvDrill__row--tap" data-techkey="${escapeHtml(keyTech_(t))}" role="button" tabindex="0">
+          <span>${rolMeta(t.rol).icon} ${escapeHtml(t.nombre || t.email || "—")}
+            <small class="lvDrill__rol">${escapeHtml(rolMeta(t.rol).label)}</small></span>
+          <span>${etq ? `<code>${escapeHtml(etq)}</code>` : ""}${stall ? ` · ⏳ ${escapeHtml(fmtTiempo_(stall.ms))}` : ""}</span>
+        </div>`;
+      }).join("")
+    : `<div class="lvDrill__empty">Nadie en este estado.</div>`;
+
+  const body = openDrilldown({
+    title: titulos[estado] || "Técnicos",
+    subtitle: parados
+      ? `más de ${STALL_PAUSADO_MS / 60_000} min en pausa o ${STALL_SIN_INI_MS / 60_000} min sin iniciar · toca uno para ver su día`
+      : "toca uno para ver su día",
+    badge: lista.length, html,
+  });
+
+  // El drill se pinta fuera del contenedor del LIVE: las filas se ligan aquí.
+  body.querySelectorAll(".lvDrill__row--tap[data-techkey]").forEach(row => {
+    const abrir = () => {
+      const tech = techs.find(t => keyTech_(t) === row.dataset.techkey);
+      if (!tech) return;
+      closeDrilldown();
+      openLiveDetail_(tech);
+    };
+    row.addEventListener("click", abrir);
+    row.addEventListener("keydown", e => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); abrir(); }
+    });
+  });
 }
 
 // ── 10. Modal de detalle del día ───────────────────────────────────────
