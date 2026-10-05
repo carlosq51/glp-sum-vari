@@ -10,7 +10,7 @@
 // =========================
 
 import { describe, it, expect } from "vitest";
-import { fusionarInforme_, aplanarInforme_, informeVacio_, aplicarEdicion_ } from "../lib/informes.js";
+import { fusionarInforme_, aplanarInforme_, informeVacio_, aplicarEdicion_, etapasPorFoto_ } from "../lib/informes.js";
 
 const parteMotor = {
   nombre: "FRANZ COSTILLA",
@@ -272,5 +272,33 @@ describe("La oficina corrige sin destruir el informe", () => {
     const previo = fusionarInforme_(fusionarInforme_(null, "MOTOR", parteMotor), "TANQUE", parteTanque);
     const editado = aplicarEdicion_(previo, { marcados: [7] });
     expect(aplanarInforme_(editado).marcados).toEqual([7]);
+  });
+});
+
+describe("Compresión y scanner van a quien subió las fotos", () => {
+  const autores = { comp_1: "henry@x.pe", comp_2: "henry@x.pe", scan_carro: "franz@x.pe" };
+
+  it("etapasPorFoto_ marca solo al autor, y desmarca a los demás", () => {
+    expect(etapasPorFoto_(autores, "HENRY@x.pe")).toEqual({ compresion: true, scanner: false });
+    expect(etapasPorFoto_(autores, "franz@x.pe")).toEqual({ compresion: false, scanner: true });
+  });
+
+  it("sin autor guardado no opina: manda lo que marcó el técnico", () => {
+    expect(etapasPorFoto_({}, "franz@x.pe")).toEqual({});
+    const d = fusionarInforme_(null, "MOTOR", parteMotor);
+    d.personas = [{ rol: "MOTOR", nombre: "FRANZ COSTILLA", fotos: {} }];
+    expect(aplanarInforme_(d).prod[0].marcas.compresion).toBe(true);
+  });
+
+  it("el tanquero que subió la compresión la lleva marcada, y el delantero no", () => {
+    let d = fusionarInforme_(null, "MOTOR", parteMotor);
+    d = fusionarInforme_(d, "TANQUE", parteTanque);
+    d.personas = [
+      { rol: "MOTOR", nombre: "FRANZ COSTILLA", fotos: etapasPorFoto_(autores, "franz@x.pe") },
+      { rol: "TANQUE", nombre: "HENRY LUZA", fotos: etapasPorFoto_(autores, "henry@x.pe") },
+    ];
+    const [motor, tanque] = aplanarInforme_(d).prod;
+    expect(motor.marcas).toMatchObject({ compresion: false, scanner: true, mecanica: true });
+    expect(tanque.marcas).toMatchObject({ compresion: true, scanner: false, tanque: true });
   });
 });

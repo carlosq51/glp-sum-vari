@@ -4,6 +4,7 @@
 // =========================
 
 import { postJSON } from "../../core/api.js";
+import { getEmail } from "../../core/auth.js";
 import {
   comprimirImagen,
   comprimirVarias,
@@ -64,7 +65,9 @@ export async function uploadOne({ vin, dateStr, slot, file, onProgress, apsUrl =
   onProgress?.({ phase: "upload", bytes: foto.bytes });
 
   const j = await callAPS(
-    { action: "uploadOne", vin, dateStr, slot, mimeType: foto.mimeType, b64: foto.b64 },
+    // El email deja dicho quién subió la foto: con eso el Registro de
+    // Producción marca COMPRESIÓN y SCANNER a la persona correcta.
+    { action: "uploadOne", vin, dateStr, slot, mimeType: foto.mimeType, b64: foto.b64, email: getEmail() },
     apsUrl
   );
   return { ...j, foto };

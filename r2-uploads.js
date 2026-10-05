@@ -11,7 +11,7 @@
 //   R2_PUBLIC_URL=https://pub-c7d6e000a03d4913b0694c761ea901d2.r2.dev
 // =========================
 
-import { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
 import { normalizeImage, isHeicBuffer_ } from "./lib/image-optimize.js";
 
 /** Mensaje para el técnico: lo único que arregla esto es cambiar la cámara. */
@@ -85,7 +85,7 @@ function batchId() {
   ].join("");
 }
 
-async function put(key, b64OrBuffer, contentType = "image/jpeg") {
+async function put(key, b64OrBuffer, contentType = "image/jpeg", metadata = undefined) {
   const client = getClient();
   const raw = Buffer.isBuffer(b64OrBuffer)
     ? b64OrBuffer
@@ -118,6 +118,7 @@ async function put(key, b64OrBuffer, contentType = "image/jpeg") {
     Key: key,
     Body: body,
     ContentType: finalType,
+    ...(metadata ? { Metadata: metadata } : {}),
   }));
   return r2Url(key);
 }
@@ -155,7 +156,7 @@ const CALIDAD_SLOT_NAMES = {
  * Ruta R2: registro/{YYYY-MM}/{VIN}/{slot}.jpg
  *          calidad/{YYYY-MM}/{VIN}/{slot}.jpg
  */
-export async function r2UploadOne({ vin, dateStr, slot, b64, mimeType = "image/jpeg" }) {
+export async function r2UploadOne({ vin, dateStr, slot, b64, mimeType = "image/jpeg", email = "" }) {
   if (!vin || !slot || !b64) throw new Error("Faltan parámetros: vin, slot, b64");
 
   const isCalidad  = !!CALIDAD_SLOT_NAMES[slot];
@@ -167,7 +168,11 @@ export async function r2UploadOne({ vin, dateStr, slot, b64, mimeType = "image/j
   const category = isCalidad ? "calidad" : "registro";
   const key      = `${category}/${month}/${vin}/${fileName}`;
 
-  const url = await put(key, b64, mimeType);
+  // Quién la subió viaja como metadato de la propia foto: el Registro de
+  // Producción marca COMPRESIÓN y SCANNER a quien subió esas fotos, no a
+  // quien tenga el rol que "suele" hacerlas.
+  const quien = String(email || "").trim().toLowerCase();
+  const url = await put(key, b64, mimeType, quien ? { "subido-por": quien } : undefined);
 
   return {
     ok: true,
@@ -403,6 +408,36 @@ export async function r2GetStatus({ vin, dateStr }) {
       count:  fallaCount,
     },
   };
+}
+
+/**
+ * autoresRegistro — quién subió cada foto del registro de un VIN.
+ * Mira los meses dados (un carro puede cruzar de mes) y gana el más nuevo.
+ * Devuelve { slot: email } solo para las fotos que tienen autor guardado:
+ * las subidas antes de que existiera el metadato no aparecen.
+ */
+export async function r2AutoresRegistro({ vin, meses = [], slots = [] }) {
+  if (!vin || !slots.length) return {};
+  const client = getClient();
+  const autores = {};
+  const unicos = [...new Set(meses.filter(Boolean).map(m => currentYYYYMM(m)))];
+
+  await Promise.all(slots.filter(s => SLOT_NAMES[s]).flatMap(slot =>
+    unicos.map(async (mes) => {
+      try {
+        const h = await client.send(new HeadObjectCommand({
+          Bucket: R2_BUCKET(),
+          Key: `registro/${mes}/${vin}/${SLOT_NAMES[slot]}`,
+        }));
+        const quien = h.Metadata?.["subido-por"];
+        if (!quien) return;
+        const t = h.LastModified?.getTime?.() || 0;
+        if (!autores[slot] || t > autores[slot].t) autores[slot] = { email: quien, t };
+      } catch { /* no existe en ese mes */ }
+    })
+  ));
+
+  return Object.fromEntries(Object.entries(autores).map(([s, a]) => [s, a.email]));
 }
 
 /**

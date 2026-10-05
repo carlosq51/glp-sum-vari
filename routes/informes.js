@@ -28,7 +28,8 @@ import { Router } from "express";
 import { supabaseServiceHeaders_ } from "../lib/supabase.js";
 import { requireRol_ } from "../lib/authz.js";
 import { emitEvent_ } from "../lib/events.js";
-import { fusionarInforme_, aplanarInforme_, aplicarEdicion_ } from "../lib/informes.js";
+import { fusionarInforme_, aplanarInforme_, aplicarEdicion_, SLOTS_ETAPA_FOTO, etapasPorFoto_ } from "../lib/informes.js";
+import { r2AutoresRegistro } from "../r2-uploads.js";
 
 const router = Router();
 
@@ -116,6 +117,13 @@ const CAMPOS_COLA =
 
 const s_ = (v) => String(v ?? "").trim();
 
+/** "aaaa-mm" de una fecha en hora de Lima (o de ahora). Es la carpeta del mes en R2. */
+function mesLima_(iso) {
+  const d = iso ? new Date(iso) : new Date();
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("en-CA", { timeZone: "America/Lima" }).slice(0, 7);
+}
+
 /** Quién hace la petición. Mismo criterio que requireRol_. */
 function emailDe_(req) {
   return s_(req.body?.email || req.query?.email || req.get("x-user-email")).toLowerCase();
@@ -157,10 +165,32 @@ async function contextoDeOt_(ot) {
     console.warn("[informes] no pude leer los FIN:", err.message);
   }
 
+  // COMPRESIÓN y SCANNER se marcan a quien subió esas fotos, no por rol.
+  // El autor va guardado en la propia foto (ver r2UploadOne). Las fotos
+  // viven en la carpeta del mes en que se subieron: se mira el mes de cada
+  // asignación y el actual, que cubre un carro que cruzó de mes.
+  let autores = {};
+  try {
+    const wos = await sbGet_(`work_orders?select=vin&id=eq.${encodeURIComponent(ot)}&limit=1`);
+    const vin = s_(wos?.[0]?.vin);
+    if (vin) {
+      const meses = [...(asgs || []).map(a => mesLima_(a.fecha_asignacion)), mesLima_()];
+      autores = await r2AutoresRegistro({
+        vin, meses, slots: Object.values(SLOTS_ETAPA_FOTO).flat(),
+      });
+    }
+  } catch (err) {
+    console.warn("[informes] no pude leer quién subió las fotos:", err.message);
+  }
+
   return (asgs || []).map(a => {
     const u = Array.isArray(a.usuarios) ? a.usuarios[0] : a.usuarios;
     const rol = s_(a.rol_trabajo).toUpperCase();
     return {
+      // { compresion: true/false, scanner: … } solo para las etapas cuyas
+      // fotos tienen autor guardado. Lo que no aparece se queda como lo
+      // mandó el técnico.
+      fotos: etapasPorFoto_(autores, u?.email),
       rol,
       nombre: s_(u?.nombre),
       email: s_(u?.email),

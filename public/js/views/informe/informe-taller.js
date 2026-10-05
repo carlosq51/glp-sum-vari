@@ -29,22 +29,23 @@ let horaImpresion_ = "";
 // llenarla a mano en la oficina.
 let informeId_ = null;
 
-/** ISO → "HH:MM", que es lo que acepta un <input type="time">. */
+// Las horas se escriben SIEMPRE en hora de Lima, no en la del navegador.
+// Con la del navegador, una PC de oficina con la zona mal puesta (o en UTC)
+// imprimía 21:19 para un carro que se empezó a las 16:19.
+const ZONA = "America/Lima";
+const fmtHora_ = new Intl.DateTimeFormat("en-GB", { timeZone: ZONA, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+const fmtFecha_ = new Intl.DateTimeFormat("en-CA", { timeZone: ZONA, year: "numeric", month: "2-digit", day: "2-digit" });
+
+/** ISO → "HH:MM" en hora de Lima, que es lo que acepta un <input type="time">. */
 function horaDe_(iso) {
   const t = Date.parse(iso);
-  if (!Number.isFinite(t)) return "";
-  const d = new Date(t);
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  return Number.isFinite(t) ? fmtHora_.format(t) : "";
 }
 
-/** ISO → "aaaa-mm-dd", que es lo que acepta un <input type="date">. */
+/** ISO → "aaaa-mm-dd" en hora de Lima, que es lo que acepta un <input type="date">. */
 function isoDe_(iso) {
   const t = Date.parse(iso);
-  if (!Number.isFinite(t)) return "";
-  const d = new Date(t);
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${d.getFullYear()}-${mm}-${dd}`;
+  return Number.isFinite(t) ? fmtFecha_.format(t) : "";
 }
 
 /** dd-mm-aa — el formato del Registro de Tiempos, que tiene poco ancho. */
@@ -57,13 +58,12 @@ function fechaCorta_(iso) {
 function fechaPeru_(iso) {
   // Acepta "aaaa-mm-dd" (lo que da un <input type="date">) y un ISO
   // completo con hora, que es como vienen las fechas del sistema.
-  const d = !iso ? new Date()
-    : /^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(`${iso}T00:00:00`)
-    : new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  return `${dd}-${mm}-${d.getFullYear()}`;
+  const ymd = !iso ? fmtFecha_.format(Date.now())
+    : /^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso
+    : isoDe_(iso);
+  if (!ymd) return "";
+  const [y, m, d] = ymd.split("-");
+  return `${d}-${m}-${y}`;
 }
 
 /** Lee el formulario una sola vez y de ahí salen las tres hojas. */
@@ -156,8 +156,7 @@ function imprimir_() {
   }
   // Se sella AQUÍ, no al cargar la página: si se sellara antes, un formulario
   // abierto desde la mañana imprimiría una hora que ya pasó.
-  const ahora = new Date();
-  horaImpresion_ = `${String(ahora.getHours()).padStart(2, "0")}:${String(ahora.getMinutes()).padStart(2, "0")}`;
+  horaImpresion_ = fmtHora_.format(Date.now());
 
   pintarHojas_();
   window.print();
@@ -276,7 +275,8 @@ export function renderInformeTaller(host) {
 
   // Las fechas arrancan en hoy: es lo que el técnico va a poner el 99% de
   // las veces, y así no tiene que abrir el calendario tres veces.
-  const iso = new Date().toISOString().slice(0, 10);
+  // En hora de Lima: toISOString() es UTC y desde las 19:00 daba mañana.
+  const iso = fmtFecha_.format(Date.now());
   for (const p of ["itP1", "itP2", "itP3"]) {
     const el = $(`${p}Fecha`);
     if (el && !el.value) el.value = iso;
