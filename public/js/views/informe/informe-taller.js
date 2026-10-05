@@ -72,7 +72,10 @@ function datos_() {
     .map((_, i) => i)
     .filter(i => document.querySelector(`[data-it-tarea="${i}"]`)?.checked);
 
-  const tecnicos = [val("itTec1"), val("itTec2")].filter(Boolean);
+  // Los responsables que firman las hojas: los técnicos y el tanquero, cada
+  // uno una sola vez ("GROBERT JOEL / ANTHONY RAMOS").
+  const tecnicos = [val("itTec1"), val("itTec2"), val("itTanquero")]
+    .filter((n, i, xs) => n && xs.findIndex(y => y.toUpperCase() === n.toUpperCase()) === i);
 
   return {
     marca: val("itMarca") || "JETOUR",
@@ -221,9 +224,14 @@ function volcar_(d = {}) {
 
   // El técnico manda su nombre; el segundo y el tanquero los completa la
   // oficina, que es quien sabe con quién hizo dupla.
-  set("itTec1", (d.tecnicos || [])[0]);
-  set("itTec2", (d.tecnicos || [])[1]);
-  if (d.tanquero && !val("itTec2")) set("itTanquero", d.tanquero);
+  //
+  // `tecnicos` del servidor es "delantero, tanquero": el tanquero ya tiene su
+  // bloque propio, así que en Técnico 2 solo entra alguien que NO sea él. Si
+  // no, salía dos veces (Técnico 2 y Tanquero) con las mismas horas.
+  const norm = (s) => String(s || "").trim().toUpperCase();
+  const otros = (d.tecnicos || []).filter(n => norm(n) !== norm(d.tanquero));
+  set("itTec1", otros[0]);
+  set("itTec2", otros[1] ?? "");
 
   // Las tareas del informe: marcadas las que mandó, desmarcadas las demás.
   if (Array.isArray(d.tareas)) {
@@ -240,7 +248,6 @@ function volcar_(d = {}) {
   // Antes sus horas iban solo al primero, el bloque Tanquero se quedaba con
   // la fecha de hoy y sin hora, y en la hoja esa fila vacía pisaba a la buena.
   const NOMBRES = { itP1: "itTec1", itP2: "itTec2", itP3: "itTanquero" };
-  const norm = (s) => String(s || "").trim().toUpperCase();
   (d.prod || []).forEach((persona, i) => {
     const porNombre = Object.keys(NOMBRES).filter(c => norm(val(NOMBRES[c])) === norm(persona.nombre));
     const campos = porNombre.length ? porNombre : [["itP1", "itP2", "itP3"][i]].filter(Boolean);
