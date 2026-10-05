@@ -101,7 +101,17 @@ function datos_() {
           .filter(el => el.checked)
           .map(el => [el.dataset.itEtapa.split(":")[1], true])
       ),
-    })).filter(x => x.nombre),
+    })).filter(x => x.nombre)
+      // Una fila por persona. Si un nombre se repite (el tanquero puesto
+      // también como Técnico 2), se queda la que tiene horas: en la hoja la
+      // última pisa a la anterior, y una vacía borraba la buena.
+      .filter((x, i, todas) => {
+        const n = x.nombre.toUpperCase();
+        const conHora = (y) => y.inicio || y.fin;
+        const mismas = todas.filter(y => y.nombre.toUpperCase() === n);
+        const elegida = mismas.find(conHora) || mismas[0];
+        return elegida === x;
+      }),
   };
 }
 
@@ -225,18 +235,24 @@ function volcar_(d = {}) {
   // dentro de `prod` y se tiraban, porque las hojas se pintan leyendo el
   // formulario y nadie los escribía en él.
   //
-  // El orden de `prod` es delantero, tanquero — el mismo que los bloques
-  // itP1/itP2 del formulario.
+  // Cada persona va a TODOS los bloques que llevan su nombre, no a uno por
+  // posición: el tanquero sale a la vez como "Técnico 2" y como "Tanquero".
+  // Antes sus horas iban solo al primero, el bloque Tanquero se quedaba con
+  // la fecha de hoy y sin hora, y en la hoja esa fila vacía pisaba a la buena.
+  const NOMBRES = { itP1: "itTec1", itP2: "itTec2", itP3: "itTanquero" };
+  const norm = (s) => String(s || "").trim().toUpperCase();
   (d.prod || []).forEach((persona, i) => {
-    const campo = ["itP1", "itP2", "itP3"][i];
-    if (!campo) return;
-    set(`${campo}Fecha`, isoDe_(persona.inicio));
-    set(`${campo}Ini`, horaDe_(persona.inicio));
-    set(`${campo}Fin`, horaDe_(persona.fin));
-    // Las etapas que marcó cada uno.
-    for (const [k, on] of Object.entries(persona.marcas || {})) {
-      const cb = document.querySelector(`[data-it-etapa="${campo}:${k}"]`);
-      if (cb) cb.checked = !!on;
+    const porNombre = Object.keys(NOMBRES).filter(c => norm(val(NOMBRES[c])) === norm(persona.nombre));
+    const campos = porNombre.length ? porNombre : [["itP1", "itP2", "itP3"][i]].filter(Boolean);
+    for (const campo of campos) {
+      set(`${campo}Fecha`, isoDe_(persona.inicio));
+      set(`${campo}Ini`, horaDe_(persona.inicio));
+      set(`${campo}Fin`, horaDe_(persona.fin));
+      // Las etapas que marcó cada uno.
+      for (const [k, on] of Object.entries(persona.marcas || {})) {
+        const cb = document.querySelector(`[data-it-etapa="${campo}:${k}"]`);
+        if (cb) cb.checked = !!on;
+      }
     }
   });
 
