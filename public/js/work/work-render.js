@@ -8,6 +8,7 @@ import { el_ } from "../core/dom.js";
 import { cssEsc_, escapeHtml, fmtFechaCreacion_, msToHMS_, diaPeru_ } from "../core/format.js";
 import { computeLiveMs_ } from "./work-time.js";
 import { buildAsignadoHTML_, buildBotonesByEstado_, buildIncidenciasBtnHTML_ } from "./work-templates.js";
+import { personalCalidadHTML_ } from "./llamado-voz.js";
 
 export function renderActivas_() {
   const c = ctx_();
@@ -68,11 +69,7 @@ export function renderActivas_() {
               <span class="small">Inicio: ${cre}</span>
               ${ajena}
               ${CORE.state.currentModule === "CALIDAD" && (motorNombre || tanqueroNombre) ? `
-                <span class="small js-personal">
-                  ${motorNombre ? `🔧 MOTOR: <b>${motorNombre}</b>` : ""}
-                  ${motorNombre && tanqueroNombre ? " &nbsp;|&nbsp; " : ""}
-                  ${tanqueroNombre ? `🛢️ TANQUERO: <b>${tanqueroNombre}</b>` : ""}
-                </span>` : ""}
+                <span class="small js-personal">${personalCalidadHTML_(it)}</span>` : ""}
             </div>
           </div>
           <div class="jobRight">
@@ -196,11 +193,7 @@ export function renderFinalizados_(avgTopHTML = "") {
         </div>
         <div class="small">Término: ${fin}</div>
         ${CORE.state.currentModule === "CALIDAD" && (motorNombre || tanqueroNombre) ? `
-          <div class="small js-personal" style="margin-top:4px;">
-            ${motorNombre ? `🔧 MOTOR: <b>${motorNombre}</b>` : ""}
-            ${motorNombre && tanqueroNombre ? " &nbsp;|&nbsp; " : ""}
-            ${tanqueroNombre ? `🛢️ TANQUERO: <b>${tanqueroNombre}</b>` : ""}
-          </div>` : ""}
+          <div class="small js-personal" style="margin-top:4px;">${personalCalidadHTML_(it)}</div>` : ""}
 
         ${buildIncidenciasBtnHTML_(it, k)}
 
@@ -278,13 +271,13 @@ export function patchVisibleCards_() {
       if (CORE.state.currentModule === "CALIDAD") {
         const personalEl = card.querySelector(".js-personal");
         if (personalEl) {
-          const m = escapeHtml(it.motorNombre || "");
-          const t = escapeHtml(it.tanqueroNombre || "");
-          personalEl.innerHTML = [
-            m ? `🔧 MOTOR: <b>${m}</b>` : "",
-            m && t ? "&nbsp;|&nbsp;" : "",
-            t ? `🛢️ TANQUERO: <b>${t}</b>` : "",
-          ].join("");
+          // Solo si cambió: reescribirlo en cada sync reemplaza el botón de
+          // llamar bajo el dedo y el toque se pierde.
+          const html = personalCalidadHTML_(it);
+          if (personalEl.dataset.html !== html) {
+            personalEl.innerHTML = html;
+            personalEl.dataset.html = html;
+          }
         }
       }
     } catch {}

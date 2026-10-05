@@ -73,3 +73,85 @@
   font-weight: var(--fw-bold, 700);
   white-space: nowrap;
 }
+
+/* =====================================================================
+   Llamado por voz desde CALIDAD — "🔧 MOTOR: Juan  [📢 Llamar]"
+   ---------------------------------------------------------------------
+   Es un interruptor: encendido repite el llamado por el parlante hasta
+   que se vuelve a tocar. Encendido va en rojo y latiendo para que desde
+   lejos se vea que el teléfono está llamando a alguien. La barra fija de
+   abajo existe porque la tarjeta puede desaparecer con el llamado puesto.
+   Lógica en public/js/work/llamado-voz.js.
+===================================================================== */
+.llamadoPer {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--gap-xs);
+  margin: 4px 12px 0 0;
+}
+
+.btnLlamar,
+.llamadoBarStop {
+  width: auto;
+  min-height: 34px;
+  height: auto;
+  margin: 0;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: var(--border-w, 1px) solid var(--btnLine);
+  background: var(--pillBg);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-extrabold);
+  white-space: nowrap;
+}
+
+.btnLlamar.is-on {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+  animation: llamadoLatido 1.2s ease-in-out infinite;
+}
+
+@keyframes llamadoLatido {
+  0%, 100% { box-shadow: 0 0 0 0 var(--dangerBg); }
+  50%      { box-shadow: 0 0 0 8px var(--dangerBg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btnLlamar.is-on { animation: none; }
+}
+
+.llamadoBar {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(12px + var(--safeBottom));
+  z-index: 9998;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  border: var(--border-w, 1px) solid var(--danger);
+  background: var(--bg1);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+
+.llamadoBarRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
+}
+
+.llamadoBarTxt { font-size: var(--fs-md); }
+.llamadoBarRol { color: var(--muted); }
+
+.llamadoBarStop {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
