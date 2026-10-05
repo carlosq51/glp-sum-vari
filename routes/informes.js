@@ -28,7 +28,9 @@ import { Router } from "express";
 import { supabaseServiceHeaders_ } from "../lib/supabase.js";
 import { requireRol_ } from "../lib/authz.js";
 import { emitEvent_ } from "../lib/events.js";
-import { fusionarInforme_, aplanarInforme_, aplicarEdicion_, SLOTS_ETAPA_FOTO, etapasPorFoto_ } from "../lib/informes.js";
+import {
+  fusionarInforme_, aplanarInforme_, aplicarEdicion_, aplicarVehiculo_, SLOTS_ETAPA_FOTO, etapasPorFoto_,
+} from "../lib/informes.js";
 import { r2AutoresRegistro } from "../r2-uploads.js";
 
 const router = Router();
@@ -368,7 +370,20 @@ router.get("/api/informes/:id", requireRol_("ADMIN", "SUPERVISOR"), async (req, 
       console.warn("[informes] sin padrón al abrir:", err.message);
     }
 
-    res.json({ ok: true, informe: filas[0], plano: aplanarInforme_(datos) });
+    // Marca y modelo del carro de verdad, de `vins`. Antes salía JETOUR X70
+    // para todo, también para un KYC X5.
+    let plano = aplanarInforme_(datos);
+    try {
+      const vin = s_(filas[0].vin) || s_(plano.vin);
+      if (vin) {
+        const v = await sbGet_(`vins?select=modelo&vin=eq.${encodeURIComponent(vin)}&limit=1`);
+        plano = aplicarVehiculo_(plano, v?.[0]?.modelo);
+      }
+    } catch (err) {
+      console.warn("[informes] sin modelo del carro:", err.message);
+    }
+
+    res.json({ ok: true, informe: filas[0], plano });
   } catch (err) {
     console.error("[informes] GET uno:", err.message);
     res.status(500).json({ ok: false, error: mensajeUtil_(err) });

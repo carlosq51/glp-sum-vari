@@ -95,6 +95,9 @@
   margin-bottom: 10px;
   background: var(--surface2);
 }
+/* Técnico 2 queda oculto hasta pulsar "Añadir técnico". Explícito porque
+   un display de .itField pisaría al atributo hidden. */
+[data-it-tec2][hidden], #itAddTec2Box[hidden] { display: none !important; }
 .itPersonaNom {
   font-size: 13px; font-weight: 800;
   margin-bottom: 10px;

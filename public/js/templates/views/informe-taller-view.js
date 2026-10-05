@@ -220,11 +220,11 @@ export function informeTallerPageHtml() {
       <div class="itGrid">
         <div class="itField">
           <label for="itMarca">Marca</label>
-          <input id="itMarca" value="JETOUR" readonly>
+          <input id="itMarca" value="JETOUR" autocomplete="off">
         </div>
         <div class="itField">
           <label for="itModelo">Modelo</label>
-          <input id="itModelo" value="X70" readonly>
+          <input id="itModelo" value="X70" autocomplete="off">
         </div>
         <div class="itField">
           <label for="itOt">OT</label>
@@ -242,9 +242,16 @@ export function informeTallerPageHtml() {
           <label for="itTec1">Técnico 1</label>
           <input id="itTec1" placeholder="Nombre y apellido" autocomplete="off">
         </div>
-        <div class="itField">
+        <!-- Técnico 2 casi nunca hace falta: el carro lo trabajan el
+             delantero y el tanquero. Queda escondido hasta que la oficina
+             pida añadirlo, para que un bloque vacío no parezca un olvido. -->
+        <div class="itField" data-it-tec2 hidden>
           <label for="itTec2">Técnico 2</label>
           <input id="itTec2" placeholder="Nombre y apellido" autocomplete="off">
+        </div>
+        <div class="itField" id="itAddTec2Box">
+          <label>&nbsp;</label>
+          <button class="btn" id="itAddTec2" type="button">+ Añadir técnico</button>
         </div>
       </div>
 
@@ -303,7 +310,7 @@ export function informeTallerPageHtml() {
         último termina y viene a la oficina.
       </p>
       ${["itP1", "itP2", "itP3"].map((p, i) => `
-        <div class="itPersona">
+        <div class="itPersona"${p === "itP2" ? " data-it-tec2 hidden" : ""}>
           <div class="itPersonaNom" id="${p}Nom">${["Técnico 1", "Técnico 2", "Tanquero"][i]}</div>
           <div class="itGrid">
             <div class="itField">

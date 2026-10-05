@@ -10,7 +10,10 @@
 // =========================
 
 import { describe, it, expect } from "vitest";
-import { fusionarInforme_, aplanarInforme_, informeVacio_, aplicarEdicion_, etapasPorFoto_ } from "../lib/informes.js";
+import {
+  fusionarInforme_, aplanarInforme_, informeVacio_, aplicarEdicion_, etapasPorFoto_,
+  marcaModeloDe_, aplicarVehiculo_,
+} from "../lib/informes.js";
 
 const parteMotor = {
   nombre: "FRANZ COSTILLA",
@@ -272,6 +275,26 @@ describe("La oficina corrige sin destruir el informe", () => {
     const previo = fusionarInforme_(fusionarInforme_(null, "MOTOR", parteMotor), "TANQUE", parteTanque);
     const editado = aplicarEdicion_(previo, { marcados: [7] });
     expect(aplanarInforme_(editado).marcados).toEqual([7]);
+  });
+});
+
+describe("Marca y modelo salen del carro, no del relleno JETOUR X70", () => {
+  it("separa marca y modelo del canónico", () => {
+    expect(marcaModeloDe_("KYC X5")).toEqual({ marca: "KYC", modelo: "X5" });
+    expect(marcaModeloDe_("NEW X5 1.5 MT")).toEqual({ marca: "KYC", modelo: "X5" });
+    expect(marcaModeloDe_("Jetour X70")).toEqual({ marca: "JETOUR", modelo: "X70" });
+    expect(marcaModeloDe_("TERA")).toEqual({ marca: "VOLKSWAGEN", modelo: "TERA" });
+    expect(marcaModeloDe_("RAMAL")).toBeNull();
+  });
+
+  it("un KYC X5 ya no sale como JETOUR X70", () => {
+    const plano = aplanarInforme_(fusionarInforme_(null, "MOTOR", parteMotor));
+    expect(aplicarVehiculo_(plano, "KYC X5")).toMatchObject({ marca: "KYC", modelo: "X5" });
+  });
+
+  it("no pisa lo que la oficina corrigió a mano, ni inventa si no reconoce el modelo", () => {
+    expect(aplicarVehiculo_({ marca: "KYC", modelo: "V7" }, "KYC X5")).toMatchObject({ modelo: "V7" });
+    expect(aplicarVehiculo_({ marca: "JETOUR", modelo: "X70" }, "DESCONOCIDO")).toMatchObject({ marca: "JETOUR" });
   });
 });
 

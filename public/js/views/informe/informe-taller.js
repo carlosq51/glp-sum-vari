@@ -66,6 +66,13 @@ function fechaPeru_(iso) {
   return `${d}-${m}-${y}`;
 }
 
+/** Enseña (o esconde) el Técnico 2: su campo de nombre y su bloque de horas. */
+function mostrarTec2_(on) {
+  document.querySelectorAll("[data-it-tec2]").forEach(el => { el.hidden = !on; });
+  const boton = $("itAddTec2Box");
+  if (boton) boton.hidden = on;
+}
+
 /** Lee el formulario una sola vez y de ahí salen las tres hojas. */
 function datos_() {
   const tareas = DETALLE_TAREAS
@@ -232,6 +239,7 @@ function volcar_(d = {}) {
   const otros = (d.tecnicos || []).filter(n => norm(n) !== norm(d.tanquero));
   set("itTec1", otros[0]);
   set("itTec2", otros[1] ?? "");
+  mostrarTec2_(!!val("itTec2"));
 
   // Las tareas del informe: marcadas las que mandó, desmarcadas las demás.
   if (Array.isArray(d.tareas)) {
@@ -313,6 +321,10 @@ export function renderInformeTaller(host) {
     host.addEventListener("click", (e) => {
       if (e.target.closest("#itPrint")) imprimir_();
       if (e.target.closest("#itBack")) window.location.href = "/";
+      if (e.target.closest("#itAddTec2")) {
+        mostrarTec2_(true);
+        $("itTec2")?.focus();
+      }
     });
     montado_ = true;
   }
