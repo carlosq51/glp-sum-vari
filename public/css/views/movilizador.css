@@ -1,103 +1,407 @@
 /* =====================================================================
-   views/movilizador.css — Vista Movilizador (3 paneles de flujo)
+   views/movilizador.css — Vista Movilizador
+   ---------------------------------------------------------------------
+   Rediseño oct-2026: todo sale de los tokens del tema (00-token.css), así
+   que día y noche se resuelven solos, sin overrides `[data-theme="day"]`.
+   Los tintes se hacen con color-mix sobre el color semántico.
+
+   Jerarquía de una tarjeta, de más a menos peso:
+     VIN (mono, negro) = fecha del grupo  >  ubicación (chip en negrita)
+     >  hora / quién  >  todo lo demás.
+   Al sol lo que se lee primero es el VIN y dónde está el carro.
+
+   Sin animaciones de entrada en las listas: el poll repinta cada pocos
+   segundos y una cascada en cada repintado parpadea.
    ===================================================================== */
 
 #viewMOVILIZADOR {
+  --mov-vin: 1.05rem;           /* VIN y fecha de grupo comparten tamaño */
+  --mov-line: var(--surfaceLine);
+  --mov-soft: color-mix(in srgb, var(--text) 5%, transparent);
   width: 100%;
   display: flex;
   flex-direction: column;
   gap: 14px;
 }
 
-/* ─── Header ─── */
-.movHeader {
+/* ─── Hub ─── */
+.movHubHeader {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 2px;
+  gap: 10px;
+  margin-bottom: 14px;
 }
 
-.movHeader h3 {
-  margin: 0;
-}
-
-.movHeaderActions {
+.movHubActions {
   display: flex;
   align-items: center;
   gap: 10px;
-  flex-wrap: wrap;
 }
 
 .movRefreshBtn {
-  min-width: 120px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 38px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--mov-line);
+  background: var(--mov-soft);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  cursor: pointer;
+}
+.movRefreshBtn:hover:not(:disabled) { background: var(--pillBg); }
+.movRefreshBtn:disabled .icn { animation: movSpin 1s linear infinite; }
+@keyframes movSpin { to { transform: rotate(360deg); } }
+
+/* Línea de estado: visible en el hub y dentro de cada pantalla */
+.movStatus {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-bold);
+  color: var(--muted);
+  min-height: 16px;
+  text-align: right;
 }
 
-/* ─── Panel accordion ─── */
+.movOfflineBanner,
+.movCacheBanner {
+  padding: 9px 12px;
+  border-radius: var(--radiusSm);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  line-height: 1.4;
+  color: var(--warn);
+  background: var(--warnBg);
+  border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent);
+}
+.movOfflineBanner { margin-bottom: 12px; }
+
+/* Badges de las cartillas del hub (top-right, en fila) */
+.hubCardBadges {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.movBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: var(--fw-black);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.movBadgeWarn { background: var(--warn); color: var(--surface); }
+.movBadgeNote { background: var(--note); color: var(--surface); }
+.movBadgeOk   { background: var(--ok);   color: var(--surface); }
+
+/* En celular, una cartilla por fila: a dos columnas los nombres ("Lista del día",
+   "Mapa de zonas") y sus bajadas se cortaban. */
+@media (max-width: 520px) {
+  #movCardGrid { grid-template-columns: 1fr; }
+}
+
+.hubCard[data-mov-card="lista"]   { --tone: var(--tone-slate); }
+.hubCard[data-mov-card="ingreso"] { --tone: var(--tone-amber); }
+.hubCard[data-mov-card="espera"]  { --tone: var(--tone-blue); }
+.hubCard[data-mov-card="salida"]  { --tone: var(--tone-lime); }
+.hubCard[data-mov-card="mapa"]    { --tone: var(--tone-violet); }
+
+/* ─── Pantallas ─── */
+.movScreen {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.movScreenHead { margin-bottom: 2px; }
+.movScreenHead .adminBackBtn .icn { margin-right: -2px; }
+
+.movSubHdr {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-bold);
+  color: var(--muted);
+  letter-spacing: .2px;
+  min-height: 16px;
+}
+.movSubHdr:empty { display: none; }
+
+/* ─── Búsqueda + botones cuadrados ─── */
+.movSearchRow,
+.movVinRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.movSearchRow .vinWrap,
+.movVinRow .vinWrap { flex: 1; min-width: 0; }
+
+.movSearchWrap { position: relative; }
+.movSearchIcon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
+  display: flex;
+}
+#viewMOVILIZADOR .movSearchWrap .movVinInput { padding-left: 38px; }
+.movSearchIcon { z-index: 1; }
+
+.movVinInput {
+  width: 100%;
+  height: 46px;
+  padding: 0 14px;
+  border-radius: var(--radiusSm);
+  border: 1px solid var(--inputLine);
+  background: var(--inputBg);
+  color: var(--text);
+  font-size: 1rem;
+  font-family: var(--font-mono);
+  font-weight: var(--fw-bold);
+  letter-spacing: .5px;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color var(--dur-base), box-shadow var(--dur-base);
+}
+.movVinInput::placeholder { color: var(--placeholder); font-weight: 600; letter-spacing: 0; font-family: var(--font-body); }
+.movVinInput:focus {
+  border-color: var(--inputFocus);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--inputFocus) 22%, transparent);
+}
+
+.movQrBtn,
+.movDownloadBtn {
+  flex-shrink: 0;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  border-radius: var(--radiusSm);
+  border: 1px solid var(--mov-line);
+  background: var(--mov-soft);
+  color: var(--text);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.movQrBtn {
+  background: var(--btnBg);
+  border-color: transparent;
+  color: var(--btnText);
+}
+.movQrBtn:hover { filter: brightness(1.06); }
+.movDownloadBtn:hover { background: var(--pillBg); }
+.movDownloadBtnSaved {
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok) 45%, transparent);
+  background: var(--okBg);
+}
+
+/* ─── Botones ─── */
+.movBtnPrimary,
+.movBtnGhost,
+.movBtnGps,
+.movBtnRegistrarPendiente,
+.movObsAddBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: var(--radiusSm);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-extrabold);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--dur-base), border-color var(--dur-base),
+              filter var(--dur-base), transform var(--dur-fast) var(--ease-out);
+}
+.movBtnPrimary {
+  width: 100%;
+  border: 0;
+  background: var(--ok);
+  color: var(--surface);
+}
+.movBtnPrimary:hover:not(:disabled) { filter: brightness(1.07); }
+/* De día el verde del token queda flojo con texto blanco al sol: un punto más oscuro. */
+:root[data-theme="day"] .movBtnPrimary:not(:disabled) { background: color-mix(in srgb, var(--ok) 80%, black); }
+.movBtnPrimary:disabled {
+  background: var(--pillBg);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.movBtnGhost {
+  border: 1px solid var(--mov-line);
+  background: transparent;
+  color: var(--text);
+}
+.movBtnGhost:hover { background: var(--pillBg); }
+.movBtnGhost--danger { color: var(--danger); }
+
+.movBtnGps {
+  width: 100%;
+  border: 0;
+  background: var(--note);
+  color: var(--surface);
+}
+.movBtnGps:hover { filter: brightness(1.07); }
+
+.movBtnPair {
+  display: flex;
+  gap: 8px;
+}
+.movBtnPair > .movBtnPrimary,
+.movBtnPair > .movBtnRegistrarPendiente { flex: 1; width: auto; }
+
+.movBtnPrimary:active:not(:disabled), .movBtnGhost:active, .movBtnGps:active,
+.movBtnRegistrarPendiente:active, .movObsAddBtn:active, .movQrBtn:active,
+.movDownloadBtn:active, .movRefreshBtn:active, .movQrResultClose:active,
+.movObs:active, .movObsQuickBtn:active {
+  transform: scale(.96);
+}
+
+/* ─── Totales de Ingreso ─── */
+.movStatsRow {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.movStatTile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 12px;
+  border-radius: var(--radiusSm);
+  border: 1px solid var(--mov-line);
+  background: var(--surface);
+  min-width: 0;
+}
+.movStatNum {
+  font-size: 1.75rem;
+  font-weight: var(--fw-black);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.movStatLabel {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-bold);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.movStatTile--warn { border-top: 3px solid var(--warn); }
+.movStatTile--note { border-top: 3px solid var(--note); }
+.movStatTile--total { border-top: 3px solid var(--text); }
+.movStatTile--warn .movStatNum { color: var(--warn); }
+
+/* ─── Caja de registro (Ingreso / Salida) ─── */
+.movRegBox {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--mov-line);
+  box-shadow: var(--shadowSm);
+}
+.movRegTitle {
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-black);
+  color: var(--text);
+  line-height: 1.1;
+}
+.movRegHint {
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  margin-top: -6px;
+}
+.movRegHint strong { color: var(--text); }
+
+.movRedirRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.movRedirLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  color: var(--muted);
+}
+.movRedirSeg {
+  display: flex;
+  flex-shrink: 0;
+  padding: 3px;
+  gap: 2px;
+  border-radius: 999px;
+  background: var(--pillBg);
+}
+.movRedirOpt {
+  min-width: 48px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-extrabold);
+  cursor: pointer;
+  transition: background var(--dur-base), color var(--dur-base);
+}
+.movRedirOpt:hover { color: var(--text); }
+.movRedirOptOn { background: var(--btnBg); color: var(--btnText); }
+
+/* ─── Panel plegable ─── */
 .movPanel {
   border-radius: var(--radius);
-  border: var(--border-w) solid var(--codeLine);
-  background: rgba(0,0,0,.12);
+  border: 1px solid var(--mov-line);
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
   overflow: hidden;
-  transition: box-shadow .2s ease;
-  margin-bottom: 10px;
 }
-
-.movPanel:has(.movBadge:not([style*="none"])) {
-  border-color: rgba(255,255,255,.22);
-}
-
 .movPanelHeader {
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 14px 16px;
+  gap: 12px;
+  padding: 12px 14px;
   background: none;
-  border: none;
+  border: 0;
   cursor: pointer;
   text-align: left;
   color: var(--text);
-  font-size: var(--fs-md);
-  font-weight: var(--fw-extrabold);
-  transition: background .18s ease;
-  border-bottom: var(--border-w) solid transparent;
 }
-
-.movPanel.open .movPanelHeader {
-  border-bottom-color: var(--codeLine);
-  background: rgba(255,255,255,.03);
-}
-
-.movPanelHeader:hover {
-  background: rgba(255,255,255,.05);
-}
-
-:root[data-theme="day"] .movPanel {
-  background: var(--glass);
-  border-color: var(--surfaceLine);
-}
-
-:root[data-theme="day"] .movPanelHeader:hover {
-  background: var(--pillBg);
-}
-
-:root[data-theme="day"] .movPanel.open .movPanelHeader {
-  background: var(--glass);
-  border-bottom-color: var(--surfaceLine);
-}
-
-:root[data-theme="day"] .movPanelTitle { color: var(--text); }
-:root[data-theme="day"] .movPanelHint  { color: var(--muted); }
-:root[data-theme="day"] .movChevron    { color: var(--muted); }
+.movPanelHeader:hover { background: var(--mov-soft); }
+.movPanel.open .movPanelHeader { border-bottom: 1px solid var(--mov-line); }
 
 .movPanelIcon {
-  font-size: 1.1em;
-  line-height: 1;
+  width: 34px;
+  height: 34px;
   flex-shrink: 0;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  color: var(--text);
+  background: var(--pillBg);
 }
-
 .movPanelTitleGroup {
   flex: 1;
   display: flex;
@@ -105,69 +409,439 @@
   gap: 2px;
   min-width: 0;
 }
-
 .movPanelTitle {
-  font-weight: var(--fw-extrabold);
-  font-size: 1.05rem;
-  line-height: 1.2;
-  color: var(--text);
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-black);
+  line-height: 1.15;
 }
-
 .movPanelHint {
-  color: var(--muted);
   font-size: var(--fs-xs);
-  font-weight: 400;
+  color: var(--muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
 .movChevron {
-  font-size: 11px;
+  display: flex;
   color: var(--muted);
-  transition: transform .22s ease;
-  flex-shrink: 0;
+  transition: transform var(--dur-base) var(--ease-out);
+  transform: rotate(90deg);
 }
+.movPanel:not(.open) .movChevron { transform: rotate(0deg); }
 
-.movPanel.open .movChevron {
-  transform: rotate(0deg);
-}
-
-.movPanel:not(.open) .movChevron {
-  transform: rotate(-90deg);
-}
-
-/* ─── Panel body (collapses) ─── */
-.movPanelBody {
-  display: none;
-  padding: 14px;
-}
-
+.movPanelBody { display: none; padding: 12px; }
 .movPanel.open .movPanelBody {
   display: block;
+  animation: fadeIn var(--dur-base) var(--ease-out);
 }
 
-/* ─── Badges ─── */
-.movBadge {
+/* ─── Grupos por día ─── */
+.movPendientesBody {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.movPanelBody > .movDayGroup + .movDayGroup,
+.movPanelBody > .movDayGroup + .movBlockHdr { margin-top: 18px; }
+
+.movDayHdr {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 2px 8px;
+}
+
+/* Mismo tamaño que el VIN: es lo segundo que se busca. */
+.movDayDate {
+  font-size: var(--mov-vin);
+  font-weight: var(--fw-black);
+  color: var(--text);
+  letter-spacing: .2px;
+}
+.movDayRel {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  color: var(--muted);
+}
+.movDayCount {
+  margin-left: auto;
+  min-width: 26px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  display: inline-grid;
+  place-items: center;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-black);
+  color: var(--text);
+  background: var(--pillBg);
+  font-variant-numeric: tabular-nums;
+}
+
+.movBlockHdr {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 2px 8px;
+  font-size: var(--mov-vin);
+  font-weight: var(--fw-black);
+  color: var(--note);
+}
+
+/* ─── Tarjeta de carro ─── */
+.movCardList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.movCard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: var(--radiusSm);
+  background: var(--surface);
+  border: 1px solid var(--mov-line);
+  border-left: 4px solid var(--mov-line);
+  color: var(--text);
+}
+.movCard--conv { border-left-color: var(--note); }
+.movCard--late { border-left-color: var(--danger); }
+.movCard--obs  { border-left-color: var(--warn); }
+
+.movCardTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.movVin {
+  font-family: var(--font-mono);
+  font-size: var(--mov-vin);
+  font-weight: var(--fw-black);
+  letter-spacing: .5px;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+/* Ubicación: chip en negrita, alto contraste — "¿dónde está el carro?" */
+.movUbic {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  min-width: 28px;
-  height: 28px;
-  padding: 0 9px;
+  gap: 4px;
+  max-width: 100%;
+  padding: 4px 10px 4px 8px;
   border-radius: 999px;
   font-size: var(--fs-sm);
   font-weight: var(--fw-black);
-  letter-spacing: .1px;
-  line-height: 1;
-  flex-shrink: 0;
+  letter-spacing: .3px;
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.movUbic .icn { flex-shrink: 0; color: var(--tone-violet); }
+
+.movCardMeta {
+  display: flex;
+  align-items: center;
+  gap: 6px 10px;
+  flex-wrap: wrap;
+  font-size: var(--fs-sm);
+}
+.movHora,
+.movFecha {
+  font-weight: var(--fw-black);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.movPor { color: var(--muted); font-weight: var(--fw-bold); }
+.movPor::before { content: "·"; margin-right: 6px; }
+.movCardMeta > .movPor:first-child::before { content: none; }
+
+.movCardNoReg {
+  font-weight: var(--fw-extrabold);
+  color: var(--warn);
 }
 
-.movBadgeWarn   { background: var(--warnBg);   color: var(--warn);   border: 1px solid rgba(250,204,21,.3);  }
-.movBadgeNote   { background: var(--noteBg);   color: var(--note);   border: 1px solid rgba(96,165,250,.3); }
-.movBadgeOk     { background: var(--okBg);     color: var(--ok);     border: 1px solid rgba(34,197,94,.3);  }
+/* Chips de estado */
+.movChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-black);
+  white-space: nowrap;
+  color: var(--muted);
+  background: var(--pillBg);
+}
+.movChip--note   { color: var(--note);   background: var(--noteBg); }
+.movChip--warn   { color: var(--warn);   background: var(--warnBg); }
+.movChip--danger { color: var(--danger); background: var(--dangerBg); }
+.movChip--live::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: liveDot 1.6s ease-out infinite;
+}
 
-/* ─── Hub badge (en el botón del hub) ─── */
+/* Calibración: dos relojes en columnas */
+.movTimeline {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.movTimelineRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-sm);
+  flex-wrap: wrap;
+}
+.movTimelineIcon { display: flex; color: var(--muted); }
+.movTimelineRow .movPor { margin-left: auto; }
+.movTimelineRow .movPor::before { content: none; }
+.movTimelineLabel {
+  min-width: 78px;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-extrabold);
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  color: var(--muted);
+}
+
+.movEmpty {
+  padding: 18px 14px;
+  border-radius: var(--radiusSm);
+  border: 1px dashed var(--mov-line);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  text-align: center;
+}
+
+/* ─── Lista del día: tarjeta por registrar ─── */
+.movBtnRegistrarPendiente {
+  border: 1px solid color-mix(in srgb, var(--accent, var(--btnBg)) 55%, transparent);
+  background: color-mix(in srgb, var(--btnBg) 16%, transparent);
+  color: var(--text);
+}
+.movBtnRegistrarPendiente:hover { background: color-mix(in srgb, var(--btnBg) 26%, transparent); }
+.movBtnRegistrarPendiente .icn { color: var(--btnBg); }
+
+.movPendienteConfirmRow {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: var(--radiusSm);
+  background: var(--okBg);
+  border: 1px solid color-mix(in srgb, var(--ok) 35%, transparent);
+}
+.movConfirmQ { font-size: var(--fs-sm); font-weight: var(--fw-extrabold); }
+
+/* Observación guardada */
+.movObsSlot:empty { display: none; }
+.movObs {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radiusSm);
+  border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
+  background: var(--warnBg);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.movObsIcon { display: flex; color: var(--warn); padding-top: 1px; }
+.movObsBody { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.movObsText { font-size: var(--fs-md); font-weight: var(--fw-extrabold); overflow-wrap: anywhere; }
+.movObsBy { font-size: var(--fs-xs); color: var(--muted); font-weight: var(--fw-bold); }
+.movObsEdit { display: flex; color: var(--muted); padding-top: 2px; }
+
+.movObsAddBtn {
+  flex-shrink: 0;
+  border: 1px solid var(--mov-line);
+  background: transparent;
+  color: var(--muted);
+}
+.movObsAddBtn:hover { color: var(--text); background: var(--pillBg); }
+.movObsAddBtn[hidden] { display: none; }
+
+/* Editor de observación */
+.movObsEditor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: var(--radiusSm);
+  background: var(--surface2);
+  border: 1px solid var(--mov-line);
+  animation: fadeIn var(--dur-base) var(--ease-out);
+}
+.movObsQuick { display: flex; flex-wrap: wrap; gap: 6px; }
+.movObsQuickBtn {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--mov-line);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  cursor: pointer;
+}
+.movObsQuickBtn:hover { background: var(--pillBg); }
+.movObsInput {
+  width: 100%;
+  height: 44px;
+  padding: 0 12px;
+  border-radius: var(--radiusSm);
+  border: 1px solid var(--inputLine);
+  background: var(--inputBg);
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: var(--fw-bold);
+  outline: none;
+  box-sizing: border-box;
+}
+.movObsInput:focus {
+  border-color: var(--inputFocus);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--inputFocus) 22%, transparent);
+}
+.movObsErr { font-size: var(--fs-xs); font-weight: var(--fw-bold); color: var(--danger); }
+.movObsErr:empty { display: none; }
+
+/* Resultado del QR en Lista */
+.movPendientesQrCard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 2px solid var(--btnBg);
+  box-shadow: var(--shadowSm);
+  animation: popIn var(--dur-base) var(--ease-spring);
+}
+.movPendientesQrTop { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.movPendientesQrTop .movVin { font-size: 1.15rem; }
+.movPendientesQrTop .movUbic:empty { display: none; }
+.movPendientesQrMsg { font-size: var(--fs-sm); font-weight: var(--fw-bold); color: var(--text); }
+.movPendientesQrMsg:empty { display: none; }
+.movPendientesQrMsg--err { color: var(--danger); }
+.movPendientesConfirmBtns { display: flex; gap: 8px; }
+.movPendientesConfirmBtns .movBtnPrimary { flex: 1; width: auto; }
+
+/* ─── Salida ─── */
+.movOtWarn {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: var(--radiusSm);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  color: var(--warn);
+  background: var(--warnBg);
+}
+.movOtWarn .icn { flex-shrink: 0; margin-top: 1px; }
+
+.btnConfirmarSalida:disabled {
+  background: var(--pillBg);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.movSalidaQrResult {
+  --tono: var(--note);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 2px solid var(--tono);
+  box-shadow: var(--shadow);
+  animation: popIn var(--dur-base) var(--ease-spring);
+}
+.movSalidaQrResult[data-tono="ok"]   { --tono: var(--ok); }
+.movSalidaQrResult[data-tono="wait"] { --tono: var(--warn); }
+.movSalidaQrResult[data-tono="err"]  { --tono: var(--danger); }
+.movSalidaQrResult[data-tono="done"] { --tono: var(--note); }
+
+.movSalidaQrResultTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.movSalidaQrResultMain { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.movSalidaQrResultVin {
+  font-family: var(--font-mono);
+  font-weight: var(--fw-black);
+  font-size: 1.25rem;
+  letter-spacing: .6px;
+  color: var(--text);
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+.movSalidaQrResultDestino {
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-black);
+  color: var(--tono, var(--text));
+  line-height: 1.25;
+}
+.movSalidaQrDestino--ok   { color: var(--ok); }
+.movSalidaQrDestino--wait { color: var(--warn); }
+.movSalidaQrDestino--err  { color: var(--danger); }
+.movSalidaQrDestino--done { color: var(--text); }
+.movSalidaQrResultMeta {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  color: var(--muted);
+}
+.movSalidaQrResultMeta:empty { display: none; }
+
+.movQrResultClose {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--mov-line);
+  background: var(--mov-soft);
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.movQrResultClose:hover { color: var(--danger); }
+
+/* ─── Mobile ─── */
+@media (max-width: 400px) {
+  #viewMOVILIZADOR { --mov-vin: .98rem; }
+  .movVin { letter-spacing: .3px; }
+  .movStatNum { font-size: 1.5rem; }
+  .movStatTile { padding: 10px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .movChip--live::before,
+  .movRefreshBtn:disabled .icn { animation: none; }
+}
+
+/* ─── Badge del hub (lo usan ui-shell.js y conversion.js) ─── */
 .hubBadge {
   display: inline-flex;
   align-items: center;
@@ -179,182 +853,18 @@
   border-radius: 999px;
   background: var(--warnBg);
   color: var(--warn);
-  border: 1px solid rgba(250,204,21,.3);
+  border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent);
   font-size: 11px;
   font-weight: var(--fw-black);
   line-height: 1;
   vertical-align: middle;
 }
 
-/* ─── Card list (reemplaza tablas) ─── */
-.movCardList {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
+/* =====================================================================
+   Admin · panel de configuración. No es del movilizador, pero vive en
+   este archivo desde siempre (admin.js e inventario.js lo usan).
+   ===================================================================== */
 
-.movCard {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px 14px;
-  border-radius: var(--radiusSm);
-  background: var(--surface);
-  border: 1px solid rgba(255,255,255,.14);
-  color: var(--text);
-}
-
-/* Day theme: swap to indigo-tinted surface so cards stay readable */
-:root[data-theme="day"] .movCard {
-  background: var(--pillBg);
-  border-color: var(--surfaceLine);
-  color: var(--text);
-}
-
-:root[data-theme="day"] .movCardDate,
-:root[data-theme="day"] .movCardSub { color: var(--muted); }
-:root[data-theme="day"] .movVin { color: var(--text); }
-
-.movCardTop {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.movCardDate {
-  font-size: var(--fs-sm);
-  color: var(--muted);
-  white-space: nowrap;
-}
-
-.movCardSub {
-  font-size: var(--fs-sm);
-  color: var(--muted);
-}
-
-.movBtnFull {
-  width: 100%;
-  padding: 9px 14px;
-  font-size: var(--fs-sm);
-  text-align: center;
-}
-
-/* ─── Table inside panels (legacy, kept for admin) ─── */
-.movTable {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-  min-width: 100%;
-}
-
-.movTable thead th {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  text-align: left;
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-black);
-  letter-spacing: .25px;
-  padding: 10px 12px;
-  color: var(--text);
-  background: linear-gradient(180deg, var(--surface) 0%, var(--surface2) 100%);
-  border-bottom: var(--border-w) solid rgba(255,255,255,.12);
-  white-space: nowrap;
-}
-
-.movTable tbody td {
-  padding: 11px 12px;
-  font-size: var(--fs-md);
-  color: var(--text);
-  border-bottom: var(--border-w) solid rgba(255,255,255,.08);
-  vertical-align: middle;
-}
-
-.movTable tbody tr:hover {
-  background: rgba(255,255,255,.04);
-}
-
-.movTable tbody tr:last-child td {
-  border-bottom: 0;
-}
-
-/* VIN monospace */
-.movVin {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-weight: var(--fw-black);
-  letter-spacing: .45px;
-  color: var(--text);
-  white-space: nowrap;
-}
-
-/* ─── Action buttons ─── */
-.movBtnAction {
-  padding: 5px 12px;
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-bold);
-  border-radius: var(--radiusSm);
-  white-space: nowrap;
-  cursor: pointer;
-  transition: background var(--dur-base), border-color var(--dur-base),
-              opacity .15s, transform var(--dur-fast) var(--ease-out);
-}
-
-.movBtnAction:active:not(:disabled) { transform: scale(.95); }
-
-.movBtnAction:disabled {
-  opacity: .5;
-  cursor: not-allowed;
-}
-
-.btnTrasladar {
-  background: rgba(250,204,21,.18);
-  color: var(--warn);
-  border: 1px solid rgba(250,204,21,.35);
-}
-
-.btnTrasladar:hover:not(:disabled) {
-  background: rgba(250,204,21,.28);
-}
-
-.btnEntregarCalidad {
-  background: rgba(96,165,250,.18);
-  color: var(--note);
-  border: 1px solid rgba(96,165,250,.35);
-}
-
-.btnEntregarCalidad:hover:not(:disabled) {
-  background: rgba(96,165,250,.28);
-}
-
-/* ─── Empty state ─── */
-.movEmpty {
-  padding: 14px 12px;
-  border-radius: var(--radiusSm);
-  background: var(--glass, rgba(255,255,255,.04));
-  border: var(--border-w) dashed rgba(255,255,255,.16);
-  color: var(--muted);
-  font-size: var(--fs-sm);
-}
-
-/* Separador entre "En Espera" y "En Conversión" dentro del panel 0 */
-.movList0Separator {
-  padding: 6px 4px 2px;
-  color: var(--note);
-  opacity: .75;
-  font-weight: 700;
-  letter-spacing: .2px;
-}
-
-/* Aviso de VIN sin registro de entrada */
-.movCardNoReg {
-  color: var(--warn);
-  font-size: var(--fs-xs);
-  font-weight: 700;
-}
-
-/* ─── Admin config panel ─── */
 .adminConfigPanel {
   padding: 16px;
 }
@@ -469,1083 +979,4 @@
 
 .hidden {
   display: none !important;
-}
-
-
-/* ─── Tab bar ─── */
-/* ── Hub de cartillas ── */
-.movHubHeader {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 14px;
-}
-
-/* ── Pantallas de sección (reemplaza movTabPanel) ── */
-.movScreen {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-/* Badges dentro de cartilla (top-right).
-   Van en una fila propia: cuando eran cada uno `position:absolute` en la misma
-   esquina, la cartilla de Ingreso (en espera + en conversión) los apilaba uno
-   encima del otro y no se leía ningún número. */
-.hubCardBadges {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.hubCard .movBadge {
-  position: static;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 5px;
-  font-size: 11px;
-}
-
-/* Tono por sección (fallback; el JS también fija --tone inline) */
-.hubCard[data-mov-card="lista"]   { --tone: var(--tone-slate); }
-.hubCard[data-mov-card="ingreso"] { --tone: var(--tone-amber); }
-.hubCard[data-mov-card="espera"]  { --tone: var(--tone-blue); }
-.hubCard[data-mov-card="salida"]  { --tone: var(--tone-lime); }
-.hubCard[data-mov-card="mapa"]    { --tone: var(--tone-violet); }
-
-/* ─── Secciones visuales ENTRADA / ZONA DE ESPERA / SALIDA ─── */
-.movSection {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 14px 16px;
-  border-radius: var(--radius);
-  border: 2px solid var(--codeLine);
-  background: rgba(0,0,0,.10);
-}
-
-/* remove outer margin from panels nested inside a section */
-.movSection .movPanel {
-  margin-bottom: 0;
-}
-
-.movSectionHeader {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding-bottom: 12px;
-  border-bottom: var(--border-w) solid rgba(255,255,255,.12);
-  margin-bottom: 2px;
-}
-
-.movSectionIcon {
-  font-size: 1.2em;
-  line-height: 1;
-  flex-shrink: 0;
-}
-
-.movSectionTitle {
-  flex: 1;
-  font-weight: var(--fw-extrabold);
-  font-size: 1.05rem;
-  letter-spacing: .6px;
-  text-transform: uppercase;
-}
-
-.movSectionBadges {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-
-/* ---- Accent colours per section ---- */
-.movSectionEntrada {
-  border-color: rgba(250,204,21,.35);
-}
-.movSectionEntrada .movSectionTitle {
-  color: var(--warn, #facc15);
-}
-
-.movSectionEspera {
-  border-color: rgba(96,165,250,.35);
-}
-.movSectionEspera .movSectionTitle {
-  color: var(--note, #60a5fa);
-}
-
-.movSectionSalida {
-  border-color: rgba(34,197,94,.35);
-}
-.movSectionSalida .movSectionTitle {
-  color: var(--ok, #4ade80);
-}
-
-/* Day theme */
-:root[data-theme="day"] .movSection {
-  background: var(--glass);
-}
-:root[data-theme="day"] .movSectionHeader {
-  border-bottom-color: var(--surfaceLine);
-}
-:root[data-theme="day"] .movSectionTitle        { color: var(--text); }
-:root[data-theme="day"] .movSectionEntrada      { border-color: rgba(202,138,4,.45); }
-:root[data-theme="day"] .movSectionEspera       { border-color: rgba(59,130,246,.35); }
-:root[data-theme="day"] .movSectionSalida       { border-color: rgba(22,163,74,.4); }
-:root[data-theme="day"] .movSectionEntrada .movSectionTitle { color: #854d0e; }
-:root[data-theme="day"] .movSectionEspera  .movSectionTitle { color: var(--note); }
-:root[data-theme="day"] .movSectionSalida  .movSectionTitle { color: #16a34a; }
-
-/* ─── Destino card row (sección SALIDA) ─── */
-.movDestino {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border-radius: var(--radiusSm);
-  background: rgba(34,197,94,.08);
-  border: 1px solid rgba(34,197,94,.22);
-  font-size: var(--fs-sm);
-}
-
-.movDestinoVacio {
-  background: rgba(255,255,255,.04);
-  border-color: rgba(255,255,255,.10);
-}
-
-.movDestinoLabel {
-  font-weight: var(--fw-bold);
-  color: var(--ok, #4ade80);
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.movDestinoVacio .movDestinoLabel {
-  color: var(--muted);
-}
-
-.movDestinoValue {
-  font-weight: var(--fw-extrabold);
-  color: var(--text);
-  letter-spacing: .2px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-:root[data-theme="day"] .movDestino          { background: rgba(22,163,74,.07); border-color: rgba(22,163,74,.22); }
-:root[data-theme="day"] .movDestinoLabel     { color: #16a34a; }
-:root[data-theme="day"] .movDestinoValue     { color: var(--text); }
-:root[data-theme="day"] .movDestinoVacio     { background: var(--glass); border-color: var(--surfaceLine); }
-
-/* ─── Aviso #OT faltante ─── */
-.movOtWarn {
-  padding: .35rem .6rem;
-  border-radius: 6px;
-  background: rgba(245,158,11,.13);
-  border: 1px solid rgba(245,158,11,.35);
-  color: #fbbf24;
-  margin-bottom: .45rem;
-}
-:root[data-theme="day"] .movOtWarn { background: rgba(245,158,11,.1); border-color: rgba(245,158,11,.35); color: #b45309; }
-
-/* ─── Botón confirmar salida ─── */
-.btnConfirmarSalida {
-  background: rgba(34,197,94,.18);
-  color: var(--ok, #4ade80);
-  border: 1px solid rgba(34,197,94,.35);
-}
-.btnConfirmarSalida:disabled {
-  opacity: .45;
-  cursor: not-allowed;
-  background: rgba(100,116,139,.12);
-  color: var(--muted, #94a3b8);
-  border-color: rgba(100,116,139,.25);
-}
-
-.btnConfirmarSalida:hover:not(:disabled) {
-  background: rgba(34,197,94,.28);
-}
-
-/* ─── Mobile ─── */
-@media (max-width: 520px) {
-  .movPanelHeader {
-    padding: 12px 12px;
-    font-size: var(--fs-sm);
-  }
-
-  .movTable thead th,
-  .movTable tbody td {
-    padding: 10px 10px;
-    font-size: var(--fs-sm);
-  }
-
-  .movVin {
-    font-size: var(--fs-sm);
-    letter-spacing: .3px;
-  }
-
-  .movBtnAction {
-    font-size: 12px;
-    padding: 5px 8px;
-  }
-
-  .movRefreshBtn {
-    width: 100%;
-    min-width: 0;
-  }
-}
-
-.movVinRow {
-  display: flex;
-  gap: 6px;
-  align-items: flex-start;
-}
-
-.movVinRow .vinWrap {
-  flex: 1;
-  min-width: 0;
-}
-
-.movQrBtn {
-  flex-shrink: 0;
-  height: 38px;
-  width: 42px;
-  border-radius: var(--radiusSm);
-  border: 1px solid rgba(255,255,255,.2);
-  background: rgba(255,255,255,.08);
-  color: var(--text);
-  font-size: 1.15rem;
-  cursor: pointer;
-  transition: background .16s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-}
-
-.movQrBtn:hover {
-  background: rgba(96,165,250,.22);
-  border-color: rgba(96,165,250,.5);
-}
-
-:root[data-theme="day"] .movQrBtn {
-  background: rgba(0,0,0,.06);
-  border-color: rgba(0,0,0,.18);
-  color: var(--text);
-}
-
-:root[data-theme="day"] .movQrBtn:hover {
-  background: rgba(37,99,235,.12);
-  border-color: rgba(37,99,235,.4);
-}
-
-/* GPS Quick Link */
-.movGpsLink {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 12px 16px;
-  border-radius: var(--radius);
-  background: rgba(96,165,250,.15);
-  border: 1px solid rgba(96,165,250,.4);
-  color: var(--note, #60a5fa);
-  font-size: var(--fs-md);
-  font-weight: var(--fw-extrabold);
-  text-decoration: none;
-  transition: background .18s ease, border-color .18s ease;
-  cursor: pointer;
-}
-
-.movGpsLink:hover {
-  background: rgba(96,165,250,.25);
-  border-color: rgba(96,165,250,.6);
-  color: #93c5fd;
-}
-
-/* ─── Registro Rápido section ─── */
-.movRegSection {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-
-.movRegBox {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 14px;
-  border-radius: var(--radius);
-  background: rgba(0,0,0,.18);
-  border: 1px solid rgba(255,255,255,.12);
-}
-
-.movRegTitle {
-  font-size: var(--fs-md);
-  font-weight: var(--fw-extrabold);
-  color: var(--text);
-}
-
-.movRegHint {
-  font-size: var(--fs-xs);
-  color: var(--muted);
-  line-height: 1.4;
-}
-
-.movVinInput {
-  width: 100%;
-  padding: 9px 12px;
-  border-radius: var(--radiusSm);
-  border: 1px solid rgba(255,255,255,.18);
-  background: rgba(255,255,255,.06);
-  color: var(--text);
-  font-size: var(--fs-md);
-  font-family: var(--font-mono, ui-monospace, monospace);
-  letter-spacing: .4px;
-  outline: none;
-  box-sizing: border-box;
-}
-
-.movVinInput:focus {
-  border-color: rgba(96,165,250,.6);
-  background: rgba(96,165,250,.08);
-}
-
-.movBtnEntrada {
-  background: rgba(74,222,128,.15);
-  color: var(--ok, #4ade80);
-  border: 1px solid rgba(74,222,128,.35);
-  font-weight: var(--fw-bold);
-}
-
-.movBtnEntrada:hover:not(:disabled) {
-  background: rgba(74,222,128,.25);
-}
-
-.movBtnSalida {
-  background: rgba(250,204,21,.15);
-  color: var(--warn, #facc15);
-  border: 1px solid rgba(250,204,21,.35);
-  font-weight: var(--fw-bold);
-}
-
-.movBtnSalida:hover:not(:disabled) {
-  background: rgba(250,204,21,.25);
-}
-
-.movBtnEntrada:disabled,
-.movBtnSalida:disabled {
-  opacity: .45;
-  cursor: not-allowed;
-}
-
-/* Sí / No de la redirección al GPS (Entrada y Salida) */
-.movRedirRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.movRedirLabel {
-  font-size: var(--fs-xs);
-  color: var(--muted);
-}
-
-.movRedirSeg {
-  display: flex;
-  flex-shrink: 0;
-  border-radius: var(--radiusSm);
-  border: 1px solid rgba(255,255,255,.18);
-  background: rgba(255,255,255,.06);
-  overflow: hidden;
-}
-
-.movRedirOpt {
-  min-width: 46px;
-  padding: 5px 12px;
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-  font-size: var(--fs-xs);
-  font-weight: var(--fw-bold);
-  cursor: pointer;
-  transition: background .15s ease, color .15s ease;
-}
-
-.movRedirOpt:hover { color: var(--text); }
-
-.movRedirOptOn {
-  background: var(--btnBg);
-  color: var(--btnText);
-}
-
-/* Day theme overrides for registration section */
-
-:root[data-theme="day"] .movRedirSeg {
-  background: rgba(255,255,255,.75);
-  border-color: var(--surfaceLine);
-}
-
-:root[data-theme="day"] .movRegBox {
-  background: var(--pillBg);
-  border-color: var(--surfaceLine);
-}
-
-:root[data-theme="day"] .movVinInput {
-  background: rgba(255,255,255,.75);
-  border-color: var(--surfaceLine);
-  color: var(--text);
-}
-
-:root[data-theme="day"] .movRegTitle { color: var(--text); }
-
-:root[data-theme="day"] .movRegHint {
-  color: var(--muted);
-}
-
-:root[data-theme="day"] .movGpsLink {
-  background: var(--pillBg);
-  border-color: var(--noteBg);
-  color: var(--note);
-}
-
-:root[data-theme="day"] .movGpsLink:hover {
-  background: var(--pillBg);
-}
-
-@media (max-width: 520px) {
-  .movRegSection {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* ══════════════════════════════════════════════════════════════
-   LISTA DIARIA – tab 1
-   ══════════════════════════════════════════════════════════════ */
-
-/* Header + contador */
-.movListaDiariaHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 4px 2px 2px;
-}
-
-.movListaDiariaTitle {
-  font-size: var(--fs-md);
-  font-weight: var(--fw-extrabold);
-  color: rgba(240,244,255,.9);
-  letter-spacing: .3px;
-}
-
-.movListaDiariaCount {
-  font-size: var(--fs-xs);
-  color: var(--muted);
-  font-weight: 600;
-}
-
-:root[data-theme="day"] .movListaDiariaTitle { color: #1e1b4b; }
-:root[data-theme="day"] .movListaDiariaCount { color: var(--muted); }
-
-/* ─── Filtros ─── */
-.movListaFiltros {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.movFiltroBtn {
-  padding: 5px 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(255,255,255,.18);
-  background: rgba(255,255,255,.06);
-  color: rgba(240,244,255,.65);
-  font-size: var(--fs-xs);
-  font-weight: var(--fw-bold);
-  cursor: pointer;
-  transition: background .16s, border-color .16s, color .16s;
-  white-space: nowrap;
-}
-
-.movFiltroBtn:hover:not(.active) {
-  background: rgba(255,255,255,.11);
-  color: rgba(240,244,255,.9);
-}
-
-.movFiltroBtn.active {
-  background: var(--pillLine);
-  border-color: rgba(129,140,248,.55);
-  color: #c7d2fe;
-}
-
-:root[data-theme="day"] .movFiltroBtn {
-  background: var(--glass);
-  border-color: var(--surfaceLine);
-  color: var(--muted);
-}
-:root[data-theme="day"] .movFiltroBtn:hover:not(.active) {
-  background: var(--pillBg);
-  color: #1e1b4b;
-}
-:root[data-theme="day"] .movFiltroBtn.active {
-  background: var(--pillBg);
-  border-color: #6366f1;
-  color: #3730a3;
-}
-
-/* ─── Body de la lista ─── */
-.movListaDiariaBody {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-}
-
-/* ─── Cards de lista con VIN grande y chip de estado ─── */
-.movCardLista {
-  border-left: 3px solid transparent;
-  transition: border-color .18s;
-}
-
-/* ─── Flow status chips ─── */
-.movFlowChip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: var(--fs-xs);
-  font-weight: var(--fw-extrabold);
-  letter-spacing: .2px;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-/* Pendiente — amarillo ámbar */
-.flowPendiente {
-  background: rgba(251,191,36,.15);
-  color: #fbbf24;
-  border: 1px solid rgba(251,191,36,.35);
-}
-.movCardLista:has(.flowPendiente) { border-left-color: rgba(251,191,36,.6); }
-
-/* En Espera — naranja suave */
-.flowEspera {
-  background: rgba(251,146,60,.14);
-  color: #fb923c;
-  border: 1px solid rgba(251,146,60,.32);
-}
-.movCardLista:has(.flowEspera) { border-left-color: rgba(251,146,60,.55); }
-
-/* En Conversión — violeta/indigo */
-.flowConversion {
-  background: rgba(129,140,248,.16);
-  color: #a5b4fc;
-  border: 1px solid rgba(129,140,248,.35);
-}
-.movCardLista:has(.flowConversion) { border-left-color: rgba(129,140,248,.6); }
-
-/* Conversión Lista — azul */
-.flowDone {
-  background: rgba(96,165,250,.15);
-  color: #60a5fa;
-  border: 1px solid rgba(96,165,250,.35);
-}
-.movCardLista:has(.flowDone) { border-left-color: rgba(96,165,250,.6); }
-
-/* En Zona — cian */
-.flowZona {
-  background: rgba(34,211,238,.12);
-  color: #22d3ee;
-  border: 1px solid rgba(34,211,238,.3);
-}
-.movCardLista:has(.flowZona) { border-left-color: rgba(34,211,238,.5); }
-
-/* En Revisión — violeta */
-.flowRevision {
-  background: rgba(192,132,252,.14);
-  color: #c084fc;
-  border: 1px solid rgba(192,132,252,.32);
-}
-.movCardLista:has(.flowRevision) { border-left-color: rgba(192,132,252,.55); }
-
-/* Lista para Salir — verde */
-.flowSalida {
-  background: rgba(74,222,128,.14);
-  color: #4ade80;
-  border: 1px solid rgba(74,222,128,.32);
-}
-.movCardLista:has(.flowSalida) { border-left-color: rgba(74,222,128,.55); }
-
-/* Day theme chips */
-:root[data-theme="day"] .flowPendiente  { background: rgba(251,191,36,.12);  color: #92400e; border-color: rgba(251,191,36,.4);  }
-:root[data-theme="day"] .flowEspera     { background: rgba(251,146,60,.10);  color: #9a3412; border-color: rgba(251,146,60,.35); }
-:root[data-theme="day"] .flowConversion { background: rgba(99,102,241,.10);  color: #3730a3; border-color: rgba(99,102,241,.35); }
-:root[data-theme="day"] .flowDone       { background: rgba(37,99,235,.10);   color: var(--note); border-color: rgba(37,99,235,.35);  }
-:root[data-theme="day"] .flowZona       { background: rgba(8,145,178,.08);   color: #0e7490; border-color: rgba(8,145,178,.3);   }
-:root[data-theme="day"] .flowRevision   { background: rgba(147,51,234,.09);  color: #7e22ce; border-color: rgba(147,51,234,.3);  }
-:root[data-theme="day"] .flowSalida     { background: rgba(22,163,74,.09);   color: #15803d; border-color: rgba(22,163,74,.3);   }
-
-/* Botón Registrar desde Lista */
-.btnRegistrarDesde {
-  background: rgba(251,191,36,.15);
-  color: #fbbf24;
-  border: 1px solid rgba(251,191,36,.38);
-  font-weight: var(--fw-bold);
-}
-
-.btnRegistrarDesde:hover:not(:disabled) {
-  background: rgba(251,191,36,.26);
-}
-
-:root[data-theme="day"] .btnRegistrarDesde {
-  background: rgba(251,191,36,.12);
-  color: #92400e;
-  border-color: rgba(251,191,36,.45);
-}
-
-/* Mobile — chips más pequeños en pantallas angostas */
-@media (max-width: 400px) {
-  .movFlowChip { font-size: 11px; padding: 2px 8px; }
-  .movFiltroBtn { font-size: 11px; padding: 4px 9px; }
-}
-
-/* ─── Barra búsqueda + QR + descarga (tab Lista) ─── */
-.movSearchRow {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  margin-bottom: 10px;
-}
-.movSearchRow .vinWrap { flex: 1; min-width: 0; }
-
-.movDownloadBtn {
-  flex-shrink: 0;
-  height: 38px;
-  width: 38px;
-  border-radius: var(--radiusSm);
-  border: 1px solid rgba(255,255,255,.2);
-  background: rgba(255,255,255,.07);
-  color: var(--text);
-  font-size: 1.1rem;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background .16s;
-}
-.movDownloadBtn:hover { background: rgba(255,255,255,.14); }
-
-.movPendientesSubHdr {
-  font-size: var(--fs-xs);
-  color: rgba(240,244,255,.42);
-  font-weight: 600;
-  margin-bottom: 4px;
-  min-height: 16px;
-}
-
-/* ─── Fila de totales (cabecera de Ingreso) ─── */
-.movStatsRow {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  margin-bottom: 6px;
-}
-
-.movStatTile {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  padding: 10px 6px;
-  border-radius: var(--radiusSm);
-  border: 1px solid rgba(255,255,255,.10);
-  background: rgba(0,0,0,.12);
-  min-width: 0;
-}
-
-.movStatNum {
-  font-size: 1.5rem;
-  font-weight: var(--fw-black);
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-}
-
-.movStatLabel {
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  color: rgba(240,244,255,.52);
-  text-align: center;
-  /* El label no se corta: en pantallas angostas prefiere dos líneas a que
-     "En conversión" salga como "En conver…" */
-  overflow-wrap: anywhere;
-}
-
-.movStatTile--warn  .movStatNum { color: var(--warn); }
-.movStatTile--note  .movStatNum { color: var(--note); }
-.movStatTile--total { background: rgba(255,255,255,.06); }
-
-.movStatsHint {
-  font-size: var(--fs-xs);
-  color: rgba(240,244,255,.42);
-  font-weight: 600;
-  margin-bottom: 10px;
-  min-height: 16px;
-}
-
-:root[data-theme="day"] .movStatTile   { background: var(--pillBg); border-color: var(--surfaceLine); }
-:root[data-theme="day"] .movStatLabel  { color: var(--muted); }
-:root[data-theme="day"] .movStatsHint  { color: var(--muted); }
-
-:root[data-theme="day"] .movDownloadBtn { background: var(--pillBg); border-color: var(--surfaceLine); }
-:root[data-theme="day"] .movDownloadBtn:hover { background: var(--pillBg); }
-:root[data-theme="day"] .movPendientesSubHdr { color: var(--muted); }
-
-/* ══════════════════════════════════════════════════════════════
-   POR REGISTRAR EN GLP – sección en tab Lista
-   ══════════════════════════════════════════════════════════════ */
-
-.movPendientesBox {
-  border-radius: var(--radius);
-  border: 1px solid rgba(251,191,36,.3);
-  background: rgba(251,191,36,.05);
-  padding: 12px 14px 10px;
-  margin-bottom: 6px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.movPendientesHdr {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.movPendientesTitle {
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-extrabold);
-  color: #fbbf24;
-  letter-spacing: .3px;
-}
-
-.movListaSep {
-  height: 1px;
-  background: rgba(255,255,255,.06);
-  margin: 6px 0 10px;
-}
-
-/* QR result card */
-.movPendientesQrCard {
-  border-radius: 10px;
-  border: 1px solid rgba(251,191,36,.45);
-  background: rgba(251,191,36,.1);
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.movPendientesQrTop {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.movPendientesQrMsg {
-  font-size: var(--fs-xs);
-  color: #f87171;
-  font-weight: 600;
-}
-
-.movPendientesConfirmBtns {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-/* Offline banner */
-.movOfflineBanner {
-  background: rgba(251,146,60,.18);
-  border: 1px solid rgba(251,146,60,.4);
-  border-radius: 8px;
-  padding: 8px 12px;
-  color: #fb923c;
-  font-size: var(--fs-xs);
-  line-height: 1.4;
-}
-
-/* List of pending VINs */
-.movPendientesBody {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-}
-
-.movPendienteCard {
-  padding: 9px 4px;
-  border-bottom: 1px solid rgba(255,255,255,.07);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.movPendienteCard:last-child {
-  border-bottom: none;
-}
-
-.movPendienteTop {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.movPendienteConfirmRow {
-  background: rgba(251,191,36,.1);
-  border-radius: 8px;
-  padding: 10px;
-  border: 1px solid rgba(251,191,36,.3);
-}
-
-/* Registrar button (amber outline) */
-.movBtnRegistrarPendiente {
-  background: rgba(251,191,36,.12);
-  color: #fbbf24;
-  border: 1px solid rgba(251,191,36,.38);
-  font-weight: var(--fw-bold);
-  border-radius: var(--radius);
-  padding: 10px 14px;
-  cursor: pointer;
-  font-size: var(--fs-sm);
-  transition: background .16s;
-  text-align: center;
-}
-.movBtnRegistrarPendiente:hover:not(:disabled) { background: rgba(251,191,36,.24); }
-
-/* Small cancel button */
-.movBtnCancelSm {
-  padding: 8px 14px;
-  border-radius: var(--radius);
-  border: 1px solid rgba(255,255,255,.18);
-  background: rgba(255,255,255,.06);
-  color: rgba(240,244,255,.7);
-  font-size: var(--fs-sm);
-  cursor: pointer;
-  transition: background .15s;
-  white-space: nowrap;
-}
-.movBtnCancelSm:hover { background: rgba(255,255,255,.12); }
-
-/* Day theme overrides */
-:root[data-theme="day"] .movPendientesBox { background: rgba(251,191,36,.06); border-color: rgba(251,191,36,.35); }
-:root[data-theme="day"] .movPendientesTitle { color: #92400e; }
-:root[data-theme="day"] .movPendienteConfirmRow { background: rgba(251,191,36,.08); border-color: rgba(251,191,36,.3); }
-:root[data-theme="day"] .movBtnRegistrarPendiente { background: rgba(251,191,36,.10); color: #92400e; border-color: rgba(251,191,36,.4); }
-:root[data-theme="day"] .movOfflineBanner { background: rgba(251,146,60,.1); border-color: rgba(251,146,60,.35); color: #9a3412; }
-:root[data-theme="day"] .movPendientesQrCard { background: rgba(251,191,36,.08); border-color: rgba(251,191,36,.4); }
-
-.movDownloadBtnSaved {
-  border-color: rgba(74,222,128,.45);
-  background: rgba(74,222,128,.1);
-  color: #4ade80;
-}
-
-.movCacheBanner {
-  background: rgba(251,146,60,.16);
-  border: 1px solid rgba(251,146,60,.38);
-  border-radius: 8px;
-  padding: 7px 12px;
-  font-size: var(--fs-xs);
-  color: #fb923c;
-  font-weight: 600;
-  margin-bottom: 4px;
-}
-
-:root[data-theme="day"] .movDownloadBtnSaved { background: rgba(22,163,74,.1); border-color: rgba(22,163,74,.4); color: #15803d; }
-:root[data-theme="day"] .movCacheBanner { background: rgba(251,146,60,.1); border-color: rgba(251,146,60,.35); color: #9a3412; }
-
-/* ─── Salida: barra de escaneo QR ─── */
-.movSalidaQrBar {
-  padding: 4px 0 10px;
-}
-
-.movSalidaQrBtnMain {
-  width: 100%;
-  height: 44px;
-  font-size: var(--fs-md);
-  font-weight: var(--fw-extrabold);
-  border-radius: var(--radius);
-  justify-content: center;
-  gap: 8px;
-  background: rgba(96,165,250,.15);
-  border: 1px solid rgba(96,165,250,.45);
-  color: var(--note, #60a5fa);
-}
-
-.movSalidaQrBtnMain:hover {
-  background: rgba(96,165,250,.26);
-  border-color: rgba(96,165,250,.7);
-}
-
-:root[data-theme="day"] .movSalidaQrBtnMain {
-  background: rgba(37,99,235,.09);
-  border-color: rgba(37,99,235,.35);
-  color: var(--note);
-}
-
-/* ─── Resultado de QR en Salida ─── */
-.movSalidaQrResult {
-  border-radius: var(--radius);
-  border: 2px solid rgba(96,165,250,.45);
-  background: var(--surface);
-  backdrop-filter: blur(6px);
-  padding: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-bottom: 10px;
-  animation: movSalidaIn .18s ease;
-}
-
-@keyframes movSalidaIn {
-  from { opacity: 0; transform: translateY(-5px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-:root[data-theme="day"] .movSalidaQrResult {
-  background: rgba(238,242,255,.97);
-  border-color: rgba(37,99,235,.35);
-}
-
-.movSalidaQrResultTop {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.movSalidaQrResultVin {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-weight: var(--fw-black);
-  font-size: var(--fs-2xl);
-  letter-spacing: .6px;
-  color: var(--text);
-  line-height: 1.1;
-}
-
-:root[data-theme="day"] .movSalidaQrResultVin { color: var(--text); }
-
-.movSalidaQrResultDestino {
-  font-size: var(--fs-md);
-  font-weight: var(--fw-bold);
-  margin-top: 4px;
-}
-
-.movSalidaQrDestinoOk  { color: var(--ok, #4ade80); }
-.movSalidaQrDestinoWait { color: var(--warn, #facc15); }
-.movSalidaQrDestinoErr  { color: var(--danger, #f87171); }
-
-/* close × button — shared with consulta close */
-.movQrResultClose {
-  flex-shrink: 0;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  border: 1px solid rgba(255,255,255,.18);
-  background: rgba(255,255,255,.07);
-  color: rgba(240,244,255,.65);
-  font-size: 13px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background .15s;
-}
-
-.movQrResultClose:hover {
-  background: rgba(248,113,113,.25);
-  border-color: rgba(248,113,113,.5);
-  color: #fca5a5;
-}
-
-:root[data-theme="day"] .movQrResultClose {
-  border-color: var(--surfaceLine);
-  background: var(--glass);
-  color: var(--muted);
-}
-
-/* ══════════════════════════════════════════════════════════════
-   DINAMISMO — feedback táctil, entradas y estados "vivos"
-   (hereda tokens de 00-token.css; respeta prefers-reduced-motion)
-   ══════════════════════════════════════════════════════════════ */
-
-/* Press feedback en todos los botones/links de acción de la vista */
-.movBtnEntrada, .movBtnSalida, .movBtnFull, .movQrBtn, .movDownloadBtn,
-.movGpsLink, .movSalidaQrBtnMain, .btnConfirmarSalida, .btnRegistrarDesde,
-.movBtnRegistrarPendiente, .movBtnCancelSm, .movRefreshBtn, .movQrResultClose {
-  transition: background var(--dur-base), border-color var(--dur-base),
-              color var(--dur-base), transform var(--dur-fast) var(--ease-out);
-}
-.movBtnEntrada:active:not(:disabled), .movBtnSalida:active:not(:disabled),
-.movBtnFull:active:not(:disabled), .movQrBtn:active, .movDownloadBtn:active,
-.movGpsLink:active, .movSalidaQrBtnMain:active,
-.btnConfirmarSalida:active:not(:disabled), .btnRegistrarDesde:active:not(:disabled),
-.movBtnRegistrarPendiente:active:not(:disabled), .movBtnCancelSm:active,
-.movRefreshBtn:active, .movQrResultClose:active {
-  transform: scale(.95);
-}
-
-/* Entrada escalonada de las cards de cada lista/panel */
-.movCardList > .movCard,
-.movListaDiariaBody > .movCardLista {
-  animation: viewEnter var(--dur-slow) var(--ease-out) both;
-}
-.movCardList > .movCard:nth-child(1),
-.movListaDiariaBody > .movCardLista:nth-child(1) { animation-delay: 0ms; }
-.movCardList > .movCard:nth-child(2),
-.movListaDiariaBody > .movCardLista:nth-child(2) { animation-delay: 35ms; }
-.movCardList > .movCard:nth-child(3),
-.movListaDiariaBody > .movCardLista:nth-child(3) { animation-delay: 70ms; }
-.movCardList > .movCard:nth-child(4),
-.movListaDiariaBody > .movCardLista:nth-child(4) { animation-delay: 105ms; }
-.movCardList > .movCard:nth-child(n+5),
-.movListaDiariaBody > .movCardLista:nth-child(n+5) { animation-delay: 140ms; }
-
-/* Cuerpo del acordeón: aparece con fade+slide al abrir el panel */
-.movPanel.open .movPanelBody {
-  animation: viewEnter var(--dur-base) var(--ease-out);
-}
-
-/* Estado "vivo": el chip En Conversión lleva un punto pulsante */
-.flowConversion::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-  box-shadow: 0 0 0 0 currentColor;
-  animation: movLiveDot 1.6s ease-out infinite;
-  flex-shrink: 0;
-}
-@keyframes movLiveDot {
-  0%   { box-shadow: 0 0 0 0 currentColor; opacity: 1; }
-  70%  { box-shadow: 0 0 0 5px transparent; opacity: .85; }
-  100% { box-shadow: 0 0 0 0 transparent; opacity: 1; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .movCardList > .movCard,
-  .movListaDiariaBody > .movCardLista,
-  .movPanel.open .movPanelBody { animation: none; }
-  .flowConversion::before { animation: none; }
 }

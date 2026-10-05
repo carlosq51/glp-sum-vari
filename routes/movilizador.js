@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { supabaseHeaders_ } from "../lib/supabase.js";
+import { supabaseHeaders_, supabaseServiceHeaders_ } from "../lib/supabase.js";
 import { isValidOT_, fechaPeruMenosDias_ } from "../lib/utils.js";
 import { emitEvent_ } from "../lib/events.js";
 import { getConfig_ } from "../lib/config.js";
@@ -382,10 +382,13 @@ router.get("/api/movilizador/status", async (req, res) => {
       }
     } catch (_) { /* silencioso */ }
 
-    // Enriquecer list3 con ultima_ubicacion desde tabla vins (fallback silencioso)
+    // Enriquecer list0 y list3 con ultima_ubicacion desde tabla vins (fallback
+    // silencioso). En Salida es el destino; en Ingreso, dónde está parado el
+    // carro mientras espera — el movilizador lo busca por ahí.
     try {
-      if (list3.length > 0) {
-        const vinList = list3.map(r => `"${r.vin}"`).join(",");
+      const vinsUbic = [...new Set([...list0, ...list3].map(r => r.vin))];
+      if (vinsUbic.length > 0) {
+        const vinList = vinsUbic.map(v => `"${v}"`).join(",");
         const destiResp = await fetch(
           `${SUPABASE_URL}/rest/v1/vins?vin=in.(${vinList})&select=vin,ultima_ubicacion`,
           { method: "GET", headers }
@@ -396,6 +399,9 @@ router.get("/api/movilizador/status", async (req, res) => {
             const destiMap = new Map(destiRows.map(r => [r.vin, r.ultima_ubicacion || ""]));
             for (const item of list3) {
               item.destino = destiMap.get(item.vin) || "";
+            }
+            for (const item of list0) {
+              item.ubicacion = destiMap.get(item.vin) || "";
             }
           }
         }
@@ -606,14 +612,124 @@ router.get("/api/movilizador/pendientes", async (req, res) => {
     const registrado = new Set((trasRows || []).map(t => t.vin));
     (woRows || []).forEach(w => { if (w.vin) registrado.add(w.vin); });
     const ubicMap    = new Map((vinsRows || []).map(v => [v.vin, v.ultima_ubicacion || ""]));
-    const sin_registrar = (listaRows || [])
-      .filter(r => !registrado.has(r.vin))
-      .map(r => ({ vin: r.vin, fecha: r.fecha_asignacion, ubicacion: ubicMap.get(r.vin) || "" }));
+    const pendientes = (listaRows || []).filter(r => !registrado.has(r.vin));
+    const obsMap = await leerObservaciones_(pendientes.map(r => r.vin));
+    const sin_registrar = pendientes.map(r => {
+      const o = obsMap.get(r.vin);
+      return {
+        vin: r.vin, fecha: r.fecha_asignacion, ubicacion: ubicMap.get(r.vin) || "",
+        observacion: o ? { texto: o.texto, por: o.actualizado_por, at: o.actualizado_at } : null,
+      };
+    });
     return { ok: true, sin_registrar };
       }, { bypass: req.query.fresh === "1" });
     return res.json(payload);
   } catch (e) {
     console.error("[MOV_PENDIENTES]", e.message);
+    return res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
+// ─── Observaciones de la lista del día ────────────────────────────────
+//
+// Nota libre por VIN ("desarmado", "lo tiene pintura") para explicar por qué
+// un carro de la lista todavía no se trajo. Tabla propia con RLS cerrado:
+// solo se entra con la service key (ver supabase/movilizador-observaciones.sql).
+
+/** vin → fila de observación. Vacío si la tabla aún no existe o la consulta falla. */
+async function leerObservaciones_(vins) {
+  const out = new Map();
+  if (!vins.length) return out;
+  try {
+    const inList = vins.map(v => `"${v}"`).join(",");
+    const resp = await fetch(
+      `${process.env.SUPABASE_URL}/rest/v1/movilizador_observaciones?vin=in.(${inList})&select=vin,texto,actualizado_por,actualizado_at`,
+      { method: "GET", headers: supabaseServiceHeaders_() }
+    );
+    if (!resp.ok) return out;
+    for (const r of (await resp.json()) || []) {
+      if (r.vin && r.texto) out.set(r.vin, r);
+    }
+  } catch (_) { /* silencioso: la lista se ve igual, solo sin notas */ }
+  return out;
+}
+
+// POST /api/movilizador/observacion  body: { vin, texto, usuario }
+// Texto vacío = borrar la nota.
+router.post("/api/movilizador/observacion", async (req, res) => {
+  try {
+    const vin = String(req.body?.vin || "").trim().toUpperCase();
+    const texto = String(req.body?.texto || "").trim().slice(0, 200);
+    const usuario = String(req.body?.usuario || "").trim();
+    if (!vin) return res.status(400).json({ ok: false, error: "Falta vin" });
+
+    const base = `${process.env.SUPABASE_URL}/rest/v1/movilizador_observaciones`;
+    const headers = supabaseServiceHeaders_();
+    const at = new Date().toISOString();
+    const resp = texto
+      ? await fetch(`${base}?on_conflict=vin`, {
+          method: "POST",
+          headers: { ...headers, "Prefer": "resolution=merge-duplicates,return=minimal" },
+          body: JSON.stringify({ vin, texto, actualizado_por: usuario, actualizado_at: at }),
+        })
+      : await fetch(`${base}?vin=eq.${encodeURIComponent(vin)}`, { method: "DELETE", headers });
+
+    if (!resp.ok) {
+      const detail = await resp.text().catch(() => "");
+      console.error("[MOV_OBSERVACION]", resp.status, detail);
+      // 404 / PGRST205 = la tabla no existe todavía: falta correr el SQL.
+      const sinTabla = resp.status === 404 || /PGRST205|does not exist/i.test(detail);
+      return res.status(502).json({
+        ok: false,
+        error: sinTabla
+          ? "Falta crear la tabla de observaciones en Supabase."
+          : `No se pudo guardar la observación (${resp.status}).`,
+      });
+    }
+    // Invalida el cache de /pendientes: la nota tiene que verse en los demás celulares.
+    emitEvent_("movilizador", { accion: "OBSERVACION", vin });
+    return res.json({ ok: true, observacion: texto ? { texto, por: usuario, at } : null });
+  } catch (e) {
+    console.error("[MOV_OBSERVACION]", e);
+    return res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
+// GET /api/movilizador/vin-salida?vin=X
+//
+// Qué pasó con un VIN que NO está en la lista de salida. El caso que lo
+// motivó: el movilizador marca la salida del VIN equivocado y, cuando escanea
+// el carro que de verdad se fue, la app le decía "no está en la lista" sin
+// más. Ahora le dice que ya se entregó, a dónde, quién y cuándo — y puede
+// abrir la app GPS para registrar la ubicación igual.
+//
+// Sin cache: es una consulta puntual al escanear, no un poll.
+router.get("/api/movilizador/vin-salida", async (req, res) => {
+  try {
+    const vin = String(req.query.vin || "").trim().toUpperCase();
+    if (!vin) return res.status(400).json({ ok: false, error: "Falta vin" });
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const headers = supabaseHeaders_();
+    const v = encodeURIComponent(vin);
+    const [trasResp, vinsResp] = await Promise.all([
+      fetch(`${SUPABASE_URL}/rest/v1/movilizador_traslados?vin=eq.${v}&select=estado,entregado_at,entregado_por`, { method: "GET", headers }),
+      fetch(`${SUPABASE_URL}/rest/v1/vins?vin=eq.${v}&select=ultima_ubicacion`, { method: "GET", headers }),
+    ]);
+    const t = trasResp.ok ? (await trasResp.json())?.[0] : null;
+    const u = vinsResp.ok ? (await vinsResp.json())?.[0] : null;
+    const entregado = t?.estado === "ENTREGADO_FINAL";
+    return res.json({
+      ok: true,
+      vin,
+      existe: !!u,
+      estado: t?.estado || null,
+      entregado,
+      entregado_at: entregado ? (t.entregado_at || null) : null,
+      entregado_por: entregado ? (t.entregado_por || "") : "",
+      ubicacion: u?.ultima_ubicacion || "",
+    });
+  } catch (e) {
+    console.error("[MOV_VIN_SALIDA]", e);
     return res.status(500).json({ ok: false, error: String(e.message || e) });
   }
 });

@@ -59,10 +59,10 @@ function diasDesde_(iso) {
  */
 function badgeDias_(dias) {
   if (dias === null) return "";
-  let cls = "badge-note", label = "Hoy";
-  if (dias === 1)      { cls = "badge-warn";   label = "1 día"; }
-  else if (dias >= 2)  { cls = "badge-danger"; label = `${dias} días`; }
-  return `<span class="badge ${cls}">⏱️ ${label} esperando</span>`;
+  let cls = "movChip--note", label = "Hoy";
+  if (dias === 1)      { cls = "movChip--warn";   label = "1 día"; }
+  else if (dias >= 2)  { cls = "movChip--danger"; label = `${dias} días`; }
+  return `<span class="movChip ${cls}">${icon("timer", 13)}${label}</span>`;
 }
 
 /**
@@ -83,6 +83,70 @@ function plDias_(dias) {
   if (dias === null) return "";
   if (dias === 0) return "hoy";
   return `${dias} día${dias === 1 ? "" : "s"}`;
+}
+
+/**
+ * ubicCorta_ — la ubicación en una palabra, como se dice en el patio.
+ * "ZONA DE ESPERA DE PINTURA" → "PINTURA", "COLA DE ESPERA REPUESTOS" →
+ * "REPUESTOS", "ZONA DE INGRESO" → "INGRESO". Lo que no sigue el patrón
+ * ("LISTOS - REVISADO") pasa tal cual.
+ */
+function ubicCorta_(u) {
+  return String(u || "").trim().toUpperCase()
+    .replace(/^(ZONA|COLA)\s+DE\s+ESPERA\s+(DE\s+|DEL\s+)?/, "")
+    .replace(/^ZONA\s+DE\s+/, "")
+    .trim();
+}
+
+/** Chip de ubicación en negrita; vacío si no hay ubicación. */
+function ubicHtml_(u) {
+  const c = ubicCorta_(u);
+  return c ? `<span class="movUbic" title="${escapeHtml(u)}">${icon("mapPin", 14)}${escapeHtml(c)}</span>` : "";
+}
+
+/** "YYYY-MM-DD" del día en Lima. Acepta un ISO o una fecha "YYYY-MM-DD" tal cual. */
+function diaLima_(v) {
+  if (!v) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+  const d = new Date(v);
+  return isNaN(d) ? "" : d.toLocaleDateString("en-CA", { timeZone: "America/Lima" });
+}
+
+/** Cabecera de un grupo de día: "Hoy · vie 03 oct", "Ayer · …", "Lun 29 sep · hace 6 días". */
+function diaHdrHtml_(ymd, n) {
+  let fecha = "Sin fecha", rel = "";
+  if (ymd) {
+    const d = new Date(`${ymd}T12:00:00Z`);
+    fecha = d.toLocaleDateString("es-PE", { timeZone: "UTC", weekday: "short", day: "2-digit", month: "short" })
+      .replace(/\./g, "").replace(",", "");
+    fecha = fecha.charAt(0).toUpperCase() + fecha.slice(1);
+    const dias = Math.round((Date.parse(`${diaLima_(new Date().toISOString())}T12:00:00Z`) - d.getTime()) / 86400000);
+    rel = dias === 0 ? "Hoy" : dias === 1 ? "Ayer" : dias > 1 ? `hace ${dias} días` : "";
+  }
+  return `
+    <div class="movDayHdr">
+      <span class="movDayDate">${fecha}</span>
+      ${rel ? `<span class="movDayRel">${rel}</span>` : ""}
+      <span class="movDayCount">${n}</span>
+    </div>`;
+}
+
+/** Agrupa filas por día (en el orden en que vienen) → [[ymd, filas], ...]. */
+function porDia_(rows, campo) {
+  const grupos = new Map();
+  for (const r of rows) {
+    const k = diaLima_(r[campo]);
+    if (!grupos.has(k)) grupos.set(k, []);
+    grupos.get(k).push(r);
+  }
+  return [...grupos];
+}
+
+/** "14:20" en hora de Lima. */
+function horaLima_(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return isNaN(d) ? "" : d.toLocaleTimeString("es-PE", { timeZone: "America/Lima", hour: "2-digit", minute: "2-digit" });
 }
 
 function setBadge_(id, count) {
@@ -127,7 +191,7 @@ function renderList0_(rows) {
   }
 
   if (!rows.length) {
-    box.innerHTML = `<div class="movEmpty small muted">Sin vehículos en espera de conversión.</div>`;
+    box.innerHTML = `<div class="movEmpty">Sin vehículos en espera de conversión.</div>`;
     return;
   }
 
@@ -135,44 +199,39 @@ function renderList0_(rows) {
   const espera     = rows.filter(r => !r.en_conversion);
   const conversion = rows.filter(r =>  r.en_conversion);
 
+  // Agrupado por día de ingreso: la fecha va en la cabecera del grupo, en
+  // grande, y la tarjeta solo dice hora, quién y dónde está el carro.
   const cardHtml = (r) => {
     const dias = r.en_conversion ? null : diasDesde_(r.fecha_entrada);
     return `
-    <div class="movCard">
+    <div class="movCard${r.en_conversion ? " movCard--conv" : dias >= 2 ? " movCard--late" : ""}">
       <div class="movCardTop">
         <span class="movVin">${escapeHtml(r.vin)}</span>
         ${r.en_conversion
-          ? `<span class="badge badge-note">🔧 En Conversión</span>`
-          : `<span class="badge badge-warn">⏳ En Espera</span>`
-        }
+          ? `<span class="movChip movChip--note movChip--live">En conversión</span>`
+          : badgeDias_(dias)}
       </div>
-      <div class="movCardSub small muted">
+      <div class="movCardMeta">
+        ${ubicHtml_(r.ubicacion)}
         ${r.fecha_entrada
-          ? `Entrada: ${fmtDate_(r.fecha_entrada)}${r.registrado_por ? ` · por ${escapeHtml(r.registrado_por)}` : ""}`
-          : `<span class="movCardNoReg">⚠️ Sin registro de entrada</span>`
-        }
+          ? `<span class="movHora">${horaLima_(r.fecha_entrada)}</span>${r.registrado_por ? `<span class="movPor">${escapeHtml(r.registrado_por)}</span>` : ""}`
+          : `<span class="movCardNoReg">Sin registro de entrada</span>`}
       </div>
-      ${dias !== null ? `
-        <div class="movCardSub">📥 ${plDias_(dias)} desde el ingreso · sin trabajar</div>
-        <div class="movCardSub" style="margin-top:6px;">${badgeDias_(dias)}</div>
-      ` : ""}
     </div>`;
   };
 
-  let html = `<div class="movCardList">`;
+  const gruposHtml = (lista) => porDia_(lista, "fecha_entrada").map(([dia, filas]) => `
+    <section class="movDayGroup">
+      ${diaHdrHtml_(dia, filas.length)}
+      <div class="movCardList">${filas.map(cardHtml).join("")}</div>
+    </section>`).join("");
 
-  if (espera.length) {
-    html += espera.map(cardHtml).join("");
-  }
-
+  let html = "";
+  if (espera.length) html += gruposHtml(espera);
   if (conversion.length) {
-    if (espera.length) {
-      html += `<div class="movList0Separator small muted">🔧 En Conversión</div>`;
-    }
-    html += conversion.map(cardHtml).join("");
+    html += `<div class="movBlockHdr">${icon("wrench", 16)} En conversión <span class="movDayCount">${conversion.length}</span></div>`;
+    html += `<div class="movCardList">${conversion.map(cardHtml).join("")}</div>`;
   }
-
-  html += `</div>`;
   box.innerHTML = html;
 }
 
@@ -206,11 +265,11 @@ function renderOlvidados_(rows) {
         <div class="movCard">
           <div class="movCardTop">
             <span class="movVin">${escapeHtml(r.vin)}</span>
-            <span class="badge badge-warn">${escapeHtml(r.estado || "")}</span>
+            <span class="movChip movChip--warn">${escapeHtml(String(r.estado || "").replace(/_/g, " "))}</span>
           </div>
-          <div class="movCardSub small muted">
-            ${r.fecha ? `Último movimiento: ${fmtDate_(r.fecha)}` : "Sin fecha"}
-            ${r.registrado_por ? ` · por ${escapeHtml(r.registrado_por)}` : ""}
+          <div class="movCardMeta">
+            <span class="movFecha">${r.fecha ? fmtDate_(r.fecha) : "Sin fecha"}</span>
+            ${r.registrado_por ? `<span class="movPor">${escapeHtml(r.registrado_por)}</span>` : ""}
           </div>
         </div>
       `).join("")}
@@ -236,7 +295,7 @@ function showCacheBanner_(savedAt) {
   const d = savedAt ? new Date(savedAt) : null;
   const label = d ? d.toLocaleString("es-PE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "?";
   banner.style.display = "";
-  banner.textContent = `📶 Sin conexión — mostrando lista guardada el ${label}`;
+  banner.textContent = `Sin conexión — mostrando lista guardada el ${label}`;
 }
 
 function hideCacheBanner_() {
@@ -360,32 +419,67 @@ function renderPendientesBody_(filtered) {
 
   if (!box) return;
 
+  // Con una observación a medio escribir no se repinta: el poll pasa cada
+  // pocos segundos y borraría lo que el movilizador está tecleando. Se repinta
+  // al cerrar el editor (closeObsEditor_).
+  if (_obsEditVin) { _pendientesDirty = true; return; }
+  _pendientesDirty = false;
+
   if (!filtered.length) {
-    box.innerHTML = `<div class="movEmpty small muted" style="padding:14px 0;">${
-      total ? "⚠️ Ningún VIN coincide con la búsqueda." : "✅ Todos los carros ya están registrados."
+    box.innerHTML = `<div class="movEmpty">${
+      total ? "Ningún VIN coincide con la búsqueda." : "Todos los carros ya están registrados."
     }</div>`;
     return;
   }
 
-  box.innerHTML = filtered.map(r => `
-    <div class="movPendienteCard" id="movPCard_${escapeHtml(r.vin)}">
-      <div class="movPendienteTop">
-        <span class="movVin" style="font-family:monospace;">${escapeHtml(r.vin)}</span>
-        ${r.ubicacion ? `<span class="small" style="opacity:.6;flex:1;">${escapeHtml(r.ubicacion)}</span>` : ""}
-        <span class="small" style="opacity:.38;">${r.fecha || ""}</span>
+  // Agrupados por fecha de la lista: la fecha va en la cabecera del grupo, del
+  // mismo tamaño que el VIN, y la ubicación en negrita dentro de la tarjeta.
+  box.innerHTML = porDia_(filtered, "fecha").map(([dia, filas]) => `
+    <section class="movDayGroup">
+      ${diaHdrHtml_(dia, filas.length)}
+      <div class="movCardList">${filas.map(pendienteCardHtml_).join("")}</div>
+    </section>`).join("");
+}
+
+function pendienteCardHtml_(r) {
+  const vin = escapeHtml(r.vin);
+  return `
+    <div class="movCard movPendienteCard${r.observacion ? " movCard--obs" : ""}" id="movPCard_${vin}">
+      <div class="movCardTop">
+        <span class="movVin">${vin}</span>
+        ${ubicHtml_(r.ubicacion)}
       </div>
-      <div class="movPendienteConfirmRow" id="movPConfirm_${escapeHtml(r.vin)}" style="display:none;">
-        <span class="small" style="opacity:.75;">¿Confirmar ingreso a GLP?</span>
-        <div style="display:flex;gap:6px;margin-top:5px;">
-          <button class="movBtnFull movBtnEntrada movBtnConfirmarIngreso" data-vin="${escapeHtml(r.vin)}" type="button" style="flex:1;">✅ Sí, confirmar</button>
-          <button class="movBtnCancelSm movBtnCancelarIngreso" data-vin="${escapeHtml(r.vin)}" type="button">✕</button>
+      <div class="movObsSlot" id="movObsSlot_${vin}">${obsHtml_(r)}</div>
+      <div class="movPendienteConfirmRow" id="movPConfirm_${vin}" style="display:none;">
+        <span class="movConfirmQ">¿Confirmar ingreso a GLP?</span>
+        <div class="movBtnPair">
+          <button class="movBtnPrimary movBtnConfirmarIngreso" data-vin="${vin}" type="button">${icon("check", 16)} Sí, confirmar</button>
+          <button class="movBtnGhost movBtnCancelarIngreso" data-vin="${vin}" type="button">No</button>
         </div>
       </div>
-      <button class="movBtnRegistrarPendiente movBtnFull" data-vin="${escapeHtml(r.vin)}" type="button">
-        📥 Registrar ingreso ▶
-      </button>
-    </div>
-  `).join("");
+      <div class="movBtnPair movPendienteActions">
+        <button class="movBtnRegistrarPendiente" data-vin="${vin}" type="button">
+          ${icon("trayIn", 16)} Registrar ingreso
+        </button>
+        ${r.observacion ? "" : `<button class="movObsAddBtn" data-obs-vin="${vin}" type="button" title="Anotar por qué no se ha traído">${icon("note", 16)} Nota</button>`}
+      </div>
+    </div>`;
+}
+
+/** La observación guardada: se toca para editarla. */
+function obsHtml_(r) {
+  const o = r.observacion;
+  if (!o?.texto) return "";
+  const quien = [o.por, o.at ? `${fmtDate_(o.at)}` : ""].filter(Boolean).join(" · ");
+  return `
+    <button class="movObs" data-obs-vin="${escapeHtml(r.vin)}" type="button" title="Editar observación">
+      <span class="movObsIcon" aria-hidden="true">${icon("note", 16)}</span>
+      <span class="movObsBody">
+        <span class="movObsText">${escapeHtml(o.texto)}</span>
+        ${quien ? `<span class="movObsBy">${escapeHtml(quien)}</span>` : ""}
+      </span>
+      <span class="movObsEdit" aria-hidden="true">${icon("pencil", 14)}</span>
+    </button>`;
 }
 
 function applyPendientesFiltro_(q) {
@@ -393,10 +487,100 @@ function applyPendientesFiltro_(q) {
   const filtered = _pendientesFiltro
     ? _pendientesRows.filter(r =>
         r.vin.includes(_pendientesFiltro) ||
-        (r.ubicacion || "").toUpperCase().includes(_pendientesFiltro)
+        (r.ubicacion || "").toUpperCase().includes(_pendientesFiltro) ||
+        (r.observacion?.texto || "").toUpperCase().includes(_pendientesFiltro)
       )
     : _pendientesRows;
   renderPendientesBody_(filtered);
+}
+
+// ─── Observaciones (por qué un carro de la lista no se ha traído) ──────
+
+const OBS_RAPIDAS = ["Desarmado", "En otra zona", "No ubicado", "Lo tiene otra área"];
+let _obsEditVin = null;
+let _pendientesDirty = false;
+
+function openObsEditor_(vin) {
+  if (_obsEditVin && _obsEditVin !== vin) closeObsEditor_();
+  const slot = document.getElementById(`movObsSlot_${vin}`);
+  if (!slot) return;
+  _obsEditVin = vin;
+  const actual = _pendientesRows.find(r => r.vin === vin)?.observacion?.texto || "";
+  document.querySelector(`#movPCard_${CSS.escape(vin)} .movObsAddBtn`)?.setAttribute("hidden", "");
+  slot.innerHTML = `
+    <div class="movObsEditor">
+      <div class="movObsQuick">
+        ${OBS_RAPIDAS.map(t => `<button type="button" class="movObsQuickBtn" data-obs-quick="${escapeHtml(t)}">${escapeHtml(t)}</button>`).join("")}
+      </div>
+      <input class="movObsInput" type="text" maxlength="200" value="${escapeHtml(actual)}"
+        placeholder="¿Por qué no se ha traído?" autocomplete="off" />
+      <div class="movObsErr" aria-live="polite"></div>
+      <div class="movBtnPair">
+        <button type="button" class="movBtnPrimary movObsSave" data-vin="${escapeHtml(vin)}">Guardar</button>
+        ${actual ? `<button type="button" class="movBtnGhost movBtnGhost--danger movObsDel" data-vin="${escapeHtml(vin)}" title="Borrar observación">${icon("trash", 16)}</button>` : ""}
+        <button type="button" class="movBtnGhost movObsCancel">Cancelar</button>
+      </div>
+    </div>`;
+  const inp = slot.querySelector(".movObsInput");
+  inp?.focus();
+  inp?.setSelectionRange?.(inp.value.length, inp.value.length);
+}
+
+function closeObsEditor_() {
+  _obsEditVin = null;
+  // Repinta siempre: además de lo que el poll dejó pendiente, devuelve la
+  // tarjeta abierta a su estado normal (nota guardada o botón "Nota").
+  applyPendientesFiltro_(_pendientesFiltro);
+}
+
+async function saveObs_(vin, texto) {
+  const slot = document.getElementById(`movObsSlot_${vin}`);
+  const errEl = slot?.querySelector(".movObsErr");
+  const btn = slot?.querySelector(".movObsSave");
+  if (btn) { btn.disabled = true; btn.textContent = "Guardando…"; }
+  try {
+    const j = await postJSON("/api/movilizador/observacion", { vin, texto, usuario: getMovNombre_() });
+    if (!j?.ok) throw new Error(j?.error || "No se pudo guardar");
+    const row = _pendientesRows.find(r => r.vin === vin);
+    if (row) row.observacion = j.observacion || null;
+    saveListaCache_(_pendientesRows);
+    closeObsEditor_();
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = "Guardar"; }
+    if (errEl) errEl.textContent = navigator.onLine ? (e.message || "Error") : "Sin conexión — no se guardó.";
+  }
+}
+
+function bindObs_() {
+  const screen = document.getElementById("movScreenLista");
+  if (!screen || screen.dataset.obsBound) return;
+  screen.dataset.obsBound = "1";
+
+  screen.addEventListener("click", e => {
+    const abrir = e.target.closest("[data-obs-vin]");
+    if (abrir) { openObsEditor_(abrir.dataset.obsVin); return; }
+    const quick = e.target.closest("[data-obs-quick]");
+    if (quick) {
+      const inp = quick.closest(".movObsEditor")?.querySelector(".movObsInput");
+      if (inp) { inp.value = quick.dataset.obsQuick; inp.focus(); }
+      return;
+    }
+    const save = e.target.closest(".movObsSave");
+    if (save) {
+      const inp = save.closest(".movObsEditor")?.querySelector(".movObsInput");
+      saveObs_(save.dataset.vin, inp?.value || "").catch(() => {});
+      return;
+    }
+    const del = e.target.closest(".movObsDel");
+    if (del) { saveObs_(del.dataset.vin, "").catch(() => {}); return; }
+    if (e.target.closest(".movObsCancel")) closeObsEditor_();
+  });
+
+  screen.addEventListener("keydown", e => {
+    if (!e.target.classList?.contains("movObsInput")) return;
+    if (e.key === "Enter") { e.preventDefault(); saveObs_(_obsEditVin, e.target.value).catch(() => {}); }
+    else if (e.key === "Escape") closeObsEditor_();
+  });
 }
 
 function downloadListaPendientes_() {
@@ -441,7 +625,7 @@ async function confirmarIngresoPendiente_(vin) {
     addToOfflineQueue_(vinClean);
     hidePendienteConfirmRow_(vinClean);
     if (statusEl) statusEl.textContent = `📶 Sin conexión — ${vinClean} guardado localmente.`;
-    if (btnConfirm) { btnConfirm.disabled = false; btnConfirm.textContent = "✅ Sí, confirmar"; }
+    if (btnConfirm) { btnConfirm.disabled = false; btnConfirm.textContent = "Sí, confirmar"; }
     return;
   }
 
@@ -465,9 +649,9 @@ async function confirmarIngresoPendiente_(vin) {
       addToOfflineQueue_(vinClean);
       hidePendienteConfirmRow_(vinClean);
       if (statusEl) statusEl.textContent = `📶 Sin conexión — ${vinClean} guardado localmente.`;
-      if (btnConfirm) { btnConfirm.disabled = false; btnConfirm.textContent = "✅ Sí, confirmar"; }
+      if (btnConfirm) { btnConfirm.disabled = false; btnConfirm.textContent = "Sí, confirmar"; }
     } else {
-      if (btnConfirm) { btnConfirm.disabled = false; btnConfirm.textContent = "✅ Sí, confirmar"; }
+      if (btnConfirm) { btnConfirm.disabled = false; btnConfirm.textContent = "Sí, confirmar"; }
       if (statusEl) statusEl.textContent = `Error: ${e.message}`;
     }
   }
@@ -487,8 +671,11 @@ function showPendientesQrCard_(vin) {
   const found = _pendientesRows.find(r => r.vin === vinClean);
 
   if (vinEl) vinEl.textContent = vinClean;
-  if (ubicEl) ubicEl.textContent = found?.ubicacion || "";
-  if (msgEl) msgEl.textContent = found ? "" : "⚠️ Este VIN no está en la lista de pendientes.";
+  if (ubicEl) ubicEl.textContent = ubicCorta_(found?.ubicacion);
+  if (msgEl) msgEl.textContent = found
+    ? (found.observacion?.texto ? `Nota: ${found.observacion.texto}` : "")
+    : "Este VIN no está en la lista de pendientes.";
+  if (msgEl) msgEl.classList.toggle("movPendientesQrMsg--err", !found);
   if (confirmBtns) confirmBtns.style.display = found ? "" : "none";
   if (confirmBtn) confirmBtn.dataset.vin = vinClean;
 
@@ -513,89 +700,9 @@ async function confirmarIngresoPendienteQr_() {
   await confirmarIngresoPendiente_(vin);
 }
 
-// ─── Flow status config ──────────────────────────────────────────────
-
-const FLOW_CONFIG = {
-  PENDIENTE_ENTRADA: { label: "Sin ingresar",        cls: "flowPendiente",  icon: "⏳" },
-  EN_ESPERA:         { label: "En Espera Conversión", cls: "flowEspera",    icon: "🚗" },
-  EN_CONVERSION:     { label: "En Conversión",        cls: "flowConversion", icon: "🔧" },
-  CONVERSION_DONE:   { label: "Conversión Lista",     cls: "flowDone",      icon: "✅" },
-  EN_ZONA:           { label: "En Zona de Espera",    cls: "flowZona",      icon: "🕐" },
-  EN_REVISION:       { label: "En Revisión Técnica",  cls: "flowRevision",  icon: "🔍" },
-  LISTA_SALIDA:      { label: "Lista para Salir",     cls: "flowSalida",    icon: "🚀" },
-};
-
-let _listaDiariaRows = [];
 let _list2Rows = [];
 let _calibFiltro = "";
 let _list3Rows = [];
-let _filtroActivo = "todos";
-
-function renderListDiaria_(rows) {
-  _listaDiariaRows = rows || [];
-
-  // Badge en la pestaña: solo PENDIENTE_ENTRADA
-  const pending = rows.filter(r => r.flow_status === "PENDIENTE_ENTRADA").length;
-  setBadge_("movBadgeLista", pending);
-
-  // Contador total
-  const countEl = document.getElementById("movListaDiariaCount");
-  if (countEl) countEl.textContent = rows.length ? `${rows.length} vehículo${rows.length !== 1 ? "s" : ""}` : "";
-
-  applyFiltroLista_(_filtroActivo);
-}
-
-function applyFiltroLista_(filtro) {
-  _filtroActivo = filtro;
-  const box = document.getElementById("movListaDiariaBody");
-  if (!box) return;
-
-  // Update filter button active state
-  document.querySelectorAll("#movListaFiltros .movFiltroBtn").forEach(btn => {
-    btn.classList.toggle("active", btn.dataset.filtro === filtro);
-  });
-
-  const rows = _listaDiariaRows;
-  let filtered;
-  if (filtro === "todos") {
-    filtered = rows;
-  } else if (filtro === "avanzados") {
-    filtered = rows.filter(r => ["EN_ZONA","EN_REVISION","LISTA_SALIDA","CONVERSION_DONE"].includes(r.flow_status));
-  } else {
-    filtered = rows.filter(r => r.flow_status === filtro);
-  }
-
-  if (!filtered.length) {
-    box.innerHTML = `<div class="movEmpty small muted">${
-      rows.length ? "Ningún vehículo en este filtro." : "No hay vehículos en la lista diaria."
-    }</div>`;
-    return;
-  }
-
-  box.innerHTML = `<div class="movCardList">
-    ${filtered.map(r => {
-      const cfg = FLOW_CONFIG[r.flow_status] || { label: r.flow_status, cls: "flowPendiente", icon: "?" };
-      const canRegister = r.flow_status === "PENDIENTE_ENTRADA";
-      return `
-        <div class="movCard movCardLista">
-          <div class="movCardTop">
-            <span class="movVin">${escapeHtml(r.vin)}</span>
-            <span class="movFlowChip ${cfg.cls}">${cfg.icon} ${cfg.label}</span>
-          </div>
-          ${r.fecha_entrada
-            ? `<div class="movCardSub small">Ingreso: ${fmtDate_(r.fecha_entrada)}</div>`
-            : r.fecha_ot
-              ? `<div class="movCardSub small muted">OT: ${fmtDate_(r.fecha_ot)}</div>`
-              : ""}
-          ${canRegister ? `
-            <button class="movBtnAction btnRegistrarDesde movBtnFull"
-              data-vin="${escapeHtml(r.vin)}" type="button">
-              📥 Registrar Ingreso ▶
-            </button>` : ""}
-        </div>`;
-    }).join("")}
-  </div>`;
-}
 
 /**
  * renderList2_ — Pendientes de calibración: convertidos y sin calidad.
@@ -645,7 +752,7 @@ function renderList2Body_(filtered) {
   if (!box) return;
 
   if (!filtered.length) {
-    box.innerHTML = `<div class="movEmpty small muted">${
+    box.innerHTML = `<div class="movEmpty">${
       total ? "Ningún VIN coincide con la búsqueda." : "Ningún vehículo pendiente de calibración."
     }</div>`;
     return;
@@ -665,12 +772,21 @@ function renderList2Body_(filtered) {
             <span class="movVin">${escapeHtml(r.vin)}</span>
             ${diasConv !== null ? badgeDias_(diasConv) : ""}
           </div>
-          ${diasEnt !== null
-            ? `<div class="movCardSub">📥 ${plDias_(diasEnt)} en el taller · ingresó ${fmtDate_(r.fecha_entrada)}</div>`
-            : `<div class="movCardSub muted">📥 Sin registro de ingreso</div>`}
-          ${diasConv !== null
-            ? `<div class="movCardSub">🔧 ${plDias_(diasConv)} desde la conversión · ${fmtDate_(r.fecha_conversion)}</div>`
-            : ""}
+          <div class="movTimeline">
+            <div class="movTimelineRow">
+              <span class="movTimelineIcon" aria-hidden="true">${icon("trayIn", 14)}</span>
+              <span class="movTimelineLabel">Ingreso</span>
+              ${diasEnt !== null
+                ? `<span class="movFecha">${fmtDate_(r.fecha_entrada)}</span><span class="movPor">${plDias_(diasEnt)} en el taller</span>`
+                : `<span class="movCardNoReg">Sin registro</span>`}
+            </div>
+            ${diasConv !== null ? `
+            <div class="movTimelineRow">
+              <span class="movTimelineIcon" aria-hidden="true">${icon("wrench", 14)}</span>
+              <span class="movTimelineLabel">Conversión</span>
+              <span class="movFecha">${fmtDate_(r.fecha_conversion)}</span>
+            </div>` : ""}
+          </div>
         </div>`;
       }).join("")}
     </div>
@@ -686,7 +802,7 @@ function renderList3_(rows) {
   setBadge_("movBadge3", rows.length);
 
   if (!rows.length) {
-    box.innerHTML = `<div class="movEmpty small muted">No hay vehículos con revisión técnica finalizada.</div>`;
+    box.innerHTML = `<div class="movEmpty">No hay vehículos con revisión técnica finalizada.</div>`;
     return;
   }
 
@@ -696,24 +812,19 @@ function renderList3_(rows) {
         <div class="movCard">
           <div class="movCardTop">
             <span class="movVin">${escapeHtml(r.vin)}</span>
-            <span class="movCardDate">${fmtDate_(r.fecha_calidad)}</span>
+            ${r.destino ? ubicHtml_(r.destino) : `<span class="movChip">Sin destino</span>`}
+          </div>
+          <div class="movCardMeta">
+            <span class="movTimelineLabel">Calidad</span>
+            <span class="movFecha">${fmtDate_(r.fecha_calidad)}</span>
           </div>
           ${!r.tiene_ot
-            ? `<div class="movOtWarn small">⚠️ Falta #OT — registre en ASIGNACIONES (col E) antes de confirmar</div>`
-            : r.destino
-              ? `<div class="movDestino">
-                  <span class="movDestinoLabel">Salida a:</span>
-                  <span class="movDestinoValue">${escapeHtml(r.destino)}</span>
-                </div>`
-              : `<div class="movDestino movDestinoVacio">
-                  <span class="movDestinoLabel">Destino:</span>
-                  <span class="muted small">pendiente de asignación</span>
-                </div>`
-          }
-          <button class="movBtnAction btnConfirmarSalida movBtnFull"
+            ? `<div class="movOtWarn">${icon("alertTriangle", 15)} Falta #OT — regístrelo en ASIGNACIONES (col E) antes de confirmar</div>`
+            : ""}
+          <button class="movBtnAction btnConfirmarSalida movBtnPrimary"
             data-vin="${escapeHtml(r.vin)}" type="button"
             ${!r.tiene_ot ? 'disabled title="Registre el #OT en ASIGNACIONES primero"' : ''}>
-            ${r.tiene_ot ? 'Confirmar Salida ▶' : '🔒 Sin #OT'}
+            ${r.tiene_ot ? `Confirmar salida ${icon("chevronRight", 16)}` : "Sin #OT"}
           </button>
         </div>
       `).join("")}
@@ -779,7 +890,7 @@ async function refreshAll_({ fresh = false } = {}) {
 
 async function handleAction_(vin, accion, btn, onSuccess) {
   btn.disabled = true;
-  const originalText = btn.textContent;
+  const originalHtml = btn.innerHTML;
   btn.textContent = "Guardando…";
   try {
     const j = await postJSON("/api/movilizador/traslado", {
@@ -793,7 +904,7 @@ async function handleAction_(vin, accion, btn, onSuccess) {
     return true;
   } catch (e) {
     btn.disabled = false;
-    btn.textContent = originalText;
+    btn.innerHTML = originalHtml;
     const statusEl = document.getElementById("movStatus");
     if (statusEl) statusEl.textContent = `Error: ${e.message}`;
     return false;
@@ -803,6 +914,7 @@ async function handleAction_(vin, accion, btn, onSuccess) {
 // ─── Tab switching ────────────────────────────────────────────
 
 function showMovHub_() {
+  if (_obsEditVin) closeObsEditor_();
   document.getElementById("movHub").style.display = "";
   document.querySelectorAll("#viewMOVILIZADOR .movScreen")
     .forEach(s => { s.style.display = "none"; });
@@ -836,7 +948,7 @@ function initMovCards_() {
   const cards = [
     {
       key: "Lista", icon: "clipboardList", label: "Lista del día",
-      desc: "VINs pendientes y estado de la flota",
+      desc: "Carros por traer y sus notas",
       tone: "var(--tone-slate)",
       badges: [{ id: "movBadgeLista", type: "Warn" }],
     },
@@ -850,7 +962,7 @@ function initMovCards_() {
       ],
     },
     {
-      key: "Espera", icon: "clock", label: "Pendientes de Calibración",
+      key: "Espera", icon: "clock", label: "Calibración",
       desc: "Convertidos · falta calidad",
       tone: "var(--tone-blue)",
       badges: [{ id: "movBadge2", type: "Warn" }],
@@ -895,16 +1007,6 @@ function initMovCards_() {
 
     btn.addEventListener("click", () => showMovPanel_(`movScreen${c.key}`));
     grid.appendChild(btn);
-  });
-}
-
-// ─── Lista diaria filtros ─────────────────────────────────────
-
-function bindFiltros_() {
-  document.getElementById("movListaFiltros")?.addEventListener("click", e => {
-    const btn = e.target.closest(".movFiltroBtn");
-    if (!btn) return;
-    applyFiltroLista_(btn.dataset.filtro || "todos");
   });
 }
 
@@ -968,54 +1070,93 @@ async function openMovQr_(target) {
 
 // ─── Salida QR result ───────────────────────────────────────────────────
 
-function showSalidaQrResult_(vin) {
-  const vinClean = String(vin || "").trim().toUpperCase();
+// Cada escaneo se numera: si llega la respuesta de un VIN anterior cuando ya
+// se escaneó otro, se descarta en vez de pintar encima.
+let _salidaQrSeq = 0;
+
+/** Pinta el resultado. `tono`: ok | wait | err | done. */
+function paintSalidaQr_({ vin, destino, tono, meta = "", confirmar = false, gps = false }) {
   const panel = document.getElementById("movSalidaQrResult");
   if (!panel) return;
-
-  const row = _list3Rows.find(r => r.vin === vinClean);
+  panel.dataset.tono = tono;
 
   const vinEl = document.getElementById("movSalidaQrResultVin");
-  if (vinEl) vinEl.textContent = vinClean;
-
+  if (vinEl) vinEl.textContent = vin;
   const destEl = document.getElementById("movSalidaQrResultDestino");
   if (destEl) {
-    if (!row) {
-      destEl.textContent = "❌ VIN no encontrado en la lista de salida";
-      destEl.className = "movSalidaQrResultDestino movSalidaQrDestinoErr";
-    } else if (!row.tiene_ot) {
-      destEl.textContent = "⚠️ Falta #OT — registre en ASIGNACIONES (col E)";
-      destEl.className = "movSalidaQrResultDestino movSalidaQrDestinoErr";
-    } else if (row.destino) {
-      destEl.textContent = `📍 Sale a: ${row.destino}`;
-      destEl.className = "movSalidaQrResultDestino movSalidaQrDestinoOk";
-    } else {
-      destEl.textContent = "⏳ Destino pendiente de asignación";
-      destEl.className = "movSalidaQrResultDestino movSalidaQrDestinoWait";
-    }
+    destEl.textContent = destino;
+    destEl.className = `movSalidaQrResultDestino movSalidaQrDestino--${tono}`;
   }
+  const metaEl = document.getElementById("movSalidaQrResultMeta");
+  if (metaEl) metaEl.textContent = meta;
 
   const confirmBtn = document.getElementById("btnMovConfirmarSalidaQr");
   if (confirmBtn) {
-    confirmBtn.dataset.vin = vinClean;
-    if (!row || !row.tiene_ot) {
-      confirmBtn.style.display = "none";
-    } else {
-      confirmBtn.style.display = "";
-      confirmBtn.disabled = false;
-      confirmBtn.textContent = "Confirmar Salida ▶";
-    }
+    confirmBtn.dataset.vin = vin;
+    confirmBtn.style.display = confirmar ? "" : "none";
+    confirmBtn.disabled = false;
+  }
+  const gpsBtn = document.getElementById("btnMovGpsSalidaQr");
+  if (gpsBtn) {
+    gpsBtn.dataset.vin = vin;
+    gpsBtn.style.display = gps ? "" : "none";
   }
 
   panel.style.display = "block";
-
-  // Auto-dismiss after 15 s
   clearTimeout(_salidaQrDismiss);
-  _salidaQrDismiss = setTimeout(() => closeSalidaQrResult_(), 15_000);
+  _salidaQrDismiss = setTimeout(() => closeSalidaQrResult_(), 30_000);
+}
+
+function showSalidaQrResult_(vin) {
+  const vinClean = String(vin || "").trim().toUpperCase();
+  if (!vinClean) return;
+  const seq = ++_salidaQrSeq;
+
+  const row = _list3Rows.find(r => r.vin === vinClean);
+  if (row) {
+    if (!row.tiene_ot) {
+      paintSalidaQr_({ vin: vinClean, tono: "err", destino: "Falta #OT", meta: "Regístrelo en ASIGNACIONES (col E) antes de confirmar" });
+    } else if (row.destino) {
+      paintSalidaQr_({ vin: vinClean, tono: "ok", destino: `Sale a ${ubicCorta_(row.destino)}`, confirmar: true });
+    } else {
+      paintSalidaQr_({ vin: vinClean, tono: "wait", destino: "Destino pendiente", confirmar: true });
+    }
+    return;
+  }
+
+  // No está en la lista: puede que ya se haya entregado (por ejemplo, porque
+  // alguien marcó la salida de este carro creyendo que era otro). Se pregunta
+  // al servidor en vez de decir solo "no está".
+  paintSalidaQr_({ vin: vinClean, tono: "wait", destino: "Buscando…" });
+  getJSON(`/api/movilizador/vin-salida?vin=${encodeURIComponent(vinClean)}`)
+    .then(j => {
+      if (seq !== _salidaQrSeq) return;
+      if (j?.ok && j.entregado) {
+        const ubic = ubicCorta_(j.ubicacion);
+        const meta = [
+          j.entregado_por ? `Salida marcada por ${j.entregado_por}` : "Salida marcada",
+          j.entregado_at ? fmtDate_(j.entregado_at) : "",
+        ].filter(Boolean).join(" · ");
+        paintSalidaQr_({
+          vin: vinClean, tono: "done", gps: true, meta,
+          destino: ubic ? `Vehículo entregado a ${ubic}` : "Vehículo entregado",
+        });
+      } else {
+        paintSalidaQr_({
+          vin: vinClean, tono: "err", destino: "No está en la lista de salida",
+          meta: j?.ok && j.estado ? `Estado actual: ${String(j.estado).replace(/_/g, " ").toLowerCase()}` : "",
+        });
+      }
+    })
+    .catch(() => {
+      if (seq !== _salidaQrSeq) return;
+      paintSalidaQr_({ vin: vinClean, tono: "err", destino: "No está en la lista de salida", meta: navigator.onLine ? "" : "Sin conexión" });
+    });
 }
 
 function closeSalidaQrResult_() {
   clearTimeout(_salidaQrDismiss);
+  _salidaQrSeq++;
   const panel = document.getElementById("movSalidaQrResult");
   if (panel) panel.style.display = "none";
   const inp = document.getElementById("movSalidaVinSearch");
@@ -1088,34 +1229,6 @@ async function handleConfirmarSalida_(vin, btn) {
   }
 }
 
-async function handleRegistroDesde_(vin, btn) {
-  const vinClean = String(vin || "").trim().toUpperCase();
-  if (!vinClean) return;
-  const original = btn.textContent;
-  btn.disabled = true;
-  btn.textContent = "Guardando…";
-  try {
-    const j = await postJSON("/api/movilizador/traslado", {
-      vin: vinClean,
-      accion: "REGISTRAR_ENTRADA",
-      usuario: getMovNombre_(),
-    });
-    if (!j?.ok) throw new Error(j?.error || "Error al guardar");
-    const statusEl = document.getElementById("movStatus");
-    if (statusEl) statusEl.textContent = `✓ ${vinClean} ingresado.`;
-    await refreshAll_();
-    // Preguntar zona al movilizador (dismissible)
-    promptZonaForVin(vinClean, async () => {
-      if (_zonasMapa) await _zonasMapa.refresh();
-    });
-  } catch (e) {
-    btn.disabled = false;
-    btn.textContent = original;
-    const statusEl = document.getElementById("movStatus");
-    if (statusEl) statusEl.textContent = `Error: ${e.message}`;
-  }
-}
-
 async function handleRegistro_(vin, accion, btnId) {
   const btn = document.getElementById(btnId);
   if (!btn) return;
@@ -1124,7 +1237,7 @@ async function handleRegistro_(vin, accion, btnId) {
   const vinClean = String(vin || "").trim().toUpperCase();
   if (!vinClean) return;
 
-  const original = btn.textContent;
+  const original = btn.innerHTML;
   btn.disabled = true;
   btn.textContent = "Guardando…";
 
@@ -1151,7 +1264,7 @@ async function handleRegistro_(vin, accion, btnId) {
     const inputEl = document.getElementById(inputId);
     if (inputEl) { inputEl.value = ""; inputEl.dispatchEvent(new Event("input")); }
     btn.disabled = true;
-    btn.textContent = original;
+    btn.innerHTML = original;
 
     await refreshAll_();
     if (accion === "REGISTRAR_ENTRADA") {
@@ -1161,7 +1274,7 @@ async function handleRegistro_(vin, accion, btnId) {
     }
   } catch (e) {
     btn.disabled = false;
-    btn.textContent = original;
+    btn.innerHTML = original;
     const statusEl = document.getElementById("movStatus");
     if (statusEl) statusEl.textContent = `Error: ${e.message}`;
   }
@@ -1307,6 +1420,15 @@ export function init() {
     handleConfirmarSalida_(vin, this).catch(() => {});
   });
 
+  // VIN ya entregado: abrir la app GPS para registrar dónde quedó
+  document.getElementById("btnMovGpsSalidaQr")?.addEventListener("click", function () {
+    const vin = this.dataset.vin;
+    if (!vin) return;
+    openGpsWithVin_(vin);
+    const s = document.getElementById("movStatus");
+    if (s) s.textContent = `${vin} copiado — pégalo en la app GPS.`;
+  });
+
   // Pendientes: QR confirm + cancel
   document.getElementById("btnMovPendientesConfirmarQr")?.addEventListener("click", () =>
     confirmarIngresoPendienteQr_().catch(() => {})
@@ -1357,20 +1479,15 @@ export function init() {
     if (!btn) return;
     const vin = btn.dataset.vin;
     if (!vin) return;
-    if (btn.classList.contains("btnEntregarFinal")) {
-      handleAction_(vin, "ENTREGAR_FINAL", btn).catch(() => {});
-    } else if (btn.classList.contains("btnConfirmarSalida")) {
+    if (btn.classList.contains("btnConfirmarSalida")) {
       // Confirmar salida: registra ENTREGAR_FINAL + abre app GPS de registro
       handleConfirmarSalida_(vin, btn).catch(() => {});
-    } else if (btn.classList.contains("btnRegistrarDesde")) {
-      // Registrar ingreso desde la lista diaria
-      handleRegistroDesde_(vin, btn).catch(() => {});
     }
   });
 
   initMovCards_();
-  bindFiltros_();
   bindPanelToggles_();
+  bindObs_();
 
   // Mapa de zonas — se inicializa en enter() para tener nombre correcto del usuario
 }
