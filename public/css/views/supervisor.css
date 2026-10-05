@@ -1257,3 +1257,29 @@ button[data-suptrack].active {
   width: 100%;
   resize: vertical;
 }
+
+/* Frase propia guardada en el celular: el botón y su ✕ de borrar. */
+.supAvisoPropio {
+  display: flex;
+  gap: var(--gap-xs);
+}
+
+.supAvisoPropio .supAvisoBtn { flex: 1; min-width: 0; }
+
+.supAvisoDel {
+  width: auto;
+  min-height: var(--h-btn-lg);
+  padding: 0 12px;
+  background: var(--pillBg);
+  border: var(--border-w) solid var(--btnLine);
+  color: var(--muted);
+}
+
+.supAvisoNuevo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+  margin-top: var(--gap);
+  padding-top: var(--gap);
+  border-top: var(--border-w) solid var(--surfaceLine);
+}

@@ -1,10 +1,10 @@
 // =========================
 // public/js/work/llamado-voz.js
 // Voz por el parlante del celular que toca el botón:
-//  · CALIDAD: "📢" junto al delantero o al tanquero repite "Atención. Técnico
-//    Juan Pérez, presentarse en control de calidad…" hasta volver a tocarlo.
-//  · SUPERVISOR: avisos al taller (limpieza, reunión, texto libre) que se
-//    dicen unas pocas veces y paran solos.
+//  · CALIDAD: "📢" junto al delantero o al tanquero repite "Técnico
+//    Juan Pérez, presentarse en control de calidad" hasta volver a tocarlo.
+//  · SUPERVISOR: avisos al taller (limpieza, reunión, frases propias) que
+//    también se repiten hasta volver a tocarlos.
 // =========================
 //
 // Todo corre en el teléfono (speechSynthesis + Web Audio): sin servidor, sin
@@ -62,11 +62,8 @@ function nombreHablado_(nombre) {
     .replace(/(^|\s)(\p{L})/gu, (_, sp, l) => sp + l.toUpperCase());
 }
 
-// "Levantar observaciones" es como se dice en planta: calidad observó algo
-// y el técnico tiene que subsanarlo antes de que se libere el carro.
 function fraseLlamada_(nombre) {
-  return `Atención. Técnico ${nombreHablado_(nombre)}, ` +
-    `presentarse en control de calidad para levantar observaciones.`;
+  return `Técnico ${nombreHablado_(nombre)}, presentarse en control de calidad.`;
 }
 
 // ── Voz ─────────────────────────────────────────────────────────────────
@@ -225,10 +222,10 @@ function alternar_(id, crear) {
 }
 
 /**
- * Aviso del supervisor: se dice `veces` veces y para solo. Tocar de nuevo
- * el mismo aviso mientras suena lo apaga.
+ * Aviso del supervisor: se repite hasta volver a tocarlo (o `veces` veces
+ * si se pasa). Tocar de nuevo el mismo aviso mientras suena lo apaga.
  */
-export function alternarAviso_(clave, { texto, etiqueta, veces = 3 }) {
+export function alternarAviso_(clave, { texto, etiqueta, veces = Infinity } = {}) {
   const limpio = String(texto || "").trim();
   if (!limpio && !avisoActivo_(clave)) return;
   alternar_(idAviso_(clave), () => ({
