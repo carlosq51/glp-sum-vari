@@ -18,7 +18,7 @@ import { cachedByTopics_ } from "../lib/poll-cache.js";
 import { jornadaPeru_ } from "../lib/utils.js";
 import { minutosPE_, indiceBloque_, minAHhmm_ } from "../public/js/core/format.js";
 import {
-  bloquesJornada_, calibrarProyeccion_, proyectarJornada_, horasExtraParaMeta_,
+  bloquesJornada_, calibrarProyeccion_, proyectarJornada_, horasExtraParaMeta_, metaVentana_,
   minutoJornada_, dowDe_, ROLES_PROY,
 } from "../lib/proyeccion.js";
 
@@ -203,11 +203,16 @@ export async function proyeccionDeJornada_({ cfg, jornadaStr, asistencia, allUse
     .filter(e => e.hastaMin != null);
 
   const p = proyectarJornada_({ calib, dow: dowDe_(jornadaStr), presentes, extras, bloques, finTurnoMin });
+  // "Cuántas parejas faltan" se mide contra la meta guía (33), no contra la
+  // ventana alargada: si no, cada pareja anotada movería la meta que persigue.
   const paraMeta = horasExtraParaMeta_({ proyeccion: p, meta: metaDia, bloques, finTurnoMin });
+  const inicioTurnoMin = minutoJornada_(cfg.PROYECCION_INICIO_TURNO, inicioMin) ?? 420;
+  const mv = metaVentana_({ meta: metaDia, inicioTurnoMin, finTurnoMin, extras });
   return {
     ...(p || { sinHistoria: true }),
     paraMeta: paraMeta && { ...paraMeta, hasta: minAHhmm_(paraMeta.hastaMin) },
     metaGuia: metaDia,
+    metaVentana: { ...mv, desde: minAHhmm_(mv.desdeMin), hasta: minAHhmm_(mv.hastaMin) },
     finTurno: cfg.PROYECCION_FIN_TURNO,
     tecnicos,
     sinTabla: extrasDb.sinTabla,

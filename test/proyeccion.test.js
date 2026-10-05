@@ -9,7 +9,7 @@
 import { describe, it, expect } from "vitest";
 import {
   bloquesJornada_, calibrarProyeccion_, proyectarJornada_, horasExtraParaMeta_,
-  minutoJornada_, tipoDia_,
+  minutoJornada_, tipoDia_, metaVentana_,
 } from "../lib/proyeccion.js";
 
 const bloques = bloquesJornada_("05:00-10:30,10:30-13:00,13:00-16:30,16:30-19:30,19:30-23:00,23:00-02:00");
@@ -109,6 +109,22 @@ describe("proyectarJornada_", () => {
     expect(m.alcanza).toBe(true);
     const imposible = horasExtraParaMeta_({ proyeccion: p, meta: 60, bloques, finTurnoMin: FIN });
     expect(imposible.alcanza).toBe(false);
+  });
+});
+
+describe("metaVentana_", () => {
+  const base = { meta: 33, inicioTurnoMin: 420, finTurnoMin: FIN };   // 07:00–16:30
+
+  it("sin horas extra, la meta guía hasta el fin de turno", () => {
+    expect(metaVentana_(base)).toMatchObject({ meta: 33, hastaMin: FIN, extendida: false });
+  });
+
+  it("regla de 3 hasta la salida más tardía", () => {
+    const m = metaVentana_({ ...base, extras: [{ hastaMin: 1170 }, { hastaMin: 1080 }] });
+    expect(m.hastaMin).toBe(1170);                     // 19:30, la más tardía
+    expect(m.meta).toBe(Math.round(33 * 750 / 570));   // 12,5 h / 9,5 h → 43
+    expect(m.extendida).toBe(true);
+    expect(metaVentana_({ ...base, extras: [{ hastaMin: 1500 }] }).meta).toBe(Math.round(33 * 1080 / 570)); // hasta la 01:00
   });
 });
 

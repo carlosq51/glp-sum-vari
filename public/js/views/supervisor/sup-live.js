@@ -112,21 +112,44 @@ function horasJornada_() {
   return Array.from({ length: total }, (_, i) => (h0 + i) % 24);
 }
 
+/** Minuto del reloj → minuto de la jornada (la madrugada va detrás de la noche). */
+function minJornada_(min) {
+  return min < inicioJornadaMin_() ? min + 1440 : min;
+}
+
 /**
- * Qué fracción de la jornada va consumida (0…1).
+ * La meta del día y la ventana en la que se reparte.
  *
- * Fuera de la ventana devuelve 1: si ya son las 03:00 la jornada terminó, y el
- * objetivo del día era el objetivo entero, no una parte de él. En una jornada
- * pasada es 1 por definición — ese día ya se acabó.
+ * Antes la meta se repartía entre las 05:00 y las 02:00, como si el taller
+ * trabajara de corrido toda la noche: a las 16:30 el panel esperaba 18 de 33
+ * y decía "vamos por encima" con 23. Ahora la meta guía se cumple al fin del
+ * turno normal, y si el admin anota horas extra la ventana se alarga hasta la
+ * salida más tardía y la meta crece por regla de 3 (lo calcula el servidor:
+ * metaVentana_ en lib/proyeccion.js). Sin proyección, el turno normal a secas.
  */
-function fracJornada_() {
-  if (!esHoy_) return 1;
-  const ini = inicioJornadaMin_();
-  let   fin = hhmmAMin_(cfg("LIVE_JORNADA_FIN")) ?? 60;
-  if (fin <= ini) fin += 1440;          // la jornada cruza la medianoche
-  let ahora = minutosPE_();
-  if (ahora < ini) ahora += 1440;       // estamos en la cola de la jornada de ayer
-  return Math.max(0, Math.min(1, (ahora - ini) / (fin - ini)));
+function metaDelDia_(data) {
+  const v    = data?.vinsSummary || {};
+  const base = Number(v.metaDia ?? v.metaConv ?? cfg("META_DIARIA")) || 0;
+  const mv   = data?.proyeccion?.metaVentana;
+  const hasta = mv?.hasta || cfg("PROYECCION_FIN_TURNO") || "16:30";
+  const ini  = minJornada_(hhmmAMin_(mv?.desde || cfg("PROYECCION_INICIO_TURNO")) ?? 420);
+  const fin  = minJornada_(hhmmAMin_(hasta) ?? 990);
+  return {
+    meta: mv ? Number(mv.meta) || 0 : base,
+    base, ini, fin, hasta,
+    extendida: !!mv?.extendida,
+  };
+}
+
+/** Qué fracción de la meta debería estar hecha en ese minuto de la jornada (0…1). */
+function fracMeta_(md, minLin) {
+  if (!(md.fin > md.ini)) return 1;
+  return Math.max(0, Math.min(1, (minLin - md.ini) / (md.fin - md.ini)));
+}
+
+/** Lo mismo, ahora. En una jornada pasada es 1: ese día ya se acabó. */
+function fracMetaAhora_(md) {
+  return esHoy_ ? fracMeta_(md, minJornada_(minutosPE_())) : 1;
 }
 
 /**
@@ -477,9 +500,10 @@ function pulseHTML_(techs) {
 function kpisHTML_(data, techs, modelo) {
   const v    = data.vinsSummary || {};
   const done = Number(v.convDone) || 0;
-  const meta = Number(v.metaDia ?? v.metaConv ?? cfg("META_DIARIA")) || 0;
+  const md   = metaDelDia_(data);
+  const meta = md.meta;
 
-  const frac     = fracJornada_();
+  const frac     = fracMetaAhora_(md);
   const esperado = Math.round(meta * frac);
   const delta    = done - esperado;
   const pct      = meta > 0 ? Math.min(100, Math.round(done / meta * 100)) : 0;
@@ -530,7 +554,8 @@ function kpisHTML_(data, techs, modelo) {
     <div class="lvKpis__heroes">
       <button type="button" class="lvKpi lvKpi--hero lvKpi--tap" data-drill="conv" style="--kpiTone:${tone};">
         <div class="lvKpi__label">Producción bruta</div>
-        <div class="lvKpi__hint">carros con motor y tanque cerrados</div>
+        <div class="lvKpi__hint">carros con motor y tanque cerrados${sinMeta ? "" : ` · meta hasta las ${escapeHtml(md.hasta)}${
+          md.extendida ? ` (guía ${md.base} + horas extra)` : ""}`}</div>
         <div class="lvKpi__num"><b id="liveKpiConv">${done}</b><span>/ ${meta}</span></div>
         <div class="lvKpi__verdict">${veredicto}</div>
         <div class="lvKpi__track" title="${pct}% del objetivo del día">
@@ -658,8 +683,7 @@ function totalesGraficoHTML_(vista, data, modelo) {
   const sel = franjaFilter_;
   const corte_ = (arr) => (sel != null && arr ? arr[sel] || 0 : null);
 
-  const v    = data.vinsSummary || {};
-  const meta = Number(v.metaDia ?? v.metaConv ?? cfg("META_DIARIA")) || 0;
+  const meta = metaDelDia_(data).meta;
 
   const items = {
     jornada: [{ label: "Carros del día", n: modelo.totales.carros, tone: "var(--track-motor)", corte: corte_(s.bruta) }],
@@ -846,16 +870,16 @@ function seriesHoras_(data, bloques) {
 /**
  * Acumulado real contra la línea del objetivo, hora a hora.
  *
- * La línea del objetivo es recta porque el objetivo del taller es diario, no
- * horario: repartirlo en partes iguales es la única lectura que no inventa un
- * perfil de producción que nadie ha pactado. El trazo real se corta en la hora
+ * La línea del objetivo es recta dentro de su ventana (ver metaDelDia_)
+ * porque el objetivo del taller es diario, no horario: repartirlo en partes
+ * iguales es la única lectura que no inventa un perfil de producción que nadie
+ * ha pactado. El trazo real se corta en la hora
  * en curso (null hacia adelante) para que no se lea como un estancamiento lo
  * que todavía no ha pasado.
  */
 function seriesAcum_(data) {
   const lista = Array.isArray(data?.cierres?.conv) ? data.cierres.conv : [];
-  const v     = data?.vinsSummary || {};
-  const meta  = Number(v.metaDia ?? v.metaConv ?? cfg("META_DIARIA")) || 0;
+  const md    = metaDelDia_(data);
 
   const porHora = new Array(24).fill(0);
   for (const ms of lista) porHora[Math.floor(minutosPE_(new Date(ms)) / 60) % 24]++;
@@ -873,7 +897,9 @@ function seriesAcum_(data) {
   return {
     labels:   horas.map(h => `${String(h).padStart(2, "0")}:00`),
     real,
-    objetivo: horas.map((_, i) => Math.round(meta * (i + 1) / n)),
+    // Al cierre de cada hora, la parte de la meta que toca según su ventana
+    // (turno normal, o hasta la hora extra más tardía). Después, plana.
+    objetivo: horas.map(h => Math.round(md.meta * fracMeta_(md, minJornada_(h * 60) + 60))),
     idxAhora: idx >= 0 && idx < n - 1 ? idx : null,
   };
 }
@@ -1130,6 +1156,8 @@ function proyeccionHTML_(p, real) {
       <span>Horas extra <b>+${r_(p.extra.esperado)}</b>
         <em>${p.extra.personas ? `${p.extra.personas} persona${p.extra.personas === 1 ? "" : "s"} anotada${p.extra.personas === 1 ? "" : "s"}` : "nadie anotado"}</em></span>
       ${meta ? `<span>Meta guía <b>${meta}</b><em>${metaTxt}</em></span>` : ""}
+      ${p.metaVentana?.extendida ? `<span>Meta con horas extra <b>${p.metaVentana.meta}</b>
+        <em>${meta} hasta las ${escapeHtml(p.finTurno || "")} → regla de 3 hasta las ${escapeHtml(p.metaVentana.hasta)}</em></span>` : ""}
     </div>
     ${avisos.map(a => `<div class="lvProy__aviso">⚠️ ${a}</div>`).join("")}
     ${admin && !p.sinTabla ? `<button type="button" class="lvProy__btn" data-proy="extra">⏱ Horas extra${anotados ? ` (${anotados})` : ""}</button>` : ""}
