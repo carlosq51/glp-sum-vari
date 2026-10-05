@@ -1264,9 +1264,16 @@ function copyVinToClipboard_(vin) {
   } catch {}
 }
 
+// Siempre la MISMA pestaña para la app GPS, no una nueva por registro. La app
+// GPS no es nuestra y prende la cámara (lector QR) al cargar y cada vez que su
+// pestaña vuelve a verse; con `_blank` el celular acababa el turno con decenas
+// de pestañas así, cada una reactivando la cámara al cruzarse con ella. Con un
+// nombre fijo el navegador reutiliza la que ya existe.
+const GPS_TAB = "glpGpsTab";
+
 function prepareGpsWindow_(vin) {
   copyVinToClipboard_(vin);
-  const popup = window.open("about:blank", "_blank");
+  const popup = window.open("about:blank", GPS_TAB);
   if (!popup) return null;
 
   try {
@@ -1289,8 +1296,11 @@ function openGpsWithVin_(vin, popup) {
     } catch {}
   }
 
-  const opened = window.open(url, "_blank", "noopener,noreferrer");
-  if (!opened) window.location.href = url;
+  // Sin "noopener": con él el navegador ignora el nombre y abre otra pestaña.
+  // El opener se corta a mano, que es lo que "noopener" protegía.
+  const opened = window.open(url, GPS_TAB);
+  if (opened) { try { opened.opener = null; } catch {} }
+  else window.location.href = url;
 }
 
 async function handleConfirmarSalida_(vin, btn) {
