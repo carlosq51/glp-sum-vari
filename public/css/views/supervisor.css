@@ -1217,3 +1217,43 @@ button[data-suptrack].active {
   color: var(--muted);
   opacity: .8;
 }
+
+/* =====================================================================
+   AVISOS — anuncios por voz al taller (sup-avisos.js)
+   ---------------------------------------------------------------------
+   Botones grandes porque se tocan de pie, con el celular en una mano.
+   Encendido va en rojo como el "Llamar" de calidad: el mismo color dice
+   "esto está sonando ahora" en toda la app.
+===================================================================== */
+.supAvisos {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.supAvisosGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--gap);
+}
+
+.supAvisoBtn {
+  min-height: var(--h-btn-lg);
+  font-weight: var(--fw-black);
+}
+
+.supAvisoBtn.is-on {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+  animation: llamadoLatido 1.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .supAvisoBtn.is-on { animation: none; }
+}
+
+#supAvisoTexto {
+  width: 100%;
+  resize: vertical;
+}

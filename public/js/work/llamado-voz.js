@@ -1,25 +1,30 @@
 // =========================
 // public/js/work/llamado-voz.js
-// Llamado por voz desde CALIDAD: el inspector toca "📢" junto al nombre del
-// delantero o del tanquero y el iPhone, por el parlante Bluetooth, repite
-// "Juan Pérez, acercarse a corregir su falla" hasta que lo vuelva a tocar.
+// Voz por el parlante del celular que toca el botón:
+//  · CALIDAD: "📢" junto al delantero o al tanquero repite "Atención. Técnico
+//    Juan Pérez, presentarse en control de calidad…" hasta volver a tocarlo.
+//  · SUPERVISOR: avisos al taller (limpieza, reunión, texto libre) que se
+//    dicen unas pocas veces y paran solos.
 // =========================
 //
 // Todo corre en el teléfono (speechSynthesis + Web Audio): sin servidor, sin
-// API de pago y sin internet. Lo que hay que saber de iOS:
+// API de pago y sin internet. Lo que hay que saber del navegador:
 //
-//  · Safari solo deja sonar una página dentro de un toque. Por eso el toque
-//    que enciende el llamado "desbloquea" la voz y el audio en ese mismo
+//  · Solo deja sonar una página dentro de un toque. Por eso el toque que
+//    enciende el llamado "desbloquea" la voz y el audio en ese mismo
 //    instante; las repeticiones posteriores ya pueden salir solas.
-//  · Si la pantalla se apaga o se cambia de app, iOS corta el audio. Se pide
-//    Wake Lock mientras haya llamados encendidos para que no se bloquee.
+//  · El VOLUMEN no se puede subir desde una página: ni iOS ni Android lo
+//    permiten. Lo que sí se hace es pedir el máximo dentro de la app; el
+//    volumen del celular y del parlante se suben a mano.
+//  · Si la pantalla se apaga o se cambia de app, el sistema corta el audio.
+//    Se pide Wake Lock mientras haya algo sonando para que no se bloquee.
 //  · El parlante Bluetooth se duerme tras unos segundos de silencio y se come
 //    el inicio de lo que suena. El "ding-dong" de antes de cada frase lo
 //    despierta, y además hace que la gente levante la cabeza.
 //
 // Las tarjetas se repintan solas (sync cada pocos segundos, OT que se
 // finaliza y desaparece), así que el estado vive aquí y no en el botón; la
-// barra flotante permite apagar un llamado aunque su tarjeta ya no exista.
+// barra flotante permite apagar algo aunque su botón ya no exista.
 
 import { escapeHtml } from "../core/format.js";
 
@@ -27,7 +32,7 @@ const PAUSA_ENTRE_RONDAS_MS = 4000;
 
 const ROTULO = { MOTOR: "delantero", TANQUE: "tanquero" };
 
-/** id → { id, vin, rol, nombre } */
+/** id → { id, texto, etiqueta, restantes } — restantes: Infinity = hasta apagarlo */
 const activas_ = new Map();
 
 let corriendo_ = false;
@@ -36,10 +41,15 @@ let audioCtx_ = null;
 let wakeLock_ = null;
 let voz_ = null;
 
-const idDe_ = (vin, rol) => `${String(vin || "").toUpperCase()}|${String(rol || "").toUpperCase()}`;
+const idLlamada_ = (vin, rol) => `${String(vin || "").toUpperCase()}|${String(rol || "").toUpperCase()}`;
+const idAviso_ = (clave) => `aviso|${clave}`;
 
 export function llamadaActiva_(vin, rol) {
-  return activas_.has(idDe_(vin, rol));
+  return activas_.has(idLlamada_(vin, rol));
+}
+
+export function avisoActivo_(clave) {
+  return activas_.has(idAviso_(clave));
 }
 
 // "PEREZ GOMEZ JUAN" se lee como siglas; en minúsculas con mayúscula
@@ -52,8 +62,11 @@ function nombreHablado_(nombre) {
     .replace(/(^|\s)(\p{L})/gu, (_, sp, l) => sp + l.toUpperCase());
 }
 
-function frase_(ll) {
-  return `${nombreHablado_(ll.nombre)}, acercarse a corregir su falla.`;
+// "Levantar observaciones" es como se dice en planta: calidad observó algo
+// y el técnico tiene que subsanarlo antes de que se libere el carro.
+function fraseLlamada_(nombre) {
+  return `Atención. Técnico ${nombreHablado_(nombre)}, ` +
+    `presentarse en control de calidad para levantar observaciones.`;
 }
 
 // ── Voz ─────────────────────────────────────────────────────────────────
@@ -84,7 +97,7 @@ function hablar_(texto) {
     if (voz_) u.voice = voz_;
     u.lang = voz_?.lang || "es-MX";
     u.rate = 0.95;
-    u.volume = 1;
+    u.volume = 1;   // el máximo que una página puede pedir
     // iOS a veces no dispara onend; sin este tope el bucle se queda colgado.
     const tope = setTimeout(fin, 3000 + texto.length * 120);
     function fin() { clearTimeout(tope); resolve(); }
@@ -103,7 +116,7 @@ function tono_(ctx, freq, t0, dur) {
   osc.type = "sine";
   osc.frequency.value = freq;
   gan.gain.setValueAtTime(0.0001, t0);
-  gan.gain.exponentialRampToValueAtTime(0.6, t0 + 0.02);
+  gan.gain.exponentialRampToValueAtTime(0.9, t0 + 0.02);
   gan.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
   osc.connect(gan).connect(ctx.destination);
   osc.start(t0);
@@ -173,38 +186,56 @@ async function bucle_() {
   corriendo_ = true;
   try {
     while (activas_.size) {
-      for (const ll of [...activas_.values()]) {
-        if (!activas_.has(ll.id)) continue;
+      for (const it of [...activas_.values()]) {
+        if (!activas_.has(it.id)) continue;
         await dingDong_();
-        if (!activas_.has(ll.id)) continue;
-        await hablar_(frase_(ll));
+        if (!activas_.has(it.id)) continue;
+        await hablar_(it.texto);
+        it.restantes -= 1;
+        if (it.restantes <= 0 && activas_.get(it.id) === it) {
+          activas_.delete(it.id);
+          refrescarUI_();
+        }
       }
       if (activas_.size) await esperar_(PAUSA_ENTRE_RONDAS_MS);
     }
   } finally {
     corriendo_ = false;
+    soltarWakeLock_();
   }
 }
 
 // ── Encender / apagar ───────────────────────────────────────────────────
 
-function alternar_({ vin, rol, nombre }) {
-  const id = idDe_(vin, rol);
-
+/** Enciende o apaga. Llamarla SIEMPRE desde el handler del toque. */
+function alternar_(id, crear) {
   if (activas_.has(id)) {
     activas_.delete(id);
-    // Si estaba diciendo justo ese nombre, que se calle ya.
+    // Si estaba diciendo justo eso, que se calle ya.
     try { window.speechSynthesis?.cancel(); } catch {}
     if (!activas_.size) soltarWakeLock_();
-  } else {
+  } else if (crear) {
     desbloquearAudio_();
-    activas_.set(id, { id, vin: String(vin || "").toUpperCase(), rol: String(rol || "").toUpperCase(), nombre });
+    activas_.set(id, { id, ...crear() });
     pedirWakeLock_();
-    despertar_?.();   // si estaba en la pausa entre rondas, que llame ya
+    despertar_?.();   // si estaba en la pausa entre rondas, que suene ya
     bucle_();
   }
-
   refrescarUI_();
+}
+
+/**
+ * Aviso del supervisor: se dice `veces` veces y para solo. Tocar de nuevo
+ * el mismo aviso mientras suena lo apaga.
+ */
+export function alternarAviso_(clave, { texto, etiqueta, veces = 3 }) {
+  const limpio = String(texto || "").trim();
+  if (!limpio && !avisoActivo_(clave)) return;
+  alternar_(idAviso_(clave), () => ({
+    texto: limpio,
+    etiqueta: `Aviso: <b>${escapeHtml(etiqueta || limpio)}</b>`,
+    restantes: veces,
+  }));
 }
 
 function refrescarUI_() {
@@ -214,6 +245,7 @@ function refrescarUI_() {
     b.setAttribute("aria-pressed", on ? "true" : "false");
     b.textContent = on ? "🔊 Detener" : "📢 Llamar";
   });
+  document.dispatchEvent(new CustomEvent("glp:voz-cambio"));
   pintarBarra_();
 }
 
@@ -228,27 +260,34 @@ function pintarBarra_() {
     bar.className = "llamadoBar";
     document.body.appendChild(bar);
   }
-  bar.innerHTML = [...activas_.values()].map(ll => `
+  bar.innerHTML = [...activas_.values()].map(it => `
     <div class="llamadoBarRow">
-      <span class="llamadoBarTxt">🔊 Llamando a <b>${escapeHtml(nombreHablado_(ll.nombre))}</b>
-        <span class="llamadoBarRol">(${ROTULO[ll.rol] || ll.rol})</span></span>
-      <button type="button" class="llamadoBarStop"
-        data-llamar-vin="${escapeHtml(ll.vin)}" data-llamar-rol="${escapeHtml(ll.rol)}">Detener</button>
+      <span class="llamadoBarTxt">🔊 ${it.etiqueta}</span>
+      <button type="button" class="llamadoBarStop" data-voz-id="${escapeHtml(it.id)}">Detener</button>
     </div>`).join("");
 }
 
 // Captura: el toque no debe llegar a la delegación de la tarjeta.
 document.addEventListener("click", (e) => {
-  const b = e.target.closest?.(".btnLlamar[data-llamar-vin], .llamadoBarStop[data-llamar-vin]");
+  const stop = e.target.closest?.(".llamadoBarStop[data-voz-id]");
+  if (stop) {
+    e.stopPropagation();
+    e.preventDefault();
+    alternar_(stop.dataset.vozId);
+    return;
+  }
+
+  const b = e.target.closest?.(".btnLlamar[data-llamar-vin]");
   if (!b) return;
   e.stopPropagation();
   e.preventDefault();
-  const id = idDe_(b.dataset.llamarVin, b.dataset.llamarRol);
-  alternar_({
-    vin: b.dataset.llamarVin,
-    rol: b.dataset.llamarRol,
-    nombre: activas_.get(id)?.nombre || b.dataset.llamarNombre || "",
-  });
+  const { llamarVin: vin, llamarRol: rol, llamarNombre: nombre = "" } = b.dataset;
+  alternar_(idLlamada_(vin, rol), () => ({
+    texto: fraseLlamada_(nombre),
+    etiqueta: `Llamando a <b>${escapeHtml(nombreHablado_(nombre))}</b> ` +
+      `<span class="llamadoBarRol">(${ROTULO[rol] || escapeHtml(rol)})</span>`,
+    restantes: Infinity,
+  }));
 }, true);
 
 // ── HTML de la línea de personal en las tarjetas de CALIDAD ─────────────

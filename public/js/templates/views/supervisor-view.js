@@ -26,6 +26,7 @@ export function supervisorView() {
         <button type="button" class="btn sup-tab" data-suptab="INCIDENCIAS">${icon("alertTriangle", 14)} INCID.</button>
         <button type="button" class="btn sup-tab" data-suptab="RAMALES">${icon("box", 14)} RAMALES</button>
         <button type="button" class="btn sup-tab" data-suptab="IMPRESIONES">${icon("inbox", 14)} IMPRESIÓN</button>
+        <button type="button" class="btn sup-tab" data-suptab="AVISOS">${icon("bell", 14)} AVISOS</button>
       </div>
 
       <!-- ══════════════════════════════════════════════
@@ -214,6 +215,14 @@ export function supervisorView() {
       ══════════════════════════════════════════════ -->
       <div id="supPanelImpresiones" style="display:none;">
         <div id="supImpresionesBody" style="margin-top:10px;"></div>
+      </div>
+
+      <!-- ══════════════════════════════════════════════
+           AVISOS — anuncios por voz al taller (limpieza, reunión, texto
+           libre). Lo pinta views/supervisor/sup-avisos.js.
+      ══════════════════════════════════════════════ -->
+      <div id="supPanelAvisos" style="display:none;">
+        <div id="supAvisosBody" style="margin-top:10px;"></div>
       </div>
     </div>
   `;

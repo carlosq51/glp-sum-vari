@@ -36,6 +36,7 @@ import { bindSupFotos_ } from "./sup-fotos.js";
 import { bindSupLive_, enterLive_, exitLive_ } from "./sup-live.js";
 import { bindSupOtControl_, enterOtControl_, exitOtControl_ } from "./sup-ot-control.js";
 import { bindSupIncidenciasReport_, enterIncReport_, exitIncReport_ } from "./sup-incidencias-report.js";
+import { bindSupAvisos_ } from "./sup-avisos.js";
 
 import { openDrilldown } from "../../core/drilldown.js";
 import { fmtDur_ } from "../../core/format.js";
@@ -471,6 +472,9 @@ export function init() {
       if (panelRamales)     panelRamales.style.display     = tab === "RAMALES"     ? "" : "none";
       const panelImpr    = document.getElementById("supPanelImpresiones");
       if (panelImpr)        panelImpr.style.display        = tab === "IMPRESIONES" ? "" : "none";
+      const panelAvisos  = document.getElementById("supPanelAvisos");
+      if (panelAvisos)      panelAvisos.style.display      = tab === "AVISOS"      ? "" : "none";
+      if (tab === "AVISOS") bindSupAvisos_();
 
       // El panel de ramales tiene cronómetros y poll propios: se desmonta
       // al salir de su pestaña o seguiría corriendo detrás de las demás.
@@ -598,6 +602,8 @@ export function enter() {
   if (panelControl)     panelControl.style.display     = "none";
   if (panelIncidencias) panelIncidencias.style.display = "none";
   if (panelRamales)     panelRamales.style.display     = "none";
+  const panelAvisos = document.getElementById("supPanelAvisos");
+  if (panelAvisos)      panelAvisos.style.display      = "none";
   enterLive_();
 }
 
