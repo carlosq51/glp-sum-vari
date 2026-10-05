@@ -821,3 +821,40 @@ button.lvKpi--tap:hover { border-top-color: var(--accent); border-right-color: v
   color: inherit;
 }
 .lvProy__estado { padding: 10px 4px 0; font-size: var(--fs-xs); color: var(--muted); min-height: 1.4em; }
+
+/* La fila "Proyectado" se toca: abre el detalle por técnico. */
+.lvResumen__tbl tr.is-proy { cursor: pointer; }
+.lvResumen__tbl tr.is-proy:hover th[scope="row"] { color: var(--accent); }
+
+/* Detalle de la proyección: tres cifras arriba y una tabla por puesto. */
+.lvProyDet__suma {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.lvProyDet__suma > div {
+  padding: 10px 12px;
+  border-radius: var(--radiusSm);
+  background: var(--surface2);
+  border: 1px solid var(--surfaceLine);
+}
+.lvProyDet__suma span { display: block; font-size: var(--fs-2xs); color: var(--muted); font-weight: var(--fw-bold); }
+.lvProyDet__suma b { display: block; font-size: 22px; font-weight: var(--fw-black); font-variant-numeric: tabular-nums; }
+.lvProyDet__suma em { display: block; font-style: normal; font-size: var(--fs-2xs); color: var(--muted); }
+.lvProyDet__suma .is-tot { border-color: var(--accent); }
+.lvProyDet__suma .is-tot b { color: var(--accent); }
+
+.lvProyTbl { width: 100%; border-collapse: collapse; font-size: var(--fs-xs); }
+.lvProyTbl th, .lvProyTbl td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--surfaceLine);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.lvProyTbl th[scope="row"], .lvProyTbl thead th:first-child { text-align: left; white-space: normal; }
+.lvProyTbl thead th { font-size: var(--fs-2xs); color: var(--muted); font-weight: var(--fw-black); text-transform: uppercase; letter-spacing: .5px; }
+.lvProyTbl em { display: block; font-style: normal; font-size: 10px; color: var(--muted); font-weight: var(--fw-bold); }
+.lvProyTbl .is-tot { font-weight: var(--fw-black); color: var(--accent); }
+.lvProyTbl tfoot th, .lvProyTbl tfoot td { font-weight: var(--fw-black); border-top: 2px solid var(--surfaceLine); border-bottom: 0; }

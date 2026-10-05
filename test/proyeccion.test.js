@@ -9,7 +9,7 @@
 import { describe, it, expect } from "vitest";
 import {
   bloquesJornada_, calibrarProyeccion_, proyectarJornada_, horasExtraParaMeta_,
-  minutoJornada_, tipoDia_, metaVentana_,
+  minutoJornada_, tipoDia_, metaVentana_, ritmosPorTecnico_, proyeccionPorTecnico_,
 } from "../lib/proyeccion.js";
 
 const bloques = bloquesJornada_("05:00-10:30,10:30-13:00,13:00-16:30,16:30-19:30,19:30-23:00,23:00-02:00");
@@ -133,5 +133,39 @@ describe("minutoJornada_", () => {
     expect(minutoJornada_("19:30")).toBe(1170);
     expect(minutoJornada_("01:00")).toBe(1500);
     expect(minutoJornada_("x")).toBeNull();
+  });
+});
+
+describe("proyección por técnico", () => {
+  const regs = [
+    ...Array.from({ length: 10 }, () => ({ userId: "a", rol: "MOTOR", mitades: 3 })),
+    ...Array.from({ length: 10 }, () => ({ userId: "b", rol: "MOTOR", mitades: 1 })),
+    { userId: "c", rol: "TANQUE", mitades: 2 },
+  ];
+  const ritmos = ritmosPorTecnico_(regs);
+
+  it("el ritmo se encoge hacia la media de su puesto", () => {
+    expect(ritmos.mediaRol.MOTOR).toBe(2);
+    expect(ritmos.porTecnico.a.media).toBeCloseTo((30 + 10) / 15, 5);
+    expect(ritmos.porTecnico.b.media).toBeCloseTo((10 + 10) / 15, 5);
+  });
+
+  it("lo de cada puesto suma los carros del turno y la hora extra va aparte", () => {
+    const proyeccion = { turno: { esperado: 10 }, extraHora: { MOTOR: 0.5, TANQUE: 0.5 } };
+    const out = proyeccionPorTecnico_({
+      tecnicos: [
+        { userId: "a", rol: "MOTOR", presente: true, hastaMin: 1170 },
+        { userId: "b", rol: "MOTOR", presente: true },
+        { userId: "c", rol: "TANQUE", presente: true },
+        { userId: "d", rol: "TANQUE", presente: false },
+      ],
+      proyeccion, ritmos, finTurnoMin: 990,
+    });
+    const de = (id) => out.find(x => x.userId === id);
+    expect(de("a").turno + de("b").turno).toBeCloseTo(10, 5);
+    expect(de("a").turno).toBeGreaterThan(de("b").turno);
+    expect(de("c").turno).toBeCloseTo(10, 5);
+    expect(de("d").turno).toBe(0);                     // no vino
+    expect(de("a").extra).toBeCloseTo(1.5, 5);         // 3 h × 0,5
   });
 });

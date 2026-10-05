@@ -1101,10 +1101,10 @@ function filaProyeccion_(p, bruta, ahora, colCls_) {
 
   const extra = p.extra?.personas ? " + horas extra" : "";
   return `
-    <tr class="is-proy">
+    <tr class="is-proy" data-proy="detalle" title="Toca para ver lo proyectado por técnico">
       <th scope="row">
         <span class="lvResumen__ico">🎯</span>
-        Proyectado<em>con ${p.presentes.total} presentes${extra}</em>
+        Proyectado ›<em>con ${p.presentes.total} presentes${extra} · ver por técnico</em>
       </th>
       ${celdas}
       <td class="lvCortes__tot" title="entre ${r_(p.total.min)} y ${r_(p.total.max)}">≈${r_(p.total.esperado)}</td>
@@ -1167,6 +1167,98 @@ function proyeccionHTML_(p, real) {
       Es un rango y no un número exacto: hay días que la asistencia no explica (por ejemplo, cuando faltan carros en el patio).
     </div>
   </div>`;
+}
+
+/**
+ * El detalle de la fila "Proyectado": lo esperado de cada técnico, en mitades,
+ * junto a lo que lleva hoy, y la suma que lleva al total del día.
+ *
+ * El total NO sale de sumar a las personas: sale de tasa × presentes (el
+ * modelo que acertó más) y aquí se reparte según el ritmo de cada uno, así
+ * que la suma de los delanteros da los carros del turno, y la de los
+ * tanqueros también. Lo dice el pie, para que nadie sume las dos columnas.
+ */
+function abrirProyeccionDetalle_(data) {
+  const p = data?.proyeccion;
+  if (!p?.tecnicos || !p.turno) return;
+  const f1 = (n) => (Number(n) || 0).toFixed(1).replace(/\.0$/, "");
+
+  // Lo cerrado hoy por cada persona en su puesto (misma regla que la matriz).
+  const real = new Map();
+  for (const t of (data.techs || [])) {
+    const n = (t.asignacionesHoy || []).filter(a => a.estado === "FINALIZADO" && !a.cerradoDespues).length;
+    real.set(`${t.userId}__${t.rol}`, n);
+  }
+  const realDe_ = (t) => real.get(`${t.userId}__${t.rol}`) || 0;
+
+  const grupo_ = (rol) => {
+    const meta = rolMeta(rol);
+    const lista = p.tecnicos
+      .filter(t => t.rol === rol && (t.presente || t.hasta || realDe_(t)))
+      .sort((a, b) => (b.proy?.total || 0) - (a.proy?.total || 0) || String(a.nombre).localeCompare(String(b.nombre)));
+    if (!lista.length) return { html: "", turno: 0, extra: 0, real: 0 };
+
+    const sum = { turno: 0, extra: 0, real: 0 };
+    const filas = lista.map(t => {
+      const x = t.proy || { turno: 0, extra: 0, total: 0, ritmo: 0, diasHist: 0 };
+      const r = realDe_(t);
+      sum.turno += x.turno; sum.extra += x.extra; sum.real += r;
+      const nota = !t.presente ? `<em>sin marca de asistencia</em>`
+        : x.diasHist ? `<em>${f1(x.ritmo)} mitades/día · ${x.diasHist} día${x.diasHist === 1 ? "" : "s"}</em>`
+        : `<em>sin historial: media del puesto</em>`;
+      return `
+        <tr>
+          <th scope="row">${escapeHtml(t.nombre || "—")}${nota}</th>
+          <td>${x.turno ? `≈${f1(x.turno)}` : "·"}</td>
+          <td>${x.extra ? `+${f1(x.extra)}<em>hasta ${escapeHtml(t.hasta || "")}</em>` : "·"}</td>
+          <td class="is-tot">≈${f1(x.total)}</td>
+          <td>${r}</td>
+        </tr>`;
+    }).join("");
+
+    return {
+      ...sum,
+      html: `
+      <div class="lvDrill__group">
+        <div class="lvDrill__groupHead"><span>${meta.icon} ${escapeHtml(meta.label)}s</span><span>${lista.length}</span></div>
+        <div class="lvCortes__scroll">
+          <table class="lvProyTbl">
+            <thead><tr><th scope="col">Técnico</th><th scope="col">Turno</th><th scope="col">Extra</th><th scope="col">Proyectado</th><th scope="col">Hoy</th></tr></thead>
+            <tbody>${filas}</tbody>
+            <tfoot><tr>
+              <th scope="row">Suma ${escapeHtml(meta.label.toLowerCase())}s</th>
+              <td>≈${f1(sum.turno)}</td><td>+${f1(sum.extra)}</td>
+              <td class="is-tot">≈${f1(sum.turno + sum.extra)}</td><td>${sum.real}</td>
+            </tr></tfoot>
+          </table>
+        </div>
+      </div>`,
+    };
+  };
+
+  const gm = grupo_("MOTOR"), gt = grupo_("TANQUE");
+  const carrosReal = Array.isArray(data?.cierres?.conv) ? data.cierres.conv.length : 0;
+  const falta = p.extra?.falta ? ` (sin ${escapeHtml(rolMeta(p.extra.falta).label.toLowerCase())} en horas extra no hay carro entero)` : "";
+
+  openDrilldown({
+    title: "Proyectado por técnico",
+    subtitle: `${esHoy_ ? "Hoy" : fmtFechaLarga_(data.fecha)} · en mitades, como la producción por técnico`,
+    badge: `≈${r_(p.total.esperado)}`,
+    wide: true,
+    html: `
+      <div class="lvProyDet__suma">
+        <div><span>Turno normal</span><b>≈${f1(p.turno.esperado)}</b><em>${p.presentes.total} presentes × ${(Number(p.tasa) || 0).toFixed(2)} carros</em></div>
+        <div><span>Horas extra</span><b>+${f1(p.extra.esperado)}</b><em>${f1(gm.extra)} mitades del. · ${f1(gt.extra)} tanq. → manda el menor${falta}</em></div>
+        <div class="is-tot"><span>Total del día</span><b>≈${r_(p.total.esperado)}</b><em>entre ${r_(p.total.min)} y ${r_(p.total.max)} · ${esHoy_ ? "van" : "salieron"} ${carrosReal}</em></div>
+      </div>
+      ${gm.html}${gt.html}
+      <div class="lvDrill__note">
+        Un carro son dos mitades: un motor y un tanque. Por eso la suma de los
+        delanteros da los carros del turno, y la de los tanqueros también — no se
+        suman entre sí. Lo de cada persona reparte ese total según su ritmo de los
+        últimos ${p.diasCalibracion} días; quien tiene pocos días se acerca a la media de su puesto.
+      </div>`,
+  });
 }
 
 /** El editor de horas extra: quién se queda y hasta qué hora. Solo ADMIN. */
@@ -1673,6 +1765,7 @@ function bindLive_(container, techs, metaTec, data) {
   });
 
   container.querySelector("[data-proy=extra]")?.addEventListener("click", () => abrirHorasExtra_(data));
+  container.querySelector("[data-proy=detalle]")?.addEventListener("click", () => abrirProyeccionDetalle_(data));
 
 }
 

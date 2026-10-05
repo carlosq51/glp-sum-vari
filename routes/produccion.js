@@ -19,6 +19,7 @@ import { jornadaPeru_ } from "../lib/utils.js";
 import { minutosPE_, indiceBloque_, minAHhmm_ } from "../public/js/core/format.js";
 import {
   bloquesJornada_, calibrarProyeccion_, proyectarJornada_, horasExtraParaMeta_, metaVentana_,
+  ritmosPorTecnico_, proyeccionPorTecnico_,
   minutoJornada_, dowDe_, ROLES_PROY,
 } from "../lib/proyeccion.js";
 
@@ -101,6 +102,7 @@ async function leerCalibracion_(cfg, jornadaStr) {
 
   // Carros: la última mitad decide el día y el corte.
   const porOt = new Map();
+  const mitadesTurno = new Map();   // "fecha|userId" → mitades cerradas en el turno normal
   for (const a of asg.rows) {
     const ms = Date.parse(a.updated_at);
     if (!ms) continue;
@@ -112,7 +114,12 @@ async function leerCalibracion_(cfg, jornadaStr) {
     const f = jornadaDe_(ms);
     if (f < desde || !D.has(f)) continue;
     const m = minDe_(ms);
-    if (m < finTurnoMin) continue;
+    if (m < finTurnoMin) {
+      // Las del turno, para el ritmo de cada técnico.
+      const kt = `${f}|${a.user_id}`;
+      mitadesTurno.set(kt, (mitadesTurno.get(kt) || 0) + 1);
+      continue;
+    }
     const k = `${a.user_id}|${a.rol_trabajo}`;
     const e = D.get(f)._ext.get(k) || { rol: a.rol_trabajo, n: 0, ult: 0 };
     e.n++; e.ult = Math.max(e.ult, m);
@@ -139,7 +146,20 @@ async function leerCalibracion_(cfg, jornadaStr) {
     delete d._ext;
     if (d.presentes >= minPres) lista.push(d);
   }
-  return calibrarProyeccion_({ dias: lista, bloques, finTurnoMin });
+
+  // El ritmo de cada uno, solo de los días que vino (y que cuentan): un día
+  // sin marca no es un día de cero mitades, es un día que no se sabe.
+  const registros = [];
+  for (const a of asis.rows) {
+    const rol = rolPorId.get(a.user_id);
+    if (!rol || (D.get(a.jornada_fecha)?.presentes || 0) < minPres) continue;
+    registros.push({ userId: a.user_id, rol, mitades: mitadesTurno.get(`${a.jornada_fecha}|${a.user_id}`) || 0 });
+  }
+
+  return {
+    ...calibrarProyeccion_({ dias: lista, bloques, finTurnoMin }),
+    ritmos: ritmosPorTecnico_(registros),
+  };
 }
 
 /** Las horas extra anotadas para una jornada. `sinTabla` si falta correr el SQL. */
@@ -208,13 +228,20 @@ export async function proyeccionDeJornada_({ cfg, jornadaStr, asistencia, allUse
   const paraMeta = horasExtraParaMeta_({ proyeccion: p, meta: metaDia, bloques, finTurnoMin });
   const inicioTurnoMin = minutoJornada_(cfg.PROYECCION_INICIO_TURNO, inicioMin) ?? 420;
   const mv = metaVentana_({ meta: metaDia, inicioTurnoMin, finTurnoMin, extras });
+
+  // Lo proyectado persona por persona (detalle de la fila "Proyectado").
+  const porTec = new Map(proyeccionPorTecnico_({
+    tecnicos: tecnicos.map(t => ({ ...t, hastaMin: t.hasta ? minutoJornada_(t.hasta, inicioMin) : null })),
+    proyeccion: p, ritmos: calib?.ritmos, finTurnoMin,
+  }).map(x => [x.userId, x]));
+
   return {
     ...(p || { sinHistoria: true }),
     paraMeta: paraMeta && { ...paraMeta, hasta: minAHhmm_(paraMeta.hastaMin) },
     metaGuia: metaDia,
     metaVentana: { ...mv, desde: minAHhmm_(mv.desdeMin), hasta: minAHhmm_(mv.hastaMin) },
     finTurno: cfg.PROYECCION_FIN_TURNO,
-    tecnicos,
+    tecnicos: tecnicos.map(t => ({ ...t, proy: porTec.get(t.userId) || null })),
     sinTabla: extrasDb.sinTabla,
   };
 }
