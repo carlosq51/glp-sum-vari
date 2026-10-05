@@ -182,11 +182,21 @@ function renderList0_(rows) {
   setNum_("movStatConversion", countConversion);
   setNum_("movStatTotal",      rows.length);
 
+  // Tres grupos, ya ordenados del backend:
+  //   · en zona y sin técnicos — colocado en una plaza, esperando su dupla
+  //   · sin zona — registrado y nadie lo ha puesto en ningún sitio: el que
+  //     lleva días así es el que otra área pudo haberse llevado
+  //   · en conversión — con OT abierta, técnicos encima
+  const enZona     = rows.filter(r => !r.en_conversion &&  r.zona);
+  const sinZona    = rows.filter(r => !r.en_conversion && !r.zona);
+  const conversion = rows.filter(r =>  r.en_conversion);
+
   const hoy = rows.filter(r => esHoyPeru_(r.fecha_entrada)).length;
   const hintEl = document.getElementById("movIngresoStatsHint");
   if (hintEl) {
     hintEl.textContent = rows.length
-      ? `${hoy} ingresado${hoy !== 1 ? "s" : ""} hoy · el resto viene de días anteriores`
+      ? `${hoy} ingresado${hoy !== 1 ? "s" : ""} hoy` +
+        (enZona.length ? ` · ${enZona.length} en zona esperando técnicos` : "")
       : "";
   }
 
@@ -195,21 +205,55 @@ function renderList0_(rows) {
     return;
   }
 
-  // Separar los dos grupos (ya vienen ordenados del backend)
-  const espera     = rows.filter(r => !r.en_conversion);
-  const conversion = rows.filter(r =>  r.en_conversion);
-
-  // Agrupado por día de ingreso: la fecha va en la cabecera del grupo, en
-  // grande, y la tarjeta solo dice hora, quién y dónde está el carro.
-  const cardHtml = (r) => {
-    const dias = r.en_conversion ? null : diasDesde_(r.fecha_entrada);
+  /** Fila "Zona 11 · desde 15:20 · Carlos" del timeline de la tarjeta. */
+  const zonaRowHtml = (z) => {
+    if (!z) return "";
+    const nombre = z.id === "LIBRE" ? "Zona libre" : `Zona ${z.id}`;
+    const dz = diasDesde_(z.desde);
+    const cuando = !z.desde ? ""
+      : esHoyPeru_(z.desde) ? `hoy ${horaLima_(z.desde)}`
+      : `${fmtDate_(z.desde)} · ${plDias_(dz)}`;
     return `
-    <div class="movCard${r.en_conversion ? " movCard--conv" : dias >= 2 ? " movCard--late" : ""}">
+      <div class="movTimelineRow">
+        <span class="movTimelineIcon" aria-hidden="true">${icon("mapPin", 14)}</span>
+        <span class="movTimelineLabel">En plaza</span>
+        <span class="movZonaTag">${nombre}</span>
+        ${cuando || z.por
+          ? `<span class="movPor">${[cuando, z.por && escapeHtml(z.por.split(/\s+/)[0])].filter(Boolean).join(" · ")}</span>`
+          : ""}
+      </div>`;
+  };
+
+  const ingresoRowHtml = (r) => {
+    const d = diasDesde_(r.fecha_entrada);
+    return `
+      <div class="movTimelineRow">
+        <span class="movTimelineIcon" aria-hidden="true">${icon("trayIn", 14)}</span>
+        <span class="movTimelineLabel">Ingreso</span>
+        ${r.fecha_entrada
+          ? `<span class="movFecha">${fmtDate_(r.fecha_entrada)}</span><span class="movPor">${plDias_(d)}${r.registrado_por ? ` · ${escapeHtml(r.registrado_por)}` : ""}</span>`
+          : `<span class="movCardNoReg">Sin registro</span>`}
+      </div>`;
+  };
+
+  /** Delantero y tanquero; el lado que ya cerró lleva ✓. */
+  const tecnicosHtml = (t) => {
+    if (!t) return "";
+    const lado = (rol, n, fin) => n
+      ? `<span class="movTec${fin ? " movTec--fin" : ""}">${rol} ${escapeHtml(n)}${fin ? " ✓" : ""}</span>`
+      : `<span class="movTec movTec--falta">${rol} —</span>`;
+    return `<div class="movTecs">${lado("Del.", t.delantero, t.delantero_fin)}${lado("Tanq.", t.tanquero, t.tanquero_fin)}</div>`;
+  };
+
+  // Sin zona: agrupado por día de ingreso, la fecha va en la cabecera del
+  // grupo y la tarjeta solo dice hora, quién y dónde lo vio el GPS.
+  const sinZonaCard = (r) => {
+    const dias = diasDesde_(r.fecha_entrada);
+    return `
+    <div class="movCard${dias >= 2 ? " movCard--late" : ""}">
       <div class="movCardTop">
         <span class="movVin">${escapeHtml(r.vin)}</span>
-        ${r.en_conversion
-          ? `<span class="movChip movChip--note movChip--live">En conversión</span>`
-          : badgeDias_(dias)}
+        ${badgeDias_(dias)}
       </div>
       <div class="movCardMeta">
         ${ubicHtml_(r.ubicacion)}
@@ -220,17 +264,54 @@ function renderList0_(rows) {
     </div>`;
   };
 
-  const gruposHtml = (lista) => porDia_(lista, "fecha_entrada").map(([dia, filas]) => `
-    <section class="movDayGroup">
-      ${diaHdrHtml_(dia, filas.length)}
-      <div class="movCardList">${filas.map(cardHtml).join("")}</div>
-    </section>`).join("");
+  // En zona: el reloj que importa es el de la plaza, no el del ingreso. Un
+  // carro que entró hace 3 días y lo pusieron en zona hace una hora no está
+  // olvidado — se dicen las dos fechas para que se vea la diferencia.
+  const enZonaCard = (r) => `
+    <div class="movCard movCard--zona">
+      <div class="movCardTop">
+        <span class="movVin">${escapeHtml(r.vin)}</span>
+        <span class="movChip movChip--warn">${icon("users", 13)}Sin técnicos</span>
+      </div>
+      <div class="movTimeline">
+        ${zonaRowHtml(r.zona)}
+        ${ingresoRowHtml(r)}
+      </div>
+      ${r.ubicacion ? `<div class="movCardMeta"><span class="movTimelineLabel">GPS</span>${ubicHtml_(r.ubicacion)}</div>` : ""}
+    </div>`;
+
+  const convCard = (r) => `
+    <div class="movCard movCard--conv">
+      <div class="movCardTop">
+        <span class="movVin">${escapeHtml(r.vin)}</span>
+        <span class="movChip movChip--note movChip--live">En conversión</span>
+      </div>
+      ${tecnicosHtml(r.tecnicos)}
+      <div class="movTimeline">
+        ${zonaRowHtml(r.zona)}
+        ${ingresoRowHtml(r)}
+      </div>
+    </div>`;
+
+  const blockHdr = (ic, txt, n) =>
+    `<div class="movBlockHdr">${icon(ic, 16)} ${txt} <span class="movDayCount">${n}</span></div>`;
 
   let html = "";
-  if (espera.length) html += gruposHtml(espera);
+  if (enZona.length) {
+    html += blockHdr("mapPin", "En zona · esperando técnicos", enZona.length);
+    html += `<div class="movCardList">${enZona.map(enZonaCard).join("")}</div>`;
+  }
+  if (sinZona.length) {
+    if (enZona.length) html += blockHdr("car", "Sin zona asignada", sinZona.length);
+    html += porDia_(sinZona, "fecha_entrada").map(([dia, filas]) => `
+    <section class="movDayGroup">
+      ${diaHdrHtml_(dia, filas.length)}
+      <div class="movCardList">${filas.map(sinZonaCard).join("")}</div>
+    </section>`).join("");
+  }
   if (conversion.length) {
-    html += `<div class="movBlockHdr">${icon("wrench", 16)} En conversión <span class="movDayCount">${conversion.length}</span></div>`;
-    html += `<div class="movCardList">${conversion.map(cardHtml).join("")}</div>`;
+    html += blockHdr("wrench", "En conversión", conversion.length);
+    html += `<div class="movCardList">${conversion.map(convCard).join("")}</div>`;
   }
   box.innerHTML = html;
 }

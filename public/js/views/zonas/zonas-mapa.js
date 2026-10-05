@@ -36,16 +36,49 @@ const ESTADO_CSS = {
 // El esqueleto de tarjeta/grid vive en zonas-layout.js; aquí solo se decide
 // la variante de color (por ESTADO) y los atributos de interacción.
 
-function renderZonaCard_(z, readOnly) {
+/**
+ * dotacionClass_ — el mismo idioma de color de la TV de despacho:
+ *   c0 nadie en el carro · c1 un técnico, falta la otra mitad · c2 la dupla
+ *   trabajando · y en verde, por mitades, el lado que ya terminó (arriba el
+ *   delantero, abajo el tanquero — el orden de los nombres en el carro).
+ * Un carro FINALIZADO se queda en su verde entero de siempre.
+ */
+function dotacionClass_(z, nuevos) {
+  if (!z.vin || z.estado === "FINALIZADO") return "";
+  const t = z.tecnicos || {};
+  const n = (t.delantero ? 1 : 0) + (t.tanquero ? 1 : 0);
+  return [
+    `zonaCard--c${n}`,
+    t.delantero && t.delantero_fin ? "zonaCard--finArriba" : "",
+    t.tanquero && t.tanquero_fin ? "zonaCard--finAbajo" : "",
+    nuevos.has(z.vin) ? "zonaCard--nuevo" : "",
+  ].filter(Boolean).join(" ");
+}
+
+// VINs que entraron a su plaza desde el refresco anterior: destellan tres
+// veces, como la asignación nueva en la TV. El primer render no marca nada —
+// si no, abrir el mapa haría destellar las 15 plazas. Se guarda por
+// contenedor: el selector de zona pinta el mismo mapa en otro sitio.
+const _vinsPrevios = new WeakMap();
+function marcarLlegadas_(container, zonas) {
+  const ahora = new Set(zonas.map(z => z.vin).filter(Boolean));
+  const antes = _vinsPrevios.get(container);
+  _vinsPrevios.set(container, ahora);
+  return antes ? new Set([...ahora].filter(v => !antes.has(v))) : new Set();
+}
+
+function renderZonaCard_(z, readOnly, nuevos) {
   return zonaCardHTML_(z, {
     variant: ESTADO_CSS[z.estado] || "libre",
     clickable: !readOnly,
     attrs: `data-estado="${z.estado}"`,
+    extraClass: dotacionClass_(z, nuevos),
   });
 }
 
 function renderMapa_(container, zonas, sinZona, readOnly) {
-  const gridHTML = zonasGridHTML_(zonas, z => renderZonaCard_(z, readOnly));
+  const nuevos = marcarLlegadas_(container, zonas);
+  const gridHTML = zonasGridHTML_(zonas, z => renderZonaCard_(z, readOnly, nuevos));
 
   // Contador solo zonas numeradas 1-15 con estado FINALIZADO
   const finalizados = zonas.filter(z => z.estado === "FINALIZADO").length;
@@ -137,8 +170,10 @@ function renderMapa_(container, zonas, sinZona, readOnly) {
 
       <div class="zonasLeyenda">
         <span class="zonasLeyendaItem"><span class="zonasLeyendaDot zonasLeyendaDot--libre"></span>Libre</span>
-        <span class="zonasLeyendaItem"><span class="zonasLeyendaDot zonasLeyendaDot--esperando"></span>Esperando</span>
-        <span class="zonasLeyendaItem"><span class="zonasLeyendaDot zonasLeyendaDot--en_conversion"></span>En Conversión</span>
+        <span class="zonasLeyendaItem"><span class="zonasLeyendaDot zonasLeyendaDot--c0"></span>Sin técnicos</span>
+        <span class="zonasLeyendaItem"><span class="zonasLeyendaDot zonasLeyendaDot--c1"></span>Falta 1</span>
+        <span class="zonasLeyendaItem"><span class="zonasLeyendaDot zonasLeyendaDot--c2"></span>Dupla</span>
+        <span class="zonasLeyendaItem"><span class="zonasLeyendaDot zonasLeyendaDot--mitad"></span>Lado listo</span>
         <span class="zonasLeyendaItem"><span class="zonasLeyendaDot zonasLeyendaDot--finalizado"></span>Listo</span>
       </div>
     </div>`;

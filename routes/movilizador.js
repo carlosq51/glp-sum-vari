@@ -176,13 +176,15 @@ router.get("/api/movilizador/status", async (req, res) => {
     }
 
     // 4c. CONVERSION ACTIVA (PENDIENTE o EN PROCESO) — para saber si técnico ya inició
-    let convActivaUrl = `${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CONVERSION&estado_general=in.(PENDIENTE,EN%20PROCESO)&select=vin,created_at`;
+    let convActivaUrl = `${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CONVERSION&estado_general=in.(PENDIENTE,EN%20PROCESO)&select=id,vin,created_at`;
     if (fechaCorte) convActivaUrl += `&created_at=gte.${fechaCorte}T00:00:00`;
     const convActivaResp = await fetch(convActivaUrl, { method: "GET", headers });
     const convActivaRows = convActivaResp.ok ? await convActivaResp.json() : [];
     const convActivaMap = new Set();
+    const convActivaWo = new Map(); // vin → id de su OT abierta (para los técnicos)
     for (const wo of (convActivaRows || [])) {
       if (wo.vin) convActivaMap.add(wo.vin);
+      if (wo.vin && wo.id) convActivaWo.set(wo.vin, wo.id);
     }
 
     // ─── Pendientes de calibración: conversión finalizada y sin OT de CALIDAD.
@@ -407,6 +409,67 @@ router.get("/api/movilizador/status", async (req, res) => {
         }
       }
     } catch (_) { /* columna ultima_ubicacion aún no existe en vins, se omite */ }
+
+    // ─── Dónde está de verdad cada carro de Ingreso ────────────────────
+    //
+    // El registro de entrada solo dice cuándo llegó. Un carro que entró hace
+    // tres días y nadie tocó parece olvidado — y a veces lo es (otra área se
+    // lo llevó), pero otras veces acaban de ponerlo en una plaza y está
+    // esperando su dupla. Caso 9BWBL6DF4TT433217: ingreso 02/10, GPS en
+    // LISTOS, colocado en la Zona 11 el 05/10. Sin esto la tarjeta solo decía
+    // "3 días".
+    //
+    // Se cruzan dos cosas: la plaza que ocupa (las 15 o Zona Libre) y quién
+    // lo está trabajando (asignaciones vivas de su OT abierta). Los técnicos
+    // no invalidan el cache (ver TOPICS_MOV): el nombre llega como mucho un
+    // ciclo tarde, la OT abierta sí llega al instante. Fallo silencioso: si
+    // una consulta falla, la tarjeta queda como antes.
+    if (list0.length) {
+      try {
+        const q = list0.map(r => `"${r.vin}"`).join(",");
+        const woIds = list0.map(r => convActivaWo.get(r.vin)).filter(Boolean);
+        const getRows_ = url => fetch(url, { method: "GET", headers })
+          .then(r => (r.ok ? r.json() : [])).catch(() => []);
+        const [zRows, lRows, aRows] = await Promise.all([
+          getRows_(`${SUPABASE_URL}/rest/v1/conversion_zonas?vin=in.(${q})&select=zona_id,vin,registrado_por,registrado_at`),
+          getRows_(`${SUPABASE_URL}/rest/v1/zona_libre?vin=in.(${q})&select=vin,registrado_por,registrado_at`),
+          woIds.length
+            ? getRows_(`${SUPABASE_URL}/rest/v1/asignaciones?work_order_id=in.(${woIds.join(",")})&activo=eq.true&select=work_order_id,user_id,rol_trabajo,estado_actual`)
+            : [],
+        ]);
+
+        const zonaMap = new Map();
+        for (const z of (lRows || [])) {
+          if (z.vin) zonaMap.set(z.vin, { id: "LIBRE", por: z.registrado_por || "", desde: z.registrado_at || null });
+        }
+        // Una plaza de las 15 manda sobre Zona Libre: no puede estar en dos sitios.
+        for (const z of (zRows || [])) {
+          if (z.vin) zonaMap.set(z.vin, { id: z.zona_id, por: z.registrado_por || "", desde: z.registrado_at || null });
+        }
+
+        const tecMap = new Map(); // work_order_id → { delantero, tanquero, *_fin }
+        if (aRows?.length) {
+          const ids = [...new Set(aRows.map(a => a.user_id).filter(Boolean))].join(",");
+          const usrs = ids ? await getRows_(`${SUPABASE_URL}/rest/v1/usuarios?id=in.(${ids})&select=id,nombre`) : [];
+          const nom = new Map((usrs || []).map(u => [u.id, String(u.nombre || "").trim().split(/\s+/)[0]]));
+          for (const a of aRows) {
+            const n = nom.get(a.user_id);
+            if (!n) continue;
+            const e = tecMap.get(a.work_order_id) || {};
+            const fin = String(a.estado_actual || "").toUpperCase() === "FINALIZADO";
+            const rol = String(a.rol_trabajo || "").toUpperCase();
+            if (rol === "MOTOR") { e.delantero = n; e.delantero_fin = fin; }
+            else if (rol === "TANQUE") { e.tanquero = n; e.tanquero_fin = fin; }
+            tecMap.set(a.work_order_id, e);
+          }
+        }
+
+        for (const item of list0) {
+          item.zona = zonaMap.get(item.vin) || null;
+          item.tecnicos = tecMap.get(convActivaWo.get(item.vin)) || null;
+        }
+      } catch (_) { /* silencioso: la tarjeta queda sin zona ni técnicos */ }
+    }
 
     // ─── Lista Diaria: todos los VINs del flujo de conversión del día ───
     const allConvVins = new Set();

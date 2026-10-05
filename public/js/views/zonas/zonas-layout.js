@@ -22,8 +22,9 @@ export const COL_DERECHA   = [9, 8, 7, 6, 5, 4, 3, 2, 1]; // Z9 arriba  → Z1 a
  * @param {string}  o.variant    modificador CSS de color: "zonaCard--<variant>"
  * @param {boolean} o.clickable  false agrega .readOnly y role="presentation"
  * @param {string}  [o.attrs]    atributos extra del wrapper (data-estado, data-clickable…)
+ * @param {string}  [o.extraClass] clases extra del wrapper (dotación del carro en el mapa)
  */
-export function zonaCardHTML_(z, { variant = "libre", clickable = true, attrs = "" } = {}) {
+export function zonaCardHTML_(z, { variant = "libre", clickable = true, attrs = "", extraClass = "" } = {}) {
   const isOcupada = !!z.vin;
   const vinShort  = z.vin ? z.vin.slice(-8) : "";
   const delantero = z.tecnicos?.delantero || "";
@@ -33,7 +34,7 @@ export function zonaCardHTML_(z, { variant = "libre", clickable = true, attrs = 
   const roClass   = clickable ? "" : " readOnly";
 
   return `
-    <div class="zonaCard zonaCard--${variant}${roClass}"
+    <div class="zonaCard zonaCard--${variant}${extraClass ? ` ${extraClass}` : ""}${roClass}"
          data-zona="${z.zona_id}"
          data-vin="${escapeHtml(z.vin || "")}"
          ${attrs}

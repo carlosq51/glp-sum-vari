@@ -710,10 +710,79 @@
 .tecMapaLeyDot--rojo       { background: #ef4444; }
 .tecMapaLeyDot--azul       { background: var(--st-conv); }
 
+/* ─────────────────────────────────────────────────────────────────────────────
+   DOTACIÓN DEL CARRO — el idioma de color de la TV de despacho
+   ---------------------------------------------------------------------------
+     GRAFITO  nadie en el carro
+     ÁMBAR    un técnico — falta la otra mitad de la dupla (late suave)
+     AZUL     delantero y tanquero, trabajando
+     VERDE    ese lado ya terminó: mitad de arriba el delantero, mitad de
+              abajo el tanquero — el mismo orden de los nombres en el carro
+   Va después de los colores por estado y los pisa: el estado dice si hay OT,
+   la dotación dice quién está encima, que es lo que se mira desde lejos.
+   El carro FINALIZADO no lleva estas clases y se queda en su verde entero.
+──────────────────────────────────────────────────────────────────────────── */
+.zonaCard--c0 { --car-a: #64748b; --car-a2: #94a3b8; }
+.zonaCard--c1 { --car-a: var(--st-wait); --car-a2: #fbbf24; }
+.zonaCard--c2 { --car-a: var(--st-conv); --car-a2: #60a5fa; }
+.zonaCard--finArriba { --car-top: var(--st-done); }
+.zonaCard--finAbajo  { --car-bot: var(--st-done); }
+
+.zonaCard--c0 .zonaCarShape,
+.zonaCard--c1 .zonaCarShape,
+.zonaCard--c2 .zonaCarShape {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.20), transparent 32%, transparent 68%, rgba(0,0,0,.24)),
+    linear-gradient(180deg,
+      var(--car-top, var(--car-a)) 0 50%,
+      var(--car-bot, var(--car-a)) 50% 100%);
+  transition: background var(--dur-slow) var(--ease-out);
+}
+.zonaCard--c0,
+.zonaCard--c1,
+.zonaCard--c2 {
+  border-left-color: var(--car-a);
+  border-right-color: var(--car-a);
+  box-shadow: inset 0 0 22px color-mix(in srgb, var(--car-a) 16%, transparent);
+}
+/* Carro entero terminado por sus dos lados: borde verde, se lee como uno. */
+.zonaCard--finArriba.zonaCard--finAbajo {
+  border-left-color: var(--st-done);
+  border-right-color: var(--st-done);
+}
+.zonaCard--c0::after { background: var(--car-a2); }
+
+/* Un técnico solo: el borde late, porque es el carro que pide atención. */
+.zonaCard--c1 { animation: zonaFalta 2.4s ease-in-out infinite; }
+@keyframes zonaFalta {
+  0%, 100% { box-shadow: inset 0 0 22px color-mix(in srgb, var(--st-wait) 14%, transparent); }
+  50%      { box-shadow: inset 0 0 26px color-mix(in srgb, var(--st-wait) 38%, transparent),
+                         0 0 0 2px color-mix(in srgb, var(--st-wait) 45%, transparent); }
+}
+/* El puesto vacío se dice con letras, no solo con color. */
+.zonaCard--c1 .zonaCarLabel:empty::before {
+  content: "falta";
+  font-style: italic;
+  opacity: .8;
+}
+
+/* Recién llegado a su plaza: destella 3 veces, como en la TV. */
+.zonaCard--nuevo { animation: zonaDestello 1.4s ease-out 3; }
+@keyframes zonaDestello {
+  0%, 100% { box-shadow: inset 0 0 0 0 transparent; }
+  50%      { box-shadow: inset 0 0 0 3px var(--accent), 0 0 18px color-mix(in srgb, var(--accent) 55%, transparent); }
+}
+
+.zonasLeyendaDot--c0    { background: #64748b; }
+.zonasLeyendaDot--c1    { background: var(--st-wait); }
+.zonasLeyendaDot--c2    { background: var(--st-conv); }
+.zonasLeyendaDot--mitad { background: linear-gradient(180deg, var(--st-done) 0 50%, var(--st-conv) 50% 100%); }
+
 /* Respeta usuarios que prefieren menos movimiento */
 @media (prefers-reduced-motion: reduce) {
   .zonasFinChip, .zonaCard--en_conversion::after, .zonasPasilloArrowDown,
-  .zonasPasilloArrowUp, .zonasPasilloLine, .zonaCard--tec-verde { animation: none; }
+  .zonasPasilloArrowUp, .zonasPasilloLine, .zonaCard--tec-verde,
+  .zonaCard--c1, .zonaCard--nuevo { animation: none; }
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────

@@ -442,7 +442,8 @@
   gap: 18px;
 }
 .movPanelBody > .movDayGroup + .movDayGroup,
-.movPanelBody > .movDayGroup + .movBlockHdr { margin-top: 18px; }
+.movPanelBody > .movDayGroup + .movBlockHdr,
+.movPanelBody > .movCardList + .movBlockHdr { margin-top: 18px; }
 
 .movDayHdr {
   display: flex;
@@ -509,6 +510,31 @@
 .movCard--conv { border-left-color: var(--note); }
 .movCard--late { border-left-color: var(--danger); }
 .movCard--obs  { border-left-color: var(--warn); }
+.movCard--zona { border-left-color: var(--accent); }
+
+/* "Zona 11": la plaza en la que está el carro, con el ámbar de las zonas. */
+.movZonaTag {
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-weight: var(--fw-black);
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Dupla del carro en conversión; el lado que cerró va en verde con ✓. */
+.movTecs { display: flex; flex-wrap: wrap; gap: 6px; }
+.movTec {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-black);
+  color: var(--note);
+  background: var(--noteBg);
+}
+.movTec--fin   { color: var(--ok); background: var(--okBg); }
+.movTec--falta { color: var(--warn); background: var(--warnBg); }
 
 .movCardTop {
   display: flex;
