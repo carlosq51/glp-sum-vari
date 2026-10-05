@@ -730,3 +730,94 @@ button.lvKpi--tap:hover { border-top-color: var(--accent); border-right-color: v
 }
 .lvTotals__item em { font-style: normal; opacity: .8; }
 .lvDrill__note { padding: 4px 4px 2px; font-size: var(--fs-2xs); color: var(--muted); }
+
+/* ── Proyección del día ───────────────────────────────────────────────
+   La fila "Proyectado" va justo bajo los carros, en gris y en cursiva: es una
+   expectativa, no un hecho, y no puede leerse con el peso de lo que ya salió.
+   En los cortes cerrados lleva la desviación (+2 / −1) contra lo real. */
+.lvResumen__tbl tr.is-proy th[scope="row"],
+.lvResumen__tbl tr.is-proy td {
+  color: var(--muted);
+  font-style: italic;
+  font-weight: var(--fw-bold);
+  background: var(--accentBg, var(--pillBg));
+}
+.lvResumen__tbl tr.is-proy th[scope="row"] { font-style: normal; }
+.lvResumen__tbl tr.is-proy .lvCortes__tot { color: var(--muted); font-size: var(--fs-lg); }
+.lvProy__delta {
+  margin-left: 4px;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: var(--fw-black);
+}
+.lvProy__delta.is-up   { color: var(--ok); }
+.lvProy__delta.is-down { color: var(--danger); }
+
+.lvProy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 18px;
+  margin-top: 10px;
+  padding: 12px 14px;
+  border: 1px dashed var(--surfaceLine);
+  border-radius: var(--radius);
+  background: var(--surface2);
+}
+.lvProy.is-vacio { font-size: var(--fs-xs); color: var(--muted); }
+.lvProy__main { display: flex; align-items: center; gap: 10px; }
+.lvProy__big {
+  font-size: 30px;
+  font-weight: var(--fw-black);
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  line-height: 1;
+}
+.lvProy__txt b { display: block; font-size: var(--fs-sm); font-weight: var(--fw-extrabold); }
+.lvProy__txt em,
+.lvProy__parts em {
+  display: block;
+  font-style: normal;
+  font-size: var(--fs-2xs);
+  color: var(--muted);
+}
+.lvProy__parts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  flex: 1 1 320px;
+  font-size: var(--fs-xs);
+}
+.lvProy__parts > span { min-width: 0; }
+.lvProy__parts b { font-weight: var(--fw-black); font-variant-numeric: tabular-nums; }
+.lvProy__btn {
+  padding: 8px 14px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  font-weight: var(--fw-extrabold);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+}
+.lvProy__btn:hover { background: var(--accentBg, var(--pillBg)); }
+.lvProy__aviso {
+  flex-basis: 100%;
+  font-size: var(--fs-xs);
+  padding: 6px 10px;
+  border-radius: var(--radiusSm);
+  background: var(--warnBg);
+  color: var(--warn);
+}
+.lvProy__nota { flex-basis: 100%; font-size: var(--fs-2xs); color: var(--muted); }
+
+/* El editor de horas extra: una fila por técnico con su hora de salida. */
+.lvProy__fila select {
+  font: inherit;
+  padding: 4px 6px;
+  border-radius: var(--radiusSm);
+  border: 1px solid var(--surfaceLine);
+  background: var(--surface);
+  color: inherit;
+}
+.lvProy__estado { padding: 10px 4px 0; font-size: var(--fs-xs); color: var(--muted); min-height: 1.4em; }

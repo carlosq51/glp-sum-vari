@@ -5,12 +5,13 @@ import { getConfig_, CONFIG_DEFAULTS } from "../lib/config.js";
 import { cachedByTopics_ } from "../lib/poll-cache.js";
 import { jornadaFecha_, esDuplaApoyo_, vinDeDuplaApoyo_ } from "../lib/despacho.js";
 import { fechaPeruMenosDias_, normalizeModelo_, jornadaPeru_ } from "../lib/utils.js";
+import { proyeccionDeJornada_ } from "./produccion.js";
 
 const router = Router();
 
 // Todo lo que mueve el LIVE del supervisor: quién trabaja en qué, las OTs, el
-// reparto y las plazas del taller.
-const TOPICS_LIVE = ["asignaciones", "work_orders", "despacho", "zonas"];
+// reparto, las plazas del taller y las horas extra de la proyección.
+const TOPICS_LIVE = ["asignaciones", "work_orders", "despacho", "zonas", "produccion"];
 
 /**
  * Duplas automáticas del carro extra, para pintarlas en el LIVE.
@@ -1309,10 +1310,16 @@ async function armarLiveSupervisor_(fechaPedida = null) {
       return (a.nombre || "").localeCompare(b.nombre || "");
     });
 
+    // 6. Proyección del día: cuánto cabe esperar con la gente que vino y con
+    // quien se queda en horas extra. Si falla, el LIVE se pinta sin ella.
+    const proyeccion = await proyeccionDeJornada_({
+      cfg, jornadaStr, asistencia, allUsers, metaDia,
+    }).catch((e) => { console.error("[LIVE proyección]", e.message); return null; });
+
     const duration = Date.now() - t1;
     return {
       ok: true, techs, fecha: jornadaStr, esHoy, vinsSummary,
-      mes, cierres, cierresDet, carrosMedios, asistenciaConv, tiemposMedios,
+      mes, cierres, cierresDet, carrosMedios, asistenciaConv, tiemposMedios, proyeccion,
       _timing: `${duration}ms`,
     };
 

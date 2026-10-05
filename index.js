@@ -23,6 +23,7 @@ import profileRouter from "./routes/profile.js";
 import informesRouter from "./routes/informes.js";
 import despachoRouter, { scheduleCierreJornada_, scheduleMotor_ } from "./routes/despacho.js";
 import invitadoRouter from "./routes/invitado.js";
+import produccionRouter from "./routes/produccion.js";
 import { sseHandler_ } from "./lib/events.js";
 import { scheduleHorariosPausa_ } from "./lib/pausa-masiva.js";
 
@@ -135,6 +136,8 @@ app.use(profileRouter);
 app.use(despachoRouter);
 // Consulta pública de un VIN (PDI). Sin sesión: ver la cabecera del archivo.
 app.use(invitadoRouter);
+// Horas extra de la proyección del día (la proyección viaja en el LIVE).
+app.use(produccionRouter);
 
 // ── Start server ──────────────────────────────────────────────────────────────
 app.listen(PORT, "0.0.0.0", async () => {

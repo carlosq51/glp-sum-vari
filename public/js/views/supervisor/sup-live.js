@@ -38,10 +38,11 @@
 //       fingir un filtro que mentiría.
 // =========================
 
-import { getJSON } from "../../core/api.js";
+import { getJSON, postJSON } from "../../core/api.js";
+import { CORE } from "../../core/state.js";
 import {
   escapeHtml, fmtTiempo_, etiquetaTrabajo_,
-  hhmmAMin_, minutosPE_, bloquesJornada_, indiceBloque_,
+  hhmmAMin_, minAHhmm_, minutosPE_, bloquesJornada_, indiceBloque_,
 } from "../../core/format.js";
 import { startPoll, stopPoll } from "../../core/poll.js";
 import { rolMeta, estadoMeta, grupoDeRol_ } from "../../core/domain-meta.js";
@@ -780,6 +781,7 @@ export function construirModelo_(data, techs) {
 
   return {
     bloques, nb, filas, conv, apoyo, ramales, calidad, usadas,
+    proyeccion: data?.proyeccion || null,
     ahora: ahora >= 0 ? ahora : null,
     subtotal_, porBloque_,
     totales: {
@@ -955,7 +957,7 @@ function presenciaHTML_(t) {
 // ellas contaría el mismo trabajo dos veces. Por eso los carros van arriba,
 // separados por una línea, y el pie solo suma lo que cada persona cerró.
 function resumenHTML_(modelo) {
-  const { bloques, nb, series, subtotal_, ramales, ahora } = modelo;
+  const { bloques, nb, series, subtotal_, ramales, ahora, proyeccion } = modelo;
   if (!nb) return "";
 
   const suma_ = (arr) => arr.reduce((s, n) => s + n, 0);
@@ -1001,6 +1003,7 @@ function resumenHTML_(modelo) {
         <tbody>
           ${fila_({ icon: "🚗", tone: "var(--accent)", label: "Conversión bruta",
                     unidad: "carro con motor y tanque cerrados", arr: series.bruta, cls: "is-head" })}
+          ${filaProyeccion_(proyeccion, series.bruta, ahora, colCls_)}
           ${fila_({ icon: "✅", tone: rCal.color, label: "Conversión final",
                     unidad: "carro con control de calidad", arr: series.final, cls: "is-head is-final" })}
         </tbody>
@@ -1023,6 +1026,7 @@ function resumenHTML_(modelo) {
 
       </table>
     </div>
+    ${proyeccionHTML_(proyeccion, suma_(series.bruta))}
     <div class="lvCortes__nota">
       Cada columna es el corte que <b>empieza</b> a esa hora.
       Arriba se cuentan <b>carros</b>: <b>bruta</b> es el carro con motor y tanque
@@ -1034,6 +1038,162 @@ function resumenHTML_(modelo) {
     </div>
 
   </div>`;
+}
+
+// ── 3c. La proyección del día ─────────────────────────────────────────
+//
+// Cuántos carros cabe esperar con la gente que marcó asistencia, más lo que
+// sumen quienes se quedan en horas extra. El cálculo es del servidor
+// (lib/proyeccion.js); aquí solo se pinta. Va pegada a la fila de carros
+// porque la pregunta es "¿vamos bien?", y eso se contesta corte a corte.
+//
+// META_DIARIA sigue como GUÍA: no se esconde, se pone al lado y se dice cuánta
+// hora extra haría falta para llegar a ella.
+
+/** ¿Este usuario anota horas extra? La barrera real es requireRol_ del servidor. */
+function puedeAnotarExtra_() {
+  return String(CORE.state.currentProfile?.rol || "").toUpperCase() === "ADMIN";
+}
+
+const r_ = (n) => Math.round(Number(n) || 0);
+
+/** La fila "Proyectado" bajo los carros: lo esperado por corte y, en los cortes ya cerrados, cuánto se desvió. */
+function filaProyeccion_(p, bruta, ahora, colCls_) {
+  if (!p?.porBloque) return "";
+  const cerrado_ = (i) => !esHoy_ || (ahora != null && i < ahora);
+
+  const celdas = p.porBloque.map((b, i) => {
+    if (!b) return `<td class="${colCls_(i)}"><i class="lvCortes__cero">·</i></td>`;
+    const esp = r_(b.esperado);
+    const extra = b.extra >= 0.5 ? ` · ≈${r_(b.extra)} de horas extra` : "";
+    const delta = bruta[i] - esp;
+    const marca = cerrado_(i) && delta
+      ? `<small class="lvProy__delta ${delta > 0 ? "is-up" : "is-down"}">${delta > 0 ? "+" : "−"}${Math.abs(delta)}</small>`
+      : "";
+    return `<td class="${colCls_(i)}" title="entre ${r_(b.min)} y ${r_(b.max)}${extra}">≈${esp}${marca}</td>`;
+  }).join("");
+
+  const extra = p.extra?.personas ? " + horas extra" : "";
+  return `
+    <tr class="is-proy">
+      <th scope="row">
+        <span class="lvResumen__ico">🎯</span>
+        Proyectado<em>con ${p.presentes.total} presentes${extra}</em>
+      </th>
+      ${celdas}
+      <td class="lvCortes__tot" title="entre ${r_(p.total.min)} y ${r_(p.total.max)}">≈${r_(p.total.esperado)}</td>
+    </tr>`;
+}
+
+/** El resumen bajo la tabla: total del día, cómo se compone, la meta guía y el botón de horas extra. */
+function proyeccionHTML_(p, real) {
+  if (!p) return "";
+  const admin = puedeAnotarExtra_();
+  if (p.sinHistoria) {
+    return `<div class="lvProy is-vacio">🎯 Sin proyección para este día: es domingo o faltan días con asistencia marcada para calibrarla.</div>`;
+  }
+
+  const anotados = (p.tecnicos || []).filter(t => t.hasta).length;
+  const meta = Number(p.metaGuia) || 0;
+  const tot  = r_(p.total.esperado);
+  let metaTxt = "";
+  if (meta && p.paraMeta) {
+    const n = p.paraMeta.parejas;
+    metaTxt = p.paraMeta.alcanza
+      ? `faltan ≈${r_(p.paraMeta.faltan)}: unas ${n} pareja${n === 1 ? "" : "s"} (delantero + tanquero) hasta las ${escapeHtml(p.paraMeta.hasta)}`
+      : `faltan ≈${r_(p.paraMeta.faltan)}: con la gente de hoy no se llega ni quedándose todos hasta las ${escapeHtml(p.paraMeta.hasta)}`;
+  } else if (meta) {
+    metaTxt = tot >= meta ? "la proyección la alcanza" : "casi";
+  }
+
+  const avisos = [];
+  if (p.extra?.falta) {
+    const queda = rolMeta(p.extra.falta === "MOTOR" ? "TANQUE" : "MOTOR").label.toLowerCase();
+    avisos.push(`Solo se quedan ${escapeHtml(queda)}s: sin un ${escapeHtml(rolMeta(p.extra.falta).label.toLowerCase())} no sale ningún carro entero en horas extra.`);
+  }
+  if (admin && p.sinTabla) {
+    avisos.push("Para anotar horas extra falta correr <code>supabase/produccion-horas-extra.sql</code> en Supabase.");
+  }
+
+  return `
+  <div class="lvProy">
+    <div class="lvProy__main">
+      <span class="lvProy__big">≈${tot}</span>
+      <span class="lvProy__txt">
+        <b>carros proyectados ${esHoy_ ? "hoy" : "ese día"}</b>
+        <em>entre ${r_(p.total.min)} y ${r_(p.total.max)} · ${esHoy_ ? "van" : "salieron"} ${real}</em>
+      </span>
+    </div>
+    <div class="lvProy__parts">
+      <span>Turno normal <b>≈${r_(p.turno.esperado)}</b>
+        <em>hasta las ${escapeHtml(p.finTurno || "")} · ${p.presentes.MOTOR} del. + ${p.presentes.TANQUE} tanq.</em></span>
+      <span>Horas extra <b>+${r_(p.extra.esperado)}</b>
+        <em>${p.extra.personas ? `${p.extra.personas} persona${p.extra.personas === 1 ? "" : "s"} anotada${p.extra.personas === 1 ? "" : "s"}` : "nadie anotado"}</em></span>
+      ${meta ? `<span>Meta guía <b>${meta}</b><em>${metaTxt}</em></span>` : ""}
+    </div>
+    ${avisos.map(a => `<div class="lvProy__aviso">⚠️ ${a}</div>`).join("")}
+    ${admin && !p.sinTabla ? `<button type="button" class="lvProy__btn" data-proy="extra">⏱ Horas extra${anotados ? ` (${anotados})` : ""}</button>` : ""}
+    <div class="lvProy__nota">
+      Sale de los últimos ${p.diasCalibracion} días ${p.tipo === "sabado" ? "sábados" : "hábiles"}:
+      ≈${(Number(p.tasa) || 0).toFixed(2)} carros por técnico presente hasta las ${escapeHtml(p.finTurno || "")}.
+      Es un rango y no un número exacto: hay días que la asistencia no explica (por ejemplo, cuando faltan carros en el patio).
+    </div>
+  </div>`;
+}
+
+/** El editor de horas extra: quién se queda y hasta qué hora. Solo ADMIN. */
+function abrirHorasExtra_(data) {
+  const p = data?.proyeccion;
+  if (!p?.tecnicos) return;
+
+  // De media en media hora, desde el fin de turno hasta las 02:00.
+  const ini = (hhmmAMin_(p.finTurno) ?? 990) + 30;
+  const horas = [];
+  for (let m = ini; m <= 26 * 60; m += 30) horas.push(minAHhmm_(m));
+
+  const fila_ = (t) => `
+    <div class="lvDrill__row lvProy__fila">
+      <span>${rolMeta(t.rol).icon} ${escapeHtml(t.nombre || "—")}</span>
+      <select data-extra-uid="${escapeHtml(t.userId)}" aria-label="Hasta qué hora se queda ${escapeHtml(t.nombre || "")}">
+        <option value="">no se queda</option>
+        ${horas.map(h => `<option value="${h}"${t.hasta === h ? " selected" : ""}>hasta las ${h}</option>`).join("")}
+      </select>
+    </div>`;
+  const grupo_ = (titulo, nota, lista) => !lista.length ? "" : `
+    <div class="lvDrill__group">
+      <div class="lvDrill__groupHead"><span>${titulo}</span><span>${lista.length}</span></div>
+      ${nota ? `<div class="lvDrill__note">${nota}</div>` : ""}
+      ${lista.map(fila_).join("")}
+    </div>`;
+
+  const presentes = p.tecnicos.filter(t => t.presente);
+  const otros     = p.tecnicos.filter(t => !t.presente);
+  const body = openDrilldown({
+    title: "Horas extra",
+    subtitle: `${esHoy_ ? "Hoy" : fmtFechaLarga_(data.fecha)} · después de las ${p.finTurno}`,
+    html: `
+      <div class="lvDrill__note">Cada cambio se guarda solo y la proyección se recalcula.
+        Un carro necesita delantero <b>y</b> tanquero: anota a los dos de cada pareja.</div>
+      ${grupo_("Marcaron asistencia", "", presentes)}
+      ${grupo_("Sin marca de asistencia", "No cuentan en el turno normal; sí suman si se quedan.", otros)}
+      <div class="lvProy__estado" id="lvExtraEstado" role="status"></div>`,
+  });
+
+  const estado = body.querySelector("#lvExtraEstado");
+  body.querySelectorAll("[data-extra-uid]").forEach(sel => {
+    sel.addEventListener("change", async () => {
+      sel.disabled = true;
+      estado.textContent = "Guardando…";
+      const email = String(CORE.state.currentProfile?.email || document.getElementById("email")?.value || "").trim();
+      const r = await postJSON("/api/produccion/horas-extra", {
+        email, userId: sel.dataset.extraUid, hasta: sel.value, fecha: data.fecha,
+      }).catch(e => ({ ok: false, error: e.message }));
+      sel.disabled = false;
+      if (!r?.ok) { estado.textContent = `⚠️ ${r?.error || "No se pudo guardar."}`; return; }
+      estado.textContent = "Guardado ✓";
+      refreshLive_().catch(() => {});
+    });
+  });
 }
 
 /** Las dos tablas + la nota. Lee del modelo; no cuenta nada por su cuenta. */
@@ -1483,6 +1643,8 @@ function bindLive_(container, techs, metaTec, data) {
   container.querySelectorAll("[data-drill]").forEach(btn => {
     btn.addEventListener("click", () => abrirDrill_(btn.dataset.drill, data, techs));
   });
+
+  container.querySelector("[data-proy=extra]")?.addEventListener("click", () => abrirHorasExtra_(data));
 
 }
 
