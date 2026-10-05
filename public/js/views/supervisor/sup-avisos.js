@@ -14,18 +14,36 @@
 import { escapeHtml } from "../../core/format.js";
 import { alternarAviso_, avisoActivo_ } from "../../work/llamado-voz.js";
 
+// Cada aviso fijo trae varias versiones y en cada repetición sale una al
+// azar: con una sola frase en bucle la voz suena a grabación y cansa. Tono
+// de equipo, animado pero sin urgencia: son avisos de rutina, no alarmas.
 const AVISOS_FIJOS = [
   {
     clave: "LIMPIEZA",
     boton: "🧹 Hora de limpieza",
-    texto: "Atención. Comenzó la hora de limpieza. " +
-      "Delanteros, encargados de la limpieza del taller. " +
-      "Tanqueros, encargados del orden de los equipos y la mesa de trabajo.",
+    texto: [
+      "¡Atención, equipo! Llegó la hora de limpieza. Delanteros, limpieza del taller. " +
+        "Tanqueros, orden de equipos y mesa de trabajo. ¡Gracias!",
+      "Equipo, es momento de limpiar. Delanteros, el taller. " +
+        "Tanqueros, los equipos y la mesa de trabajo. Un taller ordenado es un taller seguro.",
+      "¡Hora de limpieza, equipo! Delanteros, a dejar el taller impecable. " +
+        "Tanqueros, a ordenar los equipos y la mesa de trabajo.",
+      "Atención, por favor. Comenzó la hora de limpieza. Delanteros se encargan del taller, " +
+        "y tanqueros, del orden de los equipos y la mesa. ¡Gracias por su apoyo!",
+      "Equipo, unos minutos para el orden y la limpieza. Delanteros, el taller. " +
+        "Tanqueros, equipos y mesa de trabajo. ¡Vamos!",
+    ],
   },
   {
     clave: "REUNION",
     boton: "👥 Reunión",
-    texto: "Atención a todos los técnicos. Presentarse en el punto de reunión.",
+    texto: [
+      "¡Atención, equipo! Los esperamos en el punto de reunión. Por favor, acérquense.",
+      "Técnicos, por favor, diríjanse al punto de reunión. Gracias.",
+      "Equipo, nos reunimos ahora en el punto de reunión. ¡Los esperamos!",
+      "Atención a todos los técnicos. Por favor, acérquense al punto de reunión. Gracias.",
+      "Equipo, un momento, por favor. Los esperamos en el punto de reunión.",
+    ],
   },
 ];
 

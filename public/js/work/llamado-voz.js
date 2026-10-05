@@ -2,7 +2,8 @@
 // public/js/work/llamado-voz.js
 // Voz por el parlante del celular que toca el botón:
 //  · CALIDAD: "📢" junto al delantero o al tanquero repite "Técnico
-//    Juan Pérez, presentarse en control de calidad" hasta volver a tocarlo.
+//    Juan Pérez, por favor, acérquese a control de calidad" (alternando
+//    entre varias versiones) hasta volver a tocarlo.
 //  · SUPERVISOR: avisos al taller (limpieza, reunión, frases propias) que
 //    también se repiten hasta volver a tocarlos.
 // =========================
@@ -28,11 +29,13 @@
 
 import { escapeHtml } from "../core/format.js";
 
-const PAUSA_ENTRE_RONDAS_MS = 4000;
+// 6 s entre rondas: con menos se oye como alarma y estresa; con más, quien
+// llegó tarde al primer aviso se queda esperando a que lo repitan.
+const PAUSA_ENTRE_RONDAS_MS = 6000;
 
 const ROTULO = { MOTOR: "delantero", TANQUE: "tanquero" };
 
-/** id → { id, texto, etiqueta, restantes } — restantes: Infinity = hasta apagarlo */
+/** id → { id, textos, ultima, etiqueta, restantes } — restantes: Infinity = hasta apagarlo */
 const activas_ = new Map();
 
 let corriendo_ = false;
@@ -62,8 +65,28 @@ function nombreHablado_(nombre) {
     .replace(/(^|\s)(\p{L})/gu, (_, sp, l) => sp + l.toUpperCase());
 }
 
-function fraseLlamada_(nombre) {
-  return `Técnico ${nombreHablado_(nombre)}, presentarse en control de calidad.`;
+// Varias versiones y se alterna entre ellas: oír la misma grabación una y
+// otra vez es lo que suena robótico y termina molestando. Tono cordial, con
+// "por favor" y "gracias": el llamado es frecuente y no debe sonar a regaño.
+function frasesLlamada_(nombre) {
+  const n = nombreHablado_(nombre);
+  return [
+    `Técnico ${n}, por favor, acérquese a control de calidad. Gracias.`,
+    `${n}, lo esperamos en control de calidad.`,
+    `Técnico ${n}, control de calidad lo está esperando. Gracias.`,
+    `${n}, por favor, pase por control de calidad. Gracias.`,
+    `Llamando al técnico ${n}. Por favor, acérquese a control de calidad.`,
+  ];
+}
+
+// Al azar, pero nunca la misma dos veces seguidas.
+function siguienteFrase_(it) {
+  const t = it.textos;
+  if (t.length < 2) return t[0] || "";
+  let i;
+  do { i = Math.floor(Math.random() * t.length); } while (i === it.ultima);
+  it.ultima = i;
+  return t[i];
 }
 
 // ── Voz ─────────────────────────────────────────────────────────────────
@@ -93,7 +116,9 @@ function hablar_(texto) {
     voz_ = voz_ || elegirVoz_();
     if (voz_) u.voice = voz_;
     u.lang = voz_?.lang || "es-MX";
-    u.rate = 0.95;
+    // Un poco más rápida y aguda que la de fábrica: a 0.95 sonaba desganada.
+    u.rate = 1.05;
+    u.pitch = 1.1;
     u.volume = 1;   // el máximo que una página puede pedir
     // iOS a veces no dispara onend; sin este tope el bucle se queda colgado.
     const tope = setTimeout(fin, 3000 + texto.length * 120);
@@ -187,7 +212,7 @@ async function bucle_() {
         if (!activas_.has(it.id)) continue;
         await dingDong_();
         if (!activas_.has(it.id)) continue;
-        await hablar_(it.texto);
+        await hablar_(siguienteFrase_(it));
         it.restantes -= 1;
         if (it.restantes <= 0 && activas_.get(it.id) === it) {
           activas_.delete(it.id);
@@ -223,14 +248,16 @@ function alternar_(id, crear) {
 
 /**
  * Aviso del supervisor: se repite hasta volver a tocarlo (o `veces` veces
- * si se pasa). Tocar de nuevo el mismo aviso mientras suena lo apaga.
+ * si se pasa). `texto` puede ser una frase o varias para alternar. Tocar de
+ * nuevo el mismo aviso mientras suena lo apaga.
  */
 export function alternarAviso_(clave, { texto, etiqueta, veces = Infinity } = {}) {
-  const limpio = String(texto || "").trim();
-  if (!limpio && !avisoActivo_(clave)) return;
+  const textos = [].concat(texto || []).map(s => String(s).trim()).filter(Boolean);
+  if (!textos.length && !avisoActivo_(clave)) return;
   alternar_(idAviso_(clave), () => ({
-    texto: limpio,
-    etiqueta: `Aviso: <b>${escapeHtml(etiqueta || limpio)}</b>`,
+    textos,
+    ultima: -1,
+    etiqueta: `Aviso: <b>${escapeHtml(etiqueta || textos[0])}</b>`,
     restantes: veces,
   }));
 }
@@ -280,7 +307,8 @@ document.addEventListener("click", (e) => {
   e.preventDefault();
   const { llamarVin: vin, llamarRol: rol, llamarNombre: nombre = "" } = b.dataset;
   alternar_(idLlamada_(vin, rol), () => ({
-    texto: fraseLlamada_(nombre),
+    textos: frasesLlamada_(nombre),
+    ultima: -1,
     etiqueta: `Llamando a <b>${escapeHtml(nombreHablado_(nombre))}</b> ` +
       `<span class="llamadoBarRol">(${ROTULO[rol] || escapeHtml(rol)})</span>`,
     restantes: Infinity,
