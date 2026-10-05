@@ -2,7 +2,7 @@
 // public/js/work/llamado-voz.js
 // Llamado por voz desde CALIDAD: el inspector toca "📢" junto al nombre del
 // delantero o del tanquero y el iPhone, por el parlante Bluetooth, repite
-// "Juan Pérez, delantero, acercarse a calidad" hasta que lo vuelva a tocar.
+// "Juan Pérez, acercarse a corregir su falla" hasta que lo vuelva a tocar.
 // =========================
 //
 // Todo corre en el teléfono (speechSynthesis + Web Audio): sin servidor, sin
@@ -53,12 +53,7 @@ function nombreHablado_(nombre) {
 }
 
 function frase_(ll) {
-  // Los 4 últimos del VIN, separados, para que los diga dígito a dígito:
-  // "4578" se oiría "cuatro mil quinientos setenta y ocho".
-  const cola = String(ll.vin || "").slice(-4).split("").join(" ");
-  return `${nombreHablado_(ll.nombre)}, ${ROTULO[ll.rol] || "técnico"}. ` +
-    `Acercarse a control de calidad.` +
-    (cola ? ` Carro ${cola}.` : "");
+  return `${nombreHablado_(ll.nombre)}, acercarse a corregir su falla.`;
 }
 
 // ── Voz ─────────────────────────────────────────────────────────────────
