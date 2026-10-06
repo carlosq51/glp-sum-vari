@@ -279,9 +279,16 @@ export async function getMisActivas(email, { calidadColaborativa = false } = {})
   }
 
   const data = await res.json();
-  if (!data || !data.length) return [];
-  
-  const items = data
+
+  // OJO: aquí NO se puede cortar con `if (!data.length) return []`.
+  //
+  // El inspector de CALIDAD que todavía no ha abierto ningún carro propio tiene
+  // la lista propia vacía, y es justo el caso en el que MÁS necesita ver la del
+  // compañero: llega, no tiene nada suyo, y lo que hay que revisar son los
+  // carros que el otro ya empezó. Con el corte se devolvía [] antes de pedir
+  // las ajenas y la pantalla salía vacía — la colaboración solo funcionaba si
+  // por casualidad tenías algo tuyo abierto.
+  const items = (data || [])
     .map(asg => {
       const wo = Array.isArray(asg.work_orders) 
         ? asg.work_orders[0] 
