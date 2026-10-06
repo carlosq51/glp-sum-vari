@@ -1119,6 +1119,15 @@ function armarUnidades_(tecnicosCtx, duplas, cfg) {
 }
 
 /** Todo lo que el motor necesita saber del taller, en una sola pasada. */
+const CACHE_MOTOR_LENTO_MS = 5 * 60_000;
+
+/** GET que devuelve el JSON o lanza: lo que cachedByTopics_ necesita para no guardar un fallo. */
+async function sbJson_(url, headers) {
+  const r = await fetch(url, { headers });
+  if (!r.ok) throw new Error(`${r.status} ${url.split("?")[0]}`);
+  return r.json();
+}
+
 async function contextoDelTaller_(cfg, fecha) {
   const { desde } = jornadaRango_(fecha);
   const h = supabaseHeaders_();
@@ -1128,10 +1137,17 @@ async function contextoDelTaller_(cfg, fecha) {
   // work_orders tiene años de historia y sin ORDER BY el límite devuelve un
   // subconjunto arbitrario: las OTs de los carros que están AHORA en el taller
   // pueden no venir. Se filtran por los VINs en zona, que son ~15.
-  const [zRes, ldRes, uRes, marcas, duplas, ocupadosGlobal] = await Promise.all([
+  const [zRes, lista, tecnicos, marcas, duplas, ocupadosGlobal] = await Promise.all([
     fetch(`${SB()}/rest/v1/conversion_zonas?select=zona_id,vin,registrado_at&order=zona_id.asc`, { headers: h }),
-    fetch(`${SB()}/rest/v1/lista_diaria_activa?select=vin`, { headers: h }),
-    fetch(`${SB()}/rest/v1/usuarios?rol=eq.TECNICO&activo=eq.true&select=id,nombre,especialidad`, { headers: h }),
+    // Estas dos cambian despacio y el motor las pedía en cada vuelta (~390 al
+    // día cada una). La lista diaria la reescribe Apps Script cada 10 min y
+    // los técnicos activos cambian cuando Admin da de alta a alguien: 5 min de
+    // cache no se notan. Si la lectura falla, lanza y no se cachea: la vuelta
+    // sigue con [] como antes y la siguiente reintenta.
+    cachedByTopics_("motor:lista_diaria", [], CACHE_MOTOR_LENTO_MS, () =>
+      sbJson_(`${SB()}/rest/v1/lista_diaria_activa?select=vin`, h)).catch(() => []),
+    cachedByTopics_("motor:tecnicos", [], CACHE_MOTOR_LENTO_MS, () =>
+      sbJson_(`${SB()}/rest/v1/usuarios?rol=eq.TECNICO&activo=eq.true&select=id,nombre,especialidad`, h)).catch(() => []),
     marcasDeJornada_(fecha),
     // PENDIENTE entra a propósito: mientras una invitación está en el aire,
     // sus dos técnicos salen del reparto (ver unidadesDeTrabajo_).
@@ -1142,8 +1158,6 @@ async function contextoDelTaller_(cfg, fecha) {
   ]);
 
   const zonasRaw = zRes.ok  ? await zRes.json()  : [];
-  const lista    = ldRes.ok ? await ldRes.json() : [];
-  const tecnicos = uRes.ok  ? await uRes.json()  : [];
 
   const vinsEnZona = zonasRaw.map(z => z.vin).filter(Boolean);
   const enLista = v => vinsEnZona.length

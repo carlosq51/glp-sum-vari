@@ -1057,16 +1057,23 @@ router.get("/api/estado", async (req, res) => {
     if (!rolTrabajo) return res.status(400).json({ ok:false, error:"Falta rolTrabajo" });
 
     // ?? LECTURA DESDE SUPABASE
-    // 1. Obtener usuario
+    // 1. Obtener usuario. Por la cache email → id: esta ruta es el poll de
+    // cada celular cada 30 s, y el id de una persona no cambia. Sin cache, la
+    // búsqueda por email era un tercio de sus peticiones, y cada petición a
+    // Supabase cuenta en la cuota de logs aunque devuelva una fila.
     const t1 = Date.now();
-    const usuarios = await supabaseGet_("usuarios", { email });
+    let userId = getCachedUserIdByEmail_(email);
+    if (!userId) {
+      const usuarios = await supabaseGet_("usuarios", { email });
+      userId = usuarios?.[0]?.id || null;
+      if (userId) setCachedUserIdByEmail_(email, userId);
+    }
     timings.push({ label: "usuarios_by_email", duration: Date.now() - t1 });
 
-    if (!usuarios || !usuarios.length) {
+    if (!userId) {
       addServerTiming_(res, timings);
       return res.status(404).json({ ok: false, error: "Usuario no encontrado" });
     }
-    const userId = usuarios[0].id;
 
     // 2. Obtener work_order por VIN
     const t2 = Date.now();

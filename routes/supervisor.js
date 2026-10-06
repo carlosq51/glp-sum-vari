@@ -738,7 +738,7 @@ async function armarLiveSupervisor_(fechaPedida = null) {
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const headers = supabaseHeaders_();
 
-    // Config central (defaults + app_config, cacheado 60s en lib/config).
+    // Config central (defaults + app_config, cacheado 5 min en lib/config).
     // Se lee ANTES que las fechas porque el corte de jornada sale de ella.
     const cfg = await getConfig_();
 
