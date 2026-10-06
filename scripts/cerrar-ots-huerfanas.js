@@ -22,7 +22,7 @@
 
 const APLICAR = process.argv.includes("--apply");
 const URL_ = process.env.SUPABASE_URL;
-const KEY  = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+const KEY  = process.env.SUPABASE_SERVICE_KEY;
 if (!URL_ || !KEY) { console.error("Faltan SUPABASE_URL / clave en .env"); process.exit(1); }
 const H = { apikey: KEY, Authorization: `Bearer ${KEY}`, "Content-Type": "application/json" };
 

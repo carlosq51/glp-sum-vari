@@ -100,6 +100,8 @@ También exporta `REG_FALLAS_BASE` (constante, línea 6).
 
 ## dual-api.js
 
+> **Borrado el 2026-10-06** (commit 727acba). Se conserva la tabla como registro histórico.
+
 | Función | Línea | Propósito | Recibe / Devuelve |
 |---|---|---|---|
 | `setMigrationConfig(cfg)` | 30 | Sobrescribe/mezcla la configuración de migración dual-write (`MIGRATION_CONFIG`). | recibe objeto parcial. |
@@ -201,6 +203,8 @@ También exporta `ACCENT_COLORS` (constante, línea 7).
 No define funciones propias: es un **barrel** que reexporta símbolos de `state.js`, `dom.js`, `ui-shell.js`, `auth.js`, `theme.js`, `api.js`, `supabase-client.js`, `dual-api.js`, `cache-local.js`, `format.js`, `links.js` y `suggest.js` (líneas 6-75).
 
 ## supabase-client.js
+
+> **Desde el 2026-10-06** ya no usa la anon key ni `supabaseEnabled()`: todas las consultas van a `/api/db/:tabla` en el servidor. Las líneas citadas abajo son de antes de ese cambio.
 
 | Función | Línea | Propósito | Recibe / Devuelve |
 |---|---|---|---|

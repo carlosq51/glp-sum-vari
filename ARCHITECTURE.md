@@ -1,6 +1,6 @@
 # Arquitectura y Lógica — glp-ui
 
-> Estado actual del proyecto. Última revisión: 2026-07-08.
+> Estado actual del proyecto. Última revisión: 2026-10-06 (base de datos, fases 1-5).
 > Este documento describe lo que ES, no lo que debería ser.
 
 ---
@@ -15,7 +15,7 @@ PWA para gestión de conversiones GLP. Los técnicos (MOTOR / TANQUE) registran 
 |---|---|
 | Frontend | Vanilla JS ES Modules + Vite 6 |
 | Backend | Node.js + Express 5 |
-| Base de datos | Supabase (PostgreSQL vía REST API — sin SDK) |
+| Base de datos | Supabase (PostgreSQL vía REST API — sin SDK; solo el servidor tiene key) |
 | Almacenamiento fotos | Cloudflare R2 (compatible S3) |
 | Reportes legacy | Google Apps Script + Google Sheets |
 | PWA / SW | Vite Plugin PWA + Workbox (`injectManifest`) |
@@ -49,7 +49,15 @@ glp-ui/
 │   ├── tecnico.js            ← /api/tecnico/*
 │   ├── ml.js                 ← /api/ml/*, /api/omisiones
 │   ├── vins.js               ← /api/vin-suggest, /api/vins-sin-modelo
-│   └── zonas.js              ← /api/zonas/*
+│   ├── zonas.js              ← /api/zonas/*
+│   ├── db.js                 ← /api/db/:tabla (puerta del navegador a Supabase)
+│   └── … despacho, ramales, informes, produccion, invitado, …
+├── supabase/
+│   ├── migrations/           ← ÚNICA fuente de verdad del esquema (000_base + NNN_*.sql)
+│   └── historico/            ← .sql sueltos de antes; solo para leer el porqué
+├── scripts/
+│   ├── esquema-dump.mjs      ← npm run db:dump (lee producción, READ ONLY)
+│   └── esquema-validar.mjs   ← npm run db:validar (migraciones en PGlite vs producción)
 ├── vite.config.js            ← Build + PWA config
 ├── package.json
 ├── .env                      ← Variables locales (no va a producción)
@@ -117,7 +125,8 @@ app.listen(PORT) → scheduleAutoRetrain_() + scheduleAutoNormalize_()
 
 | Módulo | Exporta |
 |---|---|
-| `lib/supabase.js` | `supabaseHeaders_()`, `supabaseServiceHeaders_()`, `buildSupabaseQuery_()`, `supabaseGet_/Post_/Patch_/Delete_()`, `getCachedData_/setCachedData_()`, `getCachedUserIdByEmail_/setCachedUserIdByEmail_()`, `CACHE` |
+| `lib/db-permisos.js` | `autorizarDb_()` — lista blanca de tablas que el navegador alcanza por `/api/db` (también revisa los embeds `select=…,tabla(…)`). Una tabla que no está aquí no se toca desde el navegador |
+| `lib/supabase.js` | Todos los helpers usan la **service key** (`supabaseHeaders_()` incluido). `supabaseHeaders_()`, `supabaseServiceHeaders_()`, `supabaseFetchAll_()`, `buildSupabaseQuery_()`, `supabaseGet_/Post_/Patch_/Delete_()`, `getCachedData_/setCachedData_()`, `getCachedUserIdByEmail_/setCachedUserIdByEmail_()`, `CACHE` |
 | `lib/timing.js` | `measureTime_()`, `addServerTiming_()` |
 | `lib/utils.js` | `isValidOT_()`, `normalizeModelo_()` |
 | `lib/ml-state.js` | `pendingSuggestions_` (Map; escrito por `routes/ml.js`, leído por `routes/trabajo.js`) |
@@ -130,7 +139,15 @@ app.listen(PORT) → scheduleAutoRetrain_() + scheduleAutoNormalize_()
 ```
 ── Identidad ─────────────────────────────────────────────────────────────
 GET  /api/me                       → perfil del usuario (nombre, rol, especialidad)
-GET  /env-config.js                → inyecta VITE_* como window.__ENV__
+GET  /env-config.js                → window.__ENV__ (solo R2_PUBLIC_URL; ninguna key)
+
+── Acceso genérico a tablas ──────────────────────────────────────────────
+GET/POST/PATCH/DELETE /api/db/:tabla → la única puerta del navegador a
+                                     Supabase. Misma querystring PostgREST;
+                                     lib/db-permisos.js decide (lectura
+                                     técnico vs ADMIN, escritura solo ADMIN,
+                                     PATCH/DELETE sin filtro negados) y el
+                                     servidor reenvía con la service key
 
 ── Trabajo activo ────────────────────────────────────────────────────────
 POST /api/evento                   → INICIO / PAUSA / REANUDAR / FIN / NOTA
@@ -235,7 +252,7 @@ Response { ok, estado, id, … }
 ```
 index.html carga app.js
   ↓
-Carga window.__ENV__  (desde /env-config.js)
+Carga window.__ENV__  (desde /env-config.js — solo R2_PUBLIC_URL)
   ↓
 Monta appShell() en #appRoot  (HTML completo de la UI)
   ↓
@@ -265,6 +282,7 @@ export function exit()  { /* limpiar timers, ocultar UI, reset de estado      */
 | `core.js` | Re-exporta todo lo de abajo |
 | `state.js` | `CORE.state` — estado global de la app; `ctx_()` — estado de conversión |
 | `api.js` | `getJSON()`, `postJSON()`, `postJSON_user()`, `withLock()` |
+| `supabase-client.js` | Consultas a tablas — van a `/api/db/:tabla`, nunca directo a Supabase |
 | `auth.js` | `requireEmailOrStop()`, perfil del usuario |
 | `dom.js` | `$()`, `el_()`, `setOut()` |
 | `format.js` | `escapeHtml()`, `fmtShort_()`, `fmtFechaCreacion_()` |
@@ -498,18 +516,44 @@ POST /api/solicitud-ramal/:id/notificar
 
 ---
 
-## 8. Tablas Supabase
+## 8. Base de datos (Supabase)
+
+**El esquema está en `supabase/migrations/`**, no en este documento: `000_base.sql`
+es la foto de producción del 2026-10-06 y cada cambio posterior es un
+`NNN_que-hace.sql`. `npm run db:validar` confirma que repo y producción coinciden.
+Cada tabla y columna con significado no obvio tiene su `COMMENT` en la base
+(migración 005). Reglas en [supabase/migrations/README.md](supabase/migrations/README.md).
+
+**Acceso.** RLS activado en todas las tablas, sin políticas, y `anon`/`authenticated`
+sin privilegios (migración 001): solo la service key entra. La usan el servidor
+(`lib/supabase.js`, `/api/db`) y los Apps Script (propiedad `SUPABASE_KEY`).
+
+**Personas.** Donde una tabla guarda a alguien como texto (email o nombre), hay una
+columna `*_user_id` al lado que rellena el trigger `glp_rellenar_user_ids_()`
+(migración 003). Para cruzar, usar la `*_user_id`.
+
+**Sin FK hacia `vins` desde las tablas del taller** (mapa, lista diaria,
+movilizador, despacho), a propósito: el padrón llega por Apps Script cada 6 h y la
+app trabaja con VINs que todavía no están.
+
+**VINs `RAMAL-…`** en `vins` son de diseño (correlativo de lotes de ramal); el CHECK
+`vins_ramal_marcado` exige `modelo = 'RAMAL'`. Para contar carros: `WHERE modelo <> 'RAMAL'`.
+
+40 tablas + 4 vistas (`v_ramal_*`). Las principales:
 
 | Tabla | Descripción |
 |---|---|
-| `usuarios` | Perfil: nombre, email, rol, especialidad |
-| `vins` | Catálogo: vin, modelo, modelo_normalizado |
-| `asignaciones` | OTs: work_order_id, vin, user_id, rol_trabajo, estado_actual, timestamps |
-| `solicitudes_ramal` | vin, tecnico_email, estado, notificado_at, entregado_por, entregado_at |
-| `push_subscriptions` | email, endpoint, p256dh, auth (RLS deshabilitado — operaciones de backend) |
-| `zonas` | Zonas del taller y asignación de VINs |
-| `incidencias` | Fallas y observaciones |
-| `app_config` | Configuración global key-value (horarios, flags de pausa) |
+| `usuarios`, `usuario_modulos` | Perfil (nombre, email, rol, especialidad) y módulos habilitados |
+| `vins` | Padrón: vin, modelo, modelo_normalizado, ubicación de patio |
+| `work_orders`, `asignaciones`, `eventos` | OT, quién la trabaja (por rol) y su bitácora de eventos |
+| `conversion_zonas`, `zona_libre`, `zonas_historial` | Plaza del carro en el taller, desborde e historial de movimientos |
+| `despacho_*` | Motor de despacho: duplas, propuestas, foto del pool (solo cuando hubo propuestas o cambió; purga >14 días) |
+| `asistencia_jornada`, `asistencia_marcas` | Asistencia del día |
+| `solicitudes_ramal`, `ramal_*` | Pedido de ramal del técnico → lotes, reparto y devolución |
+| `inventario_*`, `herramientas_catalogo` | Kits, stock por lotes/unidades e inventario por técnico |
+| `incidencias`, `informes_taller`, `pairing_omisiones` | Fallas, informes del taller, emparejamientos omitidos |
+| `push_subscriptions` | Suscripciones Web Push (solo backend) |
+| `app_config` | Configuración key-value (horarios, flags) |
 
 ---
 

@@ -74,13 +74,32 @@ Ver [ARCHITECTURE.md](ARCHITECTURE.md) para el mapa completo del frontend.
 
 ## Variables de entorno requeridas
 
+Todas son del servidor. El navegador no recibe ninguna key de Supabase: lee y
+escribe a través de `/api/db/:tabla` (ver `routes/db.js` y `lib/db-permisos.js`).
+
 ```
-VITE_SUPABASE_URL=
-VITE_SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
+SUPABASE_URL=
+SUPABASE_SERVICE_KEY=      # service role — la anon key ya no tiene acceso a nada
+SUPABASE_DB_URL=           # opcional: solo para npm run db:dump / db:validar (lectura)
 R2_ACCOUNT_ID=
 R2_ACCESS_KEY_ID=
 R2_SECRET_ACCESS_KEY=
-R2_BUCKET_NAME=
+R2_BUCKET=                 # default: glp-fotos
 R2_PUBLIC_URL=
+VAPID_SUBJECT=             # las tres VAPID son opcionales: sin ellas no hay push
+VAPID_PUBLIC_KEY=
+VAPID_PRIVATE_KEY=
+DESPACHO_QR_SECRET=
+```
+
+---
+
+## Base de datos
+
+El esquema vive en `supabase/migrations/` (`000_base.sql` + cambios numerados).
+Cómo agregar un cambio: [supabase/migrations/README.md](supabase/migrations/README.md).
+
+```bash
+npm run db:validar   # aplica las migraciones en memoria y las compara con producción
+npm run db:dump      # vuelca el esquema de producción (solo lectura)
 ```

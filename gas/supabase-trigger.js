@@ -13,7 +13,7 @@
  * 4. Pega este código completo
  * 5. En project Settings → Script Properties, agrega:
  *    - SUPABASE_URL = tu URL
- *    - SUPABASE_KEY = tu ANON_KEY
+ *    - SUPABASE_KEY = la SERVICE ROLE key (la anon key ya no tiene acceso: migración 001)
  *    - SUPABASE_SERVICE_ROLE_KEY = tu service role key (opcional, si quieres hacer update)
  * 6. Autoriza y guarda
  * 7. En "Triggers" (⏰), crea trigger: "syncFromSupabase" cada 10 minutos
