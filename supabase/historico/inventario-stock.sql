@@ -2,7 +2,7 @@
 --  GLP-UI · INVENTARIO v3 — EXISTENCIAS (STOCK DE ALMACÉN)
 --  Ejecutar UNA VEZ en Supabase Dashboard → SQL Editor.
 --  Idempotente: se puede correr de nuevo sin romper nada.
---  Requiere `supabase/inventario.sql` y `supabase/inventario-codigos-traspaso.sql`.
+--  Requiere `supabase/historico/inventario.sql` y `supabase/historico/inventario-codigos-traspaso.sql`.
 --
 --  MODELO DE EXISTENCIAS
 --  ─────────────────────

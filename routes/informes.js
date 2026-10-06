@@ -2,7 +2,7 @@
 // routes/informes.js
 // Informes de taller: las tres hojas que hoy se llenan a mano.
 //
-// Requiere `supabase/informes-taller.sql`.
+// Requiere `supabase/historico/informes-taller.sql`.
 //
 // EL FLUJO
 // ────────
@@ -480,7 +480,7 @@ router.post("/api/informes/:id/anular", requireRol_("ADMIN", "SUPERVISOR"), asyn
 function mensajeUtil_(err) {
   const m = String(err?.message || err);
   if (/informes_taller/.test(m) && /does not exist|relation/i.test(m)) {
-    return "Falta la tabla de informes. Ejecuta supabase/informes-taller.sql en Supabase.";
+    return "Falta la tabla de informes. Ejecuta supabase/historico/informes-taller.sql en Supabase.";
   }
   return m;
 }

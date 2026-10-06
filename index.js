@@ -132,7 +132,7 @@ app.use(vinsRouter);
 app.use(zonasRouter);
 app.use(profileRouter);
 // Despacho: inerte mientras DESPACHO_MODO=OFF (los endpoints de escritura
-// responden 503 y nada del flujo actual cambia). Ver supabase/despacho.sql.
+// responden 503 y nada del flujo actual cambia). Ver supabase/historico/despacho.sql.
 app.use(despachoRouter);
 // Consulta pública de un VIN (PDI). Sin sesión: ver la cabecera del archivo.
 app.use(invitadoRouter);

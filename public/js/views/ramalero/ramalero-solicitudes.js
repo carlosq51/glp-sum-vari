@@ -195,7 +195,7 @@ async function onQueueClick_(e) {
 
   // Qué tipo de ramal sale. Es el único momento en que alguien lo tiene
   // en la mano y lo sabe, y es lo que permite descontarlo del stock
-  // (ver supabase/ramales.sql). Se puede saltar: la entrega no se bloquea
+  // (ver supabase/historico/ramales.sql). Se puede saltar: la entrega no se bloquea
   // por esto, solo queda sin descontar. `null` = canceló la entrega.
   const tipoRamal = await pedirTipoRamal_();
   if (tipoRamal === null) return;

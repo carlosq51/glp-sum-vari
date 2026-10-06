@@ -249,7 +249,7 @@ function asignadasPorHerr_() {
 // avisar a escribir en los contadores viejos y dejar el dato a medias.
 function exigirLotes_() {
   if (INV.lotesOk) return true;
-  invMsg("Falta la tabla de lotes. Ejecuta supabase/inventario-stock.sql en Supabase.", true);
+  invMsg("Falta la tabla de lotes. Ejecuta supabase/historico/inventario-stock.sql en Supabase.", true);
   return false;
 }
 
@@ -438,7 +438,7 @@ function errorMsg_(e) {
   if (/idx_inv_items_serie_uniq|idx_inv_stku_serie_uniq/.test(m))
     return "Ese número de serie ya está registrado en otra unidad.";
   if (/inventario_stock_unidades.*does not exist|relation .*stock_unidades/i.test(m))
-    return "Falta la tabla de unidades. Ejecuta supabase/inventario-stock.sql en Supabase.";
+    return "Falta la tabla de unidades. Ejecuta supabase/historico/inventario-stock.sql en Supabase.";
   return m;
 }
 
@@ -528,7 +528,7 @@ export async function renderInventarioTab(wrap) {
   } catch (e) {
     wrap.innerHTML = `<div class="small" style="color:var(--danger);padding:12px;">
       ${esc(e.message)}<br><br>
-      ¿Ejecutaste <code>supabase/inventario.sql</code> en el SQL Editor de Supabase?
+      ¿Ejecutaste <code>supabase/historico/inventario.sql</code> en el SQL Editor de Supabase?
     </div>`;
     return;
   }
@@ -1731,7 +1731,7 @@ function abrirAsignarMultiple_() {
 //  Cada una de esas pilas se lleva en dos formas que no se solapan:
 //  a granel (contadores, para lo intercambiable) e identificadas (una fila
 //  por unidad, para lo que tiene código de empresa o SN).
-//  Ver supabase/inventario-stock.sql.
+//  Ver supabase/historico/inventario-stock.sql.
 // =====================================================================
 
 // Fila de la tabla, ya con todo calculado.
@@ -1778,7 +1778,7 @@ async function renderStockSub_(recargar = true) {
         <div class="invEmptyTitle">Existencias todavía no está activo</div>
         <p class="invEmptyText">
           Falta crear las tablas del almacén. Abre el <strong>SQL Editor de Supabase</strong> y ejecuta
-          <code>supabase/inventario-stock.sql</code>. Se crea una ficha por cada herramienta del catálogo
+          <code>supabase/historico/inventario-stock.sql</code>. Se crea una ficha por cada herramienta del catálogo
           con <strong>0 unidades libres</strong>; lo que ya tienen los técnicos se sigue contando desde
           sus hojas, así que no se pierde nada.
         </p>
@@ -3413,7 +3413,7 @@ async function renderTotalesSub_(recargar = true) {
       ${stockDisponible_() ? "" : `<div class="invNota invNota--warn">
         ${icon("alertTriangle", 15)}
         <span>Existencias todavía no está activo, así que las <strong>libres</strong> salen en 0 y la
-        proyección no puede contar con el almacén. Ejecuta <code>supabase/inventario-stock.sql</code>.</span>
+        proyección no puede contar con el almacén. Ejecuta <code>supabase/historico/inventario-stock.sql</code>.</span>
       </div>`}
 
       <div class="invToolbar">
@@ -3652,7 +3652,7 @@ async function pintarMovimientos_() {
       { order: "created_at.desc", limit: MOVS_VISIBLES });
   } catch {
     box.innerHTML = `<div class="small muted">Historial de movimientos no disponible.
-      ¿Ejecutaste <code>supabase/inventario-codigos-traspaso.sql</code>?</div>`;
+      ¿Ejecutaste <code>supabase/historico/inventario-codigos-traspaso.sql</code>?</div>`;
     return;
   }
   movs = movs || [];

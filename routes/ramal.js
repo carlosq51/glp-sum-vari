@@ -247,7 +247,7 @@ router.get("/api/solicitud-ramal/mi-posicion", async (req, res) => {
 // un técnico, y esa aparición es la que consume el saldo. Sin este
 // descuento la cola era una lista de avisos sin consecuencia material.
 //
-// El movimiento se anota best-effort: si `supabase/ramales.sql` todavía
+// El movimiento se anota best-effort: si `supabase/historico/ramales.sql` todavía
 // no se corrió, la entrega al técnico NO puede fallar por eso — el
 // taller sigue operando y el stock se empieza a llevar cuando exista.
 router.post("/api/solicitud-ramal/:id/entregar", async (req, res) => {

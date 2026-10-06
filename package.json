@@ -9,7 +9,9 @@
     "build": "vite build || true",
     "preview": "vite preview",
     "start": "node index.js",
-    "test": "vitest run"
+    "test": "vitest run",
+    "db:dump": "node scripts/esquema-dump.mjs",
+    "db:validar": "node scripts/esquema-validar.mjs"
   },
   "keywords": [],
   "author": "",
@@ -42,7 +44,9 @@
     "node": ">=20.9.0"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.3.16",
     "autoprefixer": "^10.4.27",
+    "pg": "^8.23.1",
     "vite": "^6.4.1",
     "vite-plugin-pwa": "^1.2.0",
     "vitest": "^4.1.10"

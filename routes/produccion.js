@@ -289,7 +289,7 @@ router.post("/api/produccion/horas-extra", requireRol_("ADMIN"), async (req, res
       return res.status(502).json({
         ok: false,
         error: sinTabla
-          ? "Falta crear la tabla de horas extra en Supabase (supabase/produccion-horas-extra.sql)."
+          ? "Falta crear la tabla de horas extra en Supabase (supabase/historico/produccion-horas-extra.sql)."
           : `No se pudo guardar (${resp.status}).`,
       });
     }

@@ -3,7 +3,7 @@
 --  Ejecutar UNA VEZ en Supabase Dashboard → SQL Editor.
 --  Idempotente: se puede correr de nuevo sin romper nada, y migra
 --  solo desde la versión anterior del módulo (bloque 0).
---  Requiere `supabase/schema.sql`.
+--  Requiere `supabase/historico/schema.sql`.
 --
 --  ACTUALIZACIÓN 2026-09-12 · FLUJO SIMPLIFICADO
 --  ─────────────────────────────────────────────

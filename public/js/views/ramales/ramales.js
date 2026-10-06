@@ -44,7 +44,7 @@ import {
   rangoPreset, fmtRango, diasEntre, corto, fmtDia, fmtDuracion, fmtMinRamal,
 } from "./comportamiento.js";
 
-// Espejo del enum `tipo_ramal` (supabase/schema.sql).
+// Espejo del enum `tipo_ramal` (supabase/historico/schema.sql).
 const TIPOS_RAMAL = ["JETOUR", "VOLKSWAGEN", "KYC V3", "KYC V5", "KYC V7", "KYC X5"];
 
 // Estado local del panel. `raw` es la última respuesta de /api/ramales/panel.
@@ -248,7 +248,7 @@ async function cargar_({ forzar = false, fresco = forzar } = {}) {
           <p class="small" style="color:var(--muted);">${esc(String(e?.message || e))}</p>
           <p class="small" style="color:var(--muted);">
             Si dice que falta una tabla o una vista, ejecuta
-            <code>supabase/ramales.sql</code> en Supabase → SQL Editor.
+            <code>supabase/historico/ramales.sql</code> en Supabase → SQL Editor.
           </p>
         </div>`;
     }

@@ -1138,7 +1138,7 @@ function proyeccionHTML_(p, real) {
     avisos.push(`Solo se quedan ${escapeHtml(queda)}s: sin un ${escapeHtml(rolMeta(p.extra.falta).label.toLowerCase())} no sale ningún carro entero en horas extra.`);
   }
   if (admin && p.sinTabla) {
-    avisos.push("Para anotar horas extra falta correr <code>supabase/produccion-horas-extra.sql</code> en Supabase.");
+    avisos.push("Para anotar horas extra falta correr <code>supabase/historico/produccion-horas-extra.sql</code> en Supabase.");
   }
 
   return `

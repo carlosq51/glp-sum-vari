@@ -72,7 +72,7 @@ async function estadoPrevioZonas_(vin, zonaNum) {
   }
 }
 
-// Libro de actas del mapa (supabase/zonas-historial.sql). Append only: nada
+// Libro de actas del mapa (supabase/historico/zonas-historial.sql). Append only: nada
 // de lo que entra aquí se actualiza después.
 //
 // Se ESPERA a que termine, al revés que los otros efectos secundarios de este
@@ -194,7 +194,7 @@ async function armarMapaZonas_() {
     const [zResp, libreResp, convResp, finResp] = await Promise.all([
       fetch(`${SUPABASE_URL}/rest/v1/conversion_zonas?select=zona_id,vin,registrado_por,registrado_at&order=zona_id.asc`, { method: "GET", headers }),
       // Zona Libre ya no se deduce: es una tabla, y un carro solo está ahí si
-      // alguien lo puso. Ver supabase/zona-libre.sql.
+      // alguien lo puso. Ver supabase/historico/zona-libre.sql.
       fetch(`${SUPABASE_URL}/rest/v1/zona_libre?select=vin,registrado_por,registrado_at`, { method: "GET", headers }),
       fetch(`${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CONVERSION&estado_general=neq.FINALIZADO&fecha_creacion=gte.${corteMapa}T00:00:00&select=id,vin,estado_general&limit=200`, { method: "GET", headers }),
       fetch(`${SUPABASE_URL}/rest/v1/work_orders?tipo_ot=eq.CONVERSION&estado_general=eq.FINALIZADO&fecha_sin_calidad=gte.${todayStart.toISOString()}&select=id,vin,estado_general&limit=100`, { method: "GET", headers }),
@@ -398,7 +398,7 @@ async function armarMapaZonas_() {
     // puesto, nunca al finalizar), así que mirar solo "tiene asignación"
     // metía aquí carros acabados y llenaba la lista de ruido.
     //
-    // Esto NO deshace supabase/zona-libre.sql: aquella resta metía todo VIN
+    // Esto NO deshace supabase/historico/zona-libre.sql: aquella resta metía todo VIN
     // con OT viva, tocado o no —18 de 30 carros, muchos que nadie había
     // visto—. La condición de aquí es trabajo en curso sobre el carro, y se
     // apaga sola en cuanto el segundo puesto cierra. Un carro sin nadie
@@ -551,7 +551,7 @@ router.post("/api/zonas/asignar", async (req, res) => {
         console.error("[ZONA_LIBRE]", r.status, t);
         return res.status(502).json({
           ok: false,
-          error: "No se pudo registrar en Zona Libre. ¿Falta correr supabase/zona-libre.sql?",
+          error: "No se pudo registrar en Zona Libre. ¿Falta correr supabase/historico/zona-libre.sql?",
         });
       }
     } else {
@@ -713,7 +713,7 @@ router.get("/api/zonas/historial", async (req, res) => {
       if (r.status === 404) {
         return res.status(503).json({
           ok: false,
-          error: "El historial de zonas aún no existe. Falta correr supabase/zonas-historial.sql.",
+          error: "El historial de zonas aún no existe. Falta correr supabase/historico/zonas-historial.sql.",
         });
       }
       throw new Error(`Supabase ${r.status}: ${t.slice(0, 200)}`);

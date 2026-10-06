@@ -196,7 +196,7 @@ function openInventarioPage_() {
       body.innerHTML = `<div class="invPageDenied">
         <h3>No se pudo cargar el inventario</h3>
         <p class="small muted">${String(err?.message || err)}</p>
-        <p class="small muted">Si dice que falta una tabla, ejecuta <code>supabase/inventario-stock.sql</code> en Supabase.</p>
+        <p class="small muted">Si dice que falta una tabla, ejecuta <code>supabase/historico/inventario-stock.sql</code> en Supabase.</p>
       </div>`;
     });
 }

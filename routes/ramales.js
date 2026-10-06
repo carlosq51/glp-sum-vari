@@ -3,7 +3,7 @@
 // Módulo RAMALES — equipos del día por marca, reparto a cada ramalero,
 // devolución a oficina, stock y métricas de tiempo.
 //
-// Requiere `supabase/ramales.sql`.
+// Requiere `supabase/historico/ramales.sql`.
 //
 // EL FLUJO (simplificado el 2026-09-12)
 // ─────────────────────────────────────

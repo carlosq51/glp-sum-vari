@@ -697,7 +697,7 @@ router.get("/api/movilizador/pendientes", async (req, res) => {
 //
 // Nota libre por VIN ("desarmado", "lo tiene pintura") para explicar por qué
 // un carro de la lista todavía no se trajo. Tabla propia con RLS cerrado:
-// solo se entra con la service key (ver supabase/movilizador-observaciones.sql).
+// solo se entra con la service key (ver supabase/historico/movilizador-observaciones.sql).
 
 /** vin → fila de observación. Vacío si la tabla aún no existe o la consulta falla. */
 async function leerObservaciones_(vins) {

@@ -3,7 +3,7 @@
 --  traspasos entre técnicos y bitácora de movimientos.
 --  Ejecutar UNA VEZ en Supabase Dashboard → SQL Editor.
 --  Idempotente: se puede correr de nuevo sin romper nada.
---  Requiere haber corrido antes `supabase/inventario.sql`.
+--  Requiere haber corrido antes `supabase/historico/inventario.sql`.
 -- ============================================================
 
 -- ────────────────────────────────────────────

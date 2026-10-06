@@ -175,7 +175,7 @@ async function consultarVins_(vins, opciones) {
 
   const [vinResp, woResp] = await Promise.all([
     // `select=*` y no `select=vin,estado` a propósito: si la columna `estado`
-    // no existe (supabase/invitado.sql sin correr), pedirla por nombre hace
+    // no existe (supabase/historico/invitado.sql sin correr), pedirla por nombre hace
     // que PostgREST rechace la consulta entera. Eso devolvía "no figura en el
     // padrón" para carros que sí están — el peor error posible aquí, porque
     // suena a "puede salir". Las columnas de más no salen de este servidor.
