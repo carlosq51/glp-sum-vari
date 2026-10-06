@@ -74,6 +74,11 @@ correcto: son más rápidas leídas enteras que por índice.
 
 ## Cómo medir la próxima vez
 
+`pg_stat_statements` se reinició el 2026-10-06. Los contadores de tablas e
+índices (`pg_stat_user_tables`, `pg_stat_user_indexes`) **no** se pueden
+reiniciar en Supabase (`pg_stat_reset()` exige superusuario), así que siguen
+acumulando desde febrero: para saber si un índice se usa, comparar dos fotos.
+
 1. No mirar el ranking acumulado solo. Tomar **dos fotos** de
    `pg_stat_statements` con 15 min de diferencia en horario de taller y restar.
    Agrupar por el texto de la consulta: la misma consulta aparece una vez por
