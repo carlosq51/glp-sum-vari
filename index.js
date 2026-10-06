@@ -24,6 +24,7 @@ import informesRouter from "./routes/informes.js";
 import despachoRouter, { scheduleCierreJornada_, scheduleMotor_ } from "./routes/despacho.js";
 import invitadoRouter from "./routes/invitado.js";
 import produccionRouter from "./routes/produccion.js";
+import dbRouter from "./routes/db.js";
 import { sseHandler_ } from "./lib/events.js";
 import { scheduleHorariosPausa_ } from "./lib/pausa-masiva.js";
 
@@ -55,8 +56,6 @@ app.get("/env-config.js", (_req, res) => {
   res.type("application/javascript");
   res.send(
     `window.__ENV__=${JSON.stringify({
-      VITE_SUPABASE_URL: process.env.VITE_SUPABASE_URL || "",
-      VITE_SUPABASE_ANON_KEY: process.env.VITE_SUPABASE_ANON_KEY || "",
       R2_PUBLIC_URL: process.env.R2_PUBLIC_URL || "",
     })};`
   );
@@ -138,6 +137,9 @@ app.use(despachoRouter);
 app.use(invitadoRouter);
 // Horas extra de la proyección del día (la proyección viaja en el LIVE).
 app.use(produccionRouter);
+// Lo que el navegador antes pedía directo a Supabase (inventario, CRUD de
+// Admin, listas del técnico). Ver la cabecera de routes/db.js.
+app.use(dbRouter);
 
 // ── Start server ──────────────────────────────────────────────────────────────
 app.listen(PORT, "0.0.0.0", async () => {

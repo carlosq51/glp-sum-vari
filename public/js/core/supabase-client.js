@@ -1,35 +1,44 @@
 // =========================
 // public/js/core/supabase-client.js
-// Cliente Supabase para lectura/escritura
-// Migración paralela: AppScript + Supabase
+// Lectura/escritura de tablas desde el navegador.
+//
+// Hasta la fase 3 del orden de la base, esto hablaba DIRECTO con Supabase
+// usando la anon key del bundle, y la base dejaba a esa key leer, escribir y
+// borrar cualquier tabla. Ahora todo pasa por /api/db (routes/db.js), que
+// revisa quién pide qué (lib/db-permisos.js) y reenvía con la service key.
+// Las funciones conservan su firma: las vistas no se enteran del cambio.
 // =========================
 
 import { cfg } from "./config.js";
+import { getEmail } from "./auth.js";
 import { ESTADOS_CALIDAD_COLABORATIVA } from "../../../lib/colaboracion.js";
 
-const _env = (typeof window !== "undefined" && window.__ENV__) || {};
-export const SUPABASE_CONFIG = {
-  URL: import.meta.env?.VITE_SUPABASE_URL || _env.VITE_SUPABASE_URL || "",
-  ANON_KEY: import.meta.env?.VITE_SUPABASE_ANON_KEY || _env.VITE_SUPABASE_ANON_KEY || "",
-};
-
 /**
- * Chequea si Supabase está configurado
+ * Siempre true: el servidor es el que habla con Supabase. Se conserva porque
+ * hay vistas que todavía preguntan antes de leer.
  */
 export function supabaseEnabled() {
-  return !!(SUPABASE_CONFIG.URL && SUPABASE_CONFIG.ANON_KEY);
+  return true;
 }
 
 /**
- * Headers estándar para Supabase
+ * Un pedido a /api/db. `pathYQuery` es lo que antes iba después de
+ * /rest/v1/: "tabla?filtros&select=...". El error lleva `status` para que
+ * quien llama distinga un 403 (no tienes permiso) de un corte de red.
  */
-function supabaseHeaders() {
-  return {
-    "apikey": SUPABASE_CONFIG.ANON_KEY,
-    "Authorization": `Bearer ${SUPABASE_CONFIG.ANON_KEY}`,
-    "Content-Type": "application/json",
-    "Prefer": "return=representation",
-  };
+async function db_(metodo, pathYQuery, body) {
+  const res = await fetch(`/api/db/${pathYQuery}`, {
+    method: metodo,
+    headers: { "Content-Type": "application/json", "x-user-email": getEmail() || "" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    const err = new Error(`${metodo} ${pathYQuery.split("?")[0]}: ${res.status} ${text}`);
+    err.status = res.status;
+    throw err;
+  }
+  return res;
 }
 
 /**
@@ -89,90 +98,35 @@ function buildQuery(filter = {}) {
  * pintar 40, y ese número solo sube con el tiempo.
  */
 export async function supabaseGet(table, filter = {}, opts = {}) {
-  if (!supabaseEnabled()) throw new Error("Supabase no configurado");
-
   const extra = [];
   if (opts.order) extra.push(`order=${encodeURIComponent(opts.order)}`);
   if (opts.limit) extra.push(`limit=${Number(opts.limit)}`);
   const qs = buildQuery(filter);
-  const url = `${SUPABASE_CONFIG.URL}/rest/v1/${table}${qs}` +
-    (extra.length ? (qs ? "&" : "?") + extra.join("&") : "");
-
-  const res = await fetch(url, {
-    method: "GET",
-    headers: supabaseHeaders(),
-  });
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Supabase GET ${table}: ${res.status} ${text}`);
-  }
-
+  const res = await db_("GET", `${table}${qs}` + (extra.length ? (qs ? "&" : "?") + extra.join("&") : ""));
   return await res.json();
 }
 
 /**
- * POST a Supabase (insertar)
+ * POST (insertar). Devuelve las filas creadas.
  */
 export async function supabasePost(table, data) {
-  if (!supabaseEnabled()) throw new Error("Supabase no configurado");
-
-  const url = `${SUPABASE_CONFIG.URL}/rest/v1/${table}`;
-  
-  const res = await fetch(url, {
-    method: "POST",
-    headers: supabaseHeaders(),
-    body: JSON.stringify(data),
-  });
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Supabase POST ${table}: ${res.status} ${text}`);
-  }
-
+  const res = await db_("POST", table, data);
   return await res.json();
 }
 
 /**
- * PATCH a Supabase (actualizar)
+ * PATCH (actualizar). Devuelve las filas actualizadas.
  */
 export async function supabasePatch(table, filter = {}, data) {
-  if (!supabaseEnabled()) throw new Error("Supabase no configurado");
-
-  const url = `${SUPABASE_CONFIG.URL}/rest/v1/${table}${buildQuery(filter)}`;
-  
-  const res = await fetch(url, {
-    method: "PATCH",
-    headers: supabaseHeaders(),
-    body: JSON.stringify(data),
-  });
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Supabase PATCH ${table}: ${res.status} ${text}`);
-  }
-
+  const res = await db_("PATCH", `${table}${buildQuery(filter)}`, data);
   return await res.json();
 }
 
 /**
- * DELETE a Supabase
+ * DELETE
  */
 export async function supabaseDelete(table, filter = {}) {
-  if (!supabaseEnabled()) throw new Error("Supabase no configurado");
-
-  const url = `${SUPABASE_CONFIG.URL}/rest/v1/${table}${buildQuery(filter)}`;
-  
-  const res = await fetch(url, {
-    method: "DELETE",
-    headers: supabaseHeaders(),
-  });
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Supabase DELETE ${table}: ${res.status} ${text}`);
-  }
-
+  await db_("DELETE", `${table}${buildQuery(filter)}`);
   return { ok: true };
 }
 
@@ -219,7 +173,15 @@ async function usuarioPorEmail_(email) {
   const hit = _usuarioCache.get(key);
   if (hit && (Date.now() - hit.ts) < ttl) return hit.row;
 
-  const usuarios = await supabaseGet("usuarios", { email: key });
+  let usuarios;
+  try {
+    usuarios = await supabaseGet("usuarios", { email: key });
+  } catch (err) {
+    // /api/db responde 403 a un correo que no existe o está desactivado: para
+    // el login eso es "usuario no encontrado", no un error de red.
+    if (err.status === 403) return null;
+    throw err;
+  }
   const row = (usuarios && usuarios.length) ? usuarios[0] : null;
   // El fallo NO se cachea: si la fila no vino por un corte de red, cachear el
   // null dejaría al técnico sin app hasta que venza el TTL.
@@ -325,15 +287,9 @@ function mapAsignacion_(asg) {
  * una OT sin carro no se puede pintar.
  */
 async function asignaciones_(filtro, { select = SELECT_ASG, order = "updated_at.desc", limit = 0 } = {}) {
-  const url = `${SUPABASE_CONFIG.URL}/rest/v1/asignaciones?${filtro}` +
+  const res = await db_("GET", `asignaciones?${filtro}` +
     `&select=${encodeURIComponent(select)}&order=${order}` +
-    (limit ? `&limit=${limit}` : "");
-
-  const res = await fetch(url, { method: "GET", headers: supabaseHeaders() });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Supabase GET asignaciones: ${res.status} ${text}`);
-  }
+    (limit ? `&limit=${limit}` : ""));
 
   const data = await res.json();
   return (data || []).map(mapAsignacion_).filter(it => it.work_order_id);
@@ -420,11 +376,7 @@ async function conZonas_(items) {
 
   try {
     const lista = vins.map(encodeURIComponent).join(",");
-    const url = `${SUPABASE_CONFIG.URL}/rest/v1/conversion_zonas` +
-                `?vin=in.(${lista})&select=vin,zona_id`;
-
-    const res = await fetch(url, { method: "GET", headers: supabaseHeaders() });
-    if (!res.ok) throw new Error(`Supabase GET conversion_zonas: ${res.status}`);
+    const res = await db_("GET", `conversion_zonas?vin=in.(${lista})&select=vin,zona_id`);
 
     const porVin = new Map((await res.json()).map(z => [z.vin, z.zona_id]));
     // `?? null` y no `|| null`: un carro sin plaza tiene que llegar como null
@@ -491,13 +443,8 @@ export async function getEstadoTrabajo(email, vin, rolTrabajo) {
   
   // Query REST: asignación relevante
   const select = "id,work_order_id,tipo_ot,rol_trabajo,estado_actual,running_since,tiempo_trab_ms,updated_at,last_nota,last_nota_ts,activo";
-  const url = `${SUPABASE_CONFIG.URL}/rest/v1/asignaciones?work_order_id=eq.${workOrder.id}&user_id=eq.${userId}&rol_trabajo=eq.${encodeURIComponent(rolTrabajo)}&select=${encodeURIComponent(select)}&limit=1`;
-
-  const res = await fetch(url, { method: "GET", headers: supabaseHeaders() });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Supabase GET estado: ${res.status} ${text}`);
-  }
+  const res = await db_("GET", `asignaciones?work_order_id=eq.${workOrder.id}&user_id=eq.${userId}` +
+    `&rol_trabajo=eq.${encodeURIComponent(rolTrabajo)}&select=${encodeURIComponent(select)}&limit=1`);
 
   const data = await res.json();
   const asg = Array.isArray(data) && data.length ? data[0] : null;

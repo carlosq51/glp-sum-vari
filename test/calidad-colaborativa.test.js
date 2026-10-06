@@ -6,7 +6,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 // pantalla salía en blanco. Este test fija que la lista ajena NO depende de
 // que tengas carros tuyos.
 
-const { SUPABASE_CONFIG, getMisActivas, limpiarCacheUsuario_ } =
+const { getMisActivas, limpiarCacheUsuario_ } =
   await import("../public/js/core/supabase-client.js");
 
 const JESUS  = "jesus-id";
@@ -40,17 +40,15 @@ function stubFetch_({ propias = [] } = {}) {
 }
 
 describe("getMisActivas — CALIDAD colaborativa", () => {
-  const prev = { ...SUPABASE_CONFIG };
-
   beforeEach(() => {
-    SUPABASE_CONFIG.URL = "https://x.supabase.co";
-    SUPABASE_CONFIG.ANON_KEY = "anon";
     limpiarCacheUsuario_();
+    // La sesión del inspector: es lo que viaja en x-user-email a /api/db.
+    globalThis.localStorage = { getItem: () => "jf@x.com" };
   });
 
   afterEach(() => {
-    Object.assign(SUPABASE_CONFIG, prev);
     vi.restoreAllMocks();
+    delete globalThis.localStorage;
   });
 
   it("sin carros propios SÍ trae los del compañero", async () => {

@@ -55,14 +55,6 @@ export {
   supabaseDelete 
 } from "./supabase-client.js";
 
-// --- Dual API (migración paralela) ---
-export { 
-  setMigrationConfig, 
-  dualWrite, 
-  dualRead, 
-  syncFromAppScript 
-} from "./dual-api.js";
-
 // --- Caches localStorage ---
 export { vinCacheSet_, vinCacheGet_, ramalCacheSet_, ramalCacheGet_ } from "./cache-local.js";
 

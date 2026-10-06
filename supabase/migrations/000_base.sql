@@ -995,6 +995,63 @@ CREATE POLICY service_insert ON zonas_historial AS PERMISSIVE FOR INSERT TO publ
 CREATE POLICY service_select ON zonas_historial AS PERMISSIVE FOR SELECT TO public USING (true);
 
 -- ────────────────────────────────────────────────────────────
+--  Permisos de los roles de la API (44 tablas/vistas con permisos, 9 por defecto)
+-- ────────────────────────────────────────────────────────────
+GRANT ALL ON app_config TO anon, authenticated, service_role;
+GRANT ALL ON asignaciones TO anon, authenticated, service_role;
+GRANT ALL ON asistencia_jornada TO anon, authenticated, service_role;
+GRANT ALL ON asistencia_marcas TO anon, authenticated, service_role;
+GRANT ALL ON conversion_zonas TO anon, authenticated, service_role;
+GRANT ALL ON despacho_dupla_miembros TO anon, authenticated, service_role;
+GRANT ALL ON despacho_duplas TO anon, authenticated, service_role;
+GRANT ALL ON despacho_pool_snapshot TO anon, authenticated, service_role;
+GRANT ALL ON despacho_propuestas TO anon, authenticated, service_role;
+GRANT ALL ON eventos TO anon, authenticated, service_role;
+GRANT ALL ON herramientas_catalogo TO anon, authenticated, service_role;
+GRANT ALL ON incidencias TO anon, authenticated, service_role;
+GRANT ALL ON informes_taller TO anon, authenticated, service_role;
+GRANT ALL ON inventario_kit_items TO anon, authenticated, service_role;
+GRANT ALL ON inventario_kits TO anon, authenticated, service_role;
+GRANT ALL ON inventario_movimientos TO anon, authenticated, service_role;
+GRANT ALL ON inventario_stock TO anon, authenticated, service_role;
+GRANT ALL ON inventario_stock_lotes TO anon, authenticated, service_role;
+GRANT ALL ON inventario_stock_unidades TO anon, authenticated, service_role;
+GRANT ALL ON inventario_tecnico TO anon, authenticated, service_role;
+GRANT ALL ON inventario_tecnico_items TO anon, authenticated, service_role;
+GRANT ALL ON lista_diaria_activa TO anon, authenticated, service_role;
+GRANT ALL ON ml_models TO anon, authenticated, service_role;
+GRANT ALL ON movilizador_observaciones TO anon, authenticated, service_role;
+GRANT ALL ON movilizador_traslados TO anon, authenticated, service_role;
+GRANT ALL ON pairing_omisiones TO anon, authenticated, service_role;
+GRANT ALL ON produccion_horas_extra TO anon, authenticated, service_role;
+GRANT ALL ON push_subscriptions TO anon, authenticated, service_role;
+GRANT ALL ON ramal_lote_items TO anon, authenticated, service_role;
+GRANT ALL ON ramal_lotes TO anon, authenticated, service_role;
+GRANT ALL ON ramal_movimientos TO anon, authenticated, service_role;
+GRANT ALL ON ramal_repartos TO anon, authenticated, service_role;
+GRANT ALL ON ramal_stock_config TO anon, authenticated, service_role;
+GRANT ALL ON solicitudes_ramal TO anon, authenticated, service_role;
+GRANT ALL ON usuario_modulos TO anon, authenticated, service_role;
+GRANT ALL ON usuarios TO anon, authenticated, service_role;
+GRANT ALL ON v_ramal_desempeno TO anon, authenticated, service_role;
+GRANT ALL ON v_ramal_lote_arqueo TO anon, authenticated, service_role;
+GRANT ALL ON v_ramal_lote_items TO anon, authenticated, service_role;
+GRANT ALL ON v_ramal_stock TO anon, authenticated, service_role;
+GRANT ALL ON vins TO anon, authenticated, service_role;
+GRANT ALL ON work_orders TO anon, authenticated, service_role;
+GRANT ALL ON zona_libre TO anon, authenticated, service_role;
+GRANT ALL ON zonas_historial TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT SELECT, UPDATE, USAGE ON SEQUENCES TO anon;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT SELECT, UPDATE, USAGE ON SEQUENCES TO authenticated;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT SELECT, UPDATE, USAGE ON SEQUENCES TO service_role;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO authenticated;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO service_role;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON TABLES TO anon;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON TABLES TO authenticated;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON TABLES TO service_role;
+
+-- ────────────────────────────────────────────────────────────
 --  Comentarios
 -- ────────────────────────────────────────────────────────────
 COMMENT ON COLUMN vins.estado IS 'ESTADO de ASIGNACIONES col AE. ANULADO / DELEGADO sacan al carro del flujo GLP; vacío u otro valor = normal.';

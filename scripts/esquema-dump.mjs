@@ -159,6 +159,40 @@ export async function generarEsquema(q) {
     out.push(l + ";");
   }
 
+  // ── Permisos de los roles de la API ──
+  // Lo que anon/authenticated/service_role pueden hacer en cada tabla o
+  // vista. Sin esto, el volcado no veía la diferencia entre una base abierta
+  // a la anon key y una cerrada (migración 001).
+  const ROLES_API = "('anon','authenticated','service_role')";
+  const TODOS = "DELETE, INSERT, MAINTAIN, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE";
+  const grants = await q(`SELECT c.relname, a.grantee::regrole::text AS rol,
+      string_agg(a.privilege_type, ', ' ORDER BY a.privilege_type) AS privs
+    FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace, aclexplode(c.relacl) a
+    WHERE n.nspname = 'public' AND c.relkind IN ('r','p','v','m')
+      AND a.grantee::regrole::text IN ${ROLES_API}
+    GROUP BY c.relname, a.grantee ORDER BY c.relname, 2`);
+  const porTabla = new Map();
+  for (const g of grants) {
+    const privs = g.privs === TODOS ? "ALL" : g.privs;
+    const k = `${g.relname}|${privs}`;
+    porTabla.set(k, [...(porTabla.get(k) || []), g.rol]);
+  }
+  const defAcl = await q(`SELECT d.defaclrole::regrole::text AS dueno, d.defaclobjtype AS tipo,
+      a.grantee::regrole::text AS rol, string_agg(a.privilege_type, ', ' ORDER BY a.privilege_type) AS privs
+    FROM pg_default_acl d JOIN pg_namespace n ON n.oid = d.defaclnamespace, aclexplode(d.defaclacl) a
+    WHERE n.nspname = 'public' AND a.grantee::regrole::text IN ${ROLES_API}
+    GROUP BY 1, 2, 3 ORDER BY 1, 2, 3`);
+  sec(`Permisos de los roles de la API (${porTabla.size} tablas/vistas con permisos, ${defAcl.length} por defecto)`);
+  for (const [k, roles] of porTabla) {
+    const [t, privs] = k.split("|");
+    out.push(`GRANT ${privs} ON ${ident(t)} TO ${roles.join(", ")};`);
+  }
+  const OBJ = { r: "TABLES", S: "SEQUENCES", f: "FUNCTIONS", T: "TYPES", n: "SCHEMAS" };
+  for (const d of defAcl) {
+    const privs = d.tipo === "r" && d.privs === TODOS ? "ALL" : d.privs;
+    out.push(`ALTER DEFAULT PRIVILEGES FOR ROLE ${ident(d.dueno)} IN SCHEMA public GRANT ${privs} ON ${OBJ[d.tipo] || d.tipo} TO ${d.rol};`);
+  }
+
   // ── Realtime ──
   const pub = await q(`SELECT tablename FROM pg_publication_tables
     WHERE pubname = 'supabase_realtime' AND schemaname = 'public' ORDER BY 1`);

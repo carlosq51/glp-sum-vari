@@ -51,8 +51,9 @@ const SB = () => process.env.SUPABASE_URL;
 /**
  * Cabeceras con la clave de SERVICIO, o un error que se entiende.
  *
- * supabaseServiceHeaders_() cae de vuelta a la clave anónima cuando falta
- * SUPABASE_SERVICE_KEY, sin decir nada. Con la RLS activa eso se manifiesta
+ * supabaseServiceHeaders_() caía de vuelta a la clave anónima cuando faltaba
+ * SUPABASE_SERVICE_KEY, sin decir nada (hoy devuelve null, y la base ya no
+ * acepta la anónima en ninguna tabla). Con la RLS activa eso se manifestaba
  * como un 401 42501 en el INSERT —"new row violates row-level security"—
  * que apunta a la base de datos cuando el problema es la configuración del
  * servidor. Aquí se corta antes y se dice qué falta.
