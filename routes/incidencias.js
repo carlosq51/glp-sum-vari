@@ -25,7 +25,9 @@ router.post("/api/incidencia", async (req, res) => {
     try {
       const incidenciaData = {
         fecha_hora: new Date().toISOString(),
-        mes: new Date().toISOString().substring(0, 7),
+        // Mes de LIMA: el de toISOString() es UTC, y una incidencia de las
+        // 19:00 del último día del mes caía en el mes siguiente.
+        mes: new Intl.DateTimeFormat("en-CA", { timeZone: "America/Lima", year: "numeric", month: "2-digit" }).format(new Date()),
         work_order_id: body.conversionId || null,
         vin: body.vin || null,
         tecnico: body.tecnicoNombre || body.tecnicoEmail || "",

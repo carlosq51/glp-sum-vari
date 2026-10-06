@@ -363,7 +363,10 @@ router.delete("/api/ots/:id", requireMando_(), async (req, res) => {
 
     // 2. Hijos directos, en orden de dependencia.
     const borrados = {};
-    for (const tabla of ["eventos", "asignaciones", "incidencias", "solicitudes_ramal"]) {
+    //    informes_taller y pairing_omisiones tienen FK a work_orders desde la
+    //    migración 002: si no se borran aquí, el DELETE de la OT revienta.
+    for (const tabla of ["eventos", "asignaciones", "incidencias", "solicitudes_ramal",
+                         "informes_taller", "pairing_omisiones"]) {
       await sbWrite_("DELETE", `${tabla}?work_order_id=eq.${woId}`);
       borrados[tabla] = true;
     }
