@@ -26,6 +26,7 @@ import invitadoRouter from "./routes/invitado.js";
 import produccionRouter from "./routes/produccion.js";
 import dbRouter from "./routes/db.js";
 import { sseHandler_ } from "./lib/events.js";
+import { iniciarRealtime_ } from "./lib/realtime.js";
 import { scheduleHorariosPausa_ } from "./lib/pausa-masiva.js";
 
 dotenv.config();
@@ -157,4 +158,5 @@ app.listen(PORT, "0.0.0.0", async () => {
   scheduleHorariosPausa_(); // hora de comida: pausa y reanuda desde el servidor
   scheduleCierreJornada_(); // no-op mientras DESPACHO_MODO=OFF
   scheduleMotor_();         // idem: el motor no corre con el módulo apagado
+  iniciarRealtime_();       // cambios de Apps Script → caches y pantallas (lib/realtime.js)
 });

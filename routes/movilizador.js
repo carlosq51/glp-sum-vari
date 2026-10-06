@@ -4,6 +4,7 @@ import { isValidOT_, fechaPeruMenosDias_ } from "../lib/utils.js";
 import { emitEvent_ } from "../lib/events.js";
 import { getConfig_ } from "../lib/config.js";
 import { cachedByTopics_ } from "../lib/poll-cache.js";
+import { ttlConRealtime_ } from "../lib/realtime.js";
 
 const router = Router();
 
@@ -18,7 +19,10 @@ const router = Router();
 // cada avance (~27 MB/día de egress) para cambiar una hora en pantalla. Lo que
 // de verdad mueve un VIN de lista es que su OT cambie de estado, y eso emite
 // "work_orders", que sí invalida. La fecha, como mucho, llega un ciclo tarde.
-const TOPICS_MOV = ["movilizador", "work_orders", "zonas"];
+// "vins" y "lista_diaria" los escribe Apps Script y llegan por Realtime
+// (lib/realtime.js): sin ellos, un cambio de ubicación o de lista diaria solo
+// se veía al vencer el TTL.
+const TOPICS_MOV = ["movilizador", "work_orders", "zonas", "vins", "lista_diaria"];
 
 /**
  * Desde qué fecha mira el movilizador ("YYYY-MM-DD", o "" = sin filtro).
@@ -638,9 +642,11 @@ router.post("/api/movilizador/traslado", async (req, res) => {
 // GET /api/movilizador/pendientes  (misma lógica, accesible al movilizador)
 router.get("/api/movilizador/pendientes", async (req, res) => {
   try {
-    const { SRV_CACHE_PESADO_MS } = await getConfig_();
+    // TTL largo con Realtime sano: todo lo que lee avisa al cambiar.
+    // (status no: lee asignaciones, que a propósito no está en TOPICS_MOV.)
+    const cfg = await getConfig_();
     const payload = await cachedByTopics_(
-      "movilizador:pendientes", TOPICS_MOV, SRV_CACHE_PESADO_MS, async () => {
+      "movilizador:pendientes", TOPICS_MOV, ttlConRealtime_(cfg, cfg.SRV_CACHE_PESADO_MS), async () => {
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const headers = supabaseHeaders_();
 
@@ -813,21 +819,20 @@ router.get("/api/movilizador/revalidate-ot", async (req, res) => {
 
     if (!vins.length) return res.json({ ok: true, vins_con_ot: [] });
 
-    const { SRV_CACHE_PESADO_MS } = await getConfig_();
-
     // Cacheado como el resto: todos los dispositivos con la pantalla de Salida
     // abierta preguntan por el MISMO conjunto de VINs (los que a esa hora no
     // tienen #OT), así que la clave se ordena para que coincidan. Sin esto era
     // el único endpoint del movilizador que iba directo a Supabase, N veces
     // cada POLL_OT_RECHECK_MS.
     //
-    // Aquí la frescura la da el TTL, no el topic: quien escribe numero_ot es
-    // obtenervin.js con un PATCH directo a Supabase, que no pasa por este
-    // servidor y por tanto no emite "work_orders". El topic queda declarado
-    // porque el día que el #OT se registre desde la app, invalidará al toque.
+    // Quien escribe numero_ot es Apps Script con un PATCH directo a Supabase,
+    // que no pasa por este servidor. Desde la migración 007 ese PATCH llega
+    // por Realtime como "work_orders" e invalida al toque; el TTL corto solo
+    // vuelve a mandar si Realtime está caído.
+    const cfg = await getConfig_();
     const clave = [...vins].sort().join(",");
     const payload = await cachedByTopics_(
-      `movilizador:revalidate-ot:${clave}`, ["work_orders"], SRV_CACHE_PESADO_MS, async () => {
+      `movilizador:revalidate-ot:${clave}`, ["work_orders"], ttlConRealtime_(cfg, cfg.SRV_CACHE_PESADO_MS), async () => {
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const headers = supabaseHeaders_();
 

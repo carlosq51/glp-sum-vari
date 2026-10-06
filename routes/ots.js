@@ -19,6 +19,7 @@ import { getConfig_ } from "../lib/config.js";
 import { emitEvent_ } from "../lib/events.js";
 import { requireRol_ } from "../lib/authz.js";
 import { cachedByTopics_ } from "../lib/poll-cache.js";
+import { ttlConRealtime_ } from "../lib/realtime.js";
 import { repartirTrasEvento_ } from "./despacho.js";
 
 const router = Router();
@@ -170,7 +171,8 @@ router.get("/api/ots/vivas", async (req, res) => {
     // mutación de OT o asignación invalida la entrada (ver lib/poll-cache.js),
     // así que el supervisor sigue viendo el cambio al instante vía SSE.
     const payload = await cachedByTopics_(
-      `ots:vivas:${limit}`, ["work_orders", "asignaciones", "zonas"], cfg.SRV_CACHE_PESADO_MS,
+      // vins y work_orders también los escribe Apps Script: llegan por Realtime.
+      `ots:vivas:${limit}`, ["work_orders", "asignaciones", "zonas", "vins"], ttlConRealtime_(cfg, cfg.SRV_CACHE_PESADO_MS),
       async () => {
         // Columnas explícitas, no `select=*`: las conf_ck* y conf_by no las
         // pinta la consola y viajaban 300 veces en cada refresco.

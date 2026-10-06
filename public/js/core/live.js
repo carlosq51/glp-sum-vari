@@ -36,7 +36,9 @@ const TOPIC_TO_POLLS = {
   ramales:      ["POLL_RAMALES_MS"],
   zonas:        ["POLL_ZONAS_MAPA_MS"],
   movilizador:  ["POLL_MOVILIZADOR_MS", "POLL_ZONAS_MAPA_MS"],
-  work_orders:  ["POLL_SUP_OT_CONTROL_MS", "POLL_SUP_LIVE_MS", "POLL_TEC_SYNC_MS", "POLL_TEC_ESTADO_MS", "POLL_MOVILIZADOR_MS"],
+  // POLL_OT_RECHECK_MS espera el #OT que pone Apps Script: llega por Realtime
+  // del servidor (lib/realtime.js) como "work_orders".
+  work_orders:  ["POLL_SUP_OT_CONTROL_MS", "POLL_SUP_LIVE_MS", "POLL_TEC_SYNC_MS", "POLL_TEC_ESTADO_MS", "POLL_MOVILIZADOR_MS", "POLL_OT_RECHECK_MS"],
   incidencias:  [],  // las vistas de incidencias escuchan "glp:live" directamente
   config:       [],  // manejado abajo: recarga la config
 };

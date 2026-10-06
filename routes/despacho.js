@@ -18,6 +18,7 @@ import { getConfig_ } from "../lib/config.js";
 import { requireRol_, getUsuarioByEmail_ } from "../lib/authz.js";
 import { emitEvent_ } from "../lib/events.js";
 import { cachedByTopics_ } from "../lib/poll-cache.js";
+import { ttlConRealtime_ } from "../lib/realtime.js";
 import { sendPushToEmails_ } from "../lib/push.js";
 import {
   jornadaFecha_, jornadaRango_, horaPeru_, minutosDelDia_, hhmmAMinutos_,
@@ -1134,7 +1135,8 @@ async function contextoDelTaller_(cfg, fecha) {
     // los técnicos activos cambian cuando Admin da de alta a alguien: 5 min de
     // cache no se notan. Si la lectura falla, lanza y no se cachea: la vuelta
     // sigue con [] como antes y la siguiente reintenta.
-    cachedByTopics_("motor:lista_diaria", [], CACHE_MOTOR_LENTO_MS, () =>
+    // La lista llega por Realtime (topic "lista_diaria"): con él sano, dura más.
+    cachedByTopics_("motor:lista_diaria", ["lista_diaria"], ttlConRealtime_(cfg, CACHE_MOTOR_LENTO_MS), () =>
       sbJson_(`${SB()}/rest/v1/lista_diaria_activa?select=vin`, h)).catch(() => []),
     cachedByTopics_("motor:tecnicos", [], CACHE_MOTOR_LENTO_MS, () =>
       sbJson_(`${SB()}/rest/v1/usuarios?rol=eq.TECNICO&activo=eq.true&select=id,nombre,especialidad`, h)).catch(() => []),

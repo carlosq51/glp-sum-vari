@@ -23,6 +23,7 @@ import { supabaseHeaders_ } from "../lib/supabase.js";
 import { isValidOT_ } from "../lib/utils.js";
 import { getConfig_ } from "../lib/config.js";
 import { cachedByTopics_ } from "../lib/poll-cache.js";
+import { ttlConRealtime_ } from "../lib/realtime.js";
 
 const router = Router();
 
@@ -377,9 +378,9 @@ router.get("/api/invitado/sugerir", async (req, res) => {
     const q = String(req.query.q || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
     if (q.length < SUG_MIN) return res.json({ ok: true, items: [] });
 
-    const { SRV_CACHE_PESADO_MS } = await getConfig_();
+    const cfg = await getConfig_();
     const payload = await cachedByTopics_(
-      `invitado:sugerir:${q}`, ["vins"], SRV_CACHE_PESADO_MS, async () => {
+      `invitado:sugerir:${q}`, ["vins"], ttlConRealtime_(cfg, cfg.SRV_CACHE_PESADO_MS), async () => {
         const url = `${process.env.SUPABASE_URL}/rest/v1/vins` +
           `?vin=ilike.${encodeURIComponent(`%${q}%`)}&select=vin&order=vin.asc&limit=${SUG_MAX}`;
         const r = await fetch(url, { method: "GET", headers: supabaseHeaders_() });
