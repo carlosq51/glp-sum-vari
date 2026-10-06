@@ -20,17 +20,9 @@ import fs from "fs";
 import path from "path";
 import { PGlite } from "@electric-sql/pglite";
 import { generarEsquema, conectarProduccion } from "./esquema-dump.mjs";
+import { PRELUDIO, archivosMigracion } from "./esquema-convencion.mjs";
 
 const DIR = "supabase/migrations";
-
-// Lo que en Supabase ya existe antes de la primera migración: los roles de
-// la API y la publicación de realtime.
-const PRELUDIO = `
-  CREATE ROLE anon NOLOGIN;
-  CREATE ROLE authenticated NOLOGIN;
-  CREATE ROLE service_role NOLOGIN BYPASSRLS;
-  CREATE PUBLICATION supabase_realtime;
-`;
 
 // Las extensiones las maneja Supabase y PGlite no las tiene: esas líneas
 // (solo informativas) no entran en la comparación.
@@ -39,7 +31,7 @@ const sinExtensiones = (sql) => sql.split("\n").filter((l) => !/^-- {3}\S+ \(sch
 const local = new PGlite();
 await local.exec(PRELUDIO);
 
-const archivos = fs.readdirSync(DIR).filter((f) => /^\d{3}_.*\.sql$/.test(f)).sort();
+const archivos = archivosMigracion();
 for (const f of archivos) {
   try {
     await local.exec(fs.readFileSync(path.join(DIR, f), "utf8"));

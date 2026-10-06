@@ -102,4 +102,5 @@ Cómo agregar un cambio: [supabase/migrations/README.md](supabase/migrations/REA
 ```bash
 npm run db:validar   # aplica las migraciones en memoria y las compara con producción
 npm run db:dump      # vuelca el esquema de producción (solo lectura)
+npm run db:convencion # lo nuevo (después de la 005) sigue la convención de nombres
 ```

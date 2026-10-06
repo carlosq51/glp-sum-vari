@@ -1,6 +1,6 @@
 # Arquitectura y Lógica — glp-ui
 
-> Estado actual del proyecto. Última revisión: 2026-10-06 (base de datos, fases 1-5).
+> Estado actual del proyecto. Última revisión: 2026-10-06 (base de datos, fases 1-6).
 > Este documento describe lo que ES, no lo que debería ser.
 
 ---
@@ -57,7 +57,8 @@ glp-ui/
 │   └── historico/            ← .sql sueltos de antes; solo para leer el porqué
 ├── scripts/
 │   ├── esquema-dump.mjs      ← npm run db:dump (lee producción, READ ONLY)
-│   └── esquema-validar.mjs   ← npm run db:validar (migraciones en PGlite vs producción)
+│   ├── esquema-validar.mjs   ← npm run db:validar (migraciones en PGlite vs producción)
+│   └── esquema-convencion.mjs ← npm run db:convencion (lo nuevo sigue la convención)
 ├── vite.config.js            ← Build + PWA config
 ├── package.json
 ├── .env                      ← Variables locales (no va a producción)
@@ -604,6 +605,16 @@ app trabaja con VINs que todavía no están.
 | `checkXxx_()` | Consulta estado y actualiza UI (usado en pollers) |
 | `$(id)` | `document.getElementById(id)` |
 | `el_(id)` | `getElementById` con sufijo de módulo |
+
+### Nombres en la base (solo hacia adelante)
+
+Lo que existe hasta la migración 005 **no se renombra**: rompería unos 40 archivos
+y no cambia nada visible. Todo lo nuevo va en español y `snake_case`, con
+`*_at timestamptz`, `*_user_id uuid REFERENCES usuarios(id)`, enums para valores
+fijos, `jornada_fecha` para el día de turno, `id uuid` y RLS sin políticas. La
+tabla completa está en [supabase/migrations/README.md](supabase/migrations/README.md).
+`npm run db:convencion`, que también corre en `npm test`, falla si una migración
+nueva no la cumple.
 
 ### Estilos inline en JS
 

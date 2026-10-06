@@ -11,7 +11,8 @@
     "start": "node index.js",
     "test": "vitest run",
     "db:dump": "node scripts/esquema-dump.mjs",
-    "db:validar": "node scripts/esquema-validar.mjs"
+    "db:validar": "node scripts/esquema-validar.mjs",
+    "db:convencion": "node scripts/esquema-convencion.mjs"
   },
   "keywords": [],
   "author": "",
