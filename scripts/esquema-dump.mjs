@@ -213,7 +213,9 @@ export async function generarEsquema(q) {
     for (const j of jobs) out.push(`--   ${j.jobname || "(sin nombre)"} · ${j.schedule} · ${j.command.replace(/\s+/g, " ")}`);
   }
 
-  const sql = out.join("\n").replace(/\n{3,}/g, "\n\n").trim() + "\n";
+  // \r fuera: el cuerpo de una función guarda los finales de línea con que se
+  // pegó en el SQL editor (CRLF desde Windows), y eso no es una diferencia.
+  const sql = out.join("\n").replace(/\r/g, "").replace(/\n{3,}/g, "\n\n").trim() + "\n";
   const resumen = `${tablas.length} tablas, ${vistas.length} vistas, ${enums.length} enums, ` +
     `${funcs.length} funciones, ${fks.length} FKs, ${idx.length} índices, ` +
     `${trg.length} triggers, ${pols.length} políticas`;
