@@ -1,58 +1,190 @@
 /* =====================================================================
    views/admin.css — Vista Admin CRUD
+   ---------------------------------------------------------------------
+   Refresco oct-2026: el panel se lee como la vista Movilizador. Las nueve
+   cartillas ya no son una parrilla plana, van en bloques con cabecera de
+   color y una frase que dice de qué se encarga cada bloque; y la tipografía
+   sube un escalón entero — nombres de cartilla, bajadas, cabecera de detalle
+   y tabla — porque esto se usa de pie, en un taller, y a veces con lentes.
+
+   Un tono por familia, no uno por cartilla: cuatro colores se reconocen de
+   memoria, nueve se confunden. El tono vive en el bloque y las cartillas lo
+   heredan con `--tone: inherit`.
    ===================================================================== */
 
-/* ── Cartillas de sección (tono por sección) ── */
-.hubCard[data-section="usuarios"],    .adminDetailIcon[data-section="usuarios"]    { --tone: var(--tone-blue); }
-.hubCard[data-section="vins"],        .adminDetailIcon[data-section="vins"]        { --tone: var(--tone-green); }
-.hubCard[data-section="ots"],         .adminDetailIcon[data-section="ots"]         { --tone: var(--tone-violet); }
-.hubCard[data-section="incidencias"], .adminDetailIcon[data-section="incidencias"] { --tone: var(--tone-red); }
-.hubCard[data-section="reasignar"],   .adminDetailIcon[data-section="reasignar"]   { --tone: var(--tone-amber); }
-.hubCard[data-section="config"],      .adminDetailIcon[data-section="config"]      { --tone: var(--tone-cyan); }
+/* La escala del panel, de arriba hacia abajo: título de pantalla, cabecera
+   de bloque, nombre de cartilla, frase de la cartilla. Cada escalón se nota
+   sin tener que comparar dos textos lado a lado. */
+#viewADMIN {
+  --admin-hero:      calc(var(--fs-3xl) * 1.2);
+  --admin-group:     var(--fs-3xl);
+  --admin-card-name: var(--fs-xl);
+  --admin-card-desc: var(--fs-md);   /* la frase de abajo, no letra chica */
+}
+
+/* ── Tonos por familia ── */
+.adminGroup[data-group="gente"]   { --tone: var(--tone-blue); }
+.adminGroup[data-group="trabajo"] { --tone: var(--tone-green); }
+.adminGroup[data-group="papeles"] { --tone: var(--tone-amber); }
+.adminGroup[data-group="sistema"] { --tone: var(--tone-cyan); }
+.adminGroup[data-group="otros"]   { --tone: var(--tone-slate); }
+
+/* El chip de icono del detalle usa el tono de la familia de esa sección, así
+   que entrar a una cartilla no cambia de color a medio camino. */
+.adminDetailIcon[data-section="usuarios"],
+.adminDetailIcon[data-section="inventario"]  { --tone: var(--tone-blue); }
+.adminDetailIcon[data-section="vins"],
+.adminDetailIcon[data-section="ots"],
+.adminDetailIcon[data-section="reasignar"]   { --tone: var(--tone-green); }
+.adminDetailIcon[data-section="impresiones"],
+.adminDetailIcon[data-section="incidencias"] { --tone: var(--tone-amber); }
+.adminDetailIcon[data-section="config"],
+.adminDetailIcon[data-section="notif"]       { --tone: var(--tone-cyan); }
 
 /* ── Hero del panel ── */
 .adminHero {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 18px;
-  padding-bottom: 14px;
-  border-bottom: 1px solid var(--surfaceLine);
+  gap: 14px;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: var(--border-w-lg) solid var(--surfaceLine);
 }
 
 .adminHeroIcon {
-  width: 44px;
-  height: 44px;
+  width: 52px;
+  height: 52px;
   flex-shrink: 0;
-  border-radius: 14px;
+  border-radius: 16px;
   display: grid;
   place-items: center;
   color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 13%, transparent);
-  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  border: var(--border-w-lg) solid color-mix(in srgb, var(--accent) 35%, transparent);
 }
 
 .adminHeroTitle {
   margin: 0;
-  font-size: var(--fs-xl);
+  font-size: var(--admin-hero);
   font-weight: var(--fw-black);
   letter-spacing: -.3px;
+  line-height: 1.15;
 }
 
 .adminHeroSub {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-bold);
   color: var(--muted);
+  margin-top: 3px;
+}
+
+/* ── Bloques de cartillas ──────────────────────────────────────────────
+   Cada familia es una caja cerrada con cabecera de color: primero se elige
+   el bloque y después la cartilla. El mismo patrón que los grupos de
+   Ingreso en la vista Movilizador.
+   ------------------------------------------------------------------- */
+.adminGroups {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  margin-bottom: 16px;
+}
+
+.adminGroup {
+  --tone: var(--accent);
+  border: var(--border-w-lg) solid color-mix(in srgb, var(--tone) 42%, transparent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--tone) 4%, var(--surface2));
+  overflow: hidden;
+}
+
+.adminGroupHdr {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 15px;
+  background: color-mix(in srgb, var(--tone) 17%, var(--surface));
+  border-bottom: var(--border-w-lg) solid color-mix(in srgb, var(--tone) 38%, transparent);
+}
+
+.adminGroupIcon {
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+  border-radius: var(--radiusSm);
+  display: grid;
+  place-items: center;
+  color: var(--tone);
+  background: color-mix(in srgb, var(--tone) 22%, var(--surface));
+}
+.adminGroupIcon .icn { display: block; }
+
+.adminGroupText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.adminGroupTitle {
+  font-size: var(--admin-group);
+  font-weight: var(--fw-black);
+  line-height: 1.15;
+  color: var(--text);
+}
+
+.adminGroupSub {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-bold);
+  color: var(--muted);
+}
+
+.adminGroupBody {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  padding: 12px;
+}
+
+/* Dos columnas cuando hay ancho; en celular una sola, porque la cartilla
+   grande con su frase completa vale más que meter dos por fila. */
+@media (min-width: 560px) {
+  .adminGroupBody { grid-template-columns: 1fr 1fr; }
+}
+@media (min-width: 1100px) {
+  body[data-app-module="ADMIN"] .adminGroupBody { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* ── Cartillas dentro de un bloque ── */
+#adminCards .hubCard {
+  --tone: inherit;                 /* el color lo manda el bloque */
+  min-height: 104px;
+  padding: 18px;
+  gap: 15px;
+  border-width: var(--border-w-lg);
+}
+#adminCards .hubCardIcon {
+  width: 54px;
+  height: 54px;
+  border-radius: 16px;
+  border-width: var(--border-w-lg);
+}
+#adminCards .hubCardName {
+  font-size: var(--admin-card-name);
+  font-weight: var(--fw-black);
+  letter-spacing: -.2px;
+}
+#adminCards .hubCardDesc {
+  font-size: var(--admin-card-desc);
+  font-weight: var(--fw-bold);
+  line-height: 1.35;
   margin-top: 2px;
 }
 
-/* ── Grid de secciones: 3 columnas en desktop (solo Admin) ── */
-@media (min-width: 860px) {
-  body[data-app-module="ADMIN"] #adminCardGrid {
-    grid-template-columns: repeat(3, 1fr);
-  }
-}
-
-/* ── Cabecera del detalle ── */
+/* ── Cabecera del detalle ──
+   Esta cabecera la reusan Movilizador, Técnico y Consulta, así que la base
+   se queda como estaba y el refresco del panel va scopeado a #viewADMIN. */
 .adminDetailHead {
   display: flex;
   align-items: center;
@@ -110,6 +242,34 @@
 .adminDetailSub {
   font-size: var(--fs-xs);
   color: var(--muted);
+}
+
+/* Dentro del panel la cabecera pesa más: es el único cartel que dice en qué
+   sección estás una vez que la parrilla de cartillas desapareció. */
+#viewADMIN .adminDetailHead {
+  gap: 14px;
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+  border-bottom-width: var(--border-w-lg);
+}
+#viewADMIN .adminDetailIcon {
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  border-width: var(--border-w-lg);
+}
+#viewADMIN .adminDetailTitle {
+  font-size: var(--admin-group);
+  font-weight: var(--fw-black);
+}
+#viewADMIN .adminDetailSub {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-bold);
+}
+#viewADMIN .adminBackBtn {
+  padding: 9px 14px 9px 10px;
+  font-size: var(--fs-md);
+  border-width: var(--border-w-lg);
 }
 
 /* ── Header ── */
@@ -527,6 +687,124 @@
 .adminBtnOk .icn,
 .adminBtnGhost .icn,
 .adminBackBtn .icn { vertical-align: -2px; flex-shrink: 0; }
+
+/* ── Refresco de tipografía del panel ──────────────────────────────────
+   Tabla, buscador, pestañas y badges los comparten el inventario del
+   técnico y el control de OTs del supervisor, así que la subida de tamaño
+   va scopeada a #viewADMIN y no se les mueve nada a ellos.
+   ------------------------------------------------------------------- */
+
+/* Buscador y "Nuevo": altura de dedo y texto que se lee sin acercarse. */
+#viewADMIN .adminToolbar { gap: 10px; margin-bottom: 14px; }
+#viewADMIN .adminSearchWrap input {
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-bold);
+  padding-left: 42px;
+}
+#viewADMIN .adminSearchIcon { left: 14px; }
+#viewADMIN #btnAdminNuevo {
+  height: var(--h-input);
+  padding: 0 18px;
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-black);
+}
+
+/* Pestañas: pastillas más grandes y la activa se distingue por peso, no
+   solo por opacidad. */
+#viewADMIN .adminTabs { gap: 8px; margin-bottom: 14px; }
+#viewADMIN .adminTab {
+  height: 40px;
+  padding: 0 18px;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-extrabold);
+}
+#viewADMIN .adminTab.active { font-weight: var(--fw-black); }
+
+/* Tabla: la cabecera deja de ser letra chica gris y las filas respiran. */
+#viewADMIN .adminTable { font-size: var(--fs-body); }
+#viewADMIN .adminTable th {
+  padding: 12px 14px;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-black);
+  letter-spacing: .4px;
+  color: var(--text);
+}
+#viewADMIN .adminTable td { padding: 13px 14px; line-height: 1.45; }
+@media (min-width: 860px) {
+  body[data-app-module="ADMIN"] #viewADMIN .adminTable th,
+  body[data-app-module="ADMIN"] #viewADMIN .adminTable td { padding: 14px 16px; }
+}
+
+/* Botones de fila: 36px de lado, que es lo mínimo para acertarle con el
+   dedo sin tocar el de al lado. */
+#viewADMIN .adminRowBtn { width: 36px; height: 36px; }
+#viewADMIN .adminRowBtn--wide { width: auto; padding: 0 12px; font-size: var(--fs-sm); }
+#viewADMIN .adminRowBtn + .adminRowBtn { margin-left: 6px; }
+
+/* Badges de estado dentro de la tabla. */
+#viewADMIN .adminBadge,
+#viewADMIN .adminBadgeOk,
+#viewADMIN .adminBadgeMuted {
+  padding: 3px 11px;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-black);
+}
+
+/* Vacío: el cartel de "no hay nada" también se lee de lejos. */
+#viewADMIN .adminEmpty { padding: 44px 24px; border-width: var(--border-w-lg); }
+#viewADMIN .adminEmptyTitle { font-size: var(--fs-2xl); font-weight: var(--fw-black); }
+#viewADMIN .adminEmptyIcon { width: 62px; height: 62px; border-width: var(--border-w-lg); }
+#viewADMIN .adminMsg { font-size: var(--fs-md); font-weight: var(--fw-bold); }
+
+/* Formularios del modal: etiqueta legible encima de cada campo. */
+#adminModal .adminLabel { font-size: var(--fs-md); font-weight: var(--fw-extrabold); }
+#adminModal .adminLabel input,
+#adminModal .adminLabel select,
+#adminModal .adminLabel textarea { font-size: var(--fs-lg); }
+#adminModal .adminModalFoot button { font-size: var(--fs-lg); font-weight: var(--fw-black); }
+
+/* Secciones del tab Configuración: cada una con su filete de color y un
+   título que manda, para no leer un muro de campos sueltos. Los estilos base
+   de .adminConfigSection viven en movilizador.css desde siempre; esto solo
+   los refresca dentro del panel. */
+#viewADMIN .adminConfigSection {
+  border-width: var(--border-w-lg);
+  border-left: 4px solid color-mix(in srgb, var(--accent) 50%, transparent);
+}
+#viewADMIN .adminConfigTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding-bottom: 10px;
+  font-size: var(--fs-xl);
+  font-weight: var(--fw-black);
+  color: var(--text);
+  border-bottom: var(--border-w-lg) solid color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+/* Formularios del panel (configuración, reasignar): etiqueta legible encima
+   de cada campo, y el valor más grande que la etiqueta. */
+#viewADMIN .adminLabel,
+#viewADMIN .adminLabelText { font-size: var(--fs-md); font-weight: var(--fw-extrabold); }
+#viewADMIN .adminLabel input,
+#viewADMIN .adminLabel select,
+#viewADMIN .adminLabel textarea { font-size: var(--fs-lg); }
+#viewADMIN .adminLabelHint { font-size: var(--fs-sm); }
+
+/* Celular: el nombre de la cartilla baja un punto, la frase se queda. */
+@media (max-width: 420px) {
+  #viewADMIN {
+    --admin-hero:      var(--fs-3xl);
+    --admin-group:     var(--fs-2xl);
+    --admin-card-name: var(--fs-lg);
+  }
+  .adminGroupHdr { gap: 10px; padding: 12px; }
+  .adminGroupIcon { width: 38px; height: 38px; }
+  .adminGroupBody { padding: 10px; }
+  #adminCards .hubCard { min-height: 92px; padding: 15px; gap: 13px; }
+  #adminCards .hubCardIcon { width: 46px; height: 46px; }
+}
 
 /* ════════════════════════════════════════════════════════════
    INVENTARIO DE HERRAMIENTAS (sub-módulo admin)

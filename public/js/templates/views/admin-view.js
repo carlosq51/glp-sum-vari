@@ -19,7 +19,7 @@ export function adminView() {
             <div class="adminHeroSub">Gestiona usuarios, vehículos, órdenes y parámetros del sistema</div>
           </div>
         </div>
-        <div class="hubGrid" id="adminCardGrid"></div>
+        <div class="adminGroups" id="adminCardGrid"></div>
       </div>
 
       <!-- ── Vista detalle de sección ── -->

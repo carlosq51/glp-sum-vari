@@ -34,17 +34,47 @@ const S = {
 };
 
 // ─── Metadata de secciones ───────────────────────────────────────────
+// La bajada de cada cartilla dice en palabras qué se hace ahí, no el nombre
+// técnico de la tabla: el panel lo usa gente que entra una vez por semana.
 const SECTION_META = {
-  usuarios:    { icon: "users",         label: "Usuarios",       desc: "Cuentas y permisos" },
-  vins:        { icon: "car",           label: "VINs",           desc: "Vehículos registrados" },
-  ots:         { icon: "clipboardList", label: "OTs",            desc: "Órdenes de trabajo" },
-  incidencias: { icon: "alertTriangle", label: "Incidencias",    desc: "Registro de fallas" },
-  inventario:  { icon: "box",           label: "Inventario",     desc: "Herramientas por técnico" },
+  usuarios:    { icon: "users",         label: "Usuarios",       desc: "Crear cuentas y dar permisos" },
+  vins:        { icon: "car",           label: "VINs",           desc: "Los carros registrados en el sistema" },
+  ots:         { icon: "clipboardList", label: "OTs",            desc: "Las órdenes de trabajo del taller" },
+  incidencias: { icon: "alertTriangle", label: "Incidencias",    desc: "Fallas que reportaron los técnicos" },
+  inventario:  { icon: "box",           label: "Inventario",     desc: "Qué herramienta tiene cada técnico" },
   impresiones: { icon: "inbox"  ,       label: "Impresiones",    desc: "Informes que mandaron los técnicos" },
-  reasignar:   { icon: "refresh",       label: "Reasignar",      desc: "Cambiar técnico asignado" },
-  config:      { icon: "settings",      label: "Configuración",  desc: "Parámetros del sistema" },
-  notif:       { icon: "bell",          label: "Notificaciones", desc: "Prueba de push y vibración" },
+  reasignar:   { icon: "refresh",       label: "Reasignar",      desc: "Cambiar el técnico de una OT" },
+  config:      { icon: "settings",      label: "Configuración",  desc: "Horarios, metas y parámetros" },
+  notif:       { icon: "bell",          label: "Notificaciones", desc: "Probar el aviso en el celular" },
 };
+
+/**
+ * SECTION_GROUPS — las cartillas repartidas en bloques con cabecera.
+ *
+ * Antes eran nueve cartillas en una sola parrilla y para encontrar una había
+ * que leerlas todas. Ahora van en bloques con cabecera de color y una frase
+ * que dice de qué se encarga el bloque, igual que los grupos de la vista
+ * Movilizador: primero se elige el bloque, después la cartilla.
+ *
+ * Un tono por bloque, no uno por cartilla: cuatro colores se reconocen de
+ * memoria, nueve se confunden. Las cartillas heredan el tono de su bloque
+ * (`--tone: inherit` en admin.css), así que cada bloque se lee como una
+ * familia y no hace falta repintar nada aquí.
+ */
+const SECTION_GROUPS = [
+  { id: "gente",   icon: "users",         titulo: "Gente y equipo",
+    sub: "Quién entra al sistema y qué herramientas tiene",
+    secciones: ["usuarios", "inventario"] },
+  { id: "trabajo", icon: "wrench",        titulo: "Vehículos y trabajo",
+    sub: "Los carros, sus órdenes y quién las atiende",
+    secciones: ["vins", "ots", "reasignar"] },
+  { id: "papeles", icon: "clipboardList", titulo: "Papeles e incidencias",
+    sub: "Informes para imprimir y fallas reportadas",
+    secciones: ["impresiones", "incidencias"] },
+  { id: "sistema", icon: "settings",      titulo: "Sistema",
+    sub: "Parámetros de la app y prueba de avisos",
+    secciones: ["config", "notif"] },
+];
 
 // ─── Enums (mirror schema.sql) ───────────────────────────────────────
 const ROLES        = ["TECNICO","SUPERVISOR","ADMIN","CALIDAD","MOVILIZADOR","RAMALERO"];
@@ -1949,21 +1979,57 @@ function showAdminCards_() {
   if (!grid || adminCardsInited_) return;
   adminCardsInited_ = true;
 
-  Object.entries(SECTION_META).forEach(([key, meta]) => {
+  const cartilla_ = (key) => {
+    const meta = SECTION_META[key];
     const card = document.createElement("button");
     card.className = "hubCard";
     card.dataset.section = key;
     card.innerHTML = `
-      <span class="hubCardIcon" aria-hidden="true">${icon(meta.icon, 22)}</span>
+      <span class="hubCardIcon" aria-hidden="true">${icon(meta.icon, 26)}</span>
       <div class="hubCardText">
         <div class="hubCardName">${meta.label}</div>
         <div class="hubCardDesc">${meta.desc}</div>
       </div>
-      <span class="hubCardArrow" aria-hidden="true">${icon("chevronRight", 18)}</span>
+      <span class="hubCardArrow" aria-hidden="true">${icon("chevronRight", 20)}</span>
     `;
     card.addEventListener("click", () => showAdminDetail_(key));
-    grid.appendChild(card);
+    return card;
+  };
+
+  const bloque_ = (g, secciones) => {
+    const block = document.createElement("section");
+    block.className = "adminGroup";
+    block.dataset.group = g.id;
+    block.innerHTML = `
+      <div class="adminGroupHdr">
+        <span class="adminGroupIcon" aria-hidden="true">${icon(g.icon, 24)}</span>
+        <div class="adminGroupText">
+          <span class="adminGroupTitle">${g.titulo}</span>
+          <span class="adminGroupSub">${g.sub}</span>
+        </div>
+      </div>
+      <div class="adminGroupBody"></div>`;
+    const body = block.querySelector(".adminGroupBody");
+    secciones.forEach(k => body.appendChild(cartilla_(k)));
+    return block;
+  };
+
+  const puestas = new Set();
+  SECTION_GROUPS.forEach(g => {
+    const secciones = g.secciones.filter(k => SECTION_META[k]);
+    if (!secciones.length) return;
+    secciones.forEach(k => puestas.add(k));
+    grid.appendChild(bloque_(g, secciones));
   });
+
+  // Red de seguridad: una sección nueva en SECTION_META que nadie metió en un
+  // grupo aparece aquí en vez de desaparecer de la pantalla sin aviso.
+  const sueltas = Object.keys(SECTION_META).filter(k => !puestas.has(k));
+  if (sueltas.length) {
+    grid.appendChild(bloque_(
+      { id: "otros", icon: "box", titulo: "Otros", sub: "Secciones sin agrupar" },
+      sueltas));
+  }
 }
 
 function showAdminDetail_(tab) {
