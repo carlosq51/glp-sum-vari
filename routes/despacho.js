@@ -535,27 +535,22 @@ async function duplasDeJornada_(fecha, estados = ["PENDIENTE", "ACTIVA"]) {
   const filtro = `&estado=in.(${estados.join(",")})`;
   const r = await fetch(
     `${SB()}/rest/v1/despacho_duplas?jornada_fecha=eq.${fecha}${filtro}` +
-    `&select=id,rol_trabajo,lider_user_id,estado,ultimo_responsable_user_id,carros_asignados,propuesta_at,confirmada_at,motivo`,
+    `&select=id,rol_trabajo,lider_user_id,estado,ultimo_responsable_user_id,carros_asignados,propuesta_at,confirmada_at,motivo` +
+    // Los miembros vienen embebidos (FK dupla_id) en la MISMA petición. Antes
+    // eran una segunda consulta, y esta función corre en cada vuelta del
+    // motor: era la tercera ruta más pedida a Supabase.
+    `,despacho_dupla_miembros(user_id)`,
     { headers: supabaseHeaders_() },
   );
   const duplas = r.ok ? await r.json() : [];
-  if (!duplas.length) return [];
 
-  const ids = duplas.map(d => d.id).join(",");
-  const mr = await fetch(
-    `${SB()}/rest/v1/despacho_dupla_miembros?dupla_id=in.(${encodeURIComponent(ids)})&select=dupla_id,user_id`,
-    { headers: supabaseHeaders_() },
-  );
-  const miembros = mr.ok ? await mr.json() : [];
-
-  return duplas.map(d => ({
+  return duplas.map(({ despacho_dupla_miembros: ms, ...d }) => ({
     ...d,
     // Ordenados: el A y el B de la alternancia tienen que ser los mismos en el
     // motor y en el botón de avanzar. Sin orden fijo, PostgREST puede devolver
     // los miembros al revés entre una llamada y otra y el primer carro de la
     // dupla caería en quien tocara.
-    miembros: miembros.filter(m => m.dupla_id === d.id)
-      .map(m => m.user_id).sort(),
+    miembros: (ms || []).map(m => m.user_id).sort(),
   }));
 }
 
@@ -1916,7 +1911,7 @@ export async function correrMotor_({ persistir = true, simularAsistencia = false
   // técnicos están fuera del reparto.
   if (persistir && modo === "REAL") {
     await reanudarPausasVencidas_();
-    await expirarDuplasPendientes_(Number(cfg.DESPACHO_TTL_DUPLA_MIN) || 10);
+    await expirarDuplasPendientes_(Number(cfg.DESPACHO_TTL_DUPLA_MIN) || 10, t.duplas);
   }
 
   // La regla del carro extra, que también cambia quién puede recibir carro: el
@@ -3274,9 +3269,14 @@ async function reanudarPausasVencidas_() {
  * ello el invitado seguiría viendo "X quiere trabajar en dupla contigo" tres
  * horas después, y aceptarla armaría una dupla que el motor ya descartó.
  */
-async function expirarDuplasPendientes_(ttlMin) {
+async function expirarDuplasPendientes_(ttlMin, duplasCargadas = null) {
   try {
     const limite = new Date(Date.now() - Math.max(0, ttlMin) * 60000).toISOString();
+    // El motor ya trae las duplas PENDIENTE de la jornada en su contexto. Si
+    // ninguna venció, no hay nada que buscar: la consulta se ahorra en casi
+    // todas las vueltas, que es cuando no hay invitaciones en el aire.
+    if (duplasCargadas && !duplasCargadas.some(d =>
+      d.estado === "PENDIENTE" && d.propuesta_at && Date.parse(d.propuesta_at) <= Date.parse(limite))) return 0;
     const vencidas = await fetch(
       `${SB()}/rest/v1/despacho_duplas?jornada_fecha=eq.${jornadaFecha_()}` +
       `&estado=eq.PENDIENTE&propuesta_at=lte.${limite}&select=id`,
