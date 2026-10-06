@@ -15,17 +15,18 @@
 // =========================
 import express from "express";
 import { supabaseServiceHeaders_ } from "../lib/supabase.js";
-import { getUsuarioByEmail_ } from "../lib/authz.js";
+import { getUsuarioByEmail_, invalidarUsuarios_ } from "../lib/authz.js";
 import { autorizarDb_ } from "../lib/db-permisos.js";
 
 const router = express.Router();
 
-// Módulos por usuario, 60 s: mismo TTL que la ficha de lib/authz.js. Cada
-// pantalla de técnico pasa por aquí en cada ciclo del poll.
+// Módulos por usuario, 5 min: mismo TTL que la ficha de lib/authz.js. Cada
+// pantalla de técnico pasa por aquí en cada ciclo del poll. Una escritura en
+// usuarios o usuario_modulos por esta misma ruta vacía las dos caches.
 const _modulos = new Map(); // user_id → { modulos, ts }
 async function modulosDe_(userId) {
   const hit = _modulos.get(userId);
-  if (hit && Date.now() - hit.ts < 60_000) return hit.modulos;
+  if (hit && Date.now() - hit.ts < 5 * 60_000) return hit.modulos;
   const r = await fetch(
     `${process.env.SUPABASE_URL}/rest/v1/usuario_modulos?user_id=eq.${encodeURIComponent(userId)}&select=modulo`,
     { headers: supabaseServiceHeaders_() },
@@ -60,6 +61,10 @@ router.all("/api/db/:tabla", async (req, res) => {
     });
 
     if (metodo !== "GET") console.log(`[db] ${metodo} ${tabla} por ${email} → ${r.status}`);
+    if (metodo !== "GET" && (tabla === "usuarios" || tabla === "usuario_modulos")) {
+      invalidarUsuarios_();
+      _modulos.clear();
+    }
     res.status(r.status).type(r.headers.get("content-type") || "application/json").send(await r.text());
   } catch (e) {
     console.error(`[db] ${metodo} ${tabla}:`, e.message);

@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { getUsuarioByEmail_ } from "../lib/authz.js";
 import { supabaseHeaders_, supabaseGet_, supabasePost_, supabasePatch_ } from "../lib/supabase.js";
 import { getConfig_ } from "../lib/config.js";
 import { emitEvent_ } from "../lib/events.js";
@@ -78,8 +79,7 @@ router.post("/api/solicitud-ramal", async (req, res) => {
     }
 
     // Obtener nombre del técnico
-    const usuarios = await supabaseGet_("usuarios", { email });
-    const tecnicoNombre = usuarios?.[0]?.nombre || email;
+    const tecnicoNombre = (await getUsuarioByEmail_(email))?.nombre || email;
 
     const data = {
       vin:            vin || null,
@@ -256,8 +256,7 @@ router.post("/api/solicitud-ramal/:id/entregar", async (req, res) => {
     const email = String(req.body?.email || "").trim().toLowerCase();
     if (!id) return res.status(400).json({ ok: false, error: "Falta id" });
 
-    const usuarios = await supabaseGet_("usuarios", { email });
-    const usuario = usuarios?.[0] || null;
+    const usuario = await getUsuarioByEmail_(email);
     const nombre = usuario?.nombre || email;
 
     // El tipo lo elige el ramalero al entregar: es el único momento en que

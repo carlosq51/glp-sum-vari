@@ -43,7 +43,7 @@
 
 import { Router } from "express";
 import { supabaseHeaders_ } from "../lib/supabase.js";
-import { requireRol_ } from "../lib/authz.js";
+import { requireRol_, getUsuarioByEmail_ } from "../lib/authz.js";
 import { emitEvent_ } from "../lib/events.js";
 import { jornadaFecha_ } from "../lib/despacho.js";
 import { sendPushToEmails_ } from "../lib/push.js";
@@ -110,13 +110,9 @@ async function sbDelete_(table, filtro) {
   }
 }
 
+// Por la cache de lib/authz.js: misma ficha, sin una consulta por pedido.
 async function userPorEmail_(email) {
-  const e = String(email || "").trim().toLowerCase();
-  if (!e) return null;
-  const rows = await sbGet_(
-    `usuarios?email=eq.${encodeURIComponent(e)}&select=id,nombre,email,rol,activo&limit=1`,
-  );
-  return rows[0] || null;
+  return getUsuarioByEmail_(email);
 }
 
 function nEntero_(v, def = 0) {

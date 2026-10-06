@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { getUsuarioByEmail_ } from "../lib/authz.js";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { supabaseHeaders_ } from "../lib/supabase.js";
 import { getConfig_ } from "../lib/config.js";
@@ -768,12 +769,9 @@ router.get("/api/ml/suggest-next", async (req, res) => {
     }
 
     // Obtener userId y especialidad del técnico solicitante
-    const rUser = await fetch(
-      `${SUPABASE_URL}/rest/v1/usuarios?email=eq.${encodeURIComponent(email)}&activo=eq.true&select=id,nombre,especialidad`,
-      { method: "GET", headers: supabaseHeaders_() }
-    );
-    const userRows = rUser.ok ? await rUser.json() : [];
-    const userRow  = userRows[0];
+    // Por la cache de lib/authz.js: este endpoint es un poll de cada técnico.
+    const ficha   = await getUsuarioByEmail_(email);
+    const userRow = ficha?.activo ? ficha : null;
     if (!userRow) return res.json({ ok: false, error: "Usuario no encontrado" });
 
     const myUserId = userRow.id;

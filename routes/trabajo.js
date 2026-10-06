@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { getUsuarioByEmail_ } from "../lib/authz.js";
 import {
   supabaseHeaders_,
   supabaseGet_,
@@ -531,12 +532,11 @@ router.post("/api/evento", async (req, res) => {
 
     const t1 = Date.now();
 
-    // 1?? Obtener user_id
-    const usuarios = await supabaseGet_("usuarios", { email });
-    if (!usuarios || !usuarios.length) {
+    // 1?? Obtener user_id (cache de lib/authz.js)
+    const userId = (await getUsuarioByEmail_(email))?.id;
+    if (!userId) {
       return res.status(404).json({ ok: false, error: "Usuario no encontrado" });
     }
-    const userId = usuarios[0].id;
 
     // 2️⃣ Mapear rolTrabajo → tipo_ot para buscar el work_order correcto
     const ROL_TO_TIPO_OT = {

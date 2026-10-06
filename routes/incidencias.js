@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { getUsuarioByEmail_ } from "../lib/authz.js";
 import { supabaseHeaders_, supabaseGet_, supabasePost_, supabasePatch_ } from "../lib/supabase.js";
 import { addServerTiming_ } from "../lib/timing.js";
 import { getConfig_ } from "../lib/config.js";
@@ -138,8 +139,7 @@ router.get("/api/incidencias/by-tecnico", async (req, res) => {
     if (!email) return res.status(400).json({ ok: false, error: "Falta email" });
 
     // 1) Obtener nombre del técnico desde tabla usuarios
-    const usuarios = await supabaseGet_("usuarios", { email });
-    const nombre = String(usuarios?.[0]?.nombre || "").trim();
+    const nombre = String((await getUsuarioByEmail_(email))?.nombre || "").trim();
     if (!nombre) return res.json({ ok: true, items: [], nombre: "" });
 
     // 2) Incidencias de los últimos `days` días

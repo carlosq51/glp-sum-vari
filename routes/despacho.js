@@ -15,7 +15,7 @@ import { randomUUID } from "crypto";
 import QRCode from "qrcode";
 import { supabaseHeaders_ } from "../lib/supabase.js";
 import { getConfig_ } from "../lib/config.js";
-import { requireRol_ } from "../lib/authz.js";
+import { requireRol_, getUsuarioByEmail_ } from "../lib/authz.js";
 import { emitEvent_ } from "../lib/events.js";
 import { cachedByTopics_ } from "../lib/poll-cache.js";
 import { sendPushToEmails_ } from "../lib/push.js";
@@ -58,15 +58,10 @@ async function requireModoActivo_(req, res, next) {
 
 // ─── Helpers de datos ─────────────────────────────────────────────────────────
 
+// Por la cache de lib/authz.js: se llama en casi cada ruta de despacho.
 async function userPorEmail_(email) {
-  const e = String(email || "").trim().toLowerCase();
-  if (!e) return null;
-  const r = await fetch(
-    `${SB()}/rest/v1/usuarios?email=eq.${encodeURIComponent(e)}&select=id,nombre,rol,especialidad,activo&limit=1`,
-    { headers: supabaseHeaders_() },
-  );
-  const rows = r.ok ? await r.json() : [];
-  return rows[0] && rows[0].activo ? rows[0] : null;
+  const u = await getUsuarioByEmail_(email);
+  return u && u.activo ? u : null;
 }
 
 async function marcasDeJornada_(fecha, userId = null) {
