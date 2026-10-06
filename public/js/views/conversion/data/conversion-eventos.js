@@ -199,9 +199,13 @@ export async function enviarEvento(accionOverride, opts = {}) {
   const c = ctx_();
   const itLocal = [...c.itemsByKey.values()].find((it) => String(it.vin||"").toUpperCase() === vin && String(it.rolTrabajo||"").toUpperCase() === rolTrabajo);
   if (itLocal) {
-    const allowed = allowedActionsByEstado(itLocal.estado);
+    const allowed = allowedActionsByEstado(itLocal.estado, { ajena: itLocal.ajena });
     if (!allowed.includes(accion)) {
-      const err = { ok: false, error: `Acción ${accion} no permitida desde estado ${itLocal.estado}.` };
+      // La OT ajena de CALIDAD se acciona pero no se cierra, y "FIN no permitida
+      // desde TRABAJANDO" sonaría a error del sistema: hay que decir por qué.
+      const err = itLocal.ajena && accion === "FIN"
+        ? { ok: false, error: `Esta OT la registró ${itLocal.titularNombre || "el otro inspector"} y la finaliza él. Puedes trabajarla y anotar.` }
+        : { ok: false, error: `Acción ${accion} no permitida desde estado ${itLocal.estado}.` };
       setOut(err);
       return err;
     }

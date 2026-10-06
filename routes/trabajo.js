@@ -20,7 +20,7 @@ import {
 import { dispararMotor_, despachoReparteAhora_, apoyosPorPuesto_, duplaDeTrabajoDe_, zonasDeVins_ } from "./despacho.js";
 import { jornadaFecha_ } from "../lib/despacho.js";
 import {
-  puedeColaborar_, notaApoyo_, notaDupla_, notaCierreAjeno_, combinarNotas_,
+  puedeColaborar_, notaApoyo_, notaDupla_, combinarNotas_,
   ESTADOS_CALIDAD_COLABORATIVA,
 } from "../lib/colaboracion.js";
 
@@ -177,7 +177,8 @@ async function fetchAsignacionesByUser_(finalUserId, tecnicoEmail, filtro) {
 //
 // El crédito NO se mueve —el user_id sigue siendo el del titular— y por eso las
 // OTs ajenas viajan marcadas con `ajena` y con el nombre de quien las registró:
-// la tarjeta tiene que decir de quién es antes de que nadie la cierre.
+// la tarjeta tiene que decir de quién es. El CIERRE tampoco se mueve: el otro
+// inspector la ve y la acciona, pero el FIN lo da su titular (puedeColaborar_).
 const _esCalidadCache = new Map();          // user_id → { ts, es }
 const CALIDAD_CACHE_MS = 10 * 60 * 1000;
 
@@ -201,8 +202,8 @@ async function esInspectorCalidad_(userId) {
  * OTs de CALIDAD de los DEMÁS inspectores que este puede accionar.
  *
  * Solo las que el titular ya empezó: es la misma frontera de puedeColaborar_
- * (ESTADOS_CALIDAD_COLABORATIVA). Enseñar una SIN_INICIAR sería invitar a
- * cerrar una inspección que nadie hizo, y además la acción rebotaría con 409.
+ * (ESTADOS_CALIDAD_COLABORATIVA). Enseñar una SIN_INICIAR sería invitar a entrar
+ * a una inspección que nadie hizo, y además la acción rebotaría con 409.
  *
  * Devuelve [] si el usuario no es inspector. Que falle Supabase lo maneja quien
  * llama: quedarse sin las ajenas es una pantalla incompleta, quedarse sin las
@@ -635,6 +636,7 @@ router.post("/api/evento", async (req, res) => {
         tipoOt,
         estadoTitular: asignacionActiva.estado_actual,
         esApoyo: !!apoyoDelPuesto,
+        accion,
       });
 
       if (!permiso.permitido) {
@@ -655,7 +657,9 @@ router.post("/api/evento", async (req, res) => {
           ok: false,
           error: permiso.motivo === "CALIDAD_SIN_INICIAR"
             ? `${otroUsuario} registró esta OT pero aún no la ha empezado. Podrás entrar cuando la inicie.`
-            : `Esta OT ya está asignada a ${otroUsuario} en rol ${rolTrabajo}`,
+            : permiso.motivo === "CALIDAD_CIERRE_AJENO"
+              ? `Esta OT la registró ${otroUsuario} y la finaliza ${otroUsuario}. Puedes trabajarla y anotar, pero el cierre es suyo.`
+              : `Esta OT ya está asignada a ${otroUsuario} en rol ${rolTrabajo}`,
           errorType: "ALREADY_ASSIGNED",
           motivoColaboracion: permiso.motivo,
           assignedTo: otroUsuario,
@@ -854,13 +858,6 @@ router.post("/api/evento", async (req, res) => {
           } catch (e) {
             console.warn("[EVENTO] No se pudo anotar la dupla al cerrar:", e.message);
           }
-        }
-
-        // Colaboración de CALIDAD: el reporte tiene que poder decir "registró
-        // Flores, cerró Wilmer". Sin esto el cierre colaborativo borra la
-        // diferencia y nadie reconstruye quién hizo qué.
-        if (colaborando && !apoyoDelPuesto) {
-          extras.push(notaCierreAjeno_({ cerradoPor: usuarios[0]?.nombre || email }));
         }
 
         const nueva = combinarNotas_(nota, asignacion.last_nota, ...extras);

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 
 const {
-  puedeColaborar_, notaApoyo_, notaDupla_, notaCierreAjeno_, combinarNotas_, horaPeru_,
+  puedeColaborar_, notaApoyo_, notaDupla_, combinarNotas_, horaPeru_,
 } = await import("../lib/colaboracion.js");
 
 // La regla por defecto del sistema es que cada OT tiene un dueño y solo él la
@@ -30,10 +30,32 @@ describe("puedeColaborar_", () => {
 
   it("CALIDAD: NO puede si el titular ni la ha tocado", () => {
     // Una OT sin empezar no es trabajo compartido: es trabajo que no existe, y
-    // cerrarla sería cerrar una inspección que nadie hizo.
+    // entrar ahí sería acompañar una inspección que nadie hizo.
     const r = puedeColaborar_({ tipoOt: "CALIDAD", estadoTitular: "SIN_INICIAR" });
     expect(r.permitido).toBe(false);
     expect(r.motivo).toBe("CALIDAD_SIN_INICIAR");
+  });
+
+  it("CALIDAD: el FIN de la OT ajena NUNCA, en ningún estado", () => {
+    // El cierre de una inspección es la firma de quien la hizo. Si lo diera el
+    // otro inspector, el reporte no podría decir de quién es el visto bueno.
+    for (const est of ["TRABAJANDO", "PAUSADO", "FINALIZADO", "SIN_INICIAR"]) {
+      const r = puedeColaborar_({ tipoOt: "CALIDAD", estadoTitular: est, accion: "FIN" });
+      expect(r.permitido).toBe(false);
+    }
+    expect(puedeColaborar_({ tipoOt: "CALIDAD", estadoTitular: "TRABAJANDO", accion: "FIN" }).motivo)
+      .toBe("CALIDAD_CIERRE_AJENO");
+  });
+
+  it("CALIDAD: lo demás sí se comparte (pausar, reanudar, anotar)", () => {
+    for (const acc of ["PAUSA", "REANUDAR", "NOTA", ""]) {
+      expect(puedeColaborar_({ tipoOt: "CALIDAD", estadoTitular: "TRABAJANDO", accion: acc }).permitido)
+        .toBe(true);
+    }
+  });
+
+  it("el ayudante SÍ cierra: si no, el carro se queda abierto cuando el ancla se va", () => {
+    expect(puedeColaborar_({ tipoOt: "CONVERSION", esApoyo: true, accion: "FIN" }).permitido).toBe(true);
   });
 
   it("CONVERSION sin ser ayudante: NO. El dueño del carro sigue siendo uno", () => {
@@ -87,18 +109,10 @@ describe("horaPeru_", () => {
   });
 });
 
-describe("notaCierreAjeno_ y combinarNotas_", () => {
-  it("deja rastro de quién cerró lo que no era suyo", () => {
-    expect(notaCierreAjeno_({ cerradoPor: "WILMER" })).toBe("Cerrada por WILMER");
-  });
-
-  it("sin nombre no ensucia la nota", () => {
-    expect(notaCierreAjeno_({})).toBe("");
-  });
-
+describe("combinarNotas_", () => {
   it("combina sin separadores sueltos ni repetidos", () => {
-    expect(combinarNotas_("Nota del técnico", "", null, "Cerrada por WILMER"))
-      .toBe("Nota del técnico · Cerrada por WILMER");
+    expect(combinarNotas_("Nota del técnico", "", null, "Trabajo en dupla con WILMER"))
+      .toBe("Nota del técnico · Trabajo en dupla con WILMER");
     expect(combinarNotas_("igual", "igual")).toBe("igual");
     expect(combinarNotas_("", null, undefined)).toBe("");
   });

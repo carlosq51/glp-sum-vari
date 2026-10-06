@@ -35,9 +35,9 @@ export function renderActivas_() {
     const cre = escapeHtml(fmtFechaCreacion_(it.running_since || it.created_at || it.fecha_creacion));
 
     // OT de CALIDAD que abrió el OTRO inspector. Se acciona igual —el permiso ya
-    // existía—, pero el crédito sigue siendo suyo: sin este aviso la tarjeta
-    // ajena es idéntica a la propia y quien la cierra no sabe que está cerrando
-    // trabajo de otro.
+    // existía— menos el cierre, que es de su titular. Sin este aviso la tarjeta
+    // ajena es idéntica a la propia y el inspector no sabe que está entrando al
+    // carro de otro.
     const ajena = it.ajena
       ? `<span class="small jobAjena">👥 Registró: <b>${escapeHtml(it.titularNombre || "otro inspector")}</b></span>`
       : "";
@@ -110,7 +110,7 @@ export function renderActivas_() {
                 </button>`
               : ""}
 
-          <div class="jobActionsSlot">${buildBotonesByEstado_(estado)}</div>
+          <div class="jobActionsSlot">${buildBotonesByEstado_(estado, { ajena: it.ajena, titularNombre: it.titularNombre })}</div>
 
           ${estado === "PAUSADO" ? `<div class="js-pausa-countdown small" style="text-align:center; opacity:.85; margin-top:4px; color:#f59e0b;">⏳ Calculando...</div>` : ""}
 
@@ -284,7 +284,7 @@ export function patchVisibleCards_() {
 
     if (wasOpen) {
       const slot = card.querySelector(".jobActionsSlot");
-      if (slot) slot.innerHTML = buildBotonesByEstado_(estado);
+      if (slot) slot.innerHTML = buildBotonesByEstado_(estado, { ajena: it.ajena, titularNombre: it.titularNombre });
     }
   }
 }

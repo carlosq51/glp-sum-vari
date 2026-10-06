@@ -6,25 +6,42 @@
 import { CORE } from "../core/state.js";
 import { escapeHtml } from "../core/format.js";
 
-export function buildBotonesByEstado_(estado) {
+/**
+ * Botones de acción de una tarjeta.
+ *
+ * `ajena` es la OT de CALIDAD del otro inspector: se ve y se acciona, pero no
+ * se cierra —el FIN de una inspección es la firma de quien la hizo—. El botón
+ * no se pinta en vez de pintarlo y rebotar: el servidor ya devuelve 409
+ * (puedeColaborar_), y un botón que siempre falla es una trampa. En su sitio
+ * queda dicho de quién es el cierre, porque un hueco no explica nada.
+ */
+export function buildBotonesByEstado_(estado, { ajena = false, titularNombre = "" } = {}) {
   const e = String(estado || "").toUpperCase();
 
   if (e === "SIN_INICIAR") {
     return `<div class="jobActionsGrid"><button class="btnInicio" data-act="INICIO">INICIO</button></div>`;
   }
 
+  const quien = escapeHtml(String(titularNombre || "").trim() || "su titular");
+  const cierreAjeno = ajena
+    ? `<div class="small jobCierreAjeno" style="text-align:center; opacity:.85; margin-top:6px;">
+        🔒 El cierre es de <b>${quien}</b>
+      </div>`
+    : "";
+  const fin = ajena ? "" : `<button class="btnFin" data-act="FIN">FIN</button>`;
+
   if (e === "TRABAJANDO") {
     return `<div class="jobActionsGrid">
       <button class="btnPausa" data-act="PAUSA">PAUSA</button>
-      <button class="btnFin" data-act="FIN">FIN</button>
-    </div>`;
+      ${fin}
+    </div>${cierreAjeno}`;
   }
 
   if (e === "PAUSADO") {
     return `<div class="jobActionsGrid">
       <button class="btnReanudar" data-act="REANUDAR">REANUDAR</button>
-      <button class="btnFin" data-act="FIN">FIN</button>
-    </div>`;
+      ${fin}
+    </div>${cierreAjeno}`;
   }
 
   return `<div class="jobActionsGrid"><button class="btnInicio" data-act="NOTA">GUARDAR NOTA</button></div>`;

@@ -9,11 +9,20 @@ export function isFinalizado_(it) {
   return String(it?.estado || "").toUpperCase() === "FINALIZADO";
 }
 
-export function allowedActionsByEstado(estado) {
+/**
+ * Acciones que la pantalla deja lanzar sobre una OT.
+ *
+ * `ajena` (la OT de CALIDAD del compañero) pierde el FIN: el cierre lo da quien
+ * la registró. Se quita aquí además de no pintar el botón porque esta lista es
+ * la que valida lo que llega por otras vías —el escaneo del VIN, un atajo— y
+ * ahí no hay botón que esconder.
+ */
+export function allowedActionsByEstado(estado, { ajena = false } = {}) {
   const e = String(estado || "").toUpperCase();
+  const sinCierre = (acc) => (ajena ? acc.filter(a => a !== "FIN") : acc);
   if (e === "SIN_INICIAR") return ["INICIO", "NOTA"];
-  if (e === "TRABAJANDO") return ["PAUSA", "FIN", "NOTA"];
-  if (e === "PAUSADO") return ["REANUDAR", "FIN", "NOTA"];
+  if (e === "TRABAJANDO") return sinCierre(["PAUSA", "FIN", "NOTA"]);
+  if (e === "PAUSADO") return sinCierre(["REANUDAR", "FIN", "NOTA"]);
   if (e === "FINALIZADO") return ["NOTA"];
   return ["INICIO", "NOTA"];
 }
