@@ -101,6 +101,10 @@ async function proyectarJornada_(fecha, userId, marcas) {
   return j;
 }
 
+// La nota que deja la pausa por salida. reanudarTrabajoDe_ la busca para
+// levantar SOLO lo que la salida pausó, nada que haya pausado otra persona.
+const NOTA_PAUSA_SALIDA = "Pausado por salida del taller";
+
 /**
  * Al marcar salida, deja sus carros en PAUSADO.
  *
@@ -130,13 +134,62 @@ async function pausarTrabajoDe_(userId) {
           running_since: null,
           tiempo_trab_ms: (a.tiempo_trab_ms || 0) + corrido,
           updated_at: new Date().toISOString(),
-          last_nota: "Pausado por salida del taller",
+          last_nota: NOTA_PAUSA_SALIDA,
           last_nota_ts: new Date().toISOString(),
         }),
       }).catch(() => {});
     }
     emitEvent_("asignaciones", { accion: "PAUSA_SALIDA" });
     return abiertas.length;
+  } catch { return 0; }
+}
+
+/**
+ * Al marcar ingreso, deshace la pausa de la salida.
+ *
+ * Marcaban ingreso y se olvidaban de reanudar: el carro seguía PAUSADO toda la
+ * mañana y el cronómetro no contaba lo que sí estaban trabajando. Volver al
+ * taller ES volver al carro.
+ *
+ * Solo toca lo que pausó la salida (o el CIERRE_AUTO, que deja la misma nota).
+ * Una pausa del supervisor o la del almuerzo tienen su propio dueño y no se
+ * levantan por llegar. El carro que nunca se empezó (pausarTrabajoDe_ también
+ * pausa los SIN_INICIAR) vuelve a SIN_INICIAR: arrancarle el reloj sería
+ * contarle tiempo a un trabajo que no ha tocado.
+ */
+async function reanudarTrabajoDe_(userId) {
+  try {
+    const filtroSalida = `&estado_actual=eq.PAUSADO&last_nota=eq.${encodeURIComponent(NOTA_PAUSA_SALIDA)}`;
+    const pausadas = await fetch(
+      `${SB()}/rest/v1/asignaciones?user_id=eq.${userId}&activo=eq.true${filtroSalida}` +
+      `&select=id,tiempo_trab_ms`,
+      { headers: supabaseHeaders_() },
+    ).then(r => r.ok ? r.json() : []).catch(() => []);
+    if (!pausadas.length) return 0;
+
+    const ahora = new Date().toISOString();
+    let reanudadas = 0;
+    for (const a of pausadas) {
+      const empezado = (a.tiempo_trab_ms || 0) > 0;
+      // El filtro se repite en el PATCH: si entre la lectura y aquí el
+      // supervisor la pausó o la cerró, no se pisa su decisión.
+      const r = await fetch(`${SB()}/rest/v1/asignaciones?id=eq.${a.id}${filtroSalida}`, {
+        method: "PATCH",
+        headers: { ...supabaseHeaders_(), Prefer: "return=representation" },
+        body: JSON.stringify({
+          estado_actual: empezado ? "TRABAJANDO" : "SIN_INICIAR",
+          running_since: empezado ? ahora : null,
+          pausa_hasta: null,
+          updated_at: ahora,
+          last_nota: "Reanudado al marcar ingreso",
+          last_nota_ts: ahora,
+        }),
+      }).catch(() => null);
+      const filas = r?.ok ? await r.json().catch(() => []) : [];
+      if (filas.length && empezado) reanudadas++;
+    }
+    emitEvent_("asignaciones", { accion: "REANUDAR_INGRESO" });
+    return reanudadas;
   } catch { return 0; }
 }
 
@@ -290,6 +343,9 @@ router.post("/api/despacho/marcar", requireModoActivo_, async (req, res) => {
     if (tipoFinal === "SALIDA" || tipoFinal === "CIERRE_AUTO") {
       pausados = await pausarTrabajoDe_(user.id);
     }
+    // Y al volver, sigue donde lo dejó.
+    let reanudados = 0;
+    if (tipoFinal === "INGRESO") reanudados = await reanudarTrabajoDe_(user.id);
     emitEvent_("despacho", { tipo: tipoFinal, user_id: user.id });
 
     // El que acaba de llegar ya es repartible: sin esto esperaba al intervalo.
@@ -297,7 +353,7 @@ router.post("/api/despacho/marcar", requireModoActivo_, async (req, res) => {
 
     res.json({
       ok: true, tipo: tipoFinal, estado: j.estado,
-      nombre: user.nombre, hora: horaPeru_(), pausados,
+      nombre: user.nombre, hora: horaPeru_(), pausados, reanudados,
     });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
@@ -378,11 +434,13 @@ router.post("/api/despacho/marcar-manual", requireModoActivo_,
     if (tipo === "SALIDA" || tipo === "CIERRE_AUTO") {
       pausados = await pausarTrabajoDe_(targetUserId);
     }
+    let reanudados = 0;
+    if (tipo === "INGRESO") reanudados = await reanudarTrabajoDe_(targetUserId);
     emitEvent_("despacho", { tipo, user_id: targetUserId });
     if (tipo === "INGRESO" || tipo === "PAUSA_FIN") {
       repartirTrasEvento_(`marca ${tipo} puesta por supervisión`);
     }
-    res.json({ ok: true, estado: j.estado, pausados });
+    res.json({ ok: true, estado: j.estado, pausados, reanudados });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }

@@ -385,7 +385,8 @@
       mostrar("ok",
         (d.tipo === "SALIDA" ? "Salida registrada" : "Ingreso registrado") +
         `<span class="hora">${esc(d.hora)}</span>` +
-        `<div style="font-size:15px;font-weight:600;opacity:.8;margin-top:8px">${esc(d.nombre || "")}</div>`);
+        `<div style="font-size:15px;font-weight:600;opacity:.8;margin-top:8px">${esc(d.nombre || "")}</div>` +
+        (d.reanudados ? `<div style="font-size:14px;margin-top:8px">Se reanudó tu OT: el cronómetro ya está corriendo.</div>` : ""));
       $("sub").textContent = "Listo, ya puedes cerrar esta página";
 
       if (d.tipo === "INGRESO") {

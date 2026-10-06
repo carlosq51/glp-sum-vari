@@ -180,7 +180,8 @@ async function registrar_(texto, tipo) {
     msg_("ok",
       `${d.tipo === "SALIDA" ? "Salida registrada" : "Ingreso registrado"}
        <span class="tecAsisHora">${escapeHtml(d.hora || "")}</span>` +
-      (d.pausados ? `<div class="small">Se pausaron ${d.pausados} carro(s) en curso.</div>` : ""));
+      (d.pausados ? `<div class="small">Se pausaron ${d.pausados} carro(s) en curso.</div>` : "") +
+      (d.reanudados ? `<div class="small">Se reanudó tu OT: el cronómetro ya está corriendo.</div>` : ""));
 
     const okHtml = $("tecAsisMsg").innerHTML;
     await loadTecAsistencia_();
