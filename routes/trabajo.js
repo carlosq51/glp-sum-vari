@@ -23,6 +23,7 @@ import {
   puedeColaborar_, notaApoyo_, notaDupla_, combinarNotas_,
   ESTADOS_CALIDAD_COLABORATIVA,
 } from "../lib/colaboracion.js";
+import { accionesDe_ } from "../lib/ot-estados.js";
 
 const router = Router();
 
@@ -224,6 +225,49 @@ async function calidadDeOtros_(finalUserId) {
   }));
 }
 
+/**
+ * activasDe_ — la lista de trabajos abiertos de alguien, completa.
+ *
+ * "Completa" son tres cosas, y las tres tienen que ir juntas:
+ *   1. sus asignaciones activas,
+ *   2. las de CALIDAD que el otro inspector ya empezó,
+ *   3. la plaza donde está aparcado cada carro.
+ *
+ * Existe porque /api/mis-activas y /api/sync alimentan LA MISMA pantalla y las
+ * hacían por separado: dos consultas distintas, dos mapeos distintos y los
+ * pasos 2 y 3 copiados. La zona ya se había quedado fuera de uno de los dos
+ * antes, y el síntoma de eso es de los peores: la plaza aparece o desaparece
+ * según por qué camino entró el dato.
+ *
+ * Los fallos de los pasos 2 y 3 no tumban la lista: quedarse sin las ajenas o
+ * sin la plaza es una pantalla incompleta; quedarse sin las propias es no poder
+ * trabajar.
+ */
+async function activasDe_(finalUserId, tecnicoEmail) {
+  const items = await fetchAsignacionesByUser_(
+    finalUserId, tecnicoEmail, "activo=eq.true&estado_actual=neq.FINALIZADO",
+  );
+
+  try {
+    const ajenas = await calidadDeOtros_(finalUserId);
+    for (const a of ajenas) if (!items.some(i => i.id === a.id)) items.push(a);
+  } catch (e) {
+    console.warn("[activas] calidad colaborativa:", e.message);
+  }
+
+  // En una OT cerrada la zona no se pide: ahí ya no dice dónde está el carro
+  // —lo más probable es que se haya ido— y sería una consulta de más por
+  // refresco para acabar mostrando algo falso.
+  try {
+    const zonas = await zonasDeVins_(items.map(i => i.vin));
+    for (const it of items) it.zona = zonas.get(it.vin) ?? null;
+  } catch (e) {
+    console.warn("[activas] no se pudo resolver zonas:", e.message);
+  }
+
+  return items;
+}
+
 /** Nombre de un usuario por id. Devuelve "" si no se puede: una nota sin
  *  nombre es preferible a romper el cierre de un carro. */
 async function nombreDeUsuario_(userId) {
@@ -365,34 +409,7 @@ router.get("/api/mis-activas", async (req, res) => {
 
     const t1 = Date.now();
     const { finalUserId, tecnicoEmail } = await resolveUserId_(email, userId);
-    const items = await fetchAsignacionesByUser_(finalUserId, tecnicoEmail, "activo=eq.true&estado_actual=neq.FINALIZADO");
-
-    // Las de CALIDAD que otro inspector ya empezó. Van ANTES de resolver zonas
-    // para que la plaza salga también en ellas: si el carro que voy a revisar
-    // es el que abrió mi compañero, saber dónde está aparcado importa igual.
-    try {
-      const ajenas = await calidadDeOtros_(finalUserId);
-      for (const a of ajenas) if (!items.some(i => i.id === a.id)) items.push(a);
-    } catch (e) {
-      console.warn("[mis-activas] calidad colaborativa:", e.message);
-    }
-
-    // En qué plaza está aparcado cada carro. Va aquí y no en el helper que
-    // comparten activas y finalizadas: en una OT cerrada la zona ya no dice
-    // dónde está el carro —lo más probable es que se haya ido— y sería una
-    // consulta de más por cada refresco para acabar mostrando algo falso.
-    //
-    // Son un puñado de VINs (los que el técnico tiene abiertos) y dos columnas
-    // por fila; al lado de las asignaciones que ya viajan, no se nota.
-    try {
-      const zonas = await zonasDeVins_(items.map(i => i.vin));
-      for (const it of items) it.zona = zonas.get(it.vin) ?? null;
-    } catch (e) {
-      // Sin zona la tarjeta se pinta igual, solo que sin la plaza. Que el
-      // técnico no pueda ver su trabajo porque falló una consulta accesoria
-      // sería mucho peor que no saber el número de plaza.
-      console.warn("[mis-activas] no se pudo resolver zonas:", e.message);
-    }
+    const items = await activasDe_(finalUserId, tecnicoEmail);
 
     const duration = Date.now() - t1;
 
@@ -724,16 +741,12 @@ router.post("/api/evento", async (req, res) => {
     let runningSince = asignacion?.running_since || null;
     let tiempoAgregado = 0;
 
-    // ? VALIDACIÓN DE TRANSICIÓN DE ESTADO (lado servidor)
-    // Definir transiciones válidas
-    const transicionesValidas = {
-      "SIN_INICIAR": ["INICIO", "NOTA"],
-      "TRABAJANDO": ["PAUSA", "FIN", "NOTA"],
-      "PAUSADO": ["REANUDAR", "FIN", "NOTA"],
-      "FINALIZADO": ["NOTA"],
-    };
-
-    const accionesValidas = transicionesValidas[estadoActual] || ["INICIO", "NOTA"];
+    // VALIDACIÓN DE TRANSICIÓN DE ESTADO (lado servidor).
+    // La tabla vive en lib/ot-estados.js porque la pantalla necesita la misma:
+    // si cada lado tuviera la suya, un botón podría ofrecer algo que el
+    // servidor rechaza. Lo de la OT ajena no se pasa aquí: a este punto solo
+    // se llega con el permiso ya resuelto por puedeColaborar_.
+    const accionesValidas = accionesDe_(estadoActual);
     if (!accionesValidas.includes(accion)) {
       console.warn(
         `[EVENTO] Acción no permitida: estado=${estadoActual}, accion=${accion}. ` +
@@ -1094,107 +1107,35 @@ router.get("/api/estado", async (req, res) => {
 });
 
 // =========================
-// ?? SYNC optimizado — Supabase directo (SIN AppScript = RÁPIDO)
+// SYNC — el respaldo de /api/mis-activas
 // =========================
+//
+// Devuelve lo mismo que /api/mis-activas; lo único suyo es el sobre
+// (server_time, rev, full) que espera el poll del frontend.
+//
+// `since` y `excludeFinalizados` llegaban en el body y ya no se leen: el
+// primero nunca se aplicó —esta ruta siempre respondió la lista entera con
+// `full:false`— y el segundo solo se manda en true. Dejarlos como parámetros
+// prometía un sync incremental que no existe.
 router.post("/api/sync", async (req, res) => {
   try {
     const email = String(req.body?.email || "").trim().toLowerCase();
     const userId = String(req.body?.userId || "").trim();
-    const since = req.body?.since ?? null;
-    const excludeFinalizados = req.body?.excludeFinalizados ?? true;
     const t1 = Date.now();
 
     if (!email && !userId) {
       return res.status(400).json({ ok: false, error: "Envía email o userId" });
     }
 
-    // 1?? Obtén user_id si viene email
-    let finalUserId = userId;
-    if (!finalUserId && email) {
-      const usuarios = await supabaseGet_("usuarios", { email });
-      if (!usuarios?.length) {
-        return res.status(404).json({ ok: false, error: "Usuario no encontrado" });
-      }
-      finalUserId = usuarios[0].id;
-    }
+    const { finalUserId, tecnicoEmail } = await resolveUserId_(email, userId);
 
-    // 2?? Query asignaciones ACTIVAS + work_orders (paralelo)
-    const SUPABASE_URL = process.env.SUPABASE_URL;
-    const headers = supabaseHeaders_();
-
-    let query = `${SUPABASE_URL}/rest/v1/asignaciones?`;
-    query += `user_id=eq.${finalUserId}&activo=eq.true`;
-
-    if (excludeFinalizados) {
-      query += `&estado_actual=neq.FINALIZADO`;
-    }
-
-    query += `&select=*,work_orders(*,vins(reductor_asignado,tanque_asignado))&order=updated_at.desc&limit=50`;
-
-    const res_data = await fetch(query, { method: "GET", headers });
-
-    if (!res_data.ok) {
-      throw new Error(`Supabase ${res_data.status}`);
-    }
-
-    const asignaciones = await res_data.json();
+    // La MISMA lista que /api/mis-activas, por el mismo camino. Esta ruta se
+    // la armaba aparte —su consulta, su mapeo, su copia de las ajenas y de las
+    // zonas— y el frontend la usa como respaldo del acceso directo a Supabase:
+    // el día que las dos no coincidan, el técnico ve una pantalla distinta
+    // según qué camino estuviera disponible, que es imposible de depurar.
+    const items = await activasDe_(finalUserId, tecnicoEmail);
     const duration = Date.now() - t1;
-
-    // Mapea a formato que espera el frontend
-    const items = asignaciones.map(asg => ({
-      asignacion_id: asg.id,
-      vin: asg.work_orders?.vin || "",
-      conversion_id: asg.work_order_id,
-      rol_trabajo: asg.rol_trabajo,
-      estado_actual: asg.estado_actual,
-      tiempo_ms: asg.tiempo_trab_ms || 0,
-      running_since: asg.running_since,
-      created_at: asg.running_since || asg.work_orders?.fecha_creacion || "",
-      fecha_creacion: asg.work_orders?.fecha_creacion || "",
-      last_nota: asg.last_nota || "",
-      work_orders: asg.work_orders || {},
-    }));
-
-    // Mismo añadido que en /api/mis-activas: las OTs de CALIDAD que otro
-    // inspector ya empezó. Los tres caminos que alimentan esta pantalla
-    // (Supabase directo, /api/sync y /api/mis-activas) tienen que traer lo
-    // mismo; si uno se dejara las ajenas, el inspector las vería o no según por
-    // dónde entró el dato.
-    try {
-      const ajenas = await calidadDeOtros_(finalUserId);
-      for (const a of ajenas) {
-        if (items.some(i => i.asignacion_id === a.id)) continue;
-        items.push({
-          asignacion_id:  a.id,
-          vin:            a.vin,
-          conversion_id:  a.work_order_id,
-          work_order_id:  a.work_order_id,
-          rol_trabajo:    a.rol_trabajo,
-          estado_actual:  a.estado_actual,
-          tiempo_ms:      a.tiempo_ms,
-          running_since:  a.running_since,
-          created_at:     a.created_at,
-          fecha_creacion: a.fecha_creacion,
-          last_nota:      a.last_nota,
-          ajena:          true,
-          titular_nombre: a.titular_nombre,
-          work_orders:    { vin: a.vin, fecha_creacion: a.fecha_creacion },
-        });
-      }
-    } catch (e) {
-      console.warn("[sync] calidad colaborativa:", e.message);
-    }
-
-    // La plaza del carro, igual que en /api/mis-activas y en la consulta
-    // directa del navegador. Los tres caminos alimentan la misma tarjeta: si
-    // uno no la trae, la zona aparece o desaparece según por dónde entró el
-    // dato, que es peor que no tenerla.
-    try {
-      const zonas = await zonasDeVins_(items.map(i => i.vin));
-      for (const it of items) it.zona = zonas.get(it.vin) ?? null;
-    } catch (e) {
-      console.warn("[sync] no se pudo resolver zonas:", e.message);
-    }
 
     return res.json({
       ok: true,
@@ -1209,6 +1150,9 @@ router.post("/api/sync", async (req, res) => {
     });
 
   } catch (e) {
+    // El 404 de usuario desconocido lo lanza resolveUserId_ como objeto, no
+    // como Error: sin esta rama se convertía en un 500 con el mensaje vacío.
+    if (e.status === 404) return res.status(404).json({ ok: false, error: e.error });
     console.error("[POST /api/sync]", e.message);
     return res.status(500).json({ ok: false, error: String(e.message || e) });
   }

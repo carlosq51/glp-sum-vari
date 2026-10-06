@@ -12,20 +12,11 @@ export function isFinalizado_(it) {
 /**
  * Acciones que la pantalla deja lanzar sobre una OT.
  *
- * `ajena` (la OT de CALIDAD del compañero) pierde el FIN: el cierre lo da quien
- * la registró. Se quita aquí además de no pintar el botón porque esta lista es
- * la que valida lo que llega por otras vías —el escaneo del VIN, un atajo— y
- * ahí no hay botón que esconder.
+ * La tabla es la MISMA que valida el servidor (lib/ot-estados.js). Esta
+ * comprobación sigue aquí porque hay acciones que no entran por un botón —el
+ * escaneo del VIN, un atajo— y ahí no hay nada que esconder, solo que rechazar.
  */
-export function allowedActionsByEstado(estado, { ajena = false } = {}) {
-  const e = String(estado || "").toUpperCase();
-  const sinCierre = (acc) => (ajena ? acc.filter(a => a !== "FIN") : acc);
-  if (e === "SIN_INICIAR") return ["INICIO", "NOTA"];
-  if (e === "TRABAJANDO") return sinCierre(["PAUSA", "FIN", "NOTA"]);
-  if (e === "PAUSADO") return sinCierre(["REANUDAR", "FIN", "NOTA"]);
-  if (e === "FINALIZADO") return ["NOTA"];
-  return ["INICIO", "NOTA"];
-}
+export { accionesDe_ as allowedActionsByEstado } from "../../../lib/ot-estados.js";
 
 export function shouldShowItemInCurrentModule_(it) {
   const rol = String(it?.rolTrabajo || "").toUpperCase();

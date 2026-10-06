@@ -5,22 +5,42 @@
 
 import { CORE } from "../core/state.js";
 import { escapeHtml } from "../core/format.js";
+import { accionesDe_ } from "../../../lib/ot-estados.js";
+
+// Cada acción, su botón. Antes la tarjeta repetía el mismo <button> en cada
+// rama del estado y la clase CSS se elegía a mano: cambiar el texto de FIN eran
+// dos sitios, y añadir una acción, cuatro.
+//
+// NOTA no está aquí a propósito, aunque el flujo la admita siempre: su botón no
+// vive en esta rejilla, lo saca el textarea de la tarjeta cuando se escribe
+// algo (ver conversion-delegation.js). El único caso en que se pinta es la OT
+// ya cerrada, donde es lo ÚNICO que queda por hacer.
+const BOTON = {
+  INICIO:   { clase: "btnInicio",   texto: "INICIO" },
+  PAUSA:    { clase: "btnPausa",    texto: "PAUSA" },
+  REANUDAR: { clase: "btnReanudar", texto: "REANUDAR" },
+  FIN:      { clase: "btnFin",      texto: "FIN" },
+  NOTA:     { clase: "btnInicio",   texto: "GUARDAR NOTA" },
+};
 
 /**
  * Botones de acción de una tarjeta.
  *
+ * Qué se puede hacer desde cada estado NO se decide aquí: lo dice la tabla que
+ * también valida el servidor (lib/ot-estados.js). Esta función solo la pinta.
+ *
  * `ajena` es la OT de CALIDAD del otro inspector: se ve y se acciona, pero no
  * se cierra —el FIN de una inspección es la firma de quien la hizo—. El botón
- * no se pinta en vez de pintarlo y rebotar: el servidor ya devuelve 409
- * (puedeColaborar_), y un botón que siempre falla es una trampa. En su sitio
- * queda dicho de quién es el cierre, porque un hueco no explica nada.
+ * no se pinta en vez de pintarlo y rebotar, porque uno que siempre falla es una
+ * trampa; en su sitio queda dicho de quién es el cierre, que un hueco no
+ * explica nada.
  */
 export function buildBotonesByEstado_(estado, { ajena = false, titularNombre = "" } = {}) {
-  const e = String(estado || "").toUpperCase();
-
-  if (e === "SIN_INICIAR") {
-    return `<div class="jobActionsGrid"><button class="btnInicio" data-act="INICIO">INICIO</button></div>`;
-  }
+  const cerrada = String(estado || "").toUpperCase() === "FINALIZADO";
+  const botones = accionesDe_(estado, { ajena })
+    .filter(a => BOTON[a] && (cerrada || a !== "NOTA"))
+    .map(a => `<button class="${BOTON[a].clase}" data-act="${a}">${BOTON[a].texto}</button>`)
+    .join("");
 
   const quien = escapeHtml(String(titularNombre || "").trim() || "su titular");
   const cierreAjeno = ajena
@@ -28,23 +48,8 @@ export function buildBotonesByEstado_(estado, { ajena = false, titularNombre = "
         🔒 El cierre es de <b>${quien}</b>
       </div>`
     : "";
-  const fin = ajena ? "" : `<button class="btnFin" data-act="FIN">FIN</button>`;
 
-  if (e === "TRABAJANDO") {
-    return `<div class="jobActionsGrid">
-      <button class="btnPausa" data-act="PAUSA">PAUSA</button>
-      ${fin}
-    </div>${cierreAjeno}`;
-  }
-
-  if (e === "PAUSADO") {
-    return `<div class="jobActionsGrid">
-      <button class="btnReanudar" data-act="REANUDAR">REANUDAR</button>
-      ${fin}
-    </div>${cierreAjeno}`;
-  }
-
-  return `<div class="jobActionsGrid"><button class="btnInicio" data-act="NOTA">GUARDAR NOTA</button></div>`;
+  return `<div class="jobActionsGrid">${botones}</div>${cierreAjeno}`;
 }
 
 export function buildAsignadoHTML_(it) {

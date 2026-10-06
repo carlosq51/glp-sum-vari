@@ -5,6 +5,7 @@
 // =========================
 
 import { cfg } from "./config.js";
+import { ESTADOS_CALIDAD_COLABORATIVA } from "../../../lib/colaboracion.js";
 
 const _env = (typeof window !== "undefined" && window.__ENV__) || {};
 export const SUPABASE_CONFIG = {
@@ -255,22 +256,78 @@ export async function getUsuarioPerfil(email) {
   };
 }
 
-/**
- * GET /api/mis-activas — Obtener trabajos activos del usuario
- * ⚡ OPTIMIZADO: Filtra EN SUPABASE (no trae todo)
- */
-export async function getMisActivas(email, { calidadColaborativa = false } = {}) {
-  if (!supabaseEnabled()) throw new Error("Supabase no configurado");
-  
-  // Obtener user_id (cacheado: no se relee en cada ciclo del poll)
-  const usuario = await usuarioPorEmail_(email);
-  if (!usuario) return [];
+// =========================
+// ASIGNACIONES: una consulta, un mapeo
+// =========================
+//
+// Las tres listas de asignaciones que pide esta pantalla —las mías, las de
+// CALIDAD del compañero y mis finalizadas— tenían cada una su `select` (el
+// mismo, copiado), su mapeo fila→item (el mismo, copiado: 24 líneas × 3) y su
+// bloque de fetch con su mensaje de error. Añadir un campo eran tres sitios, y
+// olvidarse de uno significaba que la MISMA OT se veía distinta según de qué
+// lista hubiera salido.
+//
+// El servidor ya lo tenía resuelto así (mapAsignacion_ en routes/trabajo.js).
+// Aquí se hace igual, y a propósito: las dos caras tienen que devolver lo
+// mismo porque alimentan la misma tarjeta.
 
-  const userId = usuario.id;
-  
-  // 🚀 Query REST con embedded resource (JOIN) a work_orders
-  const select = "id,work_order_id,tipo_ot,rol_trabajo,estado_actual,running_since,tiempo_trab_ms,updated_at,last_nota,work_orders(id,vin,tipo_ramal,estado_general,tanque_registrado,reductor_registrado,fecha_creacion,vins(reductor_asignado,tanque_asignado))";
-  const url = `${SUPABASE_CONFIG.URL}/rest/v1/asignaciones?user_id=eq.${userId}&activo=eq.true&estado_actual=neq.FINALIZADO&select=${encodeURIComponent(select)}&order=updated_at.desc`;
+const SELECT_ASG =
+  "id,work_order_id,tipo_ot,rol_trabajo,estado_actual,running_since,tiempo_trab_ms," +
+  "updated_at,last_nota,work_orders(id,vin,tipo_ramal,estado_general," +
+  "tanque_registrado,reductor_registrado,fecha_creacion," +
+  "vins(reductor_asignado,tanque_asignado))";
+
+// El nombre del titular solo se pide donde hace falta —la lista ajena—: en mis
+// propias OTs el titular soy yo y serían dos campos de egress por fila para
+// decirme mi propio nombre.
+const SELECT_ASG_AJENA = `${SELECT_ASG},user_id,usuarios(id,nombre,email)`;
+
+// PostgREST devuelve el embed como objeto cuando la relación es de muchos a uno
+// y como array cuando la lee por el otro lado. Se aplana una vez, aquí.
+const uno_ = (x) => (Array.isArray(x) ? x[0] : x) || {};
+
+/** Fila de `asignaciones` → item que pinta la tarjeta. */
+function mapAsignacion_(asg) {
+  const wo    = uno_(asg.work_orders);
+  const vins  = uno_(wo.vins);
+  const dueno = uno_(asg.usuarios);
+  return {
+    id:                  asg.id,
+    work_order_id:       asg.work_order_id,
+    tipo_ot:             asg.tipo_ot,
+    rol_trabajo:         asg.rol_trabajo,
+    estado_actual:       asg.estado_actual,
+    estado:              asg.estado_actual,
+    running_since:       asg.running_since,
+    created_at:          asg.running_since || wo.fecha_creacion || "",
+    fecha_creacion:      wo.fecha_creacion || "",
+    tiempo_trab_ms:      Number(asg.tiempo_trab_ms || 0),
+    tiempo_ms:           Number(asg.tiempo_trab_ms || 0),
+    updated_at:          asg.updated_at,
+    last_nota:           asg.last_nota || "",
+    vin:                 wo.vin || "",
+    tipo_ramal:          wo.tipo_ramal || "",
+    tipoRamal:           wo.tipo_ramal || "",
+    estado_general:      wo.estado_general,
+    tanque_registrado:   wo.tanque_registrado,
+    reductor_registrado: wo.reductor_registrado,
+    tanque_asignado:     vins.tanque_asignado   || "",
+    reductor_asignado:   vins.reductor_asignado || "",
+    titular_nombre:      dueno.nombre || "",
+    titular_email:       dueno.email  || "",
+  };
+}
+
+/**
+ * Pide asignaciones a Supabase y las devuelve ya mapeadas.
+ *
+ * `filtro` va tal cual en la querystring. Las filas sin work_order se caen:
+ * una OT sin carro no se puede pintar.
+ */
+async function asignaciones_(filtro, { select = SELECT_ASG, order = "updated_at.desc", limit = 0 } = {}) {
+  const url = `${SUPABASE_CONFIG.URL}/rest/v1/asignaciones?${filtro}` +
+    `&select=${encodeURIComponent(select)}&order=${order}` +
+    (limit ? `&limit=${limit}` : "");
 
   const res = await fetch(url, { method: "GET", headers: supabaseHeaders() });
   if (!res.ok) {
@@ -279,49 +336,33 @@ export async function getMisActivas(email, { calidadColaborativa = false } = {})
   }
 
   const data = await res.json();
+  return (data || []).map(mapAsignacion_).filter(it => it.work_order_id);
+}
 
-  // OJO: aquí NO se puede cortar con `if (!data.length) return []`.
+/**
+ * GET /api/mis-activas — Obtener trabajos activos del usuario
+ * ⚡ OPTIMIZADO: Filtra EN SUPABASE (no trae todo)
+ */
+export async function getMisActivas(email, { calidadColaborativa = false } = {}) {
+  if (!supabaseEnabled()) throw new Error("Supabase no configurado");
+
+  // user_id cacheado: esto corre en cada ciclo del poll
+  const usuario = await usuarioPorEmail_(email);
+  if (!usuario) return [];
+
+  const items = await asignaciones_(
+    `user_id=eq.${usuario.id}&activo=eq.true&estado_actual=neq.FINALIZADO`,
+  );
+
+  // OJO: no se puede cortar con `if (!items.length) return []`.
   //
   // El inspector de CALIDAD que todavía no ha abierto ningún carro propio tiene
   // la lista propia vacía, y es justo el caso en el que MÁS necesita ver la del
   // compañero: llega, no tiene nada suyo, y lo que hay que revisar son los
-  // carros que el otro ya empezó. Con el corte se devolvía [] antes de pedir
-  // las ajenas y la pantalla salía vacía — la colaboración solo funcionaba si
-  // por casualidad tenías algo tuyo abierto.
-  const items = (data || [])
-    .map(asg => {
-      const wo = Array.isArray(asg.work_orders) 
-        ? asg.work_orders[0] 
-        : asg.work_orders;
-      return {
-        id: asg.id,
-        work_order_id: asg.work_order_id,
-        tipo_ot: asg.tipo_ot,
-        rol_trabajo: asg.rol_trabajo,
-        estado_actual: asg.estado_actual,
-        running_since: asg.running_since,
-        created_at: asg.running_since || wo?.fecha_creacion || "",
-        fecha_creacion: wo?.fecha_creacion || "",
-        tiempo_trab_ms: asg.tiempo_trab_ms || 0,
-        updated_at: asg.updated_at,
-        last_nota: asg.last_nota || "",
-        vin: wo?.vin || "",
-        tipo_ramal: wo?.tipo_ramal || "",
-        tipoRamal: wo?.tipo_ramal || "",
-        estado_general: wo?.estado_general,
-        tanque_registrado: wo?.tanque_registrado,
-        reductor_registrado: wo?.reductor_registrado,
-        tanque_asignado: wo?.vins?.tanque_asignado || "",
-        reductor_asignado: wo?.vins?.reductor_asignado || "",
-        tiempo_ms: Number(asg.tiempo_trab_ms || 0),
-        estado: asg.estado_actual,
-      };
-    })
-    .filter(it => it.work_order_id);
-
-  if (calidadColaborativa) {
-    items.push(...await calidadDeOtros_(userId));
-  }
+  // carros que el otro ya empezó. Ese corte estuvo ahí y la pantalla salía
+  // vacía: la colaboración solo funcionaba si por casualidad tenías algo tuyo
+  // abierto.
+  if (calidadColaborativa) items.push(...await calidadDeOtros_(usuario.id));
 
   return await conZonas_(items);
 }
@@ -345,43 +386,13 @@ export async function getMisActivas(email, { calidadColaborativa = false } = {})
  * compañero, que es mucho menos grave que quedarse sin ver las suyas.
  */
 async function calidadDeOtros_(userId) {
-  const select = "id,work_order_id,tipo_ot,rol_trabajo,estado_actual,running_since,tiempo_trab_ms,updated_at,last_nota,user_id,usuarios(id,nombre,email),work_orders(id,vin,tipo_ramal,estado_general,tanque_registrado,reductor_registrado,fecha_creacion)";
-  const url = `${SUPABASE_CONFIG.URL}/rest/v1/asignaciones?user_id=neq.${userId}` +
-    `&tipo_ot=eq.CALIDAD&activo=eq.true&estado_actual=in.(TRABAJANDO,PAUSADO)` +
-    `&select=${encodeURIComponent(select)}&order=updated_at.desc`;
-
+  const estados = ESTADOS_CALIDAD_COLABORATIVA.join(",");
   try {
-    const res = await fetch(url, { method: "GET", headers: supabaseHeaders() });
-    if (!res.ok) return [];
-    const data = await res.json();
-    return (data || []).map(asg => {
-      const wo = Array.isArray(asg.work_orders) ? asg.work_orders[0] : asg.work_orders;
-      const titular = Array.isArray(asg.usuarios) ? asg.usuarios[0] : asg.usuarios;
-      return {
-        id: asg.id,
-        work_order_id: asg.work_order_id,
-        tipo_ot: asg.tipo_ot,
-        rol_trabajo: asg.rol_trabajo,
-        estado_actual: asg.estado_actual,
-        running_since: asg.running_since,
-        created_at: asg.running_since || wo?.fecha_creacion || "",
-        fecha_creacion: wo?.fecha_creacion || "",
-        tiempo_trab_ms: asg.tiempo_trab_ms || 0,
-        updated_at: asg.updated_at,
-        last_nota: asg.last_nota || "",
-        vin: wo?.vin || "",
-        tipo_ramal: wo?.tipo_ramal || "",
-        tipoRamal: wo?.tipo_ramal || "",
-        estado_general: wo?.estado_general,
-        tanque_registrado: wo?.tanque_registrado,
-        reductor_registrado: wo?.reductor_registrado,
-        tiempo_ms: Number(asg.tiempo_trab_ms || 0),
-        estado: asg.estado_actual,
-        ajena: true,
-        titular_nombre: titular?.nombre || "",
-        titular_email: titular?.email || "",
-      };
-    }).filter(it => it.work_order_id);
+    const items = await asignaciones_(
+      `user_id=neq.${userId}&tipo_ot=eq.CALIDAD&activo=eq.true&estado_actual=in.(${estados})`,
+      { select: SELECT_ASG_AJENA },
+    );
+    return items.map(it => ({ ...it, ajena: true }));
   } catch {
     return [];
   }
@@ -442,66 +453,22 @@ async function conZonas_(items) {
 export async function getMisFinalizadas(email) {
   if (!supabaseEnabled()) throw new Error("Supabase no configurado");
 
-  // Obtener user_id (cacheado)
   const usuario = await usuarioPorEmail_(email);
   if (!usuario) return [];
-
-  const userId = usuario.id;
 
   const dias  = Math.max(1, Number(cfg("LIM_FINALIZADOS_DIAS")) || 30);
   const tope  = Math.max(1, Number(cfg("LIM_FINALIZADOS")) || 100);
   const desde = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString();
 
-  // 🚀 Query REST con embedded resource (JOIN) a work_orders
-  const select = "id,work_order_id,tipo_ot,rol_trabajo,estado_actual,running_since,tiempo_trab_ms,updated_at,last_nota,work_orders(id,vin,tipo_ramal,estado_general,tanque_registrado,reductor_registrado,fecha_creacion,vins(reductor_asignado,tanque_asignado))";
-  // El gemelo de esta consulta vive en routes/trabajo.js (/api/finalizadas) y
-  // el comentario de allá avisa de lo que pasa si divergen: el técnico vería
-  // una lista distinta según si Supabase está configurado o no. `activo` va en
-  // las dos.
-  const url = `${SUPABASE_CONFIG.URL}/rest/v1/asignaciones?user_id=eq.${userId}&activo=eq.true&estado_actual=eq.FINALIZADO` +
-    `&updated_at=gte.${encodeURIComponent(desde)}` +
-    `&select=${encodeURIComponent(select)}&order=updated_at.desc&limit=${tope}`;
-
-  const res = await fetch(url, { method: "GET", headers: supabaseHeaders() });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Supabase GET asignaciones finalizadas: ${res.status} ${text}`);
-  }
-
-  const data = await res.json();
-  if (!data || !data.length) return [];
-  
-  // Enriquecer: extraer work_order info del JOIN
-  return data
-    .map(asg => {
-      const wo = Array.isArray(asg.work_orders) 
-        ? asg.work_orders[0] 
-        : asg.work_orders;
-      return {
-        id: asg.id,
-        work_order_id: asg.work_order_id,
-        tipo_ot: asg.tipo_ot,
-        rol_trabajo: asg.rol_trabajo,
-        estado_actual: asg.estado_actual,
-        running_since: asg.running_since,
-        created_at: asg.running_since || wo?.fecha_creacion || "",
-        fecha_creacion: wo?.fecha_creacion || "",
-        tiempo_trab_ms: asg.tiempo_trab_ms || 0,
-        updated_at: asg.updated_at,
-        last_nota: asg.last_nota || "",
-        vin: wo?.vin || "",
-        tipo_ramal: wo?.tipo_ramal || "",
-        tipoRamal: wo?.tipo_ramal || "",
-        estado_general: wo?.estado_general,
-        tanque_registrado: wo?.tanque_registrado,
-        reductor_registrado: wo?.reductor_registrado,
-        tanque_asignado: wo?.vins?.tanque_asignado || "",
-        reductor_asignado: wo?.vins?.reductor_asignado || "",
-        tiempo_ms: Number(asg.tiempo_trab_ms || 0),
-        estado: asg.estado_actual,
-      };
-    })
-    .filter(it => it.work_order_id);
+  // El gemelo de esta consulta vive en routes/trabajo.js (/api/mis-finalizadas)
+  // con los MISMOS límites: si divergieran, el técnico vería una lista distinta
+  // según si Supabase está configurado o no. `activo` va en las dos — el carro
+  // que se le quitó a alguien deja de estar en su lista.
+  return asignaciones_(
+    `user_id=eq.${usuario.id}&activo=eq.true&estado_actual=eq.FINALIZADO` +
+    `&updated_at=gte.${encodeURIComponent(desde)}`,
+    { limit: tope },
+  );
 }
 
 /**
