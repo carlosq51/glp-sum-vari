@@ -314,9 +314,34 @@
   letter-spacing: .02em;
 }
 
+/* ── Estimado de la plaza (zonas-eta.js) ──
+   Una línea de 8 px bajo el tiempo: cuánto le falta al carro (supervisión) o
+   si alcanza hoy (movilizador). El color es el veredicto, porque en una
+   tarjeta de este tamaño el color se lee antes que el texto:
+     verde  → cabe en lo que queda de turno
+     ámbar  → no cabe: mañana
+     celeste→ ya pasó lo que tarda de normal, puede salir en cualquier momento
+     rojo   → le falta media dupla, y eso no lo arregla el ritmo */
+.zonaEta {
+  font-size: 8px;
+  line-height: 1;
+  margin-top: 2px;
+  font-weight: 700;
+  letter-spacing: .02em;
+  text-align: center;
+}
+.zonaEta--hoy    { color: var(--ok); }
+.zonaEta--manana { color: var(--warn); }
+.zonaEta--ya     { color: var(--note); }
+.zonaEta--falta  { color: var(--danger); }
+
+/* La misma línea, explicada, en la hoja de acciones de la plaza. */
+.zonaEtaLinea { margin-top: -4px; }
+
 /* Mostrar/ocultar según estado */
 .zonaCard--libre .zonaCarOuter,
 .zonaCard--libre .zonaVin,
+.zonaCard--libre .zonaEta,
 .zonaCard--libre .zonaTime { display: none; }
 .zonaCard--esperando .zonaEmptyP,
 .zonaCard--en_conversion .zonaEmptyP,

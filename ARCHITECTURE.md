@@ -121,6 +121,7 @@ app.listen(PORT) → scheduleAutoRetrain_() + scheduleAutoNormalize_()
 | `lib/timing.js` | `measureTime_()`, `addServerTiming_()` |
 | `lib/utils.js` | `isValidOT_()`, `normalizeModelo_()` |
 | `lib/ml-state.js` | `pendingSuggestions_` (Map; escrito por `routes/ml.js`, leído por `routes/trabajo.js`) |
+| `lib/eta-carro.js` | `medianasPorCelda_()`, `medianaDe_()`, `minutosUtiles_()`, `etaCarro_()` — cuánto trabajo le falta a un carro en su plaza y si alcanza el turno. NO da hora de reloj: el reloj trabajado es estrecho (mediana 2,8 h/mitad) pero el de pared no (p75 = 11 h). Lo lee `routes/zonas.js` (medianas, 1×día) y lo pinta `views/zonas/zonas-eta.js` |
 | `lib/ot-estados.js` | `ACCIONES_POR_ESTADO`, `accionesDe_()` — tabla estado→acciones de la OT. La leen el servidor (`routes/trabajo.js`) y la pantalla (`work-status.js`, `work-templates.js`): si cada lado tuviera la suya, un botón podría ofrecer algo que el servidor rechaza |
 | `lib/colaboracion.js` | `puedeColaborar_()`, `ESTADOS_CALIDAD_COLABORATIVA`, `notaApoyo_()`, `notaDupla_()`, `combinarNotas_()` — cuándo se puede accionar la OT de otro (ayudante del carro extra; segundo inspector de CALIDAD, que la ve y la trabaja pero NO la cierra) |
 

@@ -6,6 +6,7 @@ import { getConfig_ } from "../lib/config.js";
 import { fechaPeruMenosDias_ } from "../lib/utils.js";
 import { dispararMotor_, despachoReparteAhora_ } from "./despacho.js";
 import { getUsuarioByEmail_ } from "../lib/authz.js";
+import { medianasPorCelda_, medianasParaRed_ } from "../lib/eta-carro.js";
 
 const router = Router();
 
@@ -101,6 +102,71 @@ async function registrarHistorial_(filas) {
 }
 
 // ─── CONVERSION ZONAS ──────────────────────────────────────────────────────
+// ─── CUÁNTO TARDA CADA TRABAJO ─────────────────────────────────────────────
+//
+// El listón contra el que se mide lo que le falta a un carro: la mediana de las
+// mitades YA cerradas, por modelo y puesto (lib/eta-carro.js explica por qué
+// por modelo y por qué mediana).
+//
+// Cache aparte del mapa y de un DÍA, no de segundos. El mapa se sirve cacheado
+// unos segundos porque lo piden la TV, el movilizador y el técnico en bucle; si
+// esto colgara de ese mismo cache, cada vencimiento dispararía la lectura de
+// mes y medio de historia. La mediana de 45 días no se mueve en una tarde.
+let _medianas = { dia: "", valor: null };
+
+async function medianasDelTaller_(cfg) {
+  const hoy = fechaPeruMenosDias_(0);
+  if (_medianas.dia === hoy && _medianas.valor) return _medianas.valor;
+
+  const SUPABASE_URL = process.env.SUPABASE_URL;
+  const headers = supabaseHeaders_();
+  const dias  = Math.max(7, Number(cfg?.ETA_HIST_DIAS) || 45);
+  const desde = fechaPeruMenosDias_(dias);
+
+  const registros = [];
+  try {
+    // PostgREST corta en 1000 filas por respuesta, y mes y medio de mitades son
+    // más: se pagina. Van las cerradas y nada más — una mitad abierta no dice
+    // cuánto duró, dice cuánto lleva.
+    for (let pagina = 0; pagina < 6; pagina++) {
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/asignaciones?tipo_ot=eq.CONVERSION&estado_actual=eq.FINALIZADO` +
+        // `activo=eq.true`: una asignación anulada es trabajo que NO ocurrió —se
+        // le quitó el carro a alguien— y su reloj parcial correría el listón
+        // hacia abajo. Lo exige el candado de test/asignaciones-anuladas.test.js,
+        // que es el que cazó esta consulta recién escrita.
+        `&activo=eq.true&rol_trabajo=in.(MOTOR,TANQUE)&updated_at=gte.${desde}T00:00:00` +
+        `&select=rol_trabajo,tiempo_trab_ms,work_orders(vins(modelo_normalizado))` +
+        `&order=updated_at.desc&limit=1000&offset=${pagina * 1000}`,
+        { method: "GET", headers },
+      );
+      if (!r.ok) break;
+      const filas = await r.json();
+      for (const f of filas) {
+        const wo = Array.isArray(f.work_orders) ? f.work_orders[0] : f.work_orders;
+        const v  = Array.isArray(wo?.vins) ? wo.vins[0] : wo?.vins;
+        registros.push({
+          modelo: v?.modelo_normalizado || "",
+          rol: f.rol_trabajo,
+          ms: Number(f.tiempo_trab_ms || 0),
+        });
+      }
+      if (filas.length < 1000) break;
+    }
+  } catch (e) {
+    console.warn("[zonas] no se pudo leer la historia para el estimado:", e.message);
+  }
+
+  // Sin historia no se guarda nada para hoy: se reintenta en la siguiente
+  // pasada en vez de dejar el mapa un día entero sin estimado por un fallo de
+  // red. El mapa se pinta igual; lo que falta es una línea de la tarjeta.
+  if (!registros.length) return null;
+
+  const valor = medianasParaRed_(medianasPorCelda_(registros));
+  _medianas = { dia: hoy, valor };
+  return valor;
+}
+
 // GET /api/zonas
 // 15 zonas físicas + zona 16 virtual (VINs sin zona asignada).
 // El estado de cada zona se computa desde work_orders en tiempo real.
@@ -204,7 +270,7 @@ async function armarMapaZonas_() {
         try {
           const woIds = allWos.map(w => w.id).join(",");
           const asgResp = await fetch(
-            `${SUPABASE_URL}/rest/v1/asignaciones?work_order_id=in.(${encodeURIComponent(woIds)})&activo=eq.true&select=work_order_id,user_id,rol_trabajo,estado_actual`,
+            `${SUPABASE_URL}/rest/v1/asignaciones?work_order_id=in.(${encodeURIComponent(woIds)})&activo=eq.true&select=work_order_id,user_id,rol_trabajo,estado_actual,tiempo_trab_ms,running_since`,
             { method: "GET", headers }
           );
           const asgs = asgResp.ok ? await asgResp.json() : [];
@@ -228,6 +294,20 @@ async function armarMapaZonas_() {
               const entry = map.get(vin);
               if (rol === "MOTOR") { entry.delantero = primerNombre; entry.delantero_fin = fin; }
               else if (rol === "TANQUE") { entry.tanquero = primerNombre; entry.tanquero_fin = fin; }
+
+              // El reloj de la mitad, para el estimado de cuánto le falta al
+              // carro (lib/eta-carro.js). Van los DATOS y no el estimado ya
+              // hecho porque esta respuesta se sirve cacheada unos segundos y
+              // un "falta 1 h" calculado aquí nacería viejo: el cliente lo
+              // calcula al pintar, igual que hace con el cronómetro.
+              if (rol === "MOTOR" || rol === "TANQUE") {
+                entry.relojes = entry.relojes || {};
+                entry.relojes[rol] = {
+                  estado: String(a.estado_actual || "").toUpperCase(),
+                  tiempoMs: Number(a.tiempo_trab_ms || 0),
+                  runningSince: a.running_since || null,
+                };
+              }
             }
           }
         } catch {}
@@ -385,7 +465,11 @@ async function armarMapaZonas_() {
         .catch(() => {});
     }
 
-    return { ok: true, zonas, sin_zona };
+    // El listón del estimado viaja UNA vez, no por plaza: son unos veinte
+    // números (modelo × puesto) y el cliente elige el del carro que pinta.
+    const eta_medianas = await medianasDelTaller_(await getConfig_());
+
+    return { ok: true, zonas, sin_zona, eta_medianas };
   }
 }
 

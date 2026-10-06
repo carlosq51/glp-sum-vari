@@ -29,6 +29,11 @@ const DEFAULTS = {
   PROYECCION_FIN_TURNO:    "16:30",
   LIVE_CORTES: "05:00-10:30|07:00–10:30,10:30-13:00,13:00-16:30,16:30-19:30,19:30-23:00,23:00-02:00|23:00–01:00",
 
+  // El estimado de la plaza necesita el fin de turno (arriba) y la comida: una
+  // hora de almuerzo por delante no es tiempo en el que el carro avance.
+  HORARIO_COMIDA_INICIO: "13:00",
+  HORARIO_COMIDA_FIN:    "14:00",
+
   TARGET_CONVERSION_MIN: 180,
   TARGET_CALIDAD_MIN:     50,
   TARGET_RAMAL_MIN:       40,

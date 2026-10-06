@@ -23,8 +23,11 @@ export const COL_DERECHA   = [9, 8, 7, 6, 5, 4, 3, 2, 1]; // Z9 arriba  → Z1 a
  * @param {boolean} o.clickable  false agrega .readOnly y role="presentation"
  * @param {string}  [o.attrs]    atributos extra del wrapper (data-estado, data-clickable…)
  * @param {string}  [o.extraClass] clases extra del wrapper (dotación del carro en el mapa)
+ * @param {string}  [o.badge]    línea extra bajo el tiempo, ya en HTML. La usa el
+ *   mapa del movilizador para el estimado de la plaza; el del técnico no manda
+ *   nada y su tarjeta queda exactamente como estaba.
  */
-export function zonaCardHTML_(z, { variant = "libre", clickable = true, attrs = "", extraClass = "" } = {}) {
+export function zonaCardHTML_(z, { variant = "libre", clickable = true, attrs = "", extraClass = "", badge = "" } = {}) {
   const isOcupada = !!z.vin;
   const vinShort  = z.vin ? z.vin.slice(-8) : "";
   const delantero = z.tecnicos?.delantero || "";
@@ -54,6 +57,7 @@ export function zonaCardHTML_(z, { variant = "libre", clickable = true, attrs = 
         </div>
         <span class="zonaVin">${escapeHtml(vinShort)}</span>
         ${tiempo ? `<span class="zonaTime">${tiempo}</span>` : ""}
+        ${badge}
       ` : `<span class="zonaEmptyP">P</span>`}
     </div>`;
 }

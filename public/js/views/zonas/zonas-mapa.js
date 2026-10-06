@@ -9,6 +9,7 @@ import { createScanner } from "../../core/qr-scanner.js";
 import { startPoll, stopPoll } from "../../core/poll.js";
 import { zonaCardHTML_, zonasGridHTML_ } from "./zonas-layout.js";
 import { puedeDespachar_, montarPuestos_, CONSOLA_DESPACHO } from "./zonas-despacho.js";
+import { etaDeZona_, etaBadgeHTML_, etaLineaHTML_ } from "./zonas-eta.js";
 
 // Toda escritura del mapa va firmada con la cuenta en sesión: el servidor
 // resuelve el nombre contra `usuarios` y lo guarda en zonas_historial. Antes
@@ -67,18 +68,21 @@ function marcarLlegadas_(container, zonas) {
   return antes ? new Set([...ahora].filter(v => !antes.has(v))) : new Set();
 }
 
-function renderZonaCard_(z, readOnly, nuevos) {
+function renderZonaCard_(z, readOnly, nuevos, medianas) {
   return zonaCardHTML_(z, {
     variant: ESTADO_CSS[z.estado] || "libre",
     clickable: !readOnly,
     attrs: `data-estado="${z.estado}"`,
     extraClass: dotacionClass_(z, nuevos),
+    // El estimado de la plaza. Quién ve el número y quién solo el veredicto lo
+    // decide zonas-eta.js; aquí se pinta lo que devuelva.
+    badge: etaBadgeHTML_(etaDeZona_(z, medianas)),
   });
 }
 
-function renderMapa_(container, zonas, sinZona, readOnly) {
+function renderMapa_(container, zonas, sinZona, readOnly, medianas = null) {
   const nuevos = marcarLlegadas_(container, zonas);
-  const gridHTML = zonasGridHTML_(zonas, z => renderZonaCard_(z, readOnly, nuevos));
+  const gridHTML = zonasGridHTML_(zonas, z => renderZonaCard_(z, readOnly, nuevos, medianas));
 
   // Contador solo zonas numeradas 1-15 con estado FINALIZADO
   const finalizados = zonas.filter(z => z.estado === "FINALIZADO").length;
@@ -213,6 +217,7 @@ function openActionSheet_(zona, onRefresh) {
         <button class="zonasPickerClose" id="zonasActionCloseBtn" type="button">✕</button>
       </div>
       <span class="zonasActionEstado zonasActionEstado--${css}">${label}</span>
+      ${hasVin ? etaLineaHTML_(etaDeZona_(zona, _zonaData?.eta_medianas)) : ""}
 
       <!-- Los técnicos del carro van ARRIBA de los botones de la plaza: quien
            abre esta hoja con un carro dentro viene casi siempre a mirar o a
@@ -529,7 +534,7 @@ export function initZonasMapa(containerId, opts = {}) {
       const j   = res.ok ? await res.json() : null;
       if (!j?.ok) return;
       _zonaData = j;
-      renderMapa_(container, j.zonas, j.sin_zona, readOnly);
+      renderMapa_(container, j.zonas, j.sin_zona, readOnly, j.eta_medianas);
       updateTs_();
       if (!readOnly) bindMapaClicks_(container, onZoneAction);
     } catch {}
@@ -563,7 +568,7 @@ function bindMapaClicks_(container, onZoneAction) {
     const j   = res.ok ? await res.json() : null;
     if (!j?.ok) return;
     _zonaData = j;
-    renderMapa_(container, j.zonas, j.sin_zona, false);
+    renderMapa_(container, j.zonas, j.sin_zona, false, j.eta_medianas);
     bindMapaClicks_(container, onZoneAction);
     if (onZoneAction) onZoneAction();
   };
