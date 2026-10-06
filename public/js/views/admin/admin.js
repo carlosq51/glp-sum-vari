@@ -276,16 +276,16 @@ function renderTable(rows, { query = "", truncated = false } = {}) {
          titulo: meta.label || S.tab, sub: meta.desc || "", rows }];
 
   return aviso + grupos.map(g => `
-    <section class="adminGroup adminGroup--tabla" style="--tone:${g.tone};">
-      <div class="adminGroupHdr">
-        <span class="adminGroupIcon" aria-hidden="true">${icon(g.icon, 24)}</span>
-        <div class="adminGroupText">
-          <span class="adminGroupTitle">${escHtml(g.titulo)}</span>
-          ${g.sub ? `<span class="adminGroupSub">${escHtml(g.sub)}</span>` : ""}
+    <section class="dataBlock adminGroup--tabla" style="--tone:${g.tone};">
+      <div class="dataBlock__hdr">
+        <span class="dataBlock__icon" aria-hidden="true">${icon(g.icon, 24)}</span>
+        <div class="dataBlock__text">
+          <span class="dataBlock__title">${escHtml(g.titulo)}</span>
+          ${g.sub ? `<span class="dataBlock__sub">${escHtml(g.sub)}</span>` : ""}
         </div>
-        <span class="adminGroupCount">${g.rows.length}</span>
+        <span class="dataBlock__count">${g.rows.length}</span>
       </div>
-      <div class="adminGroupBody adminGroupBody--tabla">${tablaHtml(g.rows)}</div>
+      <div class="dataBlock__body dataBlock__body--flush">${tablaHtml(g.rows)}</div>
     </section>`).join("");
 }
 
@@ -2096,17 +2096,17 @@ function showAdminCards_() {
 
   const bloque_ = (g, secciones) => {
     const block = document.createElement("section");
-    block.className = "adminGroup";
+    block.className = "dataBlock adminGroup";
     block.dataset.group = g.id;
     block.innerHTML = `
-      <div class="adminGroupHdr">
-        <span class="adminGroupIcon" aria-hidden="true">${icon(g.icon, 24)}</span>
-        <div class="adminGroupText">
-          <span class="adminGroupTitle">${g.titulo}</span>
-          <span class="adminGroupSub">${g.sub}</span>
+      <div class="dataBlock__hdr">
+        <span class="dataBlock__icon" aria-hidden="true">${icon(g.icon, 24)}</span>
+        <div class="dataBlock__text">
+          <span class="dataBlock__title">${g.titulo}</span>
+          <span class="dataBlock__sub">${g.sub}</span>
         </div>
       </div>
-      <div class="adminGroupBody"></div>`;
+      <div class="dataBlock__body adminGroupBody"></div>`;
     const body = block.querySelector(".adminGroupBody");
     secciones.forEach(k => body.appendChild(cartilla_(k)));
     return block;

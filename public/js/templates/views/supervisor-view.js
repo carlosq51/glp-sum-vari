@@ -33,61 +33,92 @@ export function supervisorView() {
            PANEL REPORTE (contenido anterior)
       ══════════════════════════════════════════════ -->
       <div id="supPanelReporte" style="display:none;">
-        <div class="small" style="margin-top:6px;">Filtros opcionales: nombre/email, fechas o mes.</div>
 
-        <div class="supTrackRow">
-          <button type="button" class="btn" data-suptrack="CONVERSION">CONVERSIÓN</button>
-          <button type="button" class="btn" data-suptrack="CALIDAD">CALIDAD</button>
-          <button type="button" class="btn" data-suptrack="RAMAL">RAMAL</button>
-        </div>
-        <div id="supTrackPill" class="pill small" style="text-align:center;">
-          CONVERSIÓN (MOTOR + TANQUE)
-        </div>
-
-        <div class="fullStack" style="margin-top:10px;">
-          <div class="supNameWrap" style="display:flex; gap:10px; align-items:center;">
-            <input id="supName" type="text" placeholder="Buscar por nombre o email..." autocomplete="off" style="flex:1;" />
-            <select id="supMarca" class="supSelect" title="Filtrar por marca">
-              <option value="ALL">TODOS</option>
-              <option value="KYC">KYC</option>
-              <option value="JETOUR">JETOUR</option>
-              <option value="VW">VOLKSWAGEN</option>
-            </select>
-            <div id="supNameSuggest" class="nameSuggest hidden" role="listbox"></div>
-          </div>
-
-          <div class="supVinRow">
-            <div class="supVinWrap">
-              <input id="supVin" type="text" placeholder="Buscar por VIN..." autocomplete="off" />
-              <div id="supVinSuggest" class="vinSuggest hidden" role="listbox"></div>
+        <!-- Bloque 1 — qué se quiere ver. Antes era una línea de "Filtros
+             opcionales: …" y siete controles sueltos uno debajo de otro y sin
+             etiqueta: los dos campos de fecha no decían cuál era el desde y
+             cuál el hasta hasta que los abrías. -->
+        <section class="dataBlock supRepBlock" style="--tone:var(--accent);">
+          <div class="dataBlock__hdr">
+            <span class="dataBlock__icon" aria-hidden="true">${icon("sliders", 22)}</span>
+            <div class="dataBlock__text">
+              <span class="dataBlock__title">Qué quieres ver</span>
+              <span class="dataBlock__sub">Elige el tipo de trabajo; lo de abajo es opcional</span>
             </div>
-            <button id="btnSupQR" type="button" title="Escanear VIN con cámara">${icon("camera", 16)}</button>
           </div>
+          <div class="dataBlock__body">
+            <div class="supTrackRow">
+              <button type="button" class="btn" data-suptrack="CONVERSION">CONVERSIÓN</button>
+              <button type="button" class="btn" data-suptrack="CALIDAD">CALIDAD</button>
+              <button type="button" class="btn" data-suptrack="RAMAL">RAMAL</button>
+            </div>
+            <div id="supTrackPill" class="pill small" style="text-align:center;">
+              CONVERSIÓN (MOTOR + TANQUE)
+            </div>
 
-          <div class="supDateRow">
-            <input id="supFrom" type="date" />
-            <input id="supTo" type="date" />
-            <button id="btnSupAyer" type="button" class="btn3" title="Rango: Ayer">AYER</button>
-            <button id="btnSupHoy" type="button" class="btn3" title="Rango: Hoy">HOY</button>
-          </div>
+            <div class="fullStack" style="margin-top:12px;">
+              <div class="supField">
+                <label class="supFieldLabel" for="supName">Persona y marca</label>
+                <div class="supNameWrap" style="display:flex; gap:10px; align-items:center;">
+                  <input id="supName" type="text" placeholder="Nombre o correo…" autocomplete="off" style="flex:1;" />
+                  <select id="supMarca" class="supSelect" title="Filtrar por marca">
+                    <option value="ALL">TODOS</option>
+                    <option value="KYC">KYC</option>
+                    <option value="JETOUR">JETOUR</option>
+                    <option value="VW">VOLKSWAGEN</option>
+                  </select>
+                  <div id="supNameSuggest" class="nameSuggest hidden" role="listbox"></div>
+                </div>
+              </div>
 
-          <div class="row" style="gap:10px; align-items:center;">
-            <input id="supMonth" type="month" placeholder="Mes (YYYY-MM)" style="flex:1;" />
-            <button id="btnSupEsteMes" type="button" class="btn3" title="Filtrar por este mes">ESTE MES</button>
-          </div>
+              <div class="supField">
+                <label class="supFieldLabel" for="supVin">VIN</label>
+                <div class="supVinRow">
+                  <div class="supVinWrap">
+                    <input id="supVin" type="text" placeholder="Buscar por VIN…" autocomplete="off" />
+                    <div id="supVinSuggest" class="vinSuggest hidden" role="listbox"></div>
+                  </div>
+                  <button id="btnSupQR" type="button" title="Escanear VIN con cámara">${icon("camera", 16)}</button>
+                </div>
+              </div>
 
-          <div class="twoWide">
-            <button id="btnSupApply">Aplicar filtros</button>
-            <button id="btnSupClear">Limpiar</button>
+              <div class="supDateRow">
+                <div class="supField">
+                  <label class="supFieldLabel" for="supFrom">Desde</label>
+                  <input id="supFrom" type="date" />
+                </div>
+                <div class="supField">
+                  <label class="supFieldLabel" for="supTo">Hasta</label>
+                  <input id="supTo" type="date" />
+                </div>
+                <button id="btnSupAyer" type="button" class="btn3" title="Rango: Ayer">AYER</button>
+                <button id="btnSupHoy" type="button" class="btn3" title="Rango: Hoy">HOY</button>
+              </div>
+
+              <div class="supMonthRow">
+                <div class="supField">
+                  <label class="supFieldLabel" for="supMonth">O un mes completo</label>
+                  <input id="supMonth" type="month" placeholder="Mes (YYYY-MM)" />
+                </div>
+                <button id="btnSupEsteMes" type="button" class="btn3" title="Filtrar por este mes">ESTE MES</button>
+              </div>
+
+              <div class="twoWide">
+                <button id="btnSupApply">Aplicar filtros</button>
+                <button id="btnSupClear">Limpiar</button>
+              </div>
+              <div style="text-align:right;margin-top:4px;">
+                <button id="btnSupExportCsv" type="button" class="btn3" title="Exportar tabla actual como CSV">${icon("download", 14)} Exportar CSV</button>
+              </div>
+            </div>
           </div>
-          <div style="text-align:right;margin-top:4px;">
-            <button id="btnSupExportCsv" type="button" class="btn3" title="Exportar tabla actual como CSV">${icon("download", 14)} Exportar CSV</button>
-          </div>
-        </div>
+        </section>
 
         <div id="supAvgCard" style="margin-top:10px;"></div>
 
-        <!-- Panel visual: gráficos del reporte (estilo Power BI) -->
+        <!-- Panel visual: UN gráfico con las cuatro preguntas en pestañas
+             (por día / estado / técnicos / modelos). Lo arma sup-dashboard.js
+             dentro de un .dataBlock, igual que los bloques de este panel. -->
         <div id="supDashboard" style="display:none;"></div>
 
         <!-- Panel de KPIs -->
@@ -119,8 +150,22 @@ export function supervisorView() {
           <div id="supTecnicosPanel" style="display:none; margin-top:14px;"></div>
         </div>
 
-        <div id="supSummary" class="small" style="margin-top:10px;"></div>
-        <div id="supTable" style="margin-top:10px;"></div>
+        <!-- Bloque final — el detalle, trabajo por trabajo. Iba sin cabecera:
+             después de los gráficos aparecían cien tarjetas sin que nada
+             dijera qué eran ni de qué filtro salían. El resumen que antes era
+             una línea gris suelta ahora es la bajada del bloque. -->
+        <section class="dataBlock supRepBlock" style="--tone:var(--tone-slate);">
+          <div class="dataBlock__hdr">
+            <span class="dataBlock__icon" aria-hidden="true">${icon("listChecks", 22)}</span>
+            <div class="dataBlock__text">
+              <span class="dataBlock__title">Detalle</span>
+              <span class="dataBlock__sub" id="supSummary">Un trabajo por tarjeta</span>
+            </div>
+          </div>
+          <div class="dataBlock__body">
+            <div id="supTable"></div>
+          </div>
+        </section>
       </div>
 
       <!-- ══════════════════════════════════════════════

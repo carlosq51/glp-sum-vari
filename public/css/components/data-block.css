@@ -1,0 +1,126 @@
+/* =====================================================================
+   components/data-block.css — Bloque de datos con cabecera de color
+   ---------------------------------------------------------------------
+   El patrón que nació en la vista Movilizador (grupos de Ingreso) y que
+   ahora usan también el panel de Admin y el reporte del Supervisor: una
+   caja cerrada con cabecera gruesa, icono, título grande, una frase que
+   dice en palabras de qué va el grupo y, si aplica, el número a la derecha.
+
+   Existe porque la app la usa gente mayor, de pie, en un taller y a veces
+   al sol: lo primero que se lee tiene que ser el grupo, y el dato viene
+   después. Con tres copias del mismo patrón cada vista se iba por su lado,
+   así que vive acá una sola vez.
+
+   El color lo pone quien lo usa, con `--tone`. La vista define la tabla de
+   tonos (qué significa cada color en esa pantalla); el componente solo sabe
+   mezclarlo con la superficie.
+
+   Uso:
+     <section class="dataBlock" style="--tone:var(--ok)">
+       <div class="dataBlock__hdr">
+         <span class="dataBlock__icon">…</span>
+         <div class="dataBlock__text">
+           <span class="dataBlock__title">Listos para salir</span>
+           <span class="dataBlock__sub">Se confirman y se registra el GPS</span>
+         </div>
+         <span class="dataBlock__count">7</span>
+       </div>
+       <div class="dataBlock__body">…</div>
+     </section>
+   ===================================================================== */
+
+.dataBlock {
+  --tone: var(--accent);
+  border: var(--border-w-lg) solid color-mix(in srgb, var(--tone) 42%, transparent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--tone) 4%, var(--surface2));
+  overflow: hidden;
+}
+
+/* El aire entre bloques va por margen y no por el gap del contenedor: a
+   #adminTableContent y a los paneles del movilizador también les llegan
+   cosas que no son bloques y traen sus propios márgenes. */
+.dataBlock + .dataBlock { margin-top: 20px; }
+
+.dataBlock__hdr {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 15px;
+  background: color-mix(in srgb, var(--tone) 17%, var(--surface));
+  border-bottom: var(--border-w-lg) solid color-mix(in srgb, var(--tone) 38%, transparent);
+}
+
+.dataBlock__icon {
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+  border-radius: var(--radiusSm);
+  display: grid;
+  place-items: center;
+  color: var(--tone);
+  background: color-mix(in srgb, var(--tone) 22%, var(--surface));
+}
+.dataBlock__icon .icn { display: block; }
+
+.dataBlock__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dataBlock__title {
+  font-size: var(--fs-3xl);
+  font-weight: var(--fw-black);
+  line-height: 1.15;
+  color: var(--text);
+}
+
+/* La frase que explica el grupo: tamaño de cuerpo, no letra chica. Es la
+   que hace que no haya que adivinar qué cae en este bloque. */
+.dataBlock__sub {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-bold);
+  color: var(--muted);
+}
+
+.dataBlock__count {
+  flex-shrink: 0;
+  min-width: 46px;
+  height: 42px;
+  padding: 0 12px;
+  border-radius: 999px;
+  display: inline-grid;
+  place-items: center;
+  font-size: var(--fs-3xl);
+  font-weight: var(--fw-black);
+  color: var(--tone);
+  background: color-mix(in srgb, var(--tone) 16%, var(--surface));
+  border: var(--border-w-lg) solid color-mix(in srgb, var(--tone) 45%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Acciones en la cabecera (segmentado de vistas, botón de exportar…). */
+.dataBlock__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.dataBlock__body { padding: 12px; }
+
+/* Para lo que ya trae su propio marco: una tabla con scroll, un canvas. */
+.dataBlock__body--flush { padding: 0; }
+
+/* El título no se encoge en celular: lo que cede es el icono y el padding. */
+@media (max-width: 420px) {
+  .dataBlock__hdr   { gap: 10px; padding: 12px; }
+  .dataBlock__icon  { width: 38px; height: 38px; }
+  .dataBlock__title { font-size: var(--fs-2xl); }
+  .dataBlock__count { min-width: 40px; height: 36px; padding: 0 10px; font-size: var(--fs-2xl); }
+  .dataBlock__body  { padding: 10px; }
+}

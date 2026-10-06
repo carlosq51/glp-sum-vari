@@ -13,11 +13,11 @@
    ===================================================================== */
 
 /* La escala del panel, de arriba hacia abajo: título de pantalla, cabecera
-   de bloque, nombre de cartilla, frase de la cartilla. Cada escalón se nota
-   sin tener que comparar dos textos lado a lado. */
+   de bloque (la pone el componente .dataBlock, en --fs-3xl), nombre de
+   cartilla, frase de la cartilla. Cada escalón se nota sin tener que
+   comparar dos textos lado a lado. */
 #viewADMIN {
   --admin-hero:      calc(var(--fs-3xl) * 1.2);
-  --admin-group:     var(--fs-3xl);
   --admin-card-name: var(--fs-xl);
   --admin-card-desc: var(--fs-md);   /* la frase de abajo, no letra chica */
 }
@@ -79,72 +79,18 @@
 }
 
 /* ── Bloques de cartillas ──────────────────────────────────────────────
-   Cada familia es una caja cerrada con cabecera de color: primero se elige
-   el bloque y después la cartilla. El mismo patrón que los grupos de
-   Ingreso en la vista Movilizador.
+   La caja es el componente compartido .dataBlock
+   (css/components/data-block.css), que nació en la vista Movilizador. Acá
+   queda solo lo propio del panel: la tabla de tonos por familia (más
+   arriba), cómo se reparten las cartillas dentro del bloque, y el ajuste
+   para cuando lo que lleva dentro es una tabla.
    ------------------------------------------------------------------- */
-.adminGroups {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  margin-bottom: 16px;
-}
-
-.adminGroup {
-  --tone: var(--accent);
-  border: var(--border-w-lg) solid color-mix(in srgb, var(--tone) 42%, transparent);
-  border-radius: var(--radius);
-  background: color-mix(in srgb, var(--tone) 4%, var(--surface2));
-  overflow: hidden;
-}
-
-.adminGroupHdr {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 13px 15px;
-  background: color-mix(in srgb, var(--tone) 17%, var(--surface));
-  border-bottom: var(--border-w-lg) solid color-mix(in srgb, var(--tone) 38%, transparent);
-}
-
-.adminGroupIcon {
-  flex-shrink: 0;
-  width: 42px;
-  height: 42px;
-  border-radius: var(--radiusSm);
-  display: grid;
-  place-items: center;
-  color: var(--tone);
-  background: color-mix(in srgb, var(--tone) 22%, var(--surface));
-}
-.adminGroupIcon .icn { display: block; }
-
-.adminGroupText {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.adminGroupTitle {
-  font-size: var(--admin-group);
-  font-weight: var(--fw-black);
-  line-height: 1.15;
-  color: var(--text);
-}
-
-.adminGroupSub {
-  font-size: var(--fs-md);
-  font-weight: var(--fw-bold);
-  color: var(--muted);
-}
+.adminGroups { margin-bottom: 16px; }
 
 .adminGroupBody {
   display: grid;
   grid-template-columns: 1fr;
   gap: 10px;
-  padding: 12px;
 }
 
 /* Dos columnas cuando hay ancho; en celular una sola, porque la cartilla
@@ -156,43 +102,17 @@
   body[data-app-module="ADMIN"] .adminGroupBody { grid-template-columns: repeat(3, 1fr); }
 }
 
-.adminGroupCount {
-  flex-shrink: 0;
-  min-width: 46px;
-  height: 42px;
-  padding: 0 12px;
-  border-radius: 999px;
-  display: inline-grid;
-  place-items: center;
-  font-size: var(--admin-group);
-  font-weight: var(--fw-black);
-  color: var(--tone);
-  background: color-mix(in srgb, var(--tone) 16%, var(--surface));
-  border: var(--border-w-lg) solid color-mix(in srgb, var(--tone) 45%, transparent);
-  font-variant-numeric: tabular-nums;
-}
-
-/* ── El mismo bloque, pero con una tabla dentro ──────────────────────
-   Las secciones del panel (usuarios por rol, OTs por estado, incidencias
-   por severidad) usan la caja como marco de la tabla, así que el envoltorio
-   de scroll pierde su borde y su sombra para no dibujar dos marcos.
-   ------------------------------------------------------------------- */
-/* El aire entre bloques va por margen y no por un flex en el contenedor:
-   #adminTableContent también recibe los paneles de Configuración, Reasignar
-   e Inventario, que traen sus propios márgenes. */
-.adminGroup--tabla + .adminGroup--tabla { margin-top: 20px; }
-
-.adminGroupBody--tabla {
-  display: block;
-  padding: 0;
-}
-.adminGroupBody--tabla .adminTableScroll {
+/* Las secciones del panel (usuarios por rol, OTs por estado, incidencias por
+   severidad) usan la caja como marco de la tabla, así que el envoltorio de
+   scroll pierde su borde y su sombra para no dibujar dos marcos. */
+.dataBlock__body--flush .adminTableScroll {
   border: 0;
   border-radius: 0;
   box-shadow: none;
   background: transparent;
   animation: none;
 }
+
 /* ── Cartillas dentro de un bloque ── */
 #adminCards .hubCard {
   --tone: inherit;                 /* el color lo manda el bloque */
@@ -795,12 +715,8 @@
 @media (max-width: 420px) {
   #viewADMIN {
     --admin-hero:      var(--fs-3xl);
-    --admin-group:     var(--fs-2xl);
     --admin-card-name: var(--fs-lg);
   }
-  .adminGroupHdr { gap: 10px; padding: 12px; }
-  .adminGroupIcon { width: 38px; height: 38px; }
-  .adminGroupBody { padding: 10px; }
   #adminCards .hubCard { min-height: 92px; padding: 15px; gap: 13px; }
   #adminCards .hubCardIcon { width: 46px; height: 46px; }
 }

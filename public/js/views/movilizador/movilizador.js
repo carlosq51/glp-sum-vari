@@ -164,16 +164,16 @@ function diaHdrHtml_(ymd, n) {
  */
 function bloque_(mod, ic, titulo, sub, n, cuerpo) {
   return `
-    <section class="movBlock movBlock--${mod}">
-      <div class="movBlockHdr">
-        <span class="movBlockIcon" aria-hidden="true">${icon(ic, 22)}</span>
-        <div class="movBlockText">
-          <span class="movBlockTitle">${titulo}</span>
-          ${sub ? `<span class="movBlockSub">${sub}</span>` : ""}
+    <section class="dataBlock movBlock--${mod}">
+      <div class="dataBlock__hdr">
+        <span class="dataBlock__icon" aria-hidden="true">${icon(ic, 22)}</span>
+        <div class="dataBlock__text">
+          <span class="dataBlock__title">${titulo}</span>
+          ${sub ? `<span class="dataBlock__sub">${sub}</span>` : ""}
         </div>
-        ${n == null ? "" : `<span class="movBlockCount">${n}</span>`}
+        ${n == null ? "" : `<span class="dataBlock__count">${n}</span>`}
       </div>
-      <div class="movBlockBody">${cuerpo}</div>
+      <div class="dataBlock__body">${cuerpo}</div>
     </section>`;
 }
 

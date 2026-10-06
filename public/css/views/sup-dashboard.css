@@ -1,58 +1,73 @@
 /* =====================================================================
-   views/sup-dashboard.css — Panel visual del REPORTE (estilo Power BI)
-   Tarjetas de gráfico + fila de KPI tiles + badges de modo.
+   views/sup-dashboard.css — Panel visual del REPORTE
+   Un gráfico con pestañas + fila de KPI tiles + badges de modo.
    ===================================================================== */
 
-/* ── Grid de tarjetas de gráfico ── */
-.supDashGrid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 12px;
+/* ── Panel visual: un gráfico con segmentado ──────────────────────────
+   Era un grid de cuatro .chartCard. Ahora es un solo bloque (.dataBlock,
+   el componente compartido) con las preguntas en pestañas: el gráfico se
+   redibuja en el mismo sitio en vez de apilar cuatro cajas con cuatro ejes.
+   ------------------------------------------------------------------- */
+.supDashBlock { margin-top: 16px; }
+
+/* Las pestañas van entre la cabecera de color y el cuerpo: se leen como
+   parte del bloque, no como botones sueltos de la página. */
+.supDashTabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 12px 0;
 }
 
-/* Escritorio: 2 columnas (el supervisor usa layout ancho) */
-@media (min-width: 860px) {
-  body[data-app-module="SUPERVISOR"] .supDashGrid {
-    grid-template-columns: 1fr 1fr;
-  }
-}
-
-/* ── Tarjeta de gráfico ── */
-.chartCard {
-  background: var(--grad-surface-v, var(--surface));
-  border: 1px solid var(--surfaceLine);
-  border-radius: var(--radius);
-  padding: 14px 16px 12px;
-  box-shadow: var(--elev-1);
-  animation: viewEnter var(--dur-slow) var(--ease-out) both;
-  transition: box-shadow var(--dur-base), border-color var(--dur-base);
-}
-.chartCard:hover { box-shadow: var(--elev-2); }
-
-.supDashGrid > .chartCard:nth-child(1) { animation-delay: 0ms; }
-.supDashGrid > .chartCard:nth-child(2) { animation-delay: 50ms; }
-.supDashGrid > .chartCard:nth-child(3) { animation-delay: 100ms; }
-.supDashGrid > .chartCard:nth-child(n+4) { animation-delay: 150ms; }
-
-.chartCard__title {
-  font-weight: var(--fw-extrabold);
-  font-size: var(--fs-sm);
-  letter-spacing: .2px;
-}
-
-.chartCard__sub {
-  font-size: var(--fs-xs);
+.supDashTab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 15px;
+  border-radius: 999px;
+  border: var(--border-w-lg) solid var(--surfaceLine);
+  background: var(--surface);
   color: var(--muted);
-  margin-top: 2px;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-extrabold);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--dur-fast), color var(--dur-fast),
+              border-color var(--dur-fast), transform var(--dur-fast) var(--ease-out);
+}
+.supDashTab:hover { color: var(--text); }
+.supDashTab:active { transform: scale(.96); }
+.supDashTab .icn { flex-shrink: 0; }
+
+/* La activa se tiñe con el tono del bloque (el color del track), así que se
+   ve de un vistazo cuál está puesta sin tener que comparar grises. */
+.supDashTab--on {
+  color: var(--text);
+  background: color-mix(in srgb, var(--tone) 22%, var(--surface));
+  border-color: color-mix(in srgb, var(--tone) 60%, transparent);
 }
 
-/* Contenedor del canvas: altura fija para que Chart.js sea responsive */
-.chartCanvasWrap {
+/* El alto real lo pone el JS según la vista (la dona pide menos que las
+   barras); acá solo queda que Chart.js tenga de dónde agarrarse. */
+.supDashCanvasWrap {
   position: relative;
-  height: 250px;
-  margin-top: 10px;
+  height: 340px;
+  width: 100%;
 }
-.chartCanvasWrap--sm { height: 230px; }
+
+.supDashHint {
+  margin-top: 10px;
+  text-align: center;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  color: var(--muted);
+}
+
+@media (max-width: 420px) {
+  .supDashTabs { gap: 6px; padding: 10px 10px 0; }
+  .supDashTab { height: 36px; padding: 0 12px; font-size: var(--fs-sm); }
+}
 
 /* ── Cabecera de la fila de KPIs ── */
 .supKpiHead {
@@ -143,6 +158,5 @@
 .supModeBadge .icn { vertical-align: -2px; flex-shrink: 0; }
 
 @media (prefers-reduced-motion: reduce) {
-  .chartCard { animation: none; }
   .supLiveDot::after { animation: none; }
 }

@@ -15,6 +15,47 @@
   .supFilterTop { grid-template-columns: 1fr; }
 }
 
+/* ─── REPORTE: campos con etiqueta ────────────────────────────────────
+   Los filtros eran siete controles sin etiqueta, y los dos <input type=date>
+   no decían cuál era el desde y cuál el hasta hasta abrirlos. Ahora cada uno
+   va dentro de su <label>, que además hace que tocar el texto enfoque el
+   campo — más superficie para un dedo.
+   ------------------------------------------------------------------- */
+.supRepBlock { margin-top: 14px; }
+
+.supField {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.supFieldLabel {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-black);
+  letter-spacing: .3px;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+/* Los botones AYER/HOY y ESTE MES se alinean con el borde de abajo del
+   campo, no con su centro: el campo ahora es más alto por la etiqueta. */
+#supPanelReporte .supDateRow,
+.supMonthRow { align-items: end; }
+
+.supMonthRow {
+  display: grid;
+  grid-template-columns: 1fr minmax(0, 110px);
+  gap: var(--gap);
+  width: 100%;
+}
+.supMonthRow input,
+.supMonthRow button { width: 100%; }
+
+@media (max-width: 400px) {
+  .supMonthRow { grid-template-columns: 1fr; align-items: stretch; }
+}
+
 /* Fila de fechas: desde / hasta / AYER / HOY */
 .supDateRow {
   display: grid;

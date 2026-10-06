@@ -437,11 +437,7 @@
 }
 
 /* ─── Grupos por día ─── */
-.movPendientesBody {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
+.movPendientesBody { display: block; }
 .movPanelBody > .movDayGroup + .movDayGroup { margin-top: 18px; }
 
 .movDayHdr {
@@ -478,11 +474,10 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* ─── Bloques de grupo (Ingreso) ───────────────────────────────────────
-   Cada grupo es una caja cerrada con cabecera de color, no una línea de
-   texto entre listas. El movilizador es gente mayor trabajando al sol y con
-   prisa: la caja le dice de un vistazo en qué grupo está mirando y qué hay
-   que hacer con esos carros, aunque haya veinte tarjetas debajo.
+/* ─── Tonos de los bloques de grupo ───────────────────────────────────
+   La caja en sí es el componente compartido .dataBlock
+   (css/components/data-block.css); acá solo vive qué significa cada color
+   en esta vista, que es lo propio del movilizador.
 
    El tono dice qué hacer, y es el mismo en las cuatro pantallas:
      · ámbar  = te toca mover algo hoy (sin zona, lista de hoy)
@@ -494,89 +489,24 @@
    filete rojo, así que el color del bloque y el de la tarjeta dicen lo mismo
    en vez de competir.
    ------------------------------------------------------------------- */
-.movBlock {
-  --movTone: var(--mov-line);
-  border: 2px solid color-mix(in srgb, var(--movTone) 45%, transparent);
-  border-radius: var(--radius);
-  background: color-mix(in srgb, var(--movTone) 4%, var(--surface2));
-  overflow: hidden;
-}
-/* En .movPanelBody (display:block) el aire lo pone el margen; en la Lista
-   del día los bloques son hijos de un flex y lo pone su gap. */
-.movPanelBody > .movBlock + .movBlock { margin-top: 20px; }
+.movBlock--sinzona   { --tone: var(--accent); }   /* Ingreso */
+.movBlock--zona      { --tone: var(--ok); }
+.movBlock--conv      { --tone: var(--note); }
+.movBlock--dia       { --tone: var(--accent); }   /* Lista del día */
+.movBlock--diaatraso { --tone: var(--danger); }
+.movBlock--atraso    { --tone: var(--danger); }   /* Calibración */
+.movBlock--reciente  { --tone: var(--note); }
+.movBlock--sinot     { --tone: var(--danger); }   /* Salida */
+.movBlock--listo     { --tone: var(--ok); }
 
-.movBlock--sinzona   { --movTone: var(--accent); }   /* Ingreso */
-.movBlock--zona      { --movTone: var(--ok); }
-.movBlock--conv      { --movTone: var(--note); }
-.movBlock--dia       { --movTone: var(--accent); }   /* Lista del día */
-.movBlock--diaatraso { --movTone: var(--danger); }
-.movBlock--atraso    { --movTone: var(--danger); }   /* Calibración */
-.movBlock--reciente  { --movTone: var(--note); }
-.movBlock--sinot     { --movTone: var(--danger); }   /* Salida */
-.movBlock--listo     { --movTone: var(--ok); }
-
-.movBlockHdr {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
-  background: color-mix(in srgb, var(--movTone) 18%, var(--surface));
-  border-bottom: 2px solid color-mix(in srgb, var(--movTone) 40%, transparent);
-}
-.movBlockIcon {
-  flex-shrink: 0;
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radiusSm);
-  display: grid;
-  place-items: center;
-  color: var(--movTone);
-  background: color-mix(in srgb, var(--movTone) 22%, var(--surface));
-}
-.movBlockText {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.movBlockTitle {
-  font-size: var(--fs-3xl);
-  font-weight: var(--fw-black);
-  line-height: 1.15;
-  color: var(--text);
-}
-/* La frase que dice qué hacer: tan grande como el cuerpo, no letra chica. */
-.movBlockSub {
-  font-size: var(--fs-md);
-  font-weight: var(--fw-bold);
-  color: var(--muted);
-}
-.movBlockCount {
-  flex-shrink: 0;
-  min-width: 44px;
-  height: 40px;
-  padding: 0 12px;
-  border-radius: 999px;
-  display: inline-grid;
-  place-items: center;
-  font-size: var(--fs-3xl);
-  font-weight: var(--fw-black);
-  color: var(--movTone);
-  background: color-mix(in srgb, var(--movTone) 16%, var(--surface));
-  border: 2px solid color-mix(in srgb, var(--movTone) 45%, transparent);
-  font-variant-numeric: tabular-nums;
-}
-
-.movBlockBody { padding: 12px; }
-.movBlockBody > .movDayGroup + .movDayGroup { margin-top: 16px; }
+.dataBlock__body > .movDayGroup + .movDayGroup { margin-top: 16px; }
 
 /* Dentro de un bloque el día manda menos que el bloque: queda como etiqueta
    subrayada, para no competir con la cabecera de color. */
-.movBlockBody .movDayHdr {
+.dataBlock__body .movDayHdr {
   padding: 0 2px 8px;
   margin-bottom: 10px;
-  border-bottom: 2px dashed color-mix(in srgb, var(--movTone) 35%, transparent);
+  border-bottom: 2px dashed color-mix(in srgb, var(--tone) 35%, transparent);
 }
 
 /* ─── Tarjeta de carro ─── */
@@ -953,12 +883,6 @@
   .movStatTile { padding: 10px; }
   .movRegTitle { font-size: var(--fs-xl); }
   .movPanelTitle { font-size: var(--fs-xl); }
-  /* El título del bloque no se encoge: lo que cede es el icono y el padding,
-     para que en un celular angosto siga leyéndose de lejos. */
-  .movBlockHdr { gap: 10px; padding: 11px 12px; }
-  .movBlockIcon { width: 34px; height: 34px; }
-  .movBlockCount { min-width: 38px; height: 36px; padding: 0 9px; font-size: var(--fs-2xl); }
-  .movBlockBody { padding: 10px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
