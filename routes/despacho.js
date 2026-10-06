@@ -1855,6 +1855,41 @@ async function avisarAsignados_(propuestas, tecnicos) {
  * Corre el motor una vez.
  * @param {boolean} persistir  false = simulacro, no escribe nada.
  */
+/**
+ * Foto del pool para depurar "¿por qué el motor no asignó nada?".
+ *
+ * El motor corre cada minuto y guardaba una foto en CADA vuelta: ~270 al día,
+ * 9 de cada 10 idénticas a la anterior, y la tabla llegó a ser el 40 % de la
+ * base. Ahora solo se guarda cuando el motor propuso algo o cuando el pool
+ * cambió respecto de la última foto — que es justo lo que sirve para depurar.
+ * Y una vez al día se borran las de más de FOTO_POOL_DIAS.
+ */
+const FOTO_POOL_DIAS = 14;
+let _ultimaFotoPool = "";
+let _ultimaPurgaPool = "";
+
+async function guardarFotoPool_(fecha, foto) {
+  const firma = JSON.stringify([fecha, foto.vins_elegibles, foto.vins_excluidos, foto.tecnicos_libres]);
+  if (foto.propuestas_gen > 0 || firma !== _ultimaFotoPool) {
+    const r = await fetch(`${SB()}/rest/v1/despacho_pool_snapshot`, {
+      method: "POST",
+      headers: { ...supabaseHeaders_(), Prefer: "return=minimal" },
+      body: JSON.stringify({ jornada_fecha: fecha, ...foto }),
+    }).catch(() => null);
+    if (r?.ok) _ultimaFotoPool = firma;
+  }
+
+  if (_ultimaPurgaPool !== fecha) {
+    const corte = new Date(`${fecha}T00:00:00Z`);
+    corte.setUTCDate(corte.getUTCDate() - FOTO_POOL_DIAS);
+    const r = await fetch(
+      `${SB()}/rest/v1/despacho_pool_snapshot?jornada_fecha=lt.${corte.toISOString().slice(0, 10)}`,
+      { method: "DELETE", headers: { ...supabaseHeaders_(), Prefer: "return=minimal" } },
+    ).catch(() => null);
+    if (r?.ok) _ultimaPurgaPool = fecha;
+  }
+}
+
 export async function correrMotor_({ persistir = true, simularAsistencia = false } = {}) {
   const cfg   = await getConfig_();
   const modo  = String(cfg.DESPACHO_MODO || "OFF").toUpperCase();
@@ -2027,17 +2062,12 @@ export async function correrMotor_({ persistir = true, simularAsistencia = false
     }
   }
 
-  await fetch(`${SB()}/rest/v1/despacho_pool_snapshot`, {
-    method: "POST",
-    headers: { ...supabaseHeaders_(), Prefer: "return=minimal" },
-    body: JSON.stringify({
-      jornada_fecha: fecha,
-      vins_elegibles: pool.elegibles.map(e => e.vin),
-      vins_excluidos: pool.excluidos,
-      tecnicos_libres: t.unidades.filter(u => u.asignable).map(u => u.miembros.map(m => m.nombre)),
-      propuestas_gen: propuestas.length,
-    }),
-  }).catch(() => {});
+  await guardarFotoPool_(fecha, {
+    vins_elegibles: pool.elegibles.map(e => e.vin),
+    vins_excluidos: pool.excluidos,
+    tecnicos_libres: t.unidades.filter(u => u.asignable).map(u => u.miembros.map(m => m.nombre)),
+    propuestas_gen: propuestas.length,
+  });
 
   if (modo === "REAL" && propuestas.length) emitEvent_("despacho", { tipo: "PROPUESTAS" });
   return resumen;
