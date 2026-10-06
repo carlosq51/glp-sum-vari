@@ -107,9 +107,59 @@ function opts(arr, selected = "") {
 }
 
 // ─── Table renderers ─────────────────────────────────────────────────
+
+/**
+ * agrupar_ — reparte filas por una clave, en el orden de `orden`.
+ *
+ * Las claves que no están en `orden` van al final en vez de desaparecer: si
+ * mañana la base trae un estado nuevo, sus filas se siguen viendo.
+ */
+function agrupar_(rows, clave, orden) {
+  const mapa = new Map(orden.map(k => [k, []]));
+  for (const r of rows) {
+    const k = clave(r) || "—";
+    if (!mapa.has(k)) mapa.set(k, []);
+    mapa.get(k).push(r);
+  }
+  return [...mapa].filter(([, filas]) => filas.length);
+}
+
+/** Nombres de rol en plural y en castellano, para el título del bloque. */
+const ROL_TITULO = {
+  TECNICO: "Técnicos",       SUPERVISOR: "Supervisores",
+  ADMIN: "Administradores",  CALIDAD: "Calidad",
+  MOVILIZADOR: "Movilizadores", RAMALERO: "Ramaleros",
+};
+
+/** ESTADOS_GEN reordenado por urgencia: lo que pasa ahora arriba, lo cerrado
+ *  abajo. Un estado que no esté acá cae al final (ver agrupar_). */
+const ORDEN_OT = ["TRABAJANDO", "EN PROCESO", "PENDIENTE", "FINALIZADO"];
+const ESTADO_OT_TITULO = {
+  TRABAJANDO: "Trabajando ahora", "EN PROCESO": "En proceso",
+  PENDIENTE: "Pendientes",        FINALIZADO: "Finalizadas",
+};
+
+const SEVERIDAD_TITULO = { CRITICA: "Críticas", MODERADA: "Moderadas", LEVE: "Leves" };
+const SEVERIDAD_TONO   = {
+  CRITICA: "var(--danger)", MODERADA: "var(--warn)", LEVE: "var(--tone-slate)",
+};
+
 const TABLE_DEF = {
   usuarios: {
     cols: ["Nombre","Email","Rol","Especialidad","Activo"],
+    // Un bloque por rol: para dar permisos o desactivar a alguien lo primero
+    // que se busca es "¿dónde están los técnicos?", no un apellido.
+    grupos: rows => agrupar_(rows, r => r.rol, ROLES).map(([rol, filas]) => {
+      const act = filas.filter(u => u.activo).length;
+      const sin = filas.length - act;
+      return {
+        icon: "users",
+        tone: "var(--tone-blue)",
+        titulo: ROL_TITULO[rol] || rol,
+        sub: `${act} con acceso${sin ? ` · ${sin} sin acceso` : ""}`,
+        rows: filas,
+      };
+    }),
     row: r => [
       escHtml(r.nombre),
       escHtml(r.email),
@@ -120,6 +170,8 @@ const TABLE_DEF = {
   },
   vins: {
     cols: ["VIN","Modelo","DUA","Cliente","Reductor","Tanque"],
+    // Sin grupos a propósito: un VIN no tiene estado en esta tabla y partirlos
+    // por modelo daría treinta bloques de dos filas. Cae en el bloque único.
     row: r => [
       `<code>${escHtml(r.vin)}</code>`,
       escHtml(r.modelo),
@@ -131,6 +183,18 @@ const TABLE_DEF = {
   },
   ots: {
     cols: ["Tipo","VIN","Estado","Observaciones","Fecha"],
+    // Un bloque por estado: la columna "Estado" existía, pero había que leer
+    // fila por fila para saber qué se está trabajando ahora mismo.
+    grupos: rows => agrupar_(rows, r => r.estado_general, ORDEN_OT).map(([est, filas]) => ({
+      icon: "clipboardList",
+      tone: est === "FINALIZADO" ? "var(--ok)"
+          : est === "TRABAJANDO" ? "var(--note)"
+          : est === "EN PROCESO" ? "var(--tone-cyan)"
+          : "var(--tone-slate)",
+      titulo: ESTADO_OT_TITULO[est] || est,
+      sub: `${filas.length} orden${filas.length !== 1 ? "es" : ""} de trabajo`,
+      rows: filas,
+    })),
     row: r => [
       `<span class="adminBadge">${escHtml(r.tipo_ot)}</span>`,
       `<code>${escHtml(r.vin || "—")}</code>`,
@@ -141,6 +205,15 @@ const TABLE_DEF = {
   },
   incidencias: {
     cols: ["VIN","Técnico","Tipo","Mes","Nota","Fecha"],
+    // Las críticas primero y con su color: son las que hay que atender, y
+    // mezcladas con las leves se leían como una lista más.
+    grupos: rows => agrupar_(rows, r => r.tipo, [...SEVERIDADES].reverse()).map(([tipo, filas]) => ({
+      icon: tipo === "LEVE" ? "note" : "alertTriangle",
+      tone: SEVERIDAD_TONO[tipo] || "var(--tone-slate)",
+      titulo: SEVERIDAD_TITULO[tipo] || tipo,
+      sub: `${filas.length} reportada${filas.length !== 1 ? "s" : ""}`,
+      rows: filas,
+    })),
     row: r => [
       `<code>${escHtml(r.vin || "—")}</code>`,
       escHtml(r.tecnico),
@@ -173,22 +246,47 @@ function renderTable(rows, { query = "", truncated = false } = {}) {
     : "";
 
   const head = def.cols.map(c => `<th>${c}</th>`).join("");
-  const body = rows.map(r => {
-    const cells = def.row(r).map(c => `<td>${c}</td>`).join("");
-    const rowId = r.id ?? r.vin;
-    return `<tr data-id="${escHtml(String(rowId))}">
-      ${cells}
-      <td class="adminActionsCell">
-        <button class="adminBtnEdit adminRowBtn" data-id="${escHtml(String(rowId))}" title="Editar" aria-label="Editar">${icon("pencil", 15)}</button>
-        <button class="adminBtnDel adminRowBtn adminRowBtn--danger" data-id="${escHtml(String(rowId))}" title="Eliminar" aria-label="Eliminar">${icon("trash", 15)}</button>
-      </td>
-    </tr>`;
-  }).join("");
+  const tablaHtml = (filas) => {
+    const body = filas.map(r => {
+      const cells = def.row(r).map(c => `<td>${c}</td>`).join("");
+      const rowId = r.id ?? r.vin;
+      return `<tr data-id="${escHtml(String(rowId))}">
+        ${cells}
+        <td class="adminActionsCell">
+          <button class="adminBtnEdit adminRowBtn" data-id="${escHtml(String(rowId))}" title="Editar" aria-label="Editar">${icon("pencil", 15)}</button>
+          <button class="adminBtnDel adminRowBtn adminRowBtn--danger" data-id="${escHtml(String(rowId))}" title="Eliminar" aria-label="Eliminar">${icon("trash", 15)}</button>
+        </td>
+      </tr>`;
+    }).join("");
+    return `<div class="adminTableScroll"><table class="adminTable">
+      <thead><tr>${head}<th></th></tr></thead>
+      <tbody>${body}</tbody>
+    </table></div>`;
+  };
 
-  return `${aviso}<div class="adminTableScroll"><table class="adminTable">
-    <thead><tr>${head}<th></th></tr></thead>
-    <tbody>${body}</tbody>
-  </table></div>`;
+  // Las filas van dentro del mismo bloque con cabecera de color que usan las
+  // cartillas del panel: así la sección se lee por grupos y no como una
+  // tabla de cien filas iguales. La sección que no define `grupos` cae en un
+  // bloque único con el nombre de la sección, para que la presentación sea la
+  // misma en todas.
+  const meta = SECTION_META[S.tab] || {};
+  const grupos = def.grupos
+    ? def.grupos(rows)
+    : [{ icon: meta.icon || "box", tone: "var(--tone-green)",
+         titulo: meta.label || S.tab, sub: meta.desc || "", rows }];
+
+  return aviso + grupos.map(g => `
+    <section class="adminGroup adminGroup--tabla" style="--tone:${g.tone};">
+      <div class="adminGroupHdr">
+        <span class="adminGroupIcon" aria-hidden="true">${icon(g.icon, 24)}</span>
+        <div class="adminGroupText">
+          <span class="adminGroupTitle">${escHtml(g.titulo)}</span>
+          ${g.sub ? `<span class="adminGroupSub">${escHtml(g.sub)}</span>` : ""}
+        </div>
+        <span class="adminGroupCount">${g.rows.length}</span>
+      </div>
+      <div class="adminGroupBody adminGroupBody--tabla">${tablaHtml(g.rows)}</div>
+    </section>`).join("");
 }
 
 // ─── Load data ───────────────────────────────────────────────────────
@@ -972,8 +1070,8 @@ async function loadTab() {
 
           <!-- MODELO VIN (IA) -->
           <!-- NORMALIZACIÓN DE MODELOS -->
-          <div class="adminConfigSection" style="border:1px solid rgba(251,191,36,.25);background:rgba(251,191,36,.04);border-radius:10px;padding:14px;">
-            <h4 class="adminConfigTitle" style="color:var(--tone-amber);">${icon("tag", 15)} Normalización de modelos vehiculares</h4>
+          <div class="adminConfigSection adminConfigSection--destacada">
+            <h4 class="adminConfigTitle">${icon("tag", 16)} Normalización de modelos vehiculares</h4>
             <p class="small muted" style="margin-bottom:10px;">
               Convierte variantes de texto (<i>X70FL 1.5T 6DCT 4X2 LIMITED</i>, <i>X70 1,5T MEC...</i>) a nombres canónicos
               (<b>Jetour X70</b>, <b>KYC V3</b>, <b>KYC V5</b>, <b>KYC V7</b>, etc.) y los guarda en la columna <code>modelo_normalizado</code> de la tabla <code>vins</code>.

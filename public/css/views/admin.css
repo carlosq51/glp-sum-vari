@@ -156,6 +156,43 @@
   body[data-app-module="ADMIN"] .adminGroupBody { grid-template-columns: repeat(3, 1fr); }
 }
 
+.adminGroupCount {
+  flex-shrink: 0;
+  min-width: 46px;
+  height: 42px;
+  padding: 0 12px;
+  border-radius: 999px;
+  display: inline-grid;
+  place-items: center;
+  font-size: var(--admin-group);
+  font-weight: var(--fw-black);
+  color: var(--tone);
+  background: color-mix(in srgb, var(--tone) 16%, var(--surface));
+  border: var(--border-w-lg) solid color-mix(in srgb, var(--tone) 45%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── El mismo bloque, pero con una tabla dentro ──────────────────────
+   Las secciones del panel (usuarios por rol, OTs por estado, incidencias
+   por severidad) usan la caja como marco de la tabla, así que el envoltorio
+   de scroll pierde su borde y su sombra para no dibujar dos marcos.
+   ------------------------------------------------------------------- */
+/* El aire entre bloques va por margen y no por un flex en el contenedor:
+   #adminTableContent también recibe los paneles de Configuración, Reasignar
+   e Inventario, que traen sus propios márgenes. */
+.adminGroup--tabla + .adminGroup--tabla { margin-top: 20px; }
+
+.adminGroupBody--tabla {
+  display: block;
+  padding: 0;
+}
+.adminGroupBody--tabla .adminTableScroll {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  animation: none;
+}
 /* ── Cartillas dentro de un bloque ── */
 #adminCards .hubCard {
   --tone: inherit;                 /* el color lo manda el bloque */
@@ -183,28 +220,29 @@
 }
 
 /* ── Cabecera del detalle ──
-   Esta cabecera la reusan Movilizador, Técnico y Consulta, así que la base
-   se queda como estaba y el refresco del panel va scopeado a #viewADMIN. */
+   La reusan Movilizador, Técnico, Consulta y el control de OTs del
+   supervisor. La subida de tamaño vive acá, en la clase base, para que todas
+   esas pantallas se lean igual que el panel: una sola escala en la app. */
 .adminDetailHead {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 14px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--surfaceLine);
+  gap: 14px;
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+  border-bottom: var(--border-w-lg) solid var(--surfaceLine);
 }
 
 .adminBackBtn {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   background: var(--glass);
-  border: 1px solid var(--surfaceLine);
+  border: var(--border-w-lg) solid var(--surfaceLine);
   border-radius: var(--radiusSm);
-  padding: 7px 12px 7px 8px;
+  padding: 9px 14px 9px 10px;
   color: var(--text);
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-bold);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-extrabold);
   cursor: pointer;
   transition: background var(--dur-fast);
   white-space: nowrap;
@@ -215,16 +253,17 @@
 /* Chip de icono de la sección activa (hereda --tone por data-section) */
 .adminDetailIcon {
   --tone: var(--accent);
-  width: 38px;
-  height: 38px;
+  width: 46px;
+  height: 46px;
   flex-shrink: 0;
-  border-radius: 12px;
+  border-radius: 14px;
   display: grid;
   place-items: center;
   color: var(--tone);
-  background: color-mix(in srgb, var(--tone) 14%, transparent);
-  border: 1px solid color-mix(in srgb, var(--tone) 30%, transparent);
+  background: color-mix(in srgb, var(--tone) 15%, transparent);
+  border: var(--border-w-lg) solid color-mix(in srgb, var(--tone) 32%, transparent);
 }
+.adminDetailIcon .icn { display: block; }
 
 .adminDetailText {
   display: flex;
@@ -234,42 +273,24 @@
 }
 
 .adminDetailTitle {
-  font-size: var(--fs-lg);
-  font-weight: var(--fw-extrabold);
+  font-size: var(--fs-3xl);
+  font-weight: var(--fw-black);
   line-height: 1.15;
 }
 
 .adminDetailSub {
-  font-size: var(--fs-xs);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-bold);
   color: var(--muted);
 }
 
-/* Dentro del panel la cabecera pesa más: es el único cartel que dice en qué
-   sección estás una vez que la parrilla de cartillas desapareció. */
-#viewADMIN .adminDetailHead {
-  gap: 14px;
-  margin-bottom: 16px;
-  padding-bottom: 14px;
-  border-bottom-width: var(--border-w-lg);
-}
-#viewADMIN .adminDetailIcon {
-  width: 46px;
-  height: 46px;
-  border-radius: 14px;
-  border-width: var(--border-w-lg);
-}
-#viewADMIN .adminDetailTitle {
-  font-size: var(--admin-group);
-  font-weight: var(--fw-black);
-}
-#viewADMIN .adminDetailSub {
-  font-size: var(--fs-md);
-  font-weight: var(--fw-bold);
-}
-#viewADMIN .adminBackBtn {
-  padding: 9px 14px 9px 10px;
-  font-size: var(--fs-md);
-  border-width: var(--border-w-lg);
+/* En celular el título cede un punto; la bajada se queda, que es la que
+   explica en qué pantalla estás. */
+@media (max-width: 420px) {
+  .adminDetailTitle { font-size: var(--fs-2xl); }
+  .adminDetailHead  { gap: 11px; }
+  .adminDetailIcon  { width: 40px; height: 40px; }
+  .adminBackBtn     { padding: 8px 12px 8px 9px; font-size: var(--fs-sm); }
 }
 
 /* ── Header ── */
@@ -369,24 +390,26 @@
 .adminTable {
   width: 100%;
   border-collapse: collapse;
-  font-size: var(--fs-sm, 13px);
+  font-size: var(--fs-body);
 }
 
+/* La cabecera deja de ser letra chica gris: es el nombre de la columna y se
+   tiene que poder leer sin acercarse a la pantalla. */
 .adminTable th {
   text-align: left;
-  padding: 10px 12px;
-  font-weight: var(--fw-extrabold);
-  font-size: var(--fs-xs, 11px);
+  padding: 12px 14px;
+  font-weight: var(--fw-black);
+  font-size: var(--fs-sm);
   text-transform: uppercase;
-  letter-spacing: .5px;
-  color: var(--muted);
+  letter-spacing: .4px;
+  color: var(--text);
   background: var(--glass);
-  border-bottom: var(--border-w) solid var(--surfaceLine);
+  border-bottom: var(--border-w-lg) solid var(--surfaceLine);
   white-space: nowrap;
 }
 
 .adminTable td {
-  padding: 9px 12px;
+  padding: 13px 14px;
   border-bottom: var(--border-w) solid rgba(255,255,255,.06);
   vertical-align: middle;
   line-height: 1.4;
@@ -399,13 +422,8 @@
 
 /* Desktop: hay ancho de sobra, las columnas respiran sin depender del scroll */
 @media (min-width: 860px) {
-  body[data-app-module="ADMIN"] .adminTable {
-    font-size: var(--fs-body, 14px);
-  }
-  body[data-app-module="ADMIN"] .adminTable th,
-  body[data-app-module="ADMIN"] .adminTable td {
-    padding: 11px 14px;
-  }
+  .adminTable th,
+  .adminTable td { padding: 14px 16px; }
 }
 
 .adminTable tr:last-child td {
@@ -422,9 +440,10 @@
   text-align: right;
 }
 
+/* 36px de lado: lo mínimo para acertarle con el dedo sin tocar el de al lado. */
 .adminRowBtn {
-  height: 30px;
-  width: 30px;
+  height: 36px;
+  width: 36px;
   padding: 0;
   display: inline-grid;
   place-items: center;
@@ -445,47 +464,46 @@
 /* Variante ancha (con texto, ej. "Cambiar") */
 .adminRowBtn--wide {
   width: auto;
-  padding: 0 10px;
+  padding: 0 12px;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  font-size: var(--fs-xs);
-  font-weight: var(--fw-bold);
+  gap: 6px;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-extrabold);
 }
 
 .adminRowBtn + .adminRowBtn {
-  margin-left: 4px;
+  margin-left: 6px;
 }
 
 /* ── Badges ── */
 .adminBadge {
   display: inline-block;
-  padding: 2px 8px;
+  padding: 3px 11px;
   border-radius: 100px;
-  font-size: var(--fs-xs, 11px);
-  font-weight: var(--fw-bold, 700);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-black);
   background: var(--noteBg);
   color: var(--note);
   letter-spacing: .3px;
 }
 
 .adminBadgeOk {
-  composes: adminBadge;
   display: inline-block;
-  padding: 2px 8px;
+  padding: 3px 11px;
   border-radius: 100px;
-  font-size: var(--fs-xs, 11px);
-  font-weight: var(--fw-bold, 700);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-black);
   background: var(--okBg);
   color: var(--ok);
 }
 
 .adminBadgeMuted {
   display: inline-block;
-  padding: 2px 8px;
+  padding: 3px 11px;
   border-radius: 100px;
-  font-size: var(--fs-xs, 11px);
-  font-weight: var(--fw-bold, 700);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-black);
   background: var(--pillBg);
   color: var(--muted);
 }
@@ -505,33 +523,35 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  padding: 36px 24px;
+  gap: 8px;
+  padding: 44px 24px;
   text-align: center;
-  border: 1px dashed var(--surfaceLine);
+  border: var(--border-w-lg) dashed var(--surfaceLine);
   border-radius: var(--radius);
   animation: fadeIn var(--dur-slow) ease;
 }
 
 .adminEmptyIcon {
-  width: 54px;
-  height: 54px;
+  width: 62px;
+  height: 62px;
   border-radius: 50%;
   display: grid;
   place-items: center;
   color: var(--muted);
   background: var(--glass);
-  border: 1px solid var(--surfaceLine);
+  border: var(--border-w-lg) solid var(--surfaceLine);
   margin-bottom: 4px;
 }
 
 .adminEmptyTitle {
-  font-size: var(--fs-base, 15px);
-  font-weight: var(--fw-extrabold);
+  font-size: var(--fs-2xl);
+  font-weight: var(--fw-black);
 }
 
 .adminMsg {
   min-height: 18px;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-bold);
   margin-top: 8px;
   text-align: center;
   transition: opacity .2s;
@@ -689,9 +709,9 @@
 .adminBackBtn .icn { vertical-align: -2px; flex-shrink: 0; }
 
 /* ── Refresco de tipografía del panel ──────────────────────────────────
-   Tabla, buscador, pestañas y badges los comparten el inventario del
-   técnico y el control de OTs del supervisor, así que la subida de tamaño
-   va scopeada a #viewADMIN y no se les mueve nada a ellos.
+   Lo que vive en las clases base (cabecera de detalle, tabla, badges,
+   botones de fila, cartel de vacío) ya subió para todas las vistas que las
+   comparten. Acá queda solo lo que es exclusivo del panel.
    ------------------------------------------------------------------- */
 
 /* Buscador y "Nuevo": altura de dedo y texto que se lee sin acercarse. */
@@ -720,42 +740,6 @@
 }
 #viewADMIN .adminTab.active { font-weight: var(--fw-black); }
 
-/* Tabla: la cabecera deja de ser letra chica gris y las filas respiran. */
-#viewADMIN .adminTable { font-size: var(--fs-body); }
-#viewADMIN .adminTable th {
-  padding: 12px 14px;
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-black);
-  letter-spacing: .4px;
-  color: var(--text);
-}
-#viewADMIN .adminTable td { padding: 13px 14px; line-height: 1.45; }
-@media (min-width: 860px) {
-  body[data-app-module="ADMIN"] #viewADMIN .adminTable th,
-  body[data-app-module="ADMIN"] #viewADMIN .adminTable td { padding: 14px 16px; }
-}
-
-/* Botones de fila: 36px de lado, que es lo mínimo para acertarle con el
-   dedo sin tocar el de al lado. */
-#viewADMIN .adminRowBtn { width: 36px; height: 36px; }
-#viewADMIN .adminRowBtn--wide { width: auto; padding: 0 12px; font-size: var(--fs-sm); }
-#viewADMIN .adminRowBtn + .adminRowBtn { margin-left: 6px; }
-
-/* Badges de estado dentro de la tabla. */
-#viewADMIN .adminBadge,
-#viewADMIN .adminBadgeOk,
-#viewADMIN .adminBadgeMuted {
-  padding: 3px 11px;
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-black);
-}
-
-/* Vacío: el cartel de "no hay nada" también se lee de lejos. */
-#viewADMIN .adminEmpty { padding: 44px 24px; border-width: var(--border-w-lg); }
-#viewADMIN .adminEmptyTitle { font-size: var(--fs-2xl); font-weight: var(--fw-black); }
-#viewADMIN .adminEmptyIcon { width: 62px; height: 62px; border-width: var(--border-w-lg); }
-#viewADMIN .adminMsg { font-size: var(--fs-md); font-weight: var(--fw-bold); }
-
 /* Formularios del modal: etiqueta legible encima de cada campo. */
 #adminModal .adminLabel { font-size: var(--fs-md); font-weight: var(--fw-extrabold); }
 #adminModal .adminLabel input,
@@ -763,25 +747,40 @@
 #adminModal .adminLabel textarea { font-size: var(--fs-lg); }
 #adminModal .adminModalFoot button { font-size: var(--fs-lg); font-weight: var(--fw-black); }
 
-/* Secciones del tab Configuración: cada una con su filete de color y un
-   título que manda, para no leer un muro de campos sueltos. Los estilos base
-   de .adminConfigSection viven en movilizador.css desde siempre; esto solo
-   los refresca dentro del panel. */
+/* Secciones del tab Configuración: la misma caja con cabecera de color que
+   los bloques de cartillas, para que "Horarios de pausa" o "Objetivos de
+   producción" se vean como lo que son — apartados — y no como un muro de
+   campos sueltos. Los estilos base de .adminConfigSection viven en
+   movilizador.css desde siempre; esto solo los refresca dentro del panel.
+
+   El padding lateral vive en la sección y el título lo anula con márgenes
+   negativos: así la cabecera llega de borde a borde sin necesitar un div
+   más alrededor de cada apartado. */
 #viewADMIN .adminConfigSection {
+  --tone: var(--accent);
+  padding: 0 16px 16px;
   border-width: var(--border-w-lg);
-  border-left: 4px solid color-mix(in srgb, var(--accent) 50%, transparent);
+  border-color: color-mix(in srgb, var(--tone) 32%, transparent);
+  background: color-mix(in srgb, var(--tone) 4%, var(--surface2));
+  overflow: hidden;
 }
 #viewADMIN .adminConfigTitle {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin: 0 0 14px;
-  padding-bottom: 10px;
+  gap: 9px;
+  margin: 0 -16px 16px;
+  padding: 12px 16px;
   font-size: var(--fs-xl);
   font-weight: var(--fw-black);
   color: var(--text);
-  border-bottom: var(--border-w-lg) solid color-mix(in srgb, var(--accent) 35%, transparent);
+  background: color-mix(in srgb, var(--tone) 16%, var(--surface));
+  border-bottom: var(--border-w-lg) solid color-mix(in srgb, var(--tone) 32%, transparent);
 }
+#viewADMIN .adminConfigTitle .icn { color: var(--tone); }
+
+/* El apartado que pide atención (normalización de modelos) solo cambia de
+   tono; antes llevaba los colores pegados en el atributo style. */
+#viewADMIN .adminConfigSection--destacada { --tone: var(--tone-amber); }
 
 /* Formularios del panel (configuración, reasignar): etiqueta legible encima
    de cada campo, y el valor más grande que la etiqueta. */

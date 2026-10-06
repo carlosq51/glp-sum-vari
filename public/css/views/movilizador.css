@@ -15,7 +15,7 @@
    ===================================================================== */
 
 #viewMOVILIZADOR {
-  --mov-vin: 1.05rem;           /* VIN y fecha de grupo comparten tamaño */
+  --mov-vin: 1.15rem;           /* VIN y fecha de grupo comparten tamaño */
   --mov-line: var(--surfaceLine);
   --mov-soft: color-mix(in srgb, var(--text) 5%, transparent);
   width: 100%;
@@ -60,7 +60,7 @@
 
 /* Línea de estado: visible en el hub y dentro de cada pantalla */
 .movStatus {
-  font-size: var(--fs-xs);
+  font-size: var(--fs-sm);
   font-weight: var(--fw-bold);
   color: var(--muted);
   min-height: 16px;
@@ -69,9 +69,9 @@
 
 .movOfflineBanner,
 .movCacheBanner {
-  padding: 9px 12px;
+  padding: 11px 13px;
   border-radius: var(--radiusSm);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-md);
   font-weight: var(--fw-bold);
   line-height: 1.4;
   color: var(--warn);
@@ -129,11 +129,11 @@
 .movScreenHead .adminBackBtn .icn { margin-right: -2px; }
 
 .movSubHdr {
-  font-size: var(--fs-xs);
+  font-size: var(--fs-md);
   font-weight: var(--fw-bold);
   color: var(--muted);
   letter-spacing: .2px;
-  min-height: 16px;
+  min-height: 18px;
 }
 .movSubHdr:empty { display: none; }
 
@@ -292,15 +292,15 @@
   min-width: 0;
 }
 .movStatNum {
-  font-size: 1.75rem;
+  font-size: 2rem;
   font-weight: var(--fw-black);
   line-height: 1;
   font-variant-numeric: tabular-nums;
   color: var(--text);
 }
 .movStatLabel {
-  font-size: var(--fs-xs);
-  font-weight: var(--fw-bold);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-extrabold);
   color: var(--muted);
   overflow-wrap: anywhere;
 }
@@ -321,13 +321,14 @@
   box-shadow: var(--shadowSm);
 }
 .movRegTitle {
-  font-size: var(--fs-lg);
+  font-size: var(--fs-2xl);
   font-weight: var(--fw-black);
   color: var(--text);
   line-height: 1.1;
 }
 .movRegHint {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-bold);
   color: var(--muted);
   margin-top: -6px;
 }
@@ -343,7 +344,7 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: var(--fs-sm);
+  font-size: var(--fs-md);
   font-weight: var(--fw-bold);
   color: var(--muted);
 }
@@ -410,12 +411,12 @@
   min-width: 0;
 }
 .movPanelTitle {
-  font-size: var(--fs-lg);
+  font-size: var(--fs-2xl);
   font-weight: var(--fw-black);
   line-height: 1.15;
 }
 .movPanelHint {
-  font-size: var(--fs-xs);
+  font-size: var(--fs-md);
   color: var(--muted);
   white-space: nowrap;
   overflow: hidden;
@@ -439,7 +440,7 @@
 .movPendientesBody {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 20px;
 }
 .movPanelBody > .movDayGroup + .movDayGroup { margin-top: 18px; }
 
@@ -458,19 +459,19 @@
   letter-spacing: .2px;
 }
 .movDayRel {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-md);
   font-weight: var(--fw-bold);
   color: var(--muted);
 }
 .movDayCount {
   margin-left: auto;
-  min-width: 26px;
-  height: 22px;
-  padding: 0 8px;
+  min-width: 30px;
+  height: 26px;
+  padding: 0 9px;
   border-radius: 999px;
   display: inline-grid;
   place-items: center;
-  font-size: var(--fs-xs);
+  font-size: var(--fs-sm);
   font-weight: var(--fw-black);
   color: var(--text);
   background: var(--pillBg);
@@ -483,12 +484,15 @@
    prisa: la caja le dice de un vistazo en qué grupo está mirando y qué hay
    que hacer con esos carros, aunque haya veinte tarjetas debajo.
 
-   Los tonos son los que ya significan eso en el resto de la app: ámbar (el
-   color de acción de la marca) = falta llevarlo a una plaza, verde = ya está
-   colocado, igual que los carros en verde del mapa de zonas, y azul = en
-   conversión, como el chip de la tarjeta. El rojo se deja libre a propósito:
-   es el del badge de "3 días" dentro de una tarjeta, y si lo gastara el
-   bloque entero ese aviso dejaría de notarse.
+   El tono dice qué hacer, y es el mismo en las cuatro pantallas:
+     · ámbar  = te toca mover algo hoy (sin zona, lista de hoy)
+     · verde  = ya está donde debe estar (en plaza, listo para salir)
+     · azul   = alguien más lo tiene (en conversión, esperando calidad)
+     · rojo   = se pasó de tiempo o falta un trámite (atraso, sin #OT)
+   El rojo es el único que alarma y por eso aparece solo en los bloques que
+   de verdad frenan el trabajo; dentro de esos bloques la tarjeta repite el
+   filete rojo, así que el color del bloque y el de la tarjeta dicen lo mismo
+   en vez de competir.
    ------------------------------------------------------------------- */
 .movBlock {
   --movTone: var(--mov-line);
@@ -497,10 +501,19 @@
   background: color-mix(in srgb, var(--movTone) 4%, var(--surface2));
   overflow: hidden;
 }
-.movBlock + .movBlock { margin-top: 20px; }
-.movBlock--sinzona { --movTone: var(--accent); }
-.movBlock--zona    { --movTone: var(--ok); }
-.movBlock--conv    { --movTone: var(--note); }
+/* En .movPanelBody (display:block) el aire lo pone el margen; en la Lista
+   del día los bloques son hijos de un flex y lo pone su gap. */
+.movPanelBody > .movBlock + .movBlock { margin-top: 20px; }
+
+.movBlock--sinzona   { --movTone: var(--accent); }   /* Ingreso */
+.movBlock--zona      { --movTone: var(--ok); }
+.movBlock--conv      { --movTone: var(--note); }
+.movBlock--dia       { --movTone: var(--accent); }   /* Lista del día */
+.movBlock--diaatraso { --movTone: var(--danger); }
+.movBlock--atraso    { --movTone: var(--danger); }   /* Calibración */
+.movBlock--reciente  { --movTone: var(--note); }
+.movBlock--sinot     { --movTone: var(--danger); }   /* Salida */
+.movBlock--listo     { --movTone: var(--ok); }
 
 .movBlockHdr {
   display: flex;
@@ -603,9 +616,9 @@
 /* Dupla del carro en conversión; el lado que cerró va en verde con ✓. */
 .movTecs { display: flex; flex-wrap: wrap; gap: 6px; }
 .movTec {
-  padding: 3px 10px;
+  padding: 4px 11px;
   border-radius: 999px;
-  font-size: var(--fs-xs);
+  font-size: var(--fs-sm);
   font-weight: var(--fw-black);
   color: var(--note);
   background: var(--noteBg);
@@ -634,11 +647,11 @@
 .movUbic {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   max-width: 100%;
-  padding: 4px 10px 4px 8px;
+  padding: 5px 11px 5px 9px;
   border-radius: 999px;
-  font-size: var(--fs-sm);
+  font-size: var(--fs-md);
   font-weight: var(--fw-black);
   letter-spacing: .3px;
   color: var(--text);
@@ -655,7 +668,7 @@
   align-items: center;
   gap: 6px 10px;
   flex-wrap: wrap;
-  font-size: var(--fs-sm);
+  font-size: var(--fs-md);
 }
 .movHora,
 .movFecha {
@@ -676,10 +689,10 @@
 .movChip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 3px 10px;
+  gap: 5px;
+  padding: 4px 11px;
   border-radius: 999px;
-  font-size: var(--fs-xs);
+  font-size: var(--fs-sm);
   font-weight: var(--fw-black);
   white-space: nowrap;
   color: var(--muted);
@@ -707,15 +720,15 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: var(--fs-sm);
+  font-size: var(--fs-md);
   flex-wrap: wrap;
 }
 .movTimelineIcon { display: flex; color: var(--muted); }
 .movTimelineRow .movPor { margin-left: auto; }
 .movTimelineRow .movPor::before { content: none; }
 .movTimelineLabel {
-  min-width: 78px;
-  font-size: var(--fs-xs);
+  min-width: 84px;
+  font-size: var(--fs-sm);
   font-weight: var(--fw-extrabold);
   text-transform: uppercase;
   letter-spacing: .4px;
@@ -723,11 +736,11 @@
 }
 
 .movEmpty {
-  padding: 18px 14px;
+  padding: 24px 16px;
   border-radius: var(--radiusSm);
-  border: 1px dashed var(--mov-line);
+  border: var(--border-w-lg) dashed var(--mov-line);
   color: var(--muted);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-md);
   font-weight: var(--fw-bold);
   text-align: center;
 }
@@ -750,7 +763,7 @@
   background: var(--okBg);
   border: 1px solid color-mix(in srgb, var(--ok) 35%, transparent);
 }
-.movConfirmQ { font-size: var(--fs-sm); font-weight: var(--fw-extrabold); }
+.movConfirmQ { font-size: var(--fs-lg); font-weight: var(--fw-black); }
 
 /* Observación guardada */
 .movObsSlot:empty { display: none; }
@@ -769,7 +782,7 @@
 }
 .movObsIcon { display: flex; color: var(--warn); padding-top: 1px; }
 .movObsBody { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.movObsText { font-size: var(--fs-md); font-weight: var(--fw-extrabold); overflow-wrap: anywhere; }
+.movObsText { font-size: var(--fs-lg); font-weight: var(--fw-extrabold); overflow-wrap: anywhere; }
 .movObsBy { font-size: var(--fs-xs); color: var(--muted); font-weight: var(--fw-bold); }
 .movObsEdit { display: flex; color: var(--muted); padding-top: 2px; }
 
@@ -850,10 +863,10 @@
 .movOtWarn {
   display: flex;
   align-items: flex-start;
-  gap: 6px;
-  padding: 8px 10px;
+  gap: 7px;
+  padding: 10px 12px;
   border-radius: var(--radiusSm);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-md);
   font-weight: var(--fw-bold);
   color: var(--warn);
   background: var(--warnBg);
@@ -933,10 +946,13 @@
 
 /* ─── Mobile ─── */
 @media (max-width: 400px) {
-  #viewMOVILIZADOR { --mov-vin: .98rem; }
+  #viewMOVILIZADOR { --mov-vin: 1.05rem; }
   .movVin { letter-spacing: .3px; }
-  .movStatNum { font-size: 1.5rem; }
+  .movStatNum { font-size: 1.7rem; }
+  .movStatLabel { font-size: var(--fs-sm); }
   .movStatTile { padding: 10px; }
+  .movRegTitle { font-size: var(--fs-xl); }
+  .movPanelTitle { font-size: var(--fs-xl); }
   /* El título del bloque no se encoge: lo que cede es el icono y el padding,
      para que en un celular angosto siga leyéndose de lejos. */
   .movBlockHdr { gap: 10px; padding: 11px 12px; }

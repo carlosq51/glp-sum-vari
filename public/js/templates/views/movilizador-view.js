@@ -179,7 +179,7 @@ export function movilizadorView() {
         <div id="movCalibSubHdr" class="movSubHdr"></div>
 
         <div class="movPanel open" id="movPanel2">
-          ${panelHead_("timer", "Esperando calidad", "El más antiguo arriba")}
+          ${panelHead_("timer", "Esperando calidad", "Primero los que llevan más tiempo")}
           <div id="movPanel2Body" class="movPanelBody"></div>
         </div>
       </div>
@@ -222,7 +222,7 @@ export function movilizadorView() {
         </div>
 
         <div class="movPanel open" id="movPanel3">
-          ${panelHead_("shieldCheck", "Listos para salir", "Revisión técnica finalizada")}
+          ${panelHead_("shieldCheck", "Revisión técnica terminada", "Primero los que les falta el #OT")}
           <div id="movPanel3Body" class="movPanelBody"></div>
         </div>
       </div>

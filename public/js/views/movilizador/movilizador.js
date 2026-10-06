@@ -51,17 +51,25 @@ function diasDesde_(iso) {
 }
 
 /**
+ * DIAS_ATRASO — a partir de cuántos días un carro cuenta como atrasado.
+ *
+ * Lo usan el badge de la tarjeta, el borde rojo de la tarjeta y el corte de
+ * los bloques de Calibración, que antes repetían el 2 cada uno por su lado.
+ * Si en la práctica resulta muy sensible o muy laxo se cambia solo acá.
+ */
+const DIAS_ATRASO = 2;
+
+/**
  * badgeDias_ — escala de color según cuánto lleva un carro esperando
  * conversión sin que nadie lo toque: 0 días es normal, de ahí en más es
  * señal de que puede haberse ido a otra área sin que el movilizador se
- * entere. Los cortes (1 / 3 días) son ajustables si en la práctica resultan
- * muy sensibles o muy laxos.
+ * entere.
  */
 function badgeDias_(dias) {
   if (dias === null) return "";
   let cls = "movChip--note", label = "Hoy";
-  if (dias === 1)      { cls = "movChip--warn";   label = "1 día"; }
-  else if (dias >= 2)  { cls = "movChip--danger"; label = `${dias} días`; }
+  if (dias === 1)                 { cls = "movChip--warn";   label = "1 día"; }
+  else if (dias >= DIAS_ATRASO)   { cls = "movChip--danger"; label = `${dias} días`; }
   return `<span class="movChip ${cls}">${icon("timer", 13)}${label}</span>`;
 }
 
@@ -112,23 +120,61 @@ function diaLima_(v) {
   return isNaN(d) ? "" : d.toLocaleDateString("en-CA", { timeZone: "America/Lima" });
 }
 
+/**
+ * diaInfo_ — de "2026-10-03" a { fecha: "Vie 03 oct", rel: "Hoy", dias: 0 }.
+ *
+ * Lo comparten la cabecera chica de grupo (dentro de un bloque) y la
+ * cabecera grande de bloque de la Lista del día, donde la fecha es el título
+ * y el "hace 6 días" es la bajada.
+ */
+function diaInfo_(ymd) {
+  if (!ymd) return { fecha: "Sin fecha", rel: "", dias: null };
+  const d = new Date(`${ymd}T12:00:00Z`);
+  let fecha = d.toLocaleDateString("es-PE", { timeZone: "UTC", weekday: "short", day: "2-digit", month: "short" })
+    .replace(/\./g, "").replace(",", "");
+  fecha = fecha.charAt(0).toUpperCase() + fecha.slice(1);
+  const dias = Math.round((Date.parse(`${diaLima_(new Date().toISOString())}T12:00:00Z`) - d.getTime()) / 86400000);
+  const rel = dias === 0 ? "Hoy" : dias === 1 ? "Ayer" : dias > 1 ? `hace ${dias} días` : "";
+  return { fecha, rel, dias };
+}
+
 /** Cabecera de un grupo de día: "Hoy · vie 03 oct", "Ayer · …", "Lun 29 sep · hace 6 días". */
 function diaHdrHtml_(ymd, n) {
-  let fecha = "Sin fecha", rel = "";
-  if (ymd) {
-    const d = new Date(`${ymd}T12:00:00Z`);
-    fecha = d.toLocaleDateString("es-PE", { timeZone: "UTC", weekday: "short", day: "2-digit", month: "short" })
-      .replace(/\./g, "").replace(",", "");
-    fecha = fecha.charAt(0).toUpperCase() + fecha.slice(1);
-    const dias = Math.round((Date.parse(`${diaLima_(new Date().toISOString())}T12:00:00Z`) - d.getTime()) / 86400000);
-    rel = dias === 0 ? "Hoy" : dias === 1 ? "Ayer" : dias > 1 ? `hace ${dias} días` : "";
-  }
+  const { fecha, rel } = diaInfo_(ymd);
   return `
     <div class="movDayHdr">
       <span class="movDayDate">${fecha}</span>
       ${rel ? `<span class="movDayRel">${rel}</span>` : ""}
       <span class="movDayCount">${n}</span>
     </div>`;
+}
+
+/**
+ * bloque_ — una caja cerrada con cabecera gruesa de color por grupo.
+ *
+ * Antes los grupos eran una línea de texto entre listas y con la pantalla
+ * llena se perdía de vista en qué grupo iba uno. Ahora cada grupo es una
+ * caja con su color, su número grande y una frase que dice en palabras qué
+ * hay que hacer con esos carros: lo primero que se lee es el grupo, y el VIN
+ * viene después.
+ *
+ * Lo usan las cuatro pantallas (Lista, Ingreso, Calibración y Salida), así
+ * que el movilizador aprende el patrón una sola vez. `n` en null deja la
+ * cabecera sin la pastilla del número.
+ */
+function bloque_(mod, ic, titulo, sub, n, cuerpo) {
+  return `
+    <section class="movBlock movBlock--${mod}">
+      <div class="movBlockHdr">
+        <span class="movBlockIcon" aria-hidden="true">${icon(ic, 22)}</span>
+        <div class="movBlockText">
+          <span class="movBlockTitle">${titulo}</span>
+          ${sub ? `<span class="movBlockSub">${sub}</span>` : ""}
+        </div>
+        ${n == null ? "" : `<span class="movBlockCount">${n}</span>`}
+      </div>
+      <div class="movBlockBody">${cuerpo}</div>
+    </section>`;
 }
 
 /** Agrupa filas por día (en el orden en que vienen) → [[ymd, filas], ...]. */
@@ -250,7 +296,7 @@ function renderList0_(rows) {
   const sinZonaCard = (r) => {
     const dias = diasDesde_(r.fecha_entrada);
     return `
-    <div class="movCard${dias >= 2 ? " movCard--late" : ""}">
+    <div class="movCard${dias >= DIAS_ATRASO ? " movCard--late" : ""}">
       <div class="movCardTop">
         <span class="movVin">${escapeHtml(r.vin)}</span>
         ${badgeDias_(dias)}
@@ -292,28 +338,6 @@ function renderList0_(rows) {
         ${ingresoRowHtml(r)}
       </div>
     </div>`;
-
-  /**
-   * bloque_ — una caja cerrada con cabecera gruesa de color por grupo.
-   *
-   * Antes los grupos eran una línea de texto entre listas y con el panel
-   * lleno se perdía de vista en qué grupo iba uno. Ahora cada grupo es una
-   * caja con su color, su número grande y una frase que dice en palabras
-   * qué hay que hacer con esos carros: lo primero que se lee es el grupo,
-   * y el VIN viene después.
-   */
-  const bloque_ = (mod, ic, titulo, sub, n, cuerpo) => `
-    <section class="movBlock movBlock--${mod}">
-      <div class="movBlockHdr">
-        <span class="movBlockIcon" aria-hidden="true">${icon(ic, 22)}</span>
-        <div class="movBlockText">
-          <span class="movBlockTitle">${titulo}</span>
-          <span class="movBlockSub">${sub}</span>
-        </div>
-        <span class="movBlockCount">${n}</span>
-      </div>
-      <div class="movBlockBody">${cuerpo}</div>
-    </section>`;
 
   // El orden va de lo que falta hacer a lo que ya está hecho. Los sin zona
   // van primero porque son los únicos que piden una acción ahora mismo:
@@ -538,13 +562,19 @@ function renderPendientesBody_(filtered) {
     return;
   }
 
-  // Agrupados por fecha de la lista: la fecha va en la cabecera del grupo, del
-  // mismo tamaño que el VIN, y la ubicación en negrita dentro de la tarjeta.
-  box.innerHTML = porDia_(filtered, "fecha").map(([dia, filas]) => `
-    <section class="movDayGroup">
-      ${diaHdrHtml_(dia, filas.length)}
-      <div class="movCardList">${filas.map(pendienteCardHtml_).join("")}</div>
-    </section>`).join("");
+  // Un bloque por día de lista. El día es el grupo que importa acá: la fecha
+  // es el título de la caja y la bajada dice cuánto lleva esperando. Los de
+  // días anteriores van en rojo — cualquier carro que no se trajo el día que
+  // tocaba es un pendiente, no un dato más de la lista.
+  box.innerHTML = porDia_(filtered, "fecha").map(([dia, filas]) => {
+    const { fecha, rel, dias } = diaInfo_(dia);
+    const hoy = dias === 0;
+    const sub = dias === null ? "Sin fecha en la lista"
+      : hoy ? "Los de hoy"
+      : `${rel} — siguen sin traerse`;
+    return bloque_(hoy ? "dia" : "diaatraso", "clipboardList", fecha, sub, filas.length,
+      `<div class="movCardList">${filas.map(pendienteCardHtml_).join("")}</div>`);
+  }).join("");
 }
 
 function pendienteCardHtml_(r) {
@@ -866,37 +896,56 @@ function renderList2Body_(filtered) {
 
   // Ya vienen ordenados del backend: el que terminó su conversión hace más
   // tiempo primero — el que lleva más esperando calidad.
+  const calibCard = (r) => {
+    const diasConv = diasDesde_(r.fecha_conversion);
+    const diasEnt  = diasDesde_(r.fecha_entrada);
+    return `
+      <div class="movCard${diasConv !== null && diasConv >= DIAS_ATRASO ? " movCard--late" : ""}">
+        <div class="movCardTop">
+          <span class="movVin">${escapeHtml(r.vin)}</span>
+          ${diasConv !== null ? badgeDias_(diasConv) : ""}
+        </div>
+        <div class="movTimeline">
+          <div class="movTimelineRow">
+            <span class="movTimelineIcon" aria-hidden="true">${icon("trayIn", 14)}</span>
+            <span class="movTimelineLabel">Ingreso</span>
+            ${diasEnt !== null
+              ? `<span class="movFecha">${fmtDate_(r.fecha_entrada)}</span><span class="movPor">${plDias_(diasEnt)} en el taller</span>`
+              : `<span class="movCardNoReg">Sin registro</span>`}
+          </div>
+          ${diasConv !== null ? `
+          <div class="movTimelineRow">
+            <span class="movTimelineIcon" aria-hidden="true">${icon("wrench", 14)}</span>
+            <span class="movTimelineLabel">Conversión</span>
+            <span class="movFecha">${fmtDate_(r.fecha_conversion)}</span>
+          </div>` : ""}
+        </div>
+      </div>`;
+  };
 
-  box.innerHTML = `
-    <div class="movCardList">
-      ${filtered.map(r => {
-        const diasConv = diasDesde_(r.fecha_conversion);
-        const diasEnt  = diasDesde_(r.fecha_entrada);
-        return `
-        <div class="movCard">
-          <div class="movCardTop">
-            <span class="movVin">${escapeHtml(r.vin)}</span>
-            ${diasConv !== null ? badgeDias_(diasConv) : ""}
-          </div>
-          <div class="movTimeline">
-            <div class="movTimelineRow">
-              <span class="movTimelineIcon" aria-hidden="true">${icon("trayIn", 14)}</span>
-              <span class="movTimelineLabel">Ingreso</span>
-              ${diasEnt !== null
-                ? `<span class="movFecha">${fmtDate_(r.fecha_entrada)}</span><span class="movPor">${plDias_(diasEnt)} en el taller</span>`
-                : `<span class="movCardNoReg">Sin registro</span>`}
-            </div>
-            ${diasConv !== null ? `
-            <div class="movTimelineRow">
-              <span class="movTimelineIcon" aria-hidden="true">${icon("wrench", 14)}</span>
-              <span class="movTimelineLabel">Conversión</span>
-              <span class="movFecha">${fmtDate_(r.fecha_conversion)}</span>
-            </div>` : ""}
-          </div>
-        </div>`;
-      }).join("")}
-    </div>
-  `;
+  // Dos bloques: el que lleva días esperando calidad es el que hay que
+  // empujar, y mezclado con los de hoy se perdía aunque estuviera arriba.
+  // El VIN sin fecha de conversión cae en los recientes a propósito: sin
+  // fecha no se puede afirmar que lleve días esperando.
+  const atrasado_ = (r) => {
+    const d = diasDesde_(r.fecha_conversion);
+    return d !== null && d >= DIAS_ATRASO;
+  };
+  const atrasados = filtered.filter(atrasado_);
+  const recientes = filtered.filter(r => !atrasado_(r));
+
+  let html = "";
+  if (atrasados.length) {
+    html += bloque_("atraso", "alertTriangle", `Esperando ${DIAS_ATRASO} días o más`,
+      "Avisar a calidad: son los más antiguos", atrasados.length,
+      `<div class="movCardList">${atrasados.map(calibCard).join("")}</div>`);
+  }
+  if (recientes.length) {
+    html += bloque_("reciente", "timer", "Recién convertidos",
+      "Esperando calidad desde hoy o ayer", recientes.length,
+      `<div class="movCardList">${recientes.map(calibCard).join("")}</div>`);
+  }
+  box.innerHTML = html;
 }
 
 function renderList3_(rows) {
@@ -912,30 +961,46 @@ function renderList3_(rows) {
     return;
   }
 
-  box.innerHTML = `
-    <div class="movCardList">
-      ${rows.map(r => `
-        <div class="movCard">
-          <div class="movCardTop">
-            <span class="movVin">${escapeHtml(r.vin)}</span>
-            ${r.destino ? ubicHtml_(r.destino) : `<span class="movChip">Sin destino</span>`}
-          </div>
-          <div class="movCardMeta">
-            <span class="movTimelineLabel">Calidad</span>
-            <span class="movFecha">${fmtDate_(r.fecha_calidad)}</span>
-          </div>
-          ${!r.tiene_ot
-            ? `<div class="movOtWarn">${icon("alertTriangle", 15)} Falta #OT — regístrelo en ASIGNACIONES (col E) antes de confirmar</div>`
-            : ""}
-          <button class="movBtnAction btnConfirmarSalida movBtnPrimary"
-            data-vin="${escapeHtml(r.vin)}" type="button"
-            ${!r.tiene_ot ? 'disabled title="Registre el #OT en ASIGNACIONES primero"' : ''}>
-            ${r.tiene_ot ? `Confirmar salida ${icon("chevronRight", 16)}` : "Sin #OT"}
-          </button>
-        </div>
-      `).join("")}
-    </div>
-  `;
+  const salidaCard = (r) => `
+    <div class="movCard${r.tiene_ot ? "" : " movCard--late"}">
+      <div class="movCardTop">
+        <span class="movVin">${escapeHtml(r.vin)}</span>
+        ${r.destino ? ubicHtml_(r.destino) : `<span class="movChip">Sin destino</span>`}
+      </div>
+      <div class="movCardMeta">
+        <span class="movTimelineLabel">Calidad</span>
+        <span class="movFecha">${fmtDate_(r.fecha_calidad)}</span>
+      </div>
+      ${!r.tiene_ot
+        ? `<div class="movOtWarn">${icon("alertTriangle", 15)} Falta #OT — regístrelo en ASIGNACIONES (col E) antes de confirmar</div>`
+        : ""}
+      <button class="movBtnAction btnConfirmarSalida movBtnPrimary"
+        data-vin="${escapeHtml(r.vin)}" type="button"
+        ${!r.tiene_ot ? 'disabled title="Registre el #OT en ASIGNACIONES primero"' : ''}>
+        ${r.tiene_ot ? `Confirmar salida ${icon("chevronRight", 16)}` : "Sin #OT"}
+      </button>
+    </div>`;
+
+  // Los que les falta el #OT iban mezclados con un aviso dentro de la
+  // tarjeta y el botón apagado: se tocaba el botón, no pasaba nada y había
+  // que leer la letra chica para entender por qué. Ahora son su propio
+  // bloque, arriba, porque son los que exigen un trámite antes de poder
+  // sacar el carro.
+  const sinOt  = rows.filter(r => !r.tiene_ot);
+  const listos = rows.filter(r =>  r.tiene_ot);
+
+  let html = "";
+  if (sinOt.length) {
+    html += bloque_("sinot", "alertTriangle", "Falta registrar el #OT",
+      "No se pueden confirmar hasta tenerlo en ASIGNACIONES", sinOt.length,
+      `<div class="movCardList">${sinOt.map(salidaCard).join("")}</div>`);
+  }
+  if (listos.length) {
+    html += bloque_("listo", "shieldCheck", "Listos para salir",
+      "Se confirman y se registra la ubicación en el GPS", listos.length,
+      `<div class="movCardList">${listos.map(salidaCard).join("")}</div>`);
+  }
+  box.innerHTML = html;
 }
 
 // ─── Fetch ────────────────────────────────────────────────────────────
