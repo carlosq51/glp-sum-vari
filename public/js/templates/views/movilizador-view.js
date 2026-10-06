@@ -154,7 +154,7 @@ export function movilizadorView() {
         </div>
 
         <div class="movPanel open" id="movPanel0">
-          ${panelHead_("car", "En el taller", "Por día de ingreso")}
+          ${panelHead_("car", "En el taller", "Primero los que falta llevar a una plaza")}
           <div id="movPanel0Body" class="movPanelBody"></div>
         </div>
 

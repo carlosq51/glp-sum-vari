@@ -182,10 +182,10 @@ function renderList0_(rows) {
   setNum_("movStatConversion", countConversion);
   setNum_("movStatTotal",      rows.length);
 
-  // Tres grupos, ya ordenados del backend:
-  //   · en zona y sin técnicos — colocado en una plaza, esperando su dupla
+  // Tres grupos, en el orden en que se pintan:
   //   · sin zona — registrado y nadie lo ha puesto en ningún sitio: el que
   //     lleva días así es el que otra área pudo haberse llevado
+  //   · en zona y sin técnicos — colocado en una plaza, esperando su dupla
   //   · en conversión — con OT abierta, técnicos encima
   const enZona     = rows.filter(r => !r.en_conversion &&  r.zona);
   const sinZona    = rows.filter(r => !r.en_conversion && !r.zona);
@@ -293,25 +293,50 @@ function renderList0_(rows) {
       </div>
     </div>`;
 
-  const blockHdr = (ic, txt, n) =>
-    `<div class="movBlockHdr">${icon(ic, 16)} ${txt} <span class="movDayCount">${n}</span></div>`;
+  /**
+   * bloque_ — una caja cerrada con cabecera gruesa de color por grupo.
+   *
+   * Antes los grupos eran una línea de texto entre listas y con el panel
+   * lleno se perdía de vista en qué grupo iba uno. Ahora cada grupo es una
+   * caja con su color, su número grande y una frase que dice en palabras
+   * qué hay que hacer con esos carros: lo primero que se lee es el grupo,
+   * y el VIN viene después.
+   */
+  const bloque_ = (mod, ic, titulo, sub, n, cuerpo) => `
+    <section class="movBlock movBlock--${mod}">
+      <div class="movBlockHdr">
+        <span class="movBlockIcon" aria-hidden="true">${icon(ic, 22)}</span>
+        <div class="movBlockText">
+          <span class="movBlockTitle">${titulo}</span>
+          <span class="movBlockSub">${sub}</span>
+        </div>
+        <span class="movBlockCount">${n}</span>
+      </div>
+      <div class="movBlockBody">${cuerpo}</div>
+    </section>`;
 
+  // El orden va de lo que falta hacer a lo que ya está hecho. Los sin zona
+  // van primero porque son los únicos que piden una acción ahora mismo:
+  // están en el taller y nadie los ha puesto todavía en una plaza.
   let html = "";
-  if (enZona.length) {
-    html += blockHdr("mapPin", "En zona · esperando técnicos", enZona.length);
-    html += `<div class="movCardList">${enZona.map(enZonaCard).join("")}</div>`;
-  }
   if (sinZona.length) {
-    if (enZona.length) html += blockHdr("car", "Sin zona asignada", sinZona.length);
-    html += porDia_(sinZona, "fecha_entrada").map(([dia, filas]) => `
-    <section class="movDayGroup">
-      ${diaHdrHtml_(dia, filas.length)}
-      <div class="movCardList">${filas.map(sinZonaCard).join("")}</div>
-    </section>`).join("");
+    html += bloque_("sinzona", "car", "Sin zona asignada",
+      "Falta llevarlos a una plaza", sinZona.length,
+      porDia_(sinZona, "fecha_entrada").map(([dia, filas]) => `
+        <section class="movDayGroup">
+          ${diaHdrHtml_(dia, filas.length)}
+          <div class="movCardList">${filas.map(sinZonaCard).join("")}</div>
+        </section>`).join(""));
+  }
+  if (enZona.length) {
+    html += bloque_("zona", "mapPin", "Ya en su plaza",
+      "Esperando que lleguen los técnicos", enZona.length,
+      `<div class="movCardList">${enZona.map(enZonaCard).join("")}</div>`);
   }
   if (conversion.length) {
-    html += blockHdr("wrench", "En conversión", conversion.length);
-    html += `<div class="movCardList">${conversion.map(convCard).join("")}</div>`;
+    html += bloque_("conv", "wrench", "En conversión",
+      "Los técnicos ya están trabajando", conversion.length,
+      `<div class="movCardList">${conversion.map(convCard).join("")}</div>`);
   }
   box.innerHTML = html;
 }

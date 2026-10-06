@@ -441,9 +441,7 @@
   flex-direction: column;
   gap: 18px;
 }
-.movPanelBody > .movDayGroup + .movDayGroup,
-.movPanelBody > .movDayGroup + .movBlockHdr,
-.movPanelBody > .movCardList + .movBlockHdr { margin-top: 18px; }
+.movPanelBody > .movDayGroup + .movDayGroup { margin-top: 18px; }
 
 .movDayHdr {
   display: flex;
@@ -479,14 +477,93 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* ─── Bloques de grupo (Ingreso) ───────────────────────────────────────
+   Cada grupo es una caja cerrada con cabecera de color, no una línea de
+   texto entre listas. El movilizador es gente mayor trabajando al sol y con
+   prisa: la caja le dice de un vistazo en qué grupo está mirando y qué hay
+   que hacer con esos carros, aunque haya veinte tarjetas debajo.
+
+   Los tonos son los que ya significan eso en el resto de la app: ámbar (el
+   color de acción de la marca) = falta llevarlo a una plaza, verde = ya está
+   colocado, igual que los carros en verde del mapa de zonas, y azul = en
+   conversión, como el chip de la tarjeta. El rojo se deja libre a propósito:
+   es el del badge de "3 días" dentro de una tarjeta, y si lo gastara el
+   bloque entero ese aviso dejaría de notarse.
+   ------------------------------------------------------------------- */
+.movBlock {
+  --movTone: var(--mov-line);
+  border: 2px solid color-mix(in srgb, var(--movTone) 45%, transparent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--movTone) 4%, var(--surface2));
+  overflow: hidden;
+}
+.movBlock + .movBlock { margin-top: 20px; }
+.movBlock--sinzona { --movTone: var(--accent); }
+.movBlock--zona    { --movTone: var(--ok); }
+.movBlock--conv    { --movTone: var(--note); }
+
 .movBlockHdr {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 2px 8px;
-  font-size: var(--mov-vin);
+  gap: 12px;
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--movTone) 18%, var(--surface));
+  border-bottom: 2px solid color-mix(in srgb, var(--movTone) 40%, transparent);
+}
+.movBlockIcon {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radiusSm);
+  display: grid;
+  place-items: center;
+  color: var(--movTone);
+  background: color-mix(in srgb, var(--movTone) 22%, var(--surface));
+}
+.movBlockText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.movBlockTitle {
+  font-size: var(--fs-3xl);
   font-weight: var(--fw-black);
-  color: var(--note);
+  line-height: 1.15;
+  color: var(--text);
+}
+/* La frase que dice qué hacer: tan grande como el cuerpo, no letra chica. */
+.movBlockSub {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-bold);
+  color: var(--muted);
+}
+.movBlockCount {
+  flex-shrink: 0;
+  min-width: 44px;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 999px;
+  display: inline-grid;
+  place-items: center;
+  font-size: var(--fs-3xl);
+  font-weight: var(--fw-black);
+  color: var(--movTone);
+  background: color-mix(in srgb, var(--movTone) 16%, var(--surface));
+  border: 2px solid color-mix(in srgb, var(--movTone) 45%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+
+.movBlockBody { padding: 12px; }
+.movBlockBody > .movDayGroup + .movDayGroup { margin-top: 16px; }
+
+/* Dentro de un bloque el día manda menos que el bloque: queda como etiqueta
+   subrayada, para no competir con la cabecera de color. */
+.movBlockBody .movDayHdr {
+  padding: 0 2px 8px;
+  margin-bottom: 10px;
+  border-bottom: 2px dashed color-mix(in srgb, var(--movTone) 35%, transparent);
 }
 
 /* ─── Tarjeta de carro ─── */
@@ -860,6 +937,12 @@
   .movVin { letter-spacing: .3px; }
   .movStatNum { font-size: 1.5rem; }
   .movStatTile { padding: 10px; }
+  /* El título del bloque no se encoge: lo que cede es el icono y el padding,
+     para que en un celular angosto siga leyéndose de lejos. */
+  .movBlockHdr { gap: 10px; padding: 11px 12px; }
+  .movBlockIcon { width: 34px; height: 34px; }
+  .movBlockCount { min-width: 38px; height: 36px; padding: 0 9px; font-size: var(--fs-2xl); }
+  .movBlockBody { padding: 10px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
