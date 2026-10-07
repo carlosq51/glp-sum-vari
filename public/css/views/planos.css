@@ -225,8 +225,8 @@
   font-size: var(--fs-sm);
 }
 
-/* Ajustado: el dibujo entero al ancho de la pantalla. Ampliado: doble de
-   ancho y se arrastra con el dedo (el zoom con dos dedos de la PWA no es
+/* Ajustado: el dibujo entero al ancho de la pantalla. Ampliado (como abre):
+   a tamaño de lectura y se arrastra con el dedo (el zoom con dos dedos de la PWA no es
    confiable en todos los celulares). */
 .plano__lienzo {
   overflow: auto;
@@ -239,7 +239,7 @@
   scroll-margin-top: 8px;
 }
 .plano__lienzo .pl-svg { display: block; width: 100%; height: auto; }
-.plano__lienzo.is-zoom .pl-svg { width: 220%; max-width: none; }
+.plano__lienzo.is-zoom .pl-svg { width: max(100%, var(--plw)); max-width: none; }
 
 /* El haz va en el color del texto (negro de día, como en el papel). */
 .pl-tronco { stroke: var(--text); stroke-width: 7; stroke-linecap: round; }
@@ -400,3 +400,34 @@
   vertical-align: middle;
 }
 .plano__zoom--nw { white-space: nowrap; flex-shrink: 0; }
+
+/* ── Leyenda de cinta ──────────────────────────────────────────────── */
+.plano__cinta {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: var(--border-w) solid var(--pillLine);
+  border-radius: var(--radiusSm);
+}
+.plano__cintaFila { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: var(--fs-md); }
+.plano__cintaFila span { color: var(--muted); font-weight: var(--fw-bold); }
+.plano__cintaMuestra {
+  width: 34px;
+  height: 14px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+/* Aislante: negra, lisa, con brillo. */
+.plano__cintaMuestra.is-aislante {
+  background: linear-gradient(180deg, #4a4d52 0%, #111214 45%, #26282c 100%);
+  box-shadow: 0 0 0 1px var(--inputLine);
+}
+/* Tela: negra con trama. */
+.plano__cintaMuestra.is-tela {
+  background:
+    repeating-linear-gradient(45deg, rgba(255,255,255,.18) 0 1px, transparent 1px 4px),
+    repeating-linear-gradient(-45deg, rgba(255,255,255,.18) 0 1px, transparent 1px 4px),
+    #1c1d20;
+  box-shadow: 0 0 0 1px var(--inputLine);
+}

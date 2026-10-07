@@ -64,18 +64,24 @@ const CABLE = {
 //   conector       pieza en la punta: "iny" | "map" | "interface"
 //   lado           dónde va el nombre si el automático estorba
 //   sinLargo       no repetir el largo junto al nombre (ya lo dice la cota)
+//   cotaAbajo      la cota va bajo la línea (arriba choca con otra pieza)
+//
+// `cinta` del plano: [{ tipo: "aislante" | "tela", donde }] — qué cinta
+// lleva cada parte; sale como leyenda arriba del dibujo.
 const PLANOS = [
   {
     id: "kyc-x3-x5",
     titulo: "KYC X3 / X5",
-    notas: [
-      "Conector INVERTIDO: los 4 puntos van hacia la parte inferior.",
-      "Forrar con cinta plástica.",
-    ],
+    notas: ["Conector INVERTIDO: los 4 puntos van hacia la parte inferior."],
+    // Qué cinta lleva cada parte. Este modelo va todo en aislante simple;
+    // hay modelos que combinan cinta de tela y aislante.
+    cinta: [{ tipo: "aislante", donde: "Todo el ramal" }],
+    // Los ángulos copian el boceto del taller (la forma que ya conocen);
+    // los largos son los reales.
     paradas: [
       {
         tramo: { medida: "1/4", cm: 20 },
-        ramas: [{ id: "interface", nombre: "Interface", ang: 0, dib: 14, conector: "interface" }],
+        ramas: [{ id: "interface", nombre: "Interface", ang: -22, dib: 16, conector: "interface" }],
       },
       {
         tramo: { medida: "2/4 + 1 pulgar", cm: 35 },
@@ -83,21 +89,20 @@ const PLANOS = [
           {
             id: "rama-conmutador",
             nombre: "Rama de 1.29 m",
-            detalle: "Al final de la rama salen juntos el conmutador y el cable con chapa.",
+            detalle: "1.29 m hasta donde sale el cable con chapa; desde ahí sigue hasta el conmutador.",
             grupo: true,
-            // Sale a la izquierda y baja en paralelo al tronco.
-            codo: [[180, 35], [90, 94]],
+            ang: 141,
             cm: 129,
             medida: "6/4 + 1 puño",
             hijos: [
-              { id: "conmutador", nombre: "Conmutador", ang: 90, dib: 3, sinLargo: true, cables: ["negro", "blancoVerde", "rojo"] },
+              { id: "conmutador", nombre: "Conmutador", ang: 141, dib: 18, lado: "abajo", sinLargo: true, cables: ["negro", "blancoVerde", "rojo"] },
               {
                 id: "chapa",
                 nombre: "Cable con chapa",
                 corto: "Chapa",
                 detalle: "Un solo cable, rojo con una línea negra.",
-                ang: 180,
-                dib: 6,
+                ang: 186,
+                dib: 14,
                 lado: "arriba",
                 sinLargo: true,
                 cables: ["rojoNegro"],
@@ -114,22 +119,23 @@ const PLANOS = [
             nombre: "Haz de 26 cm",
             detalle: "Ahí terminan INY y MAP; 20 cm más allá salen RPM y EMUL.",
             grupo: true,
-            ang: 0,
+            ang: 150,
             cm: 26,
             medida: "1/4",
             hijos: [
-              { id: "iny", nombre: "INY", detalle: "Inyectores de la bobina", ang: -90, dib: 4, conector: "iny", lado: "der", sinLargo: true },
-              { id: "map", nombre: "MAP", ang: 90, dib: 4, conector: "map", lado: "der", sinLargo: true },
+              { id: "iny", nombre: "INY", detalle: "Inyectores de la bobina", ang: 180, dib: 5, conector: "iny", lado: "arriba", sinLargo: true },
+              { id: "map", nombre: "MAP", ang: 128, dib: 5, conector: "map", lado: "izq", sinLargo: true },
               {
                 id: "haz-rpm-emul",
                 nombre: "Tramo de 20 cm",
                 detalle: "Desde INY y MAP, 20 cm más hasta donde salen RPM y EMUL.",
                 grupo: true,
-                ang: 0,
+                ang: 140,
                 cm: 20,
+                cotaAbajo: true,
                 hijos: [
-                  { id: "rpm", nombre: "RPM", codo: [[-90, 4], [0, 6]], dib: 10, sinLargo: true, cables: ["marron"] },
-                  { id: "emul", nombre: "EMUL.", codo: [[90, 4], [0, 6]], dib: 10, sinLargo: true, cables: ["multicolor"] },
+                  { id: "rpm", nombre: "RPM", ang: 170, dib: 8, lado: "izq", sinLargo: true, cables: ["marron"] },
+                  { id: "emul", nombre: "EMUL.", ang: 115, dib: 8, lado: "izq", sinLargo: true, cables: ["multicolor"] },
                 ],
               },
             ],
@@ -148,15 +154,15 @@ const PLANOS = [
             cm: 20,
             medida: "1/4",
             hijos: [
-              { id: "electrovalvula", nombre: "Electroválvula", ang: 0, dib: 8, sinLargo: true, cables: ["azul", "negro"] },
-              { id: "temperatura", nombre: "Temperatura", codo: [[90, 9], [0, 6]], dib: 15, sinLargo: true, cables: ["anaranjado", "negro"] },
+              { id: "electrovalvula", nombre: "Electroválvula", ang: -10, dib: 14, sinLargo: true, cables: ["azul", "negro"] },
+              { id: "temperatura", nombre: "Temperatura", ang: 18, dib: 14, sinLargo: true, cables: ["anaranjado", "negro"] },
             ],
           },
         ],
       },
       {
         tramo: { medida: "1/4", cm: 20 },
-        ramas: [{ id: "alimentacion", nombre: "Alimentación", ang: 0, dib: 12, cables: ["rojo", "negro"] }],
+        ramas: [{ id: "alimentacion", nombre: "Alimentación", ang: 140, dib: 18, lado: "izq", cables: ["rojo", "negro"] }],
       },
       {
         tramo: { medida: "1/4", cm: 20 },
@@ -175,6 +181,24 @@ const PLANOS = [
     ],
   },
 ];
+
+// Tipos de cinta para la leyenda. La muestra imita la textura: la aislante
+// es lisa y brillante, la de tela tiene trama.
+const CINTAS = {
+  aislante: { n: "Cinta aislante simple", clase: "is-aislante" },
+  tela: { n: "Cinta de tela", clase: "is-tela" },
+};
+
+function cintaHTML_(p) {
+  if (!p.cinta?.length) return "";
+  const filas = p.cinta
+    .map((c) => {
+      const t = CINTAS[c.tipo] || { n: c.tipo, clase: "" };
+      return `<div class="plano__cintaFila"><i class="plano__cintaMuestra ${t.clase}"></i><b>${esc_(t.n)}</b><span>${esc_(c.donde || "")}</span></div>`;
+    })
+    .join("");
+  return `<div class="plano__cinta"><div class="plano__secT">Cinta</div>${filas}</div>`;
+}
 
 const esc_ = (s) =>
   String(s ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]);
@@ -386,10 +410,13 @@ function miniPiezaSVG_(tipo) {
 }
 
 // ── Dibujo a escala (SVG) ──────────────────────────────────────────────
-// Estilo de plano de arnés, como lo bocetó el taller: tramos rectos con
-// codos a 90°, el haz en línea gruesa, los conectores como la pieza y las
-// puntas abiertas en sus cables de color.
+// Con la forma del boceto del taller (las ramas salen con sus ángulos),
+// el haz en línea gruesa, los conectores como la pieza y las puntas
+// abiertas en sus cables de color.
 const S = 4;        // px de dibujo por cm
+// Ampliado (como abre): el dibujo a un tamaño en que la letra se lee
+// (~14 px) y se arrastra con el dedo. «Ver todo» lo ajusta al ancho.
+const ZOOM = 0.7;
 const FS = 20;      // tamaño de letra en unidades del dibujo
 const TXT_W = 0.6;  // ancho medio de un carácter, en FS
 const COLA = 26;    // largo de dibujo de cada cable suelto en la punta
@@ -483,9 +510,14 @@ function dibujoSVG_(p, idx, ref) {
     let lado = r.lado;
     if (!lado) lado = d[0] > 0.5 ? "der" : d[0] < -0.5 ? "izq" : d[1] < 0 ? "arriba" : "abajo";
     const nom = r.corto || r.nombre;
-    // Pieza vertical con el nombre al costado: a media pieza, no en la punta.
-    if (lado === "der" && Math.abs(d[1]) > 0.5 && largoPz) {
+    // Pieza con el nombre al costado de su cuerpo (no en la punta): a media
+    // pieza, pegado a ella.
+    if (largoPz && lado === "der" && Math.abs(d[1]) > 0.5) {
       return texto(x + 22, y + d[1] * (largoPz / 2) + 7, nom, "pl-nom", "start", FS, largo);
+    }
+    if (largoPz && (lado === "arriba" || lado === "abajo") && Math.abs(d[0]) > 0.5) {
+      const cx = x + d[0] * (largoPz / 2);
+      return texto(cx, lado === "arriba" ? y - 24 : y + 24 + FS, nom, "pl-nom", "middle", FS, largo);
     }
     if (lado === "der") return texto(x + lejos, y + 6, nom, "pl-nom", "start", FS, largo);
     if (lado === "izq") return texto(x - lejos, y + 6, nom, "pl-nom", "end", FS, largo);
@@ -497,7 +529,7 @@ function dibujoSVG_(p, idx, ref) {
   // los verticales (tronco, rama del conmutador), que tienen aire al
   // costado; en los horizontales del haz no entra junto a INY/MAP: ahí la
   // referencia sale en la ficha al tocar la rama y en el paso a paso.
-  const cota = (ax, ay, bx, by, cm, cls = "pl-cota", lado = "der") => {
+  const cota = (ax, ay, bx, by, cm, cls = "pl-cota", lado = "der", abajo = false) => {
     let nota = String(ref?.[cm] || "");
     if (nota.length > 16) nota = `${nota.slice(0, 15)}…`;
     const mx = (ax + bx) / 2, my = (ay + by) / 2;
@@ -508,6 +540,7 @@ function dibujoSVG_(p, idx, ref) {
         (nota ? texto(mx + dx, y0 + FS, `(${nota})`, "pl-mia", an, FS - 4) : "");
     }
     // Corrida hacia el final del tramo: al inicio suelen estar las piezas.
+    if (abajo) return texto(ax + (bx - ax) * 0.55 + 12, my + FS + 2, cm_(cm), cls, "middle", FS - 1);
     return texto(ax + (bx - ax) * 0.62, my - 9, cm_(cm), cls, "middle", FS - 1);
   };
 
@@ -542,7 +575,7 @@ function dibujoSVG_(p, idx, ref) {
       if (r.cm && r.grupo) {
         let i = 0;
         legs.forEach(([, l], k) => { if (l > legs[i][1]) i = k; });
-        g += cota(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], r.cm);
+        g += cota(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], r.cm, "pl-cota", "der", r.cotaAbajo);
       }
     }
     if (r.grupo) {
@@ -581,7 +614,9 @@ function dibujoSVG_(p, idx, ref) {
     const y0 = y;
     y += st.tramo.cm * S;
     out.trazos.unshift(`<line x1="0" y1="${f(y0)}" x2="0" y2="${f(y)}" class="pl-tronco"/>`);
-    out.textos.push(cota(0, y0, 0, y, st.tramo.cm, "pl-cota pl-cota--tronco", "izq"));
+    // Las medidas del tronco van a la derecha, como en el boceto: a la
+    // izquierda salen el conmutador y el haz de sensores.
+    out.textos.push(cota(0, y0, 0, y, st.tramo.cm, "pl-cota pl-cota--tronco", "der"));
     for (const r of st.ramas) rama(0, y, r);
     if (!st.fin) out.marcas.push(`<circle cx="0" cy="${f(y)}" r="5.5" class="pl-union"/>`);
   }
@@ -592,6 +627,7 @@ function dibujoSVG_(p, idx, ref) {
 
   return `
     <svg class="pl-svg" viewBox="${vb.join(" ")}" width="${vb[2]}" role="img"
+         style="--plw:${f(vb[2] * ZOOM)}px" data-x0="${vb[0]}" data-w="${vb[2]}"
          aria-label="Dibujo del ramal ${esc_(p.titulo)} a escala">
       ${out.trazos.join("")}
       ${con}${conTxt}
@@ -686,12 +722,13 @@ export function planoHTML_(p, ref = refCargar_(p)) {
   return `
     <div class="plano" data-plano-id="${esc_(p.id)}">
       ${p.notas?.length ? `<ul class="plano__notas">${p.notas.map((n) => `<li>${esc_(n)}</li>`).join("")}</ul>` : ""}
+      ${cintaHTML_(p)}
 
       <div class="plano__secHead">
         <span class="plano__secT">Dibujo a escala</span>
-        <button type="button" class="plano__zoom" data-plano-zoom aria-pressed="false">Ampliar</button>
+        <button type="button" class="plano__zoom" data-plano-zoom aria-pressed="true">Ver todo</button>
       </div>
-      <div class="plano__lienzo" id="planoLienzo">${dibujoSVG_(p, idx, ref)}</div>
+      <div class="plano__lienzo is-zoom" id="planoLienzo">${dibujoSVG_(p, idx, ref)}</div>
       <div class="plano__ley">
         <span><i class="plano__leyL"></i> largo medido</span>
         <span><i class="plano__leyL is-dib"></i> largo no indicado en el plano</span>
@@ -788,8 +825,8 @@ function ensureModal_() {
     const zoom = t.closest("[data-plano-zoom]");
     if (zoom) {
       const on = root.querySelector("#planoLienzo").classList.toggle("is-zoom");
-      zoom.textContent = on ? "Ajustar" : "Ampliar";
-      zoom.setAttribute("aria-pressed", String(on));
+      marcarZoom_(root, on);
+      if (on) centrarLienzo_(root);
       return;
     }
     const sel = t.closest("[data-rama]");
@@ -813,14 +850,42 @@ function ensureModal_() {
   return modal_;
 }
 
-// Repinta el plano abierto sin moverlo de donde estaba leyendo.
+function marcarZoom_(root, on) {
+  const b = root.querySelector("[data-plano-zoom]");
+  if (!b) return;
+  b.textContent = on ? "Ver todo" : "Ampliar";
+  b.setAttribute("aria-pressed", String(on));
+}
+
+// Ampliado, deja a la vista el tronco y lo que sale a su izquierda (el
+// conmutador y el haz de sensores), que es donde está lo enredado.
+function centrarLienzo_(root) {
+  const lz = root.querySelector("#planoLienzo");
+  const svg = lz?.querySelector(".pl-svg");
+  if (!svg || !lz.clientWidth) return;
+  const x0 = Number(svg.dataset.x0), w = Number(svg.dataset.w);
+  const tronco = ((0 - x0) / w) * svg.clientWidth;
+  lz.scrollLeft = Math.max(0, tronco - lz.clientWidth * 0.55);
+}
+
+// Repinta el plano abierto sin moverlo de donde estaba leyendo (ni el
+// scroll de la página ni el del dibujo, ni si estaba ampliado).
 function pintarPlano_(msg = "", arriba = false) {
   const p = planoAbierto_();
   if (!p) return;
   const body = ensureModal_().querySelector("#planoModalBody");
   const scroll = body.scrollTop;
+  const viejo = body.querySelector("#planoLienzo");
+  const zoom = viejo ? viejo.classList.contains("is-zoom") : true;
+  const sl = viejo?.scrollLeft;
   body.innerHTML = planoHTML_(p);
   body.scrollTop = arriba ? 0 : scroll;
+  const root = body.querySelector(".plano");
+  const lz = body.querySelector("#planoLienzo");
+  lz.classList.toggle("is-zoom", zoom);
+  marcarZoom_(root, zoom);
+  if (viejo) lz.scrollLeft = sl;
+  else requestAnimationFrame(() => centrarLienzo_(root));
   if (msg) body.querySelector(".plano__refMsg").textContent = msg;
 }
 
