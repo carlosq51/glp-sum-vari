@@ -40,7 +40,7 @@ function contenido_(e, rol = "") {
   if (e.estado === "BORRADOR") {
     return (e.faltan || []).includes(rol)
       ? { tono: "falta", texto: "📝 Tu compañero ya mandó el informe · falta tu parte" }
-      : { tono: "espera", texto: `🕓 Informe enviado · esperando a ${quien_(e.faltan) || "tu compañero"}` };
+      : { tono: "espera", texto: `🕓 Informe enviado · esperando a ${quien_(e.faltan) || "tu compañero"}`.replace(" a el ", " al ") };
   }
   if (e.estado === "ENVIADO") {
     return { tono: "cola", texto: "🖨️ Informe en la impresora…" };
@@ -48,7 +48,7 @@ function contenido_(e, rol = "") {
   if (e.estado === "IMPRESO") {
     const t = Date.parse(e.impreso_at);
     const hora = Number.isFinite(t) ? ` ${fmtHora_.format(t)}` : "";
-    const medias = e.faltan?.length ? ` · la parte de ${quien_(e.faltan)} va en blanco` : "";
+    const medias = e.faltan?.length ? ` · la parte de ${quien_(e.faltan)} va en blanco`.replace(" de el ", " del ") : "";
     return { tono: "ok", texto: `✅ Informe impreso${hora} · pídelo en la oficina${medias}` };
   }
   return null;
