@@ -55,7 +55,10 @@ export function abrirInformeOt_(it) {
   pintarCabecera_({ cargando: true });
   m.classList.add("show");
   m.setAttribute("aria-hidden", "false");
-  $("iotOtFisica")?.focus();
+  // En el celular no se enfoca solo: el teclado saltaba al abrir y empujaba
+  // toda la pantalla, que parecía que la app se recargaba. Lo abre el
+  // técnico al tocar el campo.
+  if (!matchMedia("(pointer: coarse)").matches) $("iotOtFisica")?.focus();
 
   // Quiénes trabajaron el carro y desde cuándo lo salen del sistema, no del
   // técnico: él ya tiene bastante con medir la batería.

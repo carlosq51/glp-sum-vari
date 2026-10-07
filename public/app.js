@@ -411,5 +411,30 @@ if ("serviceWorker" in navigator) {
   });
   window.addEventListener("focus", checkForSwUpdate_);
   setInterval(checkForSwUpdate_, 60_000);
+
+  // El SW avisa que hay versión nueva en vez de recargar la pantalla que se
+  // está mirando. Se recarga en cuanto la app pasa a segundo plano (bloquear
+  // el celular, cambiar de app) — ahí nadie lo ve —, o, si sigue abierta,
+  // cuando lleva 10 min y no hay un modal abierto ni se está escribiendo.
+  let recargaPendiente_ = false;
+  const recargarCuandoSePueda_ = () => {
+    if (recargaPendiente_) return;
+    recargaPendiente_ = true;
+    const desde = Date.now();
+    const ocupado = () =>
+      !!document.querySelector(".modal.show") ||
+      ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName);
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) location.reload();
+    });
+    const intentar = () => {
+      if (document.hidden || (Date.now() - desde > 10 * 60_000 && !ocupado())) location.reload();
+      else setTimeout(intentar, 15_000);
+    };
+    intentar();
+  };
+  navigator.serviceWorker.addEventListener("message", (e) => {
+    if (e.data?.type === "glp:nueva-version") recargarCuandoSePueda_();
+  });
 }
 

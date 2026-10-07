@@ -14,11 +14,20 @@ registerRoute(new NavigationRoute(createHandlerBoundToURL('index.html'), {
   denylist: [/^\/tv(\/|$|\?)/, /^\/marcar(\/|$|\?)/, /^\/despacho(\/|$|\?)/],
 }));
 
+// Versión nueva → las ventanas pasan a ella. Las que están en segundo plano
+// se recargan ya. Las que alguien está mirando NO: recargarlas le cambiaba
+// la pantalla al técnico en medio de lo que hacía (abriendo el informe, con
+// un modal a medio llenar). A esas se les avisa, y app.js recarga cuando la
+// app pasa a segundo plano o se queda quieta (ver recargarCuandoSePueda_).
 self.skipWaiting();
 self.addEventListener('activate', e => e.waitUntil(
   self.clients.claim().then(() =>
     self.clients.matchAll({ type: 'window', includeUncontrolled: true })
-      .then(clients => Promise.all(clients.map(c => c.navigate(c.url).catch(() => {}))))
+      .then(clients => Promise.all(clients.map(c =>
+        c.visibilityState === 'visible'
+          ? c.postMessage({ type: 'glp:nueva-version' })
+          : c.navigate(c.url).catch(() => {})
+      )))
   )
 ));
 
