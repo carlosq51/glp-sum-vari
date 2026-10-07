@@ -22,12 +22,14 @@
 //     el servidor que reinicia). Si la laptop estuvo apagada, al prenderla
 //     sale todo lo que se acumuló.
 //
-// Uso: iniciar.cmd (lleva el correo y la impresora), o
+// Uso: iniciar-oculto.vbs (sin ventana; lo que pasa queda en agente.log),
+//   iniciar.cmd (con ventana, para ver qué hace), detener.cmd para pararlo, o
 //   node agente.mjs --email x@y.com --impresora "HP92BDEE (HP LaserJet Pro MFP 3101-3108)"
 // =========================
 
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync, existsSync, statSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, statSync, appendFileSync } from "node:fs";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ptp from "pdf-to-printer";
@@ -65,8 +67,30 @@ if (!EMAIL || !IMPRESORA || !CHROME) {
   process.exit(1);
 }
 
-const hora_ = () => new Date().toLocaleTimeString("es-PE", { hour12: false });
-const log = (...xs) => console.log(`[${hora_()}]`, ...xs);
+// Corre sin ventana (iniciar-oculto.vbs), así que lo que pasa queda también
+// en agente.log, junto a este archivo. Se recorta al arrancar para que no
+// crezca para siempre.
+const LOG = new URL("./agente.log", import.meta.url);
+try { if (existsSync(LOG) && statSync(LOG).size > 1_000_000) rmSync(LOG); } catch { /* sigue */ }
+
+const hora_ = () => new Date().toLocaleString("es-PE", { hour12: false });
+const log = (...xs) => {
+  const linea = `[${hora_()}] ${xs.join(" ")}`;
+  console.log(linea);
+  try { appendFileSync(LOG, linea + "\n"); } catch { /* sin log, pero imprime */ }
+};
+
+// ── Una sola copia corriendo ─────────────────────────────────────────────
+// Dos agentes a la vez imprimirían cada informe dos veces. El primero toma
+// este puerto local; el segundo lo encuentra ocupado y se va (código 3, que
+// iniciar.cmd entiende como "no reintentar").
+await new Promise((resolve) => {
+  const srv = createServer().once("error", () => {
+    log("Ya hay otro agente corriendo en esta laptop. Este se cierra.");
+    process.exit(3);
+  });
+  srv.listen(47321, "127.0.0.1", resolve);
+});
 
 // ── Lo ya impreso ────────────────────────────────────────────────────────
 // La llave es id + updated_at, no el id solo: un informe que salió con
@@ -139,7 +163,9 @@ async function imprimir_(it) {
         impresos.set(k, { id: it.id, marcado: true });
         return;
       }
-      await ptp.print(pdf, { printer: IMPRESORA, copies: 1 });
+      // simplex: una cara por hoja, 3 papeles. La HP viene en doble cara
+      // por defecto y sacaba 2: el chequeo quedaba al dorso del informe.
+      await ptp.print(pdf, { printer: IMPRESORA, copies: 1, side: "simplex" });
       log(`Impreso · OT ${it.ot_fisica} · ${it.placa || it.vin || ""} · de ${it.creado_nombre || it.creado_por}`);
     } finally {
       rmSync(dir, { recursive: true, force: true });
