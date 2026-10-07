@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { supabaseHeaders_ } from "../lib/supabase.js";
+import { usuariosActivos_ } from "../lib/authz.js";
 import { getConfig_ } from "../lib/config.js";
 import { cachedByTopics_ } from "../lib/poll-cache.js";
 
@@ -42,11 +43,10 @@ async function armarColaTecnico_(esp) {
     // ── 1. Compañeros libres ───────────────────────────────────────────
     let companeros = [];
     if (pairEsp) {
-      const [rComp, rBusy] = await Promise.all([
-        fetch(`${SUPABASE_URL}/rest/v1/usuarios?rol=eq.TECNICO&especialidad=eq.${pairEsp}&activo=eq.true&select=id,nombre`, { method: "GET", headers }),
+      const [allPairs, rBusy] = await Promise.all([
+        usuariosActivos_({ rol: "TECNICO", especialidad: pairEsp }).catch(() => []),
         fetch(`${SUPABASE_URL}/rest/v1/asignaciones?rol_trabajo=eq.${pairEsp}&activo=eq.true&estado_actual=neq.FINALIZADO&select=user_id`, { method: "GET", headers }),
       ]);
-      const allPairs = rComp.ok ? await rComp.json() : [];
       const busyIds  = new Set((rBusy.ok ? await rBusy.json() : []).map(a => a.user_id));
       companeros = allPairs.filter(u => !busyIds.has(u.id)).map(u => ({ id: u.id, nombre: u.nombre }));
     }
@@ -149,11 +149,7 @@ async function armarEquipoStats_(esp) {
     const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysBack);
     const mondaySince = monday.toISOString().split("T")[0] + "T00:00:00";
 
-    const rUsers = await fetch(
-      `${SUPABASE_URL}/rest/v1/usuarios?rol=eq.TECNICO&especialidad=eq.${esp}&activo=eq.true&select=id`,
-      { method: "GET", headers: supabaseHeaders_() }
-    );
-    const users = rUsers.ok ? await rUsers.json() : [];
+    const users = await usuariosActivos_({ rol: "TECNICO", especialidad: esp }).catch(() => []);
     if (!users.length) return { ok: true, avgDailyRate: 0, activeTechs: 0, totalTechs: 0 };
 
     // Fetch with updated_at so we can count distinct working days per tech

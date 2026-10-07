@@ -15,7 +15,7 @@ import { randomUUID } from "crypto";
 import QRCode from "qrcode";
 import { supabaseHeaders_ } from "../lib/supabase.js";
 import { getConfig_ } from "../lib/config.js";
-import { requireRol_, getUsuarioByEmail_ } from "../lib/authz.js";
+import { requireRol_, getUsuarioByEmail_, usuariosActivos_, usuariosPorIds_, mapaUsuarios_ } from "../lib/authz.js";
 import { emitEvent_ } from "../lib/events.js";
 import { cachedByTopics_ } from "../lib/poll-cache.js";
 import { ttlConRealtime_ } from "../lib/realtime.js";
@@ -483,13 +483,11 @@ router.get("/api/despacho/asistencia", requireModoActivo_, async (req, res) => {
     const turnoFin = hhmmAMinutos_(cfg.DESPACHO_TURNO_FIN) ?? 60;
     const ahoraMin = minutosDelDia_();
 
-    const [uResp, marcas, ocupados] = await Promise.all([
-      fetch(`${SB()}/rest/v1/usuarios?rol=eq.TECNICO&activo=eq.true&select=id,nombre,especialidad&order=nombre.asc`,
-        { headers: supabaseHeaders_() }),
+    const [tecnicos, marcas, ocupados] = await Promise.all([
+      usuariosActivos_({ rol: "TECNICO" }).catch(() => []),
       marcasDeJornada_(fecha),
       tecnicosOcupados_(),
     ]);
-    const tecnicos = uResp.ok ? await uResp.json() : [];
 
     const porUser = new Map();
     for (const m of marcas) {
@@ -568,14 +566,7 @@ export async function zonasDeVins_(vins) {
 
 /** user_id → nombre, para no repetir el fetch en cada handler. */
 async function nombresDe_(userIds) {
-  const ids = [...new Set(userIds)].filter(Boolean);
-  if (!ids.length) return new Map();
-  const r = await fetch(
-    `${SB()}/rest/v1/usuarios?id=in.(${encodeURIComponent(ids.join(","))})&select=id,nombre`,
-    { headers: supabaseHeaders_() },
-  );
-  const rows = r.ok ? await r.json() : [];
-  return new Map(rows.map(u => [u.id, u.nombre]));
+  return mapaUsuarios_(userIds).catch(() => new Map());
 }
 
 // GET /api/despacho/duplas — estado de las duplas de hoy
@@ -626,16 +617,14 @@ router.get("/api/despacho/companeros", requireModoActivo_, async (req, res) => {
     if (!yo) return res.status(403).json({ ok: false, error: "Usuario no encontrado" });
 
     const fecha = jornadaFecha_();
-    const [uResp, marcas, duplas] = await Promise.all([
-      // `activo` va en el select aunque el filtro ya lo garantice: validarDupla_
-      // lo relee por su cuenta, y con la columna ausente leía `undefined` →
-      // "Hay un técnico inactivo" para TODOS. La lista salía siempre vacía.
-      fetch(`${SB()}/rest/v1/usuarios?rol=eq.TECNICO&activo=eq.true&select=id,nombre,especialidad,activo&order=nombre.asc`,
-        { headers: supabaseHeaders_() }),
+    const [tecnicos, marcas, duplas] = await Promise.all([
+      // El padrón trae `activo`: validarDupla_ lo relee por su cuenta, y con
+      // la columna ausente leía `undefined` → "Hay un técnico inactivo" para
+      // TODOS. La lista salía siempre vacía.
+      usuariosActivos_({ rol: "TECNICO" }).catch(() => []),
       marcasDeJornada_(fecha),
       duplasDeJornada_(fecha),
     ]);
-    const tecnicos = uResp.ok ? await uResp.json() : [];
 
     const enDupla = new Set(duplas.flatMap(d => d.miembros));
     const porUser = new Map();
@@ -684,11 +673,7 @@ router.post("/api/despacho/dupla/proponer", requireModoActivo_, async (req, res)
     const yo = await userPorEmail_(email);
     if (!yo) return res.status(403).json({ ok: false, error: "Usuario no encontrado" });
 
-    const sr = await fetch(
-      `${SB()}/rest/v1/usuarios?id=eq.${encodeURIComponent(socioUserId || "")}&select=id,nombre,email,especialidad,activo&limit=1`,
-      { headers: supabaseHeaders_() },
-    );
-    const socio = sr.ok ? (await sr.json())[0] : null;
+    const [socio] = await usuariosPorIds_([socioUserId]);
     if (!socio) return res.status(404).json({ ok: false, error: "Compañero no encontrado" });
 
     const fecha  = jornadaFecha_();
@@ -827,12 +812,7 @@ router.post("/api/despacho/dupla/crear", requireModoActivo_,
       return res.status(400).json({ ok: false, error: "Elige a los dos técnicos" });
     }
 
-    const ur = await fetch(
-      `${SB()}/rest/v1/usuarios?id=in.(${encodeURIComponent([aUserId, bUserId].join(","))})` +
-      `&select=id,nombre,email,especialidad,activo`,
-      { headers: supabaseHeaders_() },
-    );
-    const users = ur.ok ? await ur.json() : [];
+    const users = await usuariosPorIds_([aUserId, bUserId]);
     const a = users.find(u => u.id === aUserId);
     const b = users.find(u => u.id === bUserId);
     if (!a || !b) return res.status(404).json({ ok: false, error: "Técnico no encontrado" });
@@ -1136,10 +1116,10 @@ async function contextoDelTaller_(cfg, fecha) {
     // cache no se notan. Si la lectura falla, lanza y no se cachea: la vuelta
     // sigue con [] como antes y la siguiente reintenta.
     // La lista llega por Realtime (topic "lista_diaria"): con él sano, dura más.
+    // Los técnicos salen del padrón cacheado de lib/authz.js.
     cachedByTopics_("motor:lista_diaria", ["lista_diaria"], ttlConRealtime_(cfg, CACHE_MOTOR_LENTO_MS), () =>
       sbJson_(`${SB()}/rest/v1/lista_diaria_activa?select=vin`, h)).catch(() => []),
-    cachedByTopics_("motor:tecnicos", [], CACHE_MOTOR_LENTO_MS, () =>
-      sbJson_(`${SB()}/rest/v1/usuarios?rol=eq.TECNICO&activo=eq.true&select=id,nombre,especialidad`, h)).catch(() => []),
+    usuariosActivos_({ rol: "TECNICO" }).catch(() => []),
     marcasDeJornada_(fecha),
     // PENDIENTE entra a propósito: mientras una invitación está en el aire,
     // sus dos técnicos salen del reparto (ver unidadesDeTrabajo_).
@@ -1701,13 +1681,7 @@ async function aplicarDuplasAuto_(fecha, { formar, disolver }, t) {
 
 /** user_id → email, para los avisos. */
 async function emailsDe_(userIds) {
-  const ids = [...new Set(userIds)].filter(Boolean);
-  if (!ids.length) return new Map();
-  const r = await fetch(
-    `${SB()}/rest/v1/usuarios?id=in.(${encodeURIComponent(ids.join(","))})&select=id,email`,
-    { headers: supabaseHeaders_() },
-  );
-  return new Map((r.ok ? await r.json() : []).map(u => [u.id, u.email]));
+  return mapaUsuarios_(userIds, "email").catch(() => new Map());
 }
 
 const primerNombre_ = n => String(n || "").trim().split(/\s+/)[0] || "";
@@ -1836,12 +1810,8 @@ async function avisarAsignados_(propuestas, tecnicos) {
   const ids = [...new Set(propuestas.flatMap(p => p.miembros || [p.user_id]))];
   if (!ids.length) return;
 
-  const r = await fetch(
-    `${SB()}/rest/v1/usuarios?id=in.(${ids.join(",")})&select=id,email`,
-    { headers: supabaseHeaders_() },
-  );
-  if (!r.ok) return;
-  const emails = new Map((await r.json()).map(u => [u.id, u.email]));
+  const emails = await mapaUsuarios_(ids, "email").catch(() => null);
+  if (!emails) return;
 
   for (const p of propuestas) {
     const destinos = (p.miembros || [p.user_id]).map(id => emails.get(id)).filter(Boolean);
@@ -2719,11 +2689,7 @@ router.post("/api/despacho/ayudante", requireModoActivo_,
       });
     }
 
-    const ur = await fetch(
-      `${SB()}/rest/v1/usuarios?id=eq.${encodeURIComponent(userId)}&select=id,nombre,email,activo&limit=1`,
-      { headers: supabaseHeaders_() },
-    );
-    const ayudante = ur.ok ? (await ur.json())[0] : null;
+    const [ayudante] = await usuariosPorIds_([userId]);
     if (!ayudante) return res.status(404).json({ ok: false, error: "Técnico no encontrado" });
 
     const vivas = await duplasDeJornada_(fecha, ["ACTIVA", "PENDIENTE"]);
@@ -3585,16 +3551,14 @@ async function armarPayloadTV_() {
     const turnoFin = hhmmAMinutos_(cfg.DESPACHO_TURNO_FIN) ?? 60;
     const ahoraMin = minutosDelDia_();
 
-    const [uResp, marcas, ocupados, produccion, incidencias, varados] = await Promise.all([
-      fetch(`${SB()}/rest/v1/usuarios?rol=eq.TECNICO&activo=eq.true&select=id,nombre,especialidad`,
-        { headers: supabaseHeaders_() }),
+    const [tecnicos, marcas, ocupados, produccion, incidencias, varados] = await Promise.all([
+      usuariosActivos_({ rol: "TECNICO" }).catch(() => []),
       marcasDeJornada_(fecha),
       tecnicosOcupados_(),
       produccionJornada_(cfg, fecha),
       incidenciasJornada_(fecha, 3),
       varados_(cfg),
     ]);
-    const tecnicos = uResp.ok ? await uResp.json() : [];
 
     const porUser = new Map();
     for (const m of marcas) {

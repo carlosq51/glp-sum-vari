@@ -640,15 +640,18 @@ describe("validarDupla_", () => {
   });
 });
 
-// El guardián del bug de arriba: el endpoint filtra por activo=eq.true, pero
-// además tiene que PEDIR la columna, porque validarDupla_ la relee de la fila.
+// El guardián del bug de arriba: los candidatos salen filtrados por activo,
+// pero la fila además tiene que TRAER la columna, porque validarDupla_ la
+// relee. Salen del padrón de lib/authz.js, así que es el padrón quien la pide.
 describe("GET /api/despacho/companeros — consulta de candidatos", () => {
-  it("pide la columna activo, no solo la filtra", async () => {
+  it("los candidatos traen la columna activo, no solo vienen filtrados", async () => {
     const { readFileSync } = await import("node:fs");
     const src = readFileSync(new URL("../routes/despacho.js", import.meta.url), "utf8");
     const bloque = src.slice(src.indexOf('router.get("/api/despacho/companeros"'));
-    const query = bloque.match(/usuarios\?rol=eq\.TECNICO[^`]*/)[0];
-    expect(query).toMatch(/select=[^&]*\bactivo\b/);
+    expect(bloque.slice(0, 800)).toMatch(/usuariosActivos_\(\{ rol: "TECNICO" \}\)/);
+    const authz = readFileSync(new URL("../lib/authz.js", import.meta.url), "utf8");
+    expect(authz.match(/COLS_PADRON = "([^"]*)"/)[1].split(",")).toContain("activo");
+    expect(authz).toMatch(/activo:\s+!!u\.activo/);
   });
 });
 

@@ -5,7 +5,7 @@ import { cachedByTopics_ } from "../lib/poll-cache.js";
 import { getConfig_ } from "../lib/config.js";
 import { fechaPeruMenosDias_ } from "../lib/utils.js";
 import { dispararMotor_, despachoReparteAhora_ } from "./despacho.js";
-import { getUsuarioByEmail_ } from "../lib/authz.js";
+import { getUsuarioByEmail_, mapaUsuarios_ } from "../lib/authz.js";
 import { medianasPorCelda_, medianasParaRed_ } from "../lib/eta-carro.js";
 
 const router = Router();
@@ -275,13 +275,7 @@ async function armarMapaZonas_() {
           );
           const asgs = asgResp.ok ? await asgResp.json() : [];
           if (asgs.length) {
-            const userIds = [...new Set(asgs.map(a => a.user_id))].join(",");
-            const usrResp = await fetch(
-              `${SUPABASE_URL}/rest/v1/usuarios?id=in.(${encodeURIComponent(userIds)})&select=id,nombre`,
-              { method: "GET", headers }
-            );
-            const usrs = usrResp.ok ? await usrResp.json() : [];
-            const userNombreMap = new Map(usrs.map(u => [u.id, u.nombre]));
+            const userNombreMap = await mapaUsuarios_(asgs.map(a => a.user_id)).catch(() => new Map());
             const woIdToVin = new Map(allWos.map(w => [w.id, w.vin]));
             for (const a of asgs) {
               const vin = woIdToVin.get(a.work_order_id);

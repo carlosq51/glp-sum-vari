@@ -17,7 +17,7 @@ import { Router } from "express";
 import { supabaseHeaders_ } from "../lib/supabase.js";
 import { getConfig_ } from "../lib/config.js";
 import { emitEvent_ } from "../lib/events.js";
-import { requireRol_ } from "../lib/authz.js";
+import { requireRol_, usuariosPorIds_ } from "../lib/authz.js";
 import { cachedByTopics_ } from "../lib/poll-cache.js";
 import { ttlConRealtime_ } from "../lib/realtime.js";
 import { repartirTrasEvento_ } from "./despacho.js";
@@ -139,10 +139,7 @@ async function enriquecerOts_(wos) {
     `&order=updated_at.desc`
   );
 
-  const userIds = [...new Set(asgs.map(a => a.user_id).filter(Boolean))];
-  const usrs = userIds.length
-    ? await sbGet_(`usuarios?id=in.(${encodeURIComponent(userIds.join(","))})&select=id,nombre,email,especialidad`)
-    : [];
+  const usrs = await usuariosPorIds_(asgs.map(a => a.user_id));
   const userMap = Object.fromEntries(usrs.map(u => [u.id, u]));
 
   const porWo = new Map();

@@ -5,6 +5,7 @@ import { emitEvent_ } from "../lib/events.js";
 import { getConfig_ } from "../lib/config.js";
 import { cachedByTopics_ } from "../lib/poll-cache.js";
 import { ttlConRealtime_ } from "../lib/realtime.js";
+import { usuariosPorIds_ } from "../lib/authz.js";
 
 const router = Router();
 
@@ -453,8 +454,7 @@ router.get("/api/movilizador/status", async (req, res) => {
 
         const tecMap = new Map(); // work_order_id → { delantero, tanquero, *_fin }
         if (aRows?.length) {
-          const ids = [...new Set(aRows.map(a => a.user_id).filter(Boolean))].join(",");
-          const usrs = ids ? await getRows_(`${SUPABASE_URL}/rest/v1/usuarios?id=in.(${ids})&select=id,nombre`) : [];
+          const usrs = await usuariosPorIds_(aRows.map(a => a.user_id)).catch(() => []);
           const nom = new Map((usrs || []).map(u => [u.id, String(u.nombre || "").trim().split(/\s+/)[0]]));
           for (const a of aRows) {
             const n = nom.get(a.user_id);

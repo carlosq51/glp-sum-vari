@@ -20,21 +20,26 @@ import { autorizarDb_ } from "../lib/db-permisos.js";
 
 const router = express.Router();
 
-// Módulos por usuario, 5 min: mismo TTL que la ficha de lib/authz.js. Cada
-// pantalla de técnico pasa por aquí en cada ciclo del poll. Una escritura en
+// Módulos de TODOS los usuarios en una lectura, 10 min: mismo TTL que el
+// padrón de lib/authz.js. Cada pantalla de técnico pasa por aquí en cada ciclo
+// del poll, y por usuario eran ~280 consultas al día. Una escritura en
 // usuarios o usuario_modulos por esta misma ruta vacía las dos caches.
-const _modulos = new Map(); // user_id → { modulos, ts }
+let _modulos = null; // { porUser: Map(user_id → [modulo]), ts }
 async function modulosDe_(userId) {
-  const hit = _modulos.get(userId);
-  if (hit && Date.now() - hit.ts < 5 * 60_000) return hit.modulos;
-  const r = await fetch(
-    `${process.env.SUPABASE_URL}/rest/v1/usuario_modulos?user_id=eq.${encodeURIComponent(userId)}&select=modulo`,
-    { headers: supabaseServiceHeaders_() },
-  );
-  if (!r.ok) throw new Error(`usuario_modulos: ${r.status}`);
-  const modulos = (await r.json()).map((m) => m.modulo);
-  _modulos.set(userId, { modulos, ts: Date.now() });
-  return modulos;
+  if (!_modulos || Date.now() - _modulos.ts >= 10 * 60_000) {
+    const r = await fetch(
+      `${process.env.SUPABASE_URL}/rest/v1/usuario_modulos?select=user_id,modulo`,
+      { headers: supabaseServiceHeaders_() },
+    );
+    if (!r.ok) throw new Error(`usuario_modulos: ${r.status}`);
+    const porUser = new Map();
+    for (const { user_id, modulo } of await r.json()) {
+      if (!porUser.has(user_id)) porUser.set(user_id, []);
+      porUser.get(user_id).push(modulo);
+    }
+    _modulos = { porUser, ts: Date.now() };
+  }
+  return _modulos.porUser.get(userId) || [];
 }
 
 router.all("/api/db/:tabla", async (req, res) => {
@@ -63,7 +68,7 @@ router.all("/api/db/:tabla", async (req, res) => {
     if (metodo !== "GET") console.log(`[db] ${metodo} ${tabla} por ${email} → ${r.status}`);
     if (metodo !== "GET" && (tabla === "usuarios" || tabla === "usuario_modulos")) {
       invalidarUsuarios_();
-      _modulos.clear();
+      _modulos = null;
     }
     res.status(r.status).type(r.headers.get("content-type") || "application/json").send(await r.text());
   } catch (e) {

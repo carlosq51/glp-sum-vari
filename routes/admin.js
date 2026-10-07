@@ -3,7 +3,7 @@ import { supabaseHeaders_ } from "../lib/supabase.js";
 import { normalizeModelo_ } from "../lib/utils.js";
 import { getConfig_, invalidateConfigCache_ } from "../lib/config.js";
 import { emitEvent_ } from "../lib/events.js";
-import { requireRol_ } from "../lib/authz.js";
+import { requireRol_, usuariosPorIds_, usuariosActivos_ } from "../lib/authz.js";
 import { aplicarPausaMasiva_, estadoHorarios_ } from "../lib/pausa-masiva.js";
 import { repartirTrasEvento_ } from "./despacho.js";
 
@@ -275,12 +275,7 @@ router.get("/api/admin/asignaciones", async (req, res) => {
     if (!asgs.length) return res.json({ ok: true, asignaciones: [], work_orders: wos });
 
     // 3. Usuarios para esos user_ids
-    const userIds = [...new Set(asgs.map(a => a.user_id))].join(",");
-    const usrResp = await fetch(
-      `${SUPABASE_URL}/rest/v1/usuarios?id=in.(${encodeURIComponent(userIds)})&select=id,nombre,email`,
-      { method: "GET", headers }
-    );
-    const usrs = usrResp.ok ? await usrResp.json() : [];
+    const usrs = await usuariosPorIds_(asgs.map(a => a.user_id)).catch(() => []);
     const userMap = Object.fromEntries(usrs.map(u => [u.id, u]));
 
     const result = asgs.map(a => ({
@@ -380,16 +375,9 @@ router.patch("/api/admin/asignaciones/:id", requireRol_("ADMIN", "SUPERVISOR"), 
 // Lista de técnicos activos para picker de reasignación
 router.get("/api/admin/usuarios-activos", async (req, res) => {
   try {
-    const SUPABASE_URL = process.env.SUPABASE_URL;
-    const headers = supabaseHeaders_();
-    const resp = await fetch(
-      // `rol` lo usa el picker de "quién puede avanzar carro solo" (Admin →
-      // Configuración) para no listar al movilizador ni al ramalero.
-      `${SUPABASE_URL}/rest/v1/usuarios?activo=eq.true&select=id,nombre,email,especialidad,rol&order=nombre.asc`,
-      { method: "GET", headers }
-    );
-    if (!resp.ok) throw new Error(`Supabase: ${resp.status}`);
-    const usuarios = await resp.json();
+    // `rol` lo usa el picker de "quién puede avanzar carro solo" (Admin →
+    // Configuración) para no listar al movilizador ni al ramalero.
+    const usuarios = await usuariosActivos_();
     return res.json({ ok: true, usuarios });
   } catch (e) {
     return res.status(500).json({ ok: false, error: String(e.message || e) });

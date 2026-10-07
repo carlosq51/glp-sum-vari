@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getUsuarioByEmail_ } from "../lib/authz.js";
+import { getUsuarioByEmail_, usuariosActivos_, mapaUsuarios_, usuariosPorIds_ } from "../lib/authz.js";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { supabaseHeaders_ } from "../lib/supabase.js";
 import { getConfig_ } from "../lib/config.js";
@@ -308,11 +308,7 @@ router.get("/api/ml/infer-vin-model", (req, res) => {
 async function cargarHistorico_() {
   const SUPABASE_URL = process.env.SUPABASE_URL;
 
-  const rUsers = await fetch(
-    `${SUPABASE_URL}/rest/v1/usuarios?rol=eq.TECNICO&activo=eq.true&select=id,nombre,email,especialidad`,
-    { method: "GET", headers: supabaseHeaders_() }
-  );
-  const users = rUsers.ok ? await rUsers.json() : [];
+  const users = await usuariosActivos_({ rol: "TECNICO" }).catch(() => []);
 
   const PAGINA = 1000;
   const MAX_FILAS = 100000;     // freno de seguridad, no un objetivo
@@ -874,12 +870,7 @@ router.get("/api/ml/suggest-next", async (req, res) => {
         .slice(0, 3);
 
       const candIds = rankedSolo.map(c => c.userId);
-      const rCandUsers = candIds.length ? await fetch(
-        `${SUPABASE_URL}/rest/v1/usuarios?id=in.(${candIds.join(",")})&select=id,nombre`,
-        { method: "GET", headers: supabaseHeaders_() }
-      ) : null;
-      const candUserMap = {};
-      if (rCandUsers?.ok) (await rCandUsers.json()).forEach(u => { candUserMap[u.id] = u.nombre; });
+      const candUserMap = Object.fromEntries(await mapaUsuarios_(candIds).catch(() => new Map()));
 
       for (const { userId, sim, modelo, ml } of rankedSolo) {
         const f = ml?.features;
@@ -905,11 +896,7 @@ router.get("/api/ml/suggest-next", async (req, res) => {
       }
     } else if (soloUserIds.size > 0) {
       // Sin modelo ML: fallback — mostrar trabajando-solos sin filtro
-      const rSoloUsers = await fetch(
-        `${SUPABASE_URL}/rest/v1/usuarios?id=in.(${[...soloUserIds].join(",")})&select=id,nombre`,
-        { method: "GET", headers: supabaseHeaders_() }
-      );
-      (rSoloUsers.ok ? await rSoloUsers.json() : []).slice(0, 3).forEach(u => {
+      (await usuariosPorIds_([...soloUserIds]).catch(() => [])).slice(0, 3).forEach(u => {
         const woId = soloByUser[u.id];
         suggestions.push({
           id: u.id, nombre: u.nombre || "", especialidad: pairEsp,

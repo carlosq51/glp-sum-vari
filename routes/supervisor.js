@@ -6,6 +6,7 @@ import { cachedByTopics_ } from "../lib/poll-cache.js";
 import { jornadaFecha_, esDuplaApoyo_, vinDeDuplaApoyo_ } from "../lib/despacho.js";
 import { fechaPeruMenosDias_, normalizeModelo_, jornadaPeru_ } from "../lib/utils.js";
 import { proyeccionDeJornada_ } from "./produccion.js";
+import { usuariosActivos_ } from "../lib/authz.js";
 
 const router = Router();
 
@@ -836,7 +837,7 @@ async function armarLiveSupervisor_(fechaPedida = null) {
 
 
     // Q3: Todos los usuarios activos con rol técnico (para mostrar DESCONECTADO)
-    const url3 = `${SUPABASE_URL}/rest/v1/usuarios?select=id,nombre,email,rol,especialidad&activo=eq.true&rol=in.(TECNICO,CALIDAD,RAMALERO)&order=nombre.asc`;
+    // Q3 sale del padrón cacheado (lib/authz.js), no de Supabase.
 
     // Q5: Trabajos de días anteriores que siguen abiertos ("arrastre").
     // NO cuentan como producción de hoy (ni finalizados ni en proceso): solo sirven
@@ -854,7 +855,7 @@ async function armarLiveSupervisor_(fechaPedida = null) {
     const [resp1, resp2, resp3, resp5, duplasAuto, asistencia] = await Promise.all([
       fetch(url1, { method: "GET", headers }),
       fetch(url2, { method: "GET", headers }),
-      fetch(url3, { method: "GET", headers }),
+      usuariosActivos_().then(us => us.filter(u => ["TECNICO", "CALIDAD", "RAMALERO"].includes(u.rol))).catch(() => []),
       esHoy ? fetch(url5, { method: "GET", headers }) : null,
       duplasAutoDeHoy_(SUPABASE_URL, headers, jornadaStr),
       asistenciaDeHoy_(SUPABASE_URL, headers, esHoy ? jornadaFecha_() : jornadaStr),
@@ -867,7 +868,7 @@ async function armarLiveSupervisor_(fechaPedida = null) {
     const [raw1, raw2, allUsers, raw5] = await Promise.all([
       resp1.json(),
       resp2.json().catch(() => []),
-      resp3.json().catch(() => []),
+      resp3,
       resp5 ? resp5.json().catch(() => []) : [],
     ]);
 
