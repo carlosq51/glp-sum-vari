@@ -303,7 +303,7 @@
 .pl-cable--ancho { stroke-width: 5; }
 .pl-cable--linea { stroke-width: 1.6; stroke-linecap: butt; }
 
-/* ── Mi medida: la mano de cada uno, resaltada entre paréntesis ────── */
+/* ── Referencia de medidas: la nota de cada uno, resaltada ────────── */
 .plano__mia {
   background: color-mix(in srgb, var(--btnBg) 26%, transparent);
   color: var(--text);
@@ -317,48 +317,86 @@
 .plano__papel { color: var(--muted); font-weight: var(--fw-bold); font-size: var(--fs-xs); }
 .plano__largo { margin-top: 2px; }
 
-.plano__mano {
-  margin: 0 0 14px;
+.plano__ref {
+  margin-top: 18px;
+  padding: 12px;
   border: var(--border-w) solid var(--pillLine);
   border-radius: var(--radiusSm);
   background: var(--pillBg);
 }
-.plano__mano summary {
-  display: flex;
+.plano__ref .plano__secHead { margin-top: 0; }
+.plano__ref > .plano__det { margin: 0 0 10px; }
+.plano__refLista { display: grid; gap: 8px; }
+.plano__refFila {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  grid-template-areas: "cm in" ". uso";
+  column-gap: 10px;
+  row-gap: 2px;
   align-items: center;
-  gap: 8px;
-  min-height: var(--h-btn);
-  padding: 0 12px;
-  font-weight: var(--fw-black);
-  cursor: pointer;
-  list-style: none;
 }
-.plano__mano summary::-webkit-details-marker { display: none; }
-.plano__mano summary::after { content: "▾"; margin-left: auto; color: var(--muted); }
-.plano__mano[open] summary::after { content: "▴"; }
-.plano__manoRes { color: var(--muted); font-weight: var(--fw-bold); font-size: var(--fs-sm); }
-.plano__manoBody { padding: 0 12px 12px; }
-.plano__manoBody p { margin: 0 0 10px; }
-.plano__manoGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.plano__manoGrid label { display: grid; gap: 4px; font-size: var(--fs-xs); font-weight: var(--fw-extrabold); color: var(--muted); }
-.plano__manoGrid label span { display: flex; align-items: center; gap: 4px; color: var(--text); }
-.plano__manoGrid input { width: 100%; min-width: 0; height: var(--h-input); font-size: var(--fs-lg); text-align: center; }
-.plano__manoChica { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; }
-.plano__manoAcc { display: flex; gap: 8px; margin-top: 12px; }
-.plano__manoOk { justify-content: center; background: var(--grad-btn); color: var(--btnText); border-color: var(--btnLine); }
-.plano__manoMsg:empty { display: none; }
-.plano__manoMsg { margin-top: 8px; color: var(--danger); }
-.plano__manoT { white-space: nowrap; }
-.plano__manoRes { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.plano__chip {
-  min-height: 36px;
-  padding: 0 14px;
-  border-radius: var(--radius-full);
-  background: var(--surface);
-  border: var(--border-w) solid var(--pillLine);
-  color: var(--text);
+.plano__refCm { grid-area: cm; font-family: var(--font-mono); font-weight: var(--fw-black); text-align: right; }
+.plano__refIn {
+  grid-area: in;
+  width: 100%;
+  min-width: 0;
+  height: var(--h-input);
+  font-size: var(--fs-lg);
   font-weight: var(--fw-extrabold);
-  font-size: var(--fs-sm);
 }
-.plano__chip.is-on { background: var(--grad-btn); color: var(--btnText); border-color: var(--btnLine); }
-.plano__manoChica .plano__det { flex-basis: 100%; }
+.plano__refUso { grid-area: uso; font-size: var(--fs-2xs); color: var(--muted); }
+.plano__refMsg:empty { display: none; }
+.plano__refMsg { margin-top: 10px; color: var(--ok); font-weight: var(--fw-bold); }
+
+/* ── Piezas (conectores dibujados de las fotos) ────────────────────── */
+/* La pieza es negra de verdad; en el tema noche se le da borde claro
+   para que no se pierda en el fondo. */
+.pz-negro   { fill: #1f2124; stroke: var(--text); stroke-width: 1.2; stroke-opacity: .35; }
+.pz-aros    { stroke: #ca8a04; stroke-width: 1.4; fill: none; }
+.pz-aros--gris { stroke: #4b5057; }
+.pz-traba   { fill: none; stroke: #1f2124; stroke-width: 3; stroke-linejoin: round; }
+.pz-ranura  { stroke: #3a3e44; stroke-width: 2; }
+.pz-palanca { fill: none; stroke: #1f2124; stroke-width: 5; stroke-linecap: round; }
+.pz-eje     { fill: #2c3035; stroke: #6b7078; stroke-width: 1.5; }
+:root:not([data-theme="day"]) .pz-traba,
+:root:not([data-theme="day"]) .pz-palanca { stroke: #5a5f66; }
+.pl-g.is-sel .pz-negro { stroke: var(--btnBg); stroke-opacity: 1; stroke-width: 2.5; }
+
+.pl-aviso  { fill: var(--danger); }
+.pl-avisoT { fill: #fff; font-weight: 900; letter-spacing: .04em; paint-order: normal; stroke: none !important; }
+.pl-avisoL { stroke: var(--danger); stroke-width: 2.5; stroke-dasharray: 3 3; }
+
+/* ── Sección Conectores ────────────────────────────────────────────── */
+.plano__cons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.plano__con {
+  display: grid;
+  gap: 4px;
+  align-content: start;
+  padding: 10px;
+  border: var(--border-w) solid var(--pillLine);
+  border-radius: var(--radiusSm);
+  background: var(--surface);
+  cursor: pointer;
+}
+.plano__con--principal {
+  grid-column: 1 / -1;
+  grid-template-columns: 120px 1fr;
+  align-items: center;
+  gap: 12px;
+}
+.pl-mini { width: 100%; height: 56px; }
+.pl-mini--grande { height: 96px; }
+.plano__conNom { font-weight: var(--fw-black); }
+.plano__conTag {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 1px 8px;
+  border-radius: var(--radius-full);
+  background: var(--danger);
+  color: #fff;
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-black);
+  letter-spacing: .04em;
+  vertical-align: middle;
+}
+.plano__zoom--nw { white-space: nowrap; flex-shrink: 0; }
