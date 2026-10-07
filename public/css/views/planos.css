@@ -1,0 +1,199 @@
+/* =====================================================================
+   views/planos.css — Planos de armado de ramales (vista Ramalero)
+   Tronco vertical tipo «línea de metro». Tres columnas fijas para que la
+   línea quede continua: distancia acumulada · eje · lo que sale.
+   ===================================================================== */
+
+.planosLista { display: grid; gap: var(--gap-sm); }
+
+.planoBtn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: var(--h-btn);
+  padding: 10px 14px;
+  background: var(--pillBg);
+  border: var(--border-w) solid var(--pillLine);
+  border-radius: var(--radiusSm);
+  color: var(--text);
+  font-weight: var(--fw-extrabold);
+  cursor: pointer;
+}
+.planoBtn:active { transform: scale(.98); }
+.planoBtn__a { color: var(--btnBg); font-size: var(--fs-sm); }
+
+/* El plano se lee mejor ocupando toda la pantalla del celular. */
+@media (max-width: 599px) {
+  .planoModal.modal { padding: 0; }
+  .planoModal .modalBox {
+    width: 100%;
+    max-height: 100dvh;
+    height: 100dvh;
+    border-radius: 0;
+    padding-bottom: var(--safeBottom);
+  }
+}
+
+.plano { --eje: var(--btnBg); --colA: 58px; --colE: 22px; }
+
+.plano__notas {
+  margin: 0 0 10px;
+  padding: 10px 12px 10px 28px;
+  background: var(--warnBg);
+  border-radius: var(--radiusSm);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-bold);
+}
+.plano__notas li + li { margin-top: 4px; }
+
+.plano__ley {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-bottom: 14px;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+/* ── Filas ─────────────────────────────────────────────────────────── */
+.plano__tramo,
+.plano__parada {
+  display: grid;
+  grid-template-columns: var(--colA) var(--colE) 1fr;
+  column-gap: 10px;
+}
+
+.plano__tramo { min-height: 46px; align-items: center; }
+.plano__tramo .plano__eje {
+  grid-column: 2;
+  align-self: stretch;
+  justify-self: center;
+  width: 4px;
+  background: var(--eje);
+  border-radius: 2px;
+}
+.plano__tramoTxt {
+  grid-column: 3;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  color: var(--muted);
+}
+
+/* El eje sigue por la columna del nodo, salvo antes del conector y
+   después de la última parada. */
+.plano__nodo {
+  position: relative;
+  grid-column: 2;
+  align-self: stretch;
+}
+.plano__nodo::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  transform: translateX(-50%);
+  background: var(--eje);
+}
+.plano__parada.is-ini .plano__nodo::before { top: 11px; }
+.plano__parada.is-fin .plano__nodo::before { bottom: auto; height: 11px; }
+.plano__nodo::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 4px;
+  width: 16px;
+  height: 16px;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: var(--surface);
+  border: 4px solid var(--eje);
+  box-sizing: border-box;
+}
+.plano__nodo--con::after { border-radius: 4px; width: 22px; }
+
+.plano__acum {
+  grid-column: 1;
+  padding-top: 3px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-extrabold);
+  color: var(--text);
+}
+
+.plano__salidas {
+  grid-column: 3;
+  display: grid;
+  gap: var(--gap-xs);
+  padding-bottom: 4px;
+  min-width: 0;
+}
+
+.plano__nota {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.plano__salida {
+  padding: 9px 11px;
+  background: var(--pillBg);
+  border: var(--border-w) solid var(--pillLine);
+  border-left: 3px solid var(--eje);
+  border-radius: var(--radiusSm);
+}
+.plano__salida--con { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+
+.plano__salidaHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2px 10px;
+}
+.plano__salidaNom { font-weight: var(--fw-black); font-size: var(--fs-body); }
+.plano__largo { font-size: var(--fs-sm); color: var(--muted); }
+.plano__largo b { color: var(--text); }
+.plano__det { font-size: var(--fs-xs); color: var(--muted); margin-top: 2px; }
+
+.plano__cables { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+.plano__cable {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px 3px 4px;
+  border-radius: var(--radius-full);
+  background: var(--codeBg);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+}
+/* Colores reales del cable; el borde los separa del fondo en ambos temas
+   (un punto negro sobre el tema noche desaparecía). */
+.plano__dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid var(--inputLine);
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+.plano__sub {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radiusSm);
+  background: var(--codeBg);
+}
+.plano__sub .plano__salidaNom { font-size: var(--fs-md); }
+
+.plano__total {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: var(--border-w) solid var(--modalLine);
+  font-size: var(--fs-md);
+  color: var(--muted);
+}
+.plano__total b { color: var(--text); }

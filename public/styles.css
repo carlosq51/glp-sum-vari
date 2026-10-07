@@ -69,6 +69,7 @@
 /* Ramales: va después de ramalero.css porque el panel se embebe dentro
    de esa vista además de vivir en su página propia (/ramales). */
 @import url("./css/views/ramales.css");
+@import url("./css/views/planos.css");
 @import url("./css/views/asignado.css");
 @import url("./css/views/movilizador.css");
 @import url("./css/views/consulta.css");

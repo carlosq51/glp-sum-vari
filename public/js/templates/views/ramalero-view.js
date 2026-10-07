@@ -61,6 +61,15 @@ export function ramaleroView() {
         </div>
       </div>
 
+      <!-- ── PLANOS · para el nuevo o para salir de una duda de medida.
+           Lo llena views/ramalero/planos.js. ─────────────────────── -->
+      <div class="card" style="margin-top:12px;">
+        <h3 style="margin:0 0 8px;">
+          <span class="accentBar"></span>📐 Planos de armado
+        </h3>
+        <div id="planosBoxR" class="planosLista"></div>
+      </div>
+
       <!-- ── 2. MIS RAMALES · lo que me repartieron y falta devolver ── -->
       <div class="card" id="ramalMiTurnoCard" style="margin-top:12px;">
         <h3 style="margin:0 0 8px;">

@@ -9,6 +9,7 @@ import { enterSolicitudes_, exitSolicitudes_ } from "./ramalero-solicitudes.js";
 import { requestNotifPermission } from "../../core/push-client.js";
 import { mountMiTurno, unmountMiTurno } from "../ramales/mi-turno.js";
 import { resetHistorial_ } from "./ramalero-historial.js";
+import { initPlanos_ } from "./planos.js";
 
 export function init() {
   initRamaleroActions_();
@@ -20,6 +21,9 @@ export function enter() {
 
   // Cola de solicitudes en vivo (SSE + poll de respaldo)
   enterSolicitudes_();
+
+  // Planos de armado (estáticos; se pintan una sola vez)
+  initPlanos_();
 
   // Ramales repartidos y por devolver (ver views/ramales/mi-turno.js).
   // Si el módulo de ramales todavía no está instalado en Supabase, el
