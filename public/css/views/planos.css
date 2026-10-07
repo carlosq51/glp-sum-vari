@@ -197,3 +197,104 @@
   color: var(--muted);
 }
 .plano__total b { color: var(--text); }
+
+/* ── Dibujo a escala ───────────────────────────────────────────────── */
+.plano__secHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 4px 0 8px;
+}
+.plano__secHead--lista { margin-top: 22px; }
+.plano__secT {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-black);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.plano__zoom {
+  min-height: 34px;
+  padding: 0 14px;
+  border-radius: var(--radius-full);
+  background: var(--pillBg);
+  border: var(--border-w) solid var(--pillLine);
+  color: var(--text);
+  font-weight: var(--fw-extrabold);
+  font-size: var(--fs-sm);
+}
+
+/* Ajustado: el dibujo entero al ancho de la pantalla. Ampliado: doble de
+   ancho y se arrastra con el dedo (el zoom con dos dedos de la PWA no es
+   confiable en todos los celulares). */
+.plano__lienzo {
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: var(--radiusSm);
+  background: var(--surface);
+  border: var(--border-w) solid var(--codeLine);
+  padding: 6px;
+  margin: 0 -8px;
+  scroll-margin-top: 8px;
+}
+.plano__lienzo .pl-svg { display: block; width: 100%; height: auto; }
+.plano__lienzo.is-zoom .pl-svg { width: 220%; max-width: none; }
+
+/* El haz va en el color del texto (negro de día, como en el papel). */
+.pl-tronco { stroke: var(--text); stroke-width: 7; stroke-linecap: round; }
+.pl-rama, .pl-toque { fill: none; stroke-linejoin: round; }
+.pl-rama   { stroke: var(--text); stroke-width: 4; stroke-linecap: round; }
+.pl-rama.is-dib { stroke-dasharray: 6 5; stroke-width: 3; opacity: .7; }
+/* Línea invisible y gruesa: el dedo no tiene que acertarle a 4 px. */
+.pl-toque  { stroke: transparent; stroke-width: 22; stroke-linecap: round; cursor: pointer; }
+.pl-union  { fill: var(--text); }
+.pl-caja   { fill: var(--surface); stroke: var(--text); stroke-width: 2.5; }
+.pl-caja--con { stroke-width: 3.5; }
+.pl-cable  { stroke-width: 3.5; stroke-linecap: round; }
+.pl-cable-fondo { stroke: var(--muted); stroke-width: 6; stroke-linecap: round; opacity: .55; }
+.pl-cable--raya { stroke-linecap: butt; }
+
+.pl-svg text {
+  font-family: var(--font-body);
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+.pl-nom  { fill: var(--text); font-weight: 800; cursor: pointer; }
+.pl-cota { fill: var(--muted); font-weight: 700; }
+.pl-cota--tronco { fill: var(--text); font-weight: 800; }
+
+/* Rama elegida: se resalta y el resto se apaga para seguirla con la vista. */
+.pl-svg.has-sel .pl-g { opacity: .35; transition: opacity var(--dur-base, .2s); }
+.pl-svg.has-sel .pl-g.is-sel { opacity: 1; }
+.pl-g.is-sel .pl-rama { stroke: var(--btnBg); stroke-width: 4.5; opacity: 1; }
+.pl-g.is-sel .pl-caja { stroke: var(--btnBg); }
+
+.plano__ley .plano__leyL {
+  display: inline-block;
+  width: 22px;
+  height: 0;
+  margin-right: 4px;
+  vertical-align: middle;
+  border-top: 3px solid var(--text);
+}
+.plano__ley .plano__leyL.is-dib { border-top-style: dashed; opacity: .75; }
+.plano__lienzo + .plano__ley { margin: 8px 0 10px; }
+
+.plano__ficha {
+  padding: 10px 12px;
+  border-radius: var(--radiusSm);
+  border: var(--border-w) dashed var(--pillLine);
+  font-size: var(--fs-sm);
+}
+.plano__ficha.is-on {
+  border-style: solid;
+  border-color: var(--btnBg);
+  background: var(--pillBg);
+}
+.plano__fichaVacia { color: var(--muted); }
+.plano__ficha .plano__det + .plano__det { margin-top: 2px; }
+
+.plano__salida[data-rama], .plano__sub[data-rama] { cursor: pointer; }
