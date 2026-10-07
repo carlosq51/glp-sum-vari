@@ -13,6 +13,7 @@ import { getJSON, postJSON } from "../../../core/api.js";
 import { escapeHtml } from "../../../core/format.js";
 import { CHEQUEO_PUNTOS, puntosDeRol_ } from "../../../templates/views/hoja-chequeo-view.js";
 import { DETALLE_TAREAS } from "../../../templates/views/informe-taller-view.js";
+import { marcarInformeEnviado_ } from "../../../work/informe-estado.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -206,6 +207,8 @@ async function enviar_(modo = "ESPERAR") {
     // que los dos mandan, y el técnico tiene que saberlo para avisar a su
     // compañero en vez de irse a la oficina a esperar.
     const faltan = r.faltan || [];
+    // La tarjeta lo dice enseguida, sin esperar al aviso del servidor.
+    marcarInformeEnviado_(otActual_.ot, r.informe, faltan);
     const quien = faltan.includes("MOTOR") ? "el delantero"
                 : faltan.includes("TANQUE") ? "el tanquero" : "";
     msg_(!quien ? "Informe completo. Está saliendo por la impresora de la oficina."

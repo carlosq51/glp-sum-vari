@@ -231,6 +231,42 @@ router.get("/api/informes/contexto", async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────
+//  GET /api/informes/estado?ots=a,b — en qué va el informe de cada OT
+//  Lo pinta la tarjeta del técnico: esperando al compañero, en la
+//  impresora, o impreso y a qué hora. Con eso sabe cuándo ir a la oficina
+//  por su hoja. Solo devuelve el estado, nada del contenido.
+// ─────────────────────────────────────────────────────────────────────────
+router.get("/api/informes/estado", async (req, res) => {
+  try {
+    const ots = s_(req.query.ots).split(",").map(s_).filter(x => /^[\w-]{1,64}$/.test(x)).slice(0, 50);
+    if (!ots.length) return res.json({ ok: true, estados: {} });
+
+    // porRol entra solo para saber qué mitad falta; lo pesado (fotos,
+    // padrón) se queda fuera.
+    const filas = await sbGet_(
+      `${TABLA}?select=work_order_id,estado,impreso_at,updated_at,porRol:datos->porRol`
+      + `&work_order_id=in.(${ots.map(encodeURIComponent).join(",")})`
+      + "&estado=neq.ANULADO&order=created_at.desc"
+    );
+
+    const estados = {};
+    for (const f of filas || []) {
+      if (estados[f.work_order_id]) continue;   // el más nuevo de cada OT
+      estados[f.work_order_id] = {
+        estado: f.estado,
+        faltan: ["MOTOR", "TANQUE"].filter(r => !f.porRol?.[r]),
+        impreso_at: f.impreso_at,
+        updated_at: f.updated_at,
+      };
+    }
+    res.json({ ok: true, estados });
+  } catch (err) {
+    console.error("[informes] estado:", err.message);
+    res.status(500).json({ ok: false, error: mensajeUtil_(err) });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
 //  POST /api/informes — el técnico manda el informe de su OT
 // ─────────────────────────────────────────────────────────────────────────
 router.post("/api/informes", async (req, res) => {

@@ -9,6 +9,14 @@ import { cssEsc_, escapeHtml, fmtFechaCreacion_, msToHMS_, diaPeru_ } from "../c
 import { computeLiveMs_ } from "./work-time.js";
 import { buildAsignadoHTML_, buildBotonesByEstado_, buildIncidenciasBtnHTML_ } from "./work-templates.js";
 import { personalCalidadHTML_ } from "./llamado-voz.js";
+import { informeEstadoHTML_, pintarInformes_ } from "./informe-estado.js";
+
+/** La línea del informe, solo donde hay informe: técnico de MOTOR o TANQUE. */
+function informeDe_(it) {
+  const rol = String(it?.rolTrabajo || "").toUpperCase();
+  if (CORE.state.currentModule !== "TECNICO" || (rol !== "MOTOR" && rol !== "TANQUE")) return "";
+  return informeEstadoHTML_(it.conversionId, rol);
+}
 
 export function renderActivas_() {
   const c = ctx_();
@@ -71,6 +79,7 @@ export function renderActivas_() {
               ${CORE.state.currentModule === "CALIDAD" && (motorNombre || tanqueroNombre) ? `
                 <span class="small js-personal">${personalCalidadHTML_(it)}</span>` : ""}
             </div>
+            ${informeDe_(it)}
           </div>
           <div class="jobRight">
             <div class="jobTimePill js-tiempo">⏱ ${live}</div>
@@ -138,6 +147,7 @@ export function renderActivas_() {
   }
 
   box.innerHTML = out;
+  pintarInformes_();
 }
 
 export function renderFinalizados_(avgTopHTML = "") {
@@ -192,6 +202,7 @@ export function renderFinalizados_(avgTopHTML = "") {
           <div class="pill" style="font-size:18px; font-weight:800;">⏱ ${live}</div>
         </div>
         <div class="small">Término: ${fin}</div>
+        ${informeDe_(it)}
         ${CORE.state.currentModule === "CALIDAD" && (motorNombre || tanqueroNombre) ? `
           <div class="small js-personal" style="margin-top:4px;">${personalCalidadHTML_(it)}</div>` : ""}
 
@@ -209,6 +220,7 @@ export function renderFinalizados_(avgTopHTML = "") {
   }
 
   box.innerHTML = avgTopHTML + out;
+  pintarInformes_();
 
   // Aviso de que las tarjetas se repintaron. El historial del ramalero lo
   // escucha para volver a aplicar su filtro por marca: sin esto, un FIN

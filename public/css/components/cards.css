@@ -75,6 +75,30 @@
 }
 
 /* =====================================================================
+   "Informe: …" — en qué va el papel del técnico
+   ---------------------------------------------------------------------
+   El informe sale solo por la impresora de la oficina; esta línea es la
+   única forma que tiene el técnico de saber cuándo ir a pedirlo. Va fuera
+   del desplegable para que se vea con la tarjeta cerrada, y el verde de
+   "impreso" es lo que tiene que saltar a la vista.
+   Lógica en public/js/work/informe-estado.js.
+===================================================================== */
+.jobInforme {
+  margin-top: 8px;
+  padding: 7px 10px;
+  border-radius: var(--radiusSm);
+  border: 1px solid var(--note);
+  background: var(--noteBg);
+  font-size: 13px;
+  font-weight: var(--fw-bold, 700);
+  line-height: 1.3;
+}
+.jobInforme[hidden] { display: none; }
+.jobInforme[data-tono="espera"],
+.jobInforme[data-tono="falta"] { border-color: var(--warn); background: var(--warnBg); }
+.jobInforme[data-tono="ok"]    { border-color: var(--ok);   background: var(--okBg); }
+
+/* =====================================================================
    Llamado por voz desde CALIDAD — "🔧 MOTOR: Juan  [📢 Llamar]"
    ---------------------------------------------------------------------
    Es un interruptor: encendido repite el llamado por el parlante hasta
