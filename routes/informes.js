@@ -32,6 +32,9 @@ import {
   fusionarInforme_, aplanarInforme_, aplicarEdicion_, aplicarVehiculo_, SLOTS_ETAPA_FOTO, etapasPorFoto_,
 } from "../lib/informes.js";
 import { r2AutoresRegistro } from "../r2-uploads.js";
+import { readFileSync } from "node:fs";
+import { hojasInformeHtml } from "../public/js/templates/views/informe-imprimible.js";
+import { escapeHtml } from "../public/js/core/format.js";
 
 const router = Router();
 
@@ -254,9 +257,22 @@ router.post("/api/informes", async (req, res) => {
     const placa = s_(req.body?.placa).toUpperCase();
 
 
-    // ¿Ya hay uno vivo para esta OT? El índice único de la tabla lo
-    // impediría igual, pero el error de Postgres no le dice nada a nadie.
-    const vivos = await sbGet_(`${TABLA}?select=id,estado&work_order_id=eq.${encodeURIComponent(ot)}&estado=in.(BORRADOR,ENVIADO)&limit=1`);
+    // ESPERAR = sale cuando estén las dos mitades (lo de siempre).
+    // YA      = sale ahora con lo que haya; la mitad del compañero va en
+    //           blanco y se llena a mano.
+    const ya = s_(req.body?.modo).toUpperCase() === "YA";
+    const estadoDe = (faltan) => (faltan.length && !ya ? "BORRADOR" : "ENVIADO");
+
+    // ¿Ya hay uno para esta OT? Primero el vivo; si no, el último impreso.
+    // El impreso cuenta porque con "imprimir ya" el papel sale a medias: si
+    // el compañero manda su parte después, se suma a ESE informe y vuelve a
+    // la cola completo. Si se abriera uno nuevo solo con su mitad, se
+    // quedaría a medias para siempre, esperando a alguien que ya mandó.
+    // (El índice único de la tabla impediría dos vivos igual, pero el error
+    // de Postgres no le dice nada a nadie.)
+    const previos = await sbGet_(`${TABLA}?select=id,estado&work_order_id=eq.${encodeURIComponent(ot)}&estado=in.(BORRADOR,ENVIADO,IMPRESO)&order=created_at.desc&limit=5`);
+    const previo = (previos || []).find(p => p.estado !== "IMPRESO") || (previos || [])[0];
+    const vivos = previo ? [previo] : [];
 
     // EL INFORME ES COLABORATIVO: lo llenan el delantero (MOTOR) y el
     // tanquero (TANQUE) al acabar, cada uno su mitad. Por eso se FUSIONA
@@ -278,20 +294,20 @@ router.post("/api/informes", async (req, res) => {
       const datos = fusionarInforme_(actuales?.[0]?.datos, rol, parte);
       if (personas.length) datos.personas = personas;
 
-      // Un informe NO entra en la cola hasta que están las dos mitades: en
-      // la oficina no deben poder imprimir medio papel. Mientras falte una
-      // queda en BORRADOR, que la cola muestra aparte y sin poder imprimir.
+      // Con "esperar", un informe NO entra en la cola hasta que están las
+      // dos mitades. Mientras falte una queda en BORRADOR, que la cola
+      // muestra aparte y la impresora no toca. Con "ya" entra igual.
       const faltan = aplanarInforme_(datos).faltan;
 
       const actualizado = await sbPatch_(TABLA, `id=eq.${vivos[0].id}`, {
         ot_fisica: otFisica || s_(datos.comun.ot),
         placa: placa || s_(datos.comun.placa),
         datos,
-        estado: faltan.length ? "BORRADOR" : "ENVIADO",
+        estado: estadoDe(faltan),
       });
       const inf = Array.isArray(actualizado) ? actualizado[0] : actualizado;
       emitEvent_("informes", { accion: "actualizado", id: inf?.id, ot });
-      return res.json({ ok: true, fusionado: true, faltan, informe: inf });
+      return res.json({ ok: true, fusionado: true, faltan, ya, informe: inf });
     }
 
     const datos = fusionarInforme_(null, rol, parte);
@@ -307,14 +323,14 @@ router.post("/api/informes", async (req, res) => {
       ot_fisica: otFisica,             // el número que va impreso en la hoja
       vin,
       placa,
-      estado: faltan.length ? "BORRADOR" : "ENVIADO",
+      estado: estadoDe(faltan),
       datos,
       creado_por: email,
       creado_nombre: s_(req.body?.nombre),
     });
 
     emitEvent_("informes", { accion: "nuevo", id: creado?.id, ot });
-    res.json({ ok: true, faltan, informe: creado });
+    res.json({ ok: true, faltan, ya, informe: creado });
   } catch (err) {
     console.error("[informes] POST:", err.message);
     res.status(500).json({ ok: false, error: mensajeUtil_(err) });
@@ -353,41 +369,80 @@ router.get("/api/informes", requireRol_("ADMIN", "SUPERVISOR"), async (req, res)
 // ─────────────────────────────────────────────────────────────────────────
 //  GET /api/informes/:id — el informe entero, para revisarlo e imprimirlo
 // ─────────────────────────────────────────────────────────────────────────
+/** El informe unido y listo para pintar. Lo usan la pantalla y la impresora. */
+async function planoDe_(fila) {
+  // El padrón se vuelve a pedir AQUÍ, no se usa el que se guardó.
+  //
+  // Dos razones: los informes mandados antes de que el padrón existiera
+  // no lo llevan dentro —y sin esto saldrían sin el nombre del compañero—,
+  // y si mientras tanto reasignaron el carro a otro técnico, el papel debe
+  // decir quién lo trabajó de verdad, no quién estaba cuando se envió.
+  const datos = { ...(fila.datos || {}) };
+  try {
+    const personas = await contextoDeOt_(s_(fila.work_order_id));
+    if (personas.length) datos.personas = personas;
+  } catch (err) {
+    console.warn("[informes] sin padrón al abrir:", err.message);
+  }
+
+  // Marca y modelo del carro de verdad, de `vins`. Antes salía JETOUR X70
+  // para todo, también para un KYC X5.
+  let plano = aplanarInforme_(datos);
+  try {
+    const vin = s_(fila.vin) || s_(plano.vin);
+    if (vin) {
+      const v = await sbGet_(`vins?select=modelo&vin=eq.${encodeURIComponent(vin)}&limit=1`);
+      plano = aplicarVehiculo_(plano, v?.[0]?.modelo);
+    }
+  } catch (err) {
+    console.warn("[informes] sin modelo del carro:", err.message);
+  }
+  return plano;
+}
+
 router.get("/api/informes/:id", requireRol_("ADMIN", "SUPERVISOR"), async (req, res) => {
   try {
     const filas = await sbGet_(`${TABLA}?id=eq.${encodeURIComponent(s_(req.params.id))}&limit=1`);
     if (!filas?.[0]) return res.status(404).json({ ok: false, error: "Ese informe no existe." });
-    // El padrón se vuelve a pedir AQUÍ, no se usa el que se guardó.
-    //
-    // Dos razones: los informes mandados antes de que el padrón existiera
-    // no lo llevan dentro —y sin esto saldrían sin el nombre del compañero—,
-    // y si mientras tanto reasignaron el carro a otro técnico, el papel debe
-    // decir quién lo trabajó de verdad, no quién estaba cuando se envió.
-    const datos = { ...(filas[0].datos || {}) };
-    try {
-      const personas = await contextoDeOt_(s_(filas[0].work_order_id));
-      if (personas.length) datos.personas = personas;
-    } catch (err) {
-      console.warn("[informes] sin padrón al abrir:", err.message);
-    }
-
-    // Marca y modelo del carro de verdad, de `vins`. Antes salía JETOUR X70
-    // para todo, también para un KYC X5.
-    let plano = aplanarInforme_(datos);
-    try {
-      const vin = s_(filas[0].vin) || s_(plano.vin);
-      if (vin) {
-        const v = await sbGet_(`vins?select=modelo&vin=eq.${encodeURIComponent(vin)}&limit=1`);
-        plano = aplicarVehiculo_(plano, v?.[0]?.modelo);
-      }
-    } catch (err) {
-      console.warn("[informes] sin modelo del carro:", err.message);
-    }
-
-    res.json({ ok: true, informe: filas[0], plano });
+    res.json({ ok: true, informe: filas[0], plano: await planoDe_(filas[0]) });
   } catch (err) {
     console.error("[informes] GET uno:", err.message);
     res.status(500).json({ ok: false, error: mensajeUtil_(err) });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+//  GET /api/informes/:id/hojas — las 3 hojas como página, lista para papel
+//  La pide la laptop de la oficina (impresora/agente.mjs): la convierte en
+//  PDF con Chrome y la manda a la impresora sin que nadie la toque. También
+//  sirve abierta en el navegador para reimprimir un papel.
+// ─────────────────────────────────────────────────────────────────────────
+
+// El CSS de las hojas va DENTRO de la página: así no depende del bundle de
+// Vite ni de que la pantalla de la app esté cargada.
+let cssHojas_ = null;
+function cssHojas() {
+  if (cssHojas_ == null) {
+    cssHojas_ = ["informe-taller.css", "hoja-chequeo.css", "hoja-produccion.css"]
+      .map(f => readFileSync(new URL(`../public/css/views/${f}`, import.meta.url), "utf8"))
+      .join("\n");
+  }
+  return cssHojas_;
+}
+
+router.get("/api/informes/:id/hojas", requireRol_("ADMIN", "SUPERVISOR"), async (req, res) => {
+  try {
+    const filas = await sbGet_(`${TABLA}?id=eq.${encodeURIComponent(s_(req.params.id))}&limit=1`);
+    if (!filas?.[0]) return res.status(404).send("Ese informe no existe.");
+    const plano = await planoDe_(filas[0]);
+    res.type("html").send(`<!doctype html>
+<html lang="es"><head><meta charset="utf-8">
+<title>OT ${escapeHtml(s_(plano.ot))}</title>
+<style>${cssHojas()}</style>
+</head><body><div class="itHojas">${hojasInformeHtml(plano)}</div></body></html>`);
+  } catch (err) {
+    console.error("[informes] hojas:", err.message);
+    res.status(500).send(mensajeUtil_(err));
   }
 });
 
@@ -432,12 +487,13 @@ router.post("/api/informes/:id/guardar", requireRol_("ADMIN", "SUPERVISOR"), gua
 // ─────────────────────────────────────────────────────────────────────────
 router.post("/api/informes/:id/impreso", requireRol_("ADMIN", "SUPERVISOR"), async (req, res) => {
   try {
-    // Último cierre: el papel tiene que salir completo. Si alguien llega
-    // aquí con medio informe —una pestaña vieja, un enlace guardado— se
-    // para en seco en vez de dar por bueno un documento a medias.
+    // Último cierre: medio informe solo sale si el técnico pidió "imprimir
+    // ya" (y entonces está en ENVIADO). Uno en BORRADOR está esperando al
+    // compañero: si alguien llega aquí con él —una pestaña vieja, un enlace
+    // guardado— se para en seco en vez de dar por bueno un papel a medias.
     const previas = await sbGet_(`${TABLA}?select=id,estado,datos&id=eq.${encodeURIComponent(s_(req.params.id))}&limit=1`);
     const faltan = aplanarInforme_(previas?.[0]?.datos).faltan;
-    if (faltan.length) {
+    if (faltan.length && previas?.[0]?.estado === "BORRADOR") {
       const quien = faltan.map(x => x === "MOTOR" ? "el delantero" : "el tanquero").join(" y ");
       return res.status(409).json({ ok: false, error: `Este informe está incompleto: falta la parte de ${quien}.` });
     }

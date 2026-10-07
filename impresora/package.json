@@ -1,0 +1,12 @@
+{
+  "name": "glp-impresora",
+  "private": true,
+  "type": "module",
+  "description": "Corre en la laptop de la oficina: saca por la impresora los informes que mandan los técnicos.",
+  "scripts": {
+    "start": "node agente.mjs"
+  },
+  "dependencies": {
+    "pdf-to-printer": "^5.6.0"
+  }
+}

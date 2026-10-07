@@ -2,9 +2,10 @@
 // public/js/views/conversion/modals/informe-ot.js
 // Lógica del modal con el que el técnico manda el informe de su OT.
 //
-// Al enviarlo, el informe queda en la cola de la oficina (ADMIN/SUPERVISOR),
-// que lo abre, lo revisa y lo imprime. El técnico no imprime nada: camina a
-// la oficina y el papel ya está.
+// Al enviarlo, el informe entra en la cola de la oficina y la laptop que
+// tiene la impresora lo saca solo (impresora/agente.mjs). El técnico elige
+// cuándo: esperar a que el compañero mande su parte, o imprimir ya con lo
+// que haya. No imprime nada él: camina a la oficina y el papel ya está.
 // =========================
 
 import { CORE } from "../../../core/state.js";
@@ -164,7 +165,11 @@ function miParte_() {
   };
 }
 
-async function enviar_() {
+/**
+ * @param {"ESPERAR"|"YA"} modo  ESPERAR = el papel sale cuando el compañero
+ *   mande su parte; YA = sale ahora, con su mitad en blanco.
+ */
+async function enviar_(modo = "ESPERAR") {
   if (enviando_) return;                       // doble tap en el celular
   const parte = miParte_();
 
@@ -179,9 +184,11 @@ async function enviar_() {
   }
 
   enviando_ = true;
-  const btn = $("iotEnviar");
-  if (btn) { btn.disabled = true; btn.textContent = "Enviando…"; }
-  msg_("");
+  // Los dos botones quietos mientras se envía: uno solo dejaría mandar el
+  // mismo informe dos veces con modos distintos.
+  const botones = [$("iotEnviar"), $("iotEnviarYa")].filter(Boolean);
+  botones.forEach(b => { b.disabled = true; });
+  msg_("Enviando…");
 
   try {
     const r = await postJSON("/api/informes", {
@@ -191,31 +198,33 @@ async function enviar_() {
       ot_fisica: parte.comun.ot,       // el número de la orden en papel
       rol: otActual_.rol,
       parte,
+      modo,
     });
     if (!r?.ok) throw new Error(r?.error || "No se pudo enviar.");
 
-    // Se dice si falta la otra mitad: el informe no se imprime completo
-    // hasta que los dos mandan, y el técnico tiene que saberlo para
-    // avisar a su compañero en vez de irse a la oficina a esperar.
+    // Se dice si falta la otra mitad: con "esperar" el papel no sale hasta
+    // que los dos mandan, y el técnico tiene que saberlo para avisar a su
+    // compañero en vez de irse a la oficina a esperar.
     const faltan = r.faltan || [];
     const quien = faltan.includes("MOTOR") ? "el delantero"
                 : faltan.includes("TANQUE") ? "el tanquero" : "";
-    msg_(quien
-      ? `Enviado. AVISA A ${quien.toUpperCase()}: hasta que no mande su parte, en la oficina no pueden imprimir.`
-      : "Informe completo. Ya puedes ir a la oficina por los papeles.");
-    setTimeout(cerrarInformeOt_, 2200);
+    msg_(!quien ? "Informe completo. Está saliendo por la impresora de la oficina."
+      : modo === "YA" ? `Está saliendo por la impresora. La parte de ${quien} va en blanco: se llena a mano.`
+      : `Enviado. AVISA A ${quien.toUpperCase()}: el papel sale cuando mande su parte.`);
+    setTimeout(cerrarInformeOt_, 2600);
   } catch (err) {
     msg_(String(err?.message || err), true);
   } finally {
     enviando_ = false;
-    if (btn) { btn.disabled = false; btn.textContent = "Enviar a impresión"; }
+    botones.forEach(b => { b.disabled = false; });
   }
 }
 
 /** Bind de listeners. Se llama una sola vez al arranque. */
 export function initInformeOt_() {
   $("iotClose")?.addEventListener("click", cerrarInformeOt_);
-  $("iotEnviar")?.addEventListener("click", enviar_);
+  $("iotEnviar")?.addEventListener("click", () => enviar_("ESPERAR"));
+  $("iotEnviarYa")?.addEventListener("click", () => enviar_("YA"));
 
   // Clic fuera de la caja cierra, como el resto de modales de la app.
   $("iotModal")?.addEventListener("click", (e) => {

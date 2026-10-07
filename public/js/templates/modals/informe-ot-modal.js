@@ -97,9 +97,18 @@ export function informeOtModal() {
 
           <div class="iotMsg" id="iotMsg"></div>
 
-          <button id="iotEnviar" type="button" class="btnInicio iotEnviar">
-            Enviar a impresión
-          </button>
+          <!-- Dos formas de mandar. Las dos van a la impresora de la
+               oficina; cambia CUÁNDO sale el papel. -->
+          <div class="iotEnvios">
+            <button id="iotEnviar" type="button" class="btnInicio iotEnviar" data-iot-modo="ESPERAR">
+              Esperar a compañero
+              <small>sale completo cuando él mande</small>
+            </button>
+            <button id="iotEnviarYa" type="button" class="iotEnviar iotYa" data-iot-modo="YA">
+              Imprimir ya
+              <small>sale ahora, lo suyo en blanco</small>
+            </button>
+          </div>
         </div>
       </div>
     </div>
