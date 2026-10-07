@@ -298,3 +298,67 @@
 .plano__ficha .plano__det + .plano__det { margin-top: 2px; }
 
 .plano__salida[data-rama], .plano__sub[data-rama] { cursor: pointer; }
+
+/* ── Cable con línea (rojo con línea negra) ────────────────────────── */
+.pl-cable--ancho { stroke-width: 5; }
+.pl-cable--linea { stroke-width: 1.6; stroke-linecap: butt; }
+
+/* ── Mi medida: la mano de cada uno, resaltada entre paréntesis ────── */
+.plano__mia {
+  background: color-mix(in srgb, var(--btnBg) 26%, transparent);
+  color: var(--text);
+  font-weight: var(--fw-black);
+  padding: 0 4px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.pl-mia { fill: var(--btnBg); font-weight: 900; }
+:root[data-theme="day"] .pl-mia { fill: #b45309; }
+.plano__papel { color: var(--muted); font-weight: var(--fw-bold); font-size: var(--fs-xs); }
+.plano__largo { margin-top: 2px; }
+
+.plano__mano {
+  margin: 0 0 14px;
+  border: var(--border-w) solid var(--pillLine);
+  border-radius: var(--radiusSm);
+  background: var(--pillBg);
+}
+.plano__mano summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--h-btn);
+  padding: 0 12px;
+  font-weight: var(--fw-black);
+  cursor: pointer;
+  list-style: none;
+}
+.plano__mano summary::-webkit-details-marker { display: none; }
+.plano__mano summary::after { content: "▾"; margin-left: auto; color: var(--muted); }
+.plano__mano[open] summary::after { content: "▴"; }
+.plano__manoRes { color: var(--muted); font-weight: var(--fw-bold); font-size: var(--fs-sm); }
+.plano__manoBody { padding: 0 12px 12px; }
+.plano__manoBody p { margin: 0 0 10px; }
+.plano__manoGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.plano__manoGrid label { display: grid; gap: 4px; font-size: var(--fs-xs); font-weight: var(--fw-extrabold); color: var(--muted); }
+.plano__manoGrid label span { display: flex; align-items: center; gap: 4px; color: var(--text); }
+.plano__manoGrid input { width: 100%; min-width: 0; height: var(--h-input); font-size: var(--fs-lg); text-align: center; }
+.plano__manoChica { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; }
+.plano__manoAcc { display: flex; gap: 8px; margin-top: 12px; }
+.plano__manoOk { justify-content: center; background: var(--grad-btn); color: var(--btnText); border-color: var(--btnLine); }
+.plano__manoMsg:empty { display: none; }
+.plano__manoMsg { margin-top: 8px; color: var(--danger); }
+.plano__manoT { white-space: nowrap; }
+.plano__manoRes { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plano__chip {
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  border: var(--border-w) solid var(--pillLine);
+  color: var(--text);
+  font-weight: var(--fw-extrabold);
+  font-size: var(--fs-sm);
+}
+.plano__chip.is-on { background: var(--grad-btn); color: var(--btnText); border-color: var(--btnLine); }
+.plano__manoChica .plano__det { flex-basis: 100%; }
