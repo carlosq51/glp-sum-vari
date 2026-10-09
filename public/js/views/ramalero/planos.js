@@ -115,7 +115,7 @@ function medidaHTML_(cm, ref, tramos = [cm]) {
   const { principal, aclaracion } = medidaPartes_(cm, ref, tramos);
   return aclaracion
     ? `<b class="plano__std">${esc_(principal)}</b> <span class="plano__acl">(${esc_(aclaracion)})</span>`
-    : `<b>${esc_(principal)}</b>`;
+    : `<b class="plano__std">${esc_(principal)}</b>`;
 }
 
 // Toda rama nace en el conector: el largo al que se cortan sus cables es
@@ -300,7 +300,8 @@ function dibujoSVG_(p, ref) {
     const w = anchoTxt(full, fs);
     const xa = anchor === "end" ? x - w : anchor === "middle" ? x - w / 2 : x;
     crece(xa, y - fs); crece(xa + w, y + fs * 0.3);
-    const tsp = extra ? `<tspan class="${extraCls}" dx="6">${esc_(extra)}</tspan>` : "";
+    const tamExtra = extraCls === "pl-acl" ? ` font-size="${fs - 5}"` : "";
+    const tsp = extra ? `<tspan class="${extraCls}" dx="6"${tamExtra}>${esc_(extra)}</tspan>` : "";
     return `<text x="${f(x)}" y="${f(y)}" class="${cls}" text-anchor="${anchor}" font-size="${fs}">${esc_(s)}${tsp}</text>`;
   };
 
@@ -379,12 +380,8 @@ function dibujoSVG_(p, ref) {
   // Nombre (y largo total, si se conoce) junto a la punta.
   const rotulo = (x, y, d, r) => {
     const dib = r.dibujo;
-    // Medida junto al nombre: la del taller y, entre paréntesis, los cm.
-    let largo = "";
-    if (r.largo && !dib.sinLargo) {
-      const m = medidaPartes_(r.largo, ref, r.tramos);
-      largo = m.aclaracion ? `${m.principal} (${m.aclaracion})` : m.principal;
-    }
+    // Solo el nombre: la medida de la rama va sobre su línea (cotaEnLinea).
+    const largo = "";
     const largoPz = !r.conector ? 0
       : r.cantidad > 1 ? PEINE + (PIEZAS[r.conector]?.caja[2] || 0) * ESC_VARIAS
       : PIEZAS[r.conector]?.caja[2] || 0;
@@ -419,7 +416,8 @@ function dibujoSVG_(p, ref) {
     const m = medidaPartes_(cm, ref);
     let principal = m.principal;
     if (principal.length > 16) principal = `${principal.slice(0, 15)}…`;
-    const clsP = m.aclaracion ? "pl-std" : cls;
+    // La medida principal siempre resaltada, tenga estándar o sea en cm.
+    const clsP = "pl-std";
     const acl = m.aclaracion ? `(${m.aclaracion})` : "";
     const mx = (ax + bx) / 2, my = (ay + by) / 2;
     if (Math.abs(bx - ax) < Math.abs(by - ay)) {
@@ -439,6 +437,22 @@ function dibujoSVG_(p, ref) {
     }
     return texto(px, py - 9, principal, clsP, "middle", FS - 1) +
       (acl ? texto(px, py + FS + 1, acl, "pl-acl", "middle", FS - 5) : "");
+  };
+
+  // Medida escrita a lo largo de la línea de la rama, como una cota de
+  // plano: la del taller (resaltada) y los cm entre paréntesis. El texto
+  // siempre se lee de izquierda a derecha y va del lado de arriba.
+  const cotaEnLinea = ([ax, ay], [bx, by], r) => {
+    const m = medidaPartes_(r.largo, ref, r.tramos);
+    let a = (Math.atan2(by - ay, bx - ax) * 180) / Math.PI;
+    if (a > 90 || a < -90) a += 180;
+    const u = dir(a), arriba = [u[1], -u[0]];
+    const t = r.dibujo.cotaT ?? 0.55;
+    const px = ax + (bx - ax) * t + arriba[0] * 8, py = ay + (by - ay) * t + arriba[1] * 8;
+    const w = anchoTxt(`${m.principal}  ${m.aclaracion ? `(${m.aclaracion})` : ""}`, FS - 2);
+    crece(px - u[0] * w / 2, py - u[1] * w / 2 - FS); crece(px + u[0] * w / 2, py + u[1] * w / 2 + FS);
+    const acl = m.aclaracion ? `<tspan class="pl-acl" dx="5" font-size="${FS - 6}">(${esc_(m.aclaracion)})</tspan>` : "";
+    return `<text x="${f(px)}" y="${f(py)}" transform="rotate(${f(a)} ${f(px)} ${f(py)})" text-anchor="middle" font-size="${FS - 2}" class="pl-std">${esc_(m.principal)}${acl}</text>`;
   };
 
   const rama = (x, y, r) => {
@@ -481,7 +495,9 @@ function dibujoSVG_(p, ref) {
         const [cx, cy] = enT(0.32);
         g += corte(cx, cy, legs[0][0]);
       }
-      // Cota solo en los empalmes (ramas comunes); va en el tramo más largo.
+      // Una rama que termina en algo lleva su medida sobre la línea.
+      if (r.cm && !r.esEmpalme) g += cotaEnLinea(pts[0], pts[pts.length - 1], r);
+      // Cota de los empalmes (ramas comunes); va en el tramo más largo.
       if (r.cm && r.esEmpalme) {
         let i = 0;
         legs.forEach(([, l], j) => { if (l > legs[i][1]) i = j; });
@@ -553,7 +569,7 @@ function dibujoSVG_(p, ref) {
       const m = medidaPartes_(sec.cm, ref);
       const fuera = [D[k][1], -D[k][0]]; // perpendicular, hacia arriba/derecha
       const qx = (x0 + x1) / 2 + fuera[0] * (MEDIO_TRONCO + 12), qy = (y0 + y1) / 2 + fuera[1] * (MEDIO_TRONCO + 12);
-      out.textos.push(texto(qx, qy - 2, m.principal, m.aclaracion ? "pl-std" : "pl-cota pl-cota--tronco", "start", FS - 1));
+      out.textos.push(texto(qx, qy - 2, m.principal, "pl-std", "start", FS - 1));
       if (m.aclaracion) out.textos.push(texto(qx, qy + FS - 4, `(${m.aclaracion})`, "pl-acl", "start", FS - 5));
     }
     // El nodo va con el tronco, debajo del camino resaltado (no lo corta).

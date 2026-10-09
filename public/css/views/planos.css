@@ -448,9 +448,12 @@
 .plano__pasos li + li { margin-top: 2px; }
 
 /* ── Medida del taller (principal) y cm (aclaración) ───────────────── */
-.plano__std { color: var(--text); font-weight: var(--fw-black); }
+/* La medida del taller resaltada en naranja: es lo que el técnico busca. */
+.plano__std { color: #b45309; font-weight: var(--fw-black); }
+:root:not([data-theme="day"]) .plano__std { color: var(--btnBg); }
 .plano__acl { color: var(--muted); font-weight: var(--fw-bold); font-size: .88em; }
-.pl-std { fill: var(--text); font-weight: 900; }
+.pl-std { fill: #b45309; font-weight: 900; }
+:root:not([data-theme="day"]) .pl-std { fill: var(--btnBg); }
 .pl-acl { fill: var(--muted); font-weight: 700; }
 .pl-medida { fill: #b45309; font-weight: 800; }
 :root:not([data-theme="day"]) .pl-medida { fill: var(--btnBg); }
