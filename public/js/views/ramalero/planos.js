@@ -3,34 +3,31 @@
 // Planos de armado de ramales, para quien recién empieza o duda de una
 // medida. Digitalizados del dibujo en papel que hicieron los técnicos.
 //
+// Los planos son datos (planos-datos.js) envueltos en el modelo Ramal →
+// Tronco → Sección → Rama (planos-modelo.js). Este archivo solo los pinta.
+//
 // TRES PARTES DEL MISMO PLANO
 // ───────────────────────────
-// 1. El DIBUJO A ESCALA: como el papel. Tronco vertical desde el conector y
-//    cada rama saliendo con su largo real. Los conectores se dibujan como la
-//    pieza (sacados de fotos del taller). Tocar una rama muestra su ficha.
-// 2. La REFERENCIA DE MEDIDAS: las medidas que usa ESTE plano (20, 26, 29,
-//    35 cm, 1.29 m…) y al lado cómo se miden en el taller («1/4», «6/4 +
-//    1 puño»…). Viene con lo que dice el papel y cada uno anota lo suyo.
-// 3. El RECORRIDO PASO A PASO: parada por parada, con la distancia desde el
-//    conector y los colores de cable. Sirve para armar midiendo.
-//
-// Todo sale de los mismos datos (PLANOS), así que no se pueden contradecir.
-//
-// GEOMETRÍA
-// ─────────
-// Coordenadas en centímetros: el conector en (0,0) y el tronco bajando por
-// y. Cada rama dice su ángulo (0 = derecha, 90 = abajo, 180 = izquierda) y
-// su largo. Si el papel no da el largo, la rama lleva `dib` (largo solo de
-// dibujo) y se pinta punteada: así nadie toma por medida lo que no lo es.
+// 1. El DIBUJO: con la forma del boceto del taller y los largos reales.
+//    Los conectores se dibujan como la pieza (de fotos del taller). Tocar
+//    una rama muestra su ficha.
+// 2. La REFERENCIA DE MEDIDAS: las medidas que usa ESTE plano y al lado
+//    cómo se miden en el taller («1/4», «6/4 + 1 puño»…). Viene con lo que
+//    dice el papel y cada uno anota lo suyo.
+// 3. El RECORRIDO PASO A PASO: sección por sección, con la distancia desde
+//    el conector y los colores de cable. Sirve para armar midiendo.
 //
 // LA REFERENCIA VIVE EN EL CELULAR
 // ────────────────────────────────
 // Se mide con la mano y la cuarta de cada uno es distinta, así que lo que
 // se anota es de cada persona: localStorage, una entrada por plano. Lo que
 // no se toca se queda con lo que dice el papel.
-//
-// Agregar un modelo = agregar un objeto a PLANOS. No hay nada en la base.
 // =========================
+
+import { Ramal } from "./planos-modelo.js";
+import { RAMALES } from "./planos-datos.js";
+
+const PLANOS = RAMALES.map((j) => new Ramal(j));
 
 // Colores reales del cable (no son colores de tema: un cable rojo es rojo
 // de día y de noche). «multicolor» y los bicolores se pintan con gradiente.
@@ -46,142 +43,6 @@ const CABLE = {
   rojoNegro:  { n: "rojo con línea negra", g: "linear-gradient(90deg,#dc2626 0 38%,#1a1a1a 38% 62%,#dc2626 62%)" },
 };
 
-// Una parada es un punto del tronco. `tramo` es lo que se mide sobre el
-// tronco ANTES de llegar a ella.
-//
-// Una rama:
-//   id, nombre, corto?, detalle?, cables?
-//   ang            dirección en grados (ver GEOMETRÍA)
-//   codo           tramos [[ang, cm], …] cuando el trazo dobla (el largo
-//                  total es el mismo; el codo solo evita cruces)
-//   cm, medida     largo real y cómo lo dice el papel (la medida del papel
-//                  es lo que trae la referencia antes de que nadie la toque)
-//   dib            largo solo de dibujo cuando el papel no lo da
-//   grupo: true    rama común que al final se abre en `hijos`; no es un
-//                  destino, es el haz que se separa después
-//   hijos          ramas que salen de esta; `en` (0–1) dice en qué punto
-//                  del largo salen (1 = al final, que es lo normal)
-//   conector       pieza en la punta: "iny" | "map" | "interface"
-//   lado           dónde va el nombre si el automático estorba
-//   sinLargo       no repetir el largo junto al nombre (ya lo dice la cota)
-//   cotaAbajo      la cota va bajo la línea (arriba choca con otra pieza)
-//
-// `cinta` del plano: [{ tipo: "aislante" | "tela", donde }] — qué cinta
-// lleva cada parte; sale como leyenda arriba del dibujo.
-const PLANOS = [
-  {
-    id: "kyc-x3-x5",
-    titulo: "KYC X3 / X5",
-    notas: ["Conector INVERTIDO: los 4 puntos van hacia la parte inferior."],
-    // Qué cinta lleva cada parte. Este modelo va todo en aislante simple;
-    // hay modelos que combinan cinta de tela y aislante.
-    cinta: [{ tipo: "aislante", donde: "Todo el ramal" }],
-    // Los ángulos copian el boceto del taller (la forma que ya conocen);
-    // los largos son los reales.
-    paradas: [
-      {
-        tramo: { medida: "1/4", cm: 20 },
-        ramas: [{ id: "interface", nombre: "Interface", ang: -22, dib: 16, conector: "interface" }],
-      },
-      {
-        tramo: { medida: "2/4 + 1 pulgar", cm: 35 },
-        ramas: [
-          {
-            id: "rama-conmutador",
-            nombre: "Rama de 1.29 m",
-            detalle: "1.29 m hasta donde sale el cable con chapa; desde ahí sigue hasta el conmutador.",
-            grupo: true,
-            ang: 141,
-            cm: 129,
-            medida: "6/4 + 1 puño",
-            hijos: [
-              { id: "conmutador", nombre: "Conmutador", ang: 141, dib: 18, lado: "abajo", sinLargo: true, cables: ["negro", "blancoVerde", "rojo"] },
-              {
-                id: "chapa",
-                nombre: "Cable con chapa",
-                corto: "Chapa",
-                detalle: "Un solo cable, rojo con una línea negra.",
-                ang: 186,
-                dib: 14,
-                lado: "arriba",
-                sinLargo: true,
-                cables: ["rojoNegro"],
-              },
-            ],
-          },
-        ],
-      },
-      {
-        tramo: { medida: "1/4 + 1 puño", cm: 29 },
-        ramas: [
-          {
-            id: "haz-sensores",
-            nombre: "Haz de 26 cm",
-            detalle: "Ahí terminan INY y MAP; 20 cm más allá salen RPM y EMUL.",
-            grupo: true,
-            ang: 150,
-            cm: 26,
-            medida: "1/4",
-            hijos: [
-              { id: "iny", nombre: "INY", detalle: "Inyectores de la bobina", ang: 180, dib: 5, conector: "iny", lado: "arriba", sinLargo: true },
-              { id: "map", nombre: "MAP", ang: 128, dib: 5, conector: "map", lado: "izq", sinLargo: true },
-              {
-                id: "haz-rpm-emul",
-                nombre: "Tramo de 20 cm",
-                detalle: "Desde INY y MAP, 20 cm más hasta donde salen RPM y EMUL.",
-                grupo: true,
-                ang: 140,
-                cm: 20,
-                cotaAbajo: true,
-                hijos: [
-                  { id: "rpm", nombre: "RPM", ang: 170, dib: 8, lado: "izq", sinLargo: true, cables: ["marron"] },
-                  { id: "emul", nombre: "EMUL.", ang: 115, dib: 8, lado: "izq", sinLargo: true, cables: ["multicolor"] },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-      {
-        tramo: { medida: "1/4", cm: 20 },
-        ramas: [
-          {
-            id: "rama-ev-temp",
-            nombre: "Rama de 20 cm",
-            detalle: "Al final se abre en dos.",
-            grupo: true,
-            ang: 0,
-            cm: 20,
-            medida: "1/4",
-            hijos: [
-              { id: "electrovalvula", nombre: "Electroválvula", ang: -10, dib: 14, sinLargo: true, cables: ["azul", "negro"] },
-              { id: "temperatura", nombre: "Temperatura", ang: 18, dib: 14, sinLargo: true, cables: ["anaranjado", "negro"] },
-            ],
-          },
-        ],
-      },
-      {
-        tramo: { medida: "1/4", cm: 20 },
-        ramas: [{ id: "alimentacion", nombre: "Alimentación", ang: 140, dib: 18, lado: "izq", cables: ["rojo", "negro"] }],
-      },
-      {
-        tramo: { medida: "1/4", cm: 20 },
-        fin: true,
-        ramas: [
-          {
-            id: "tanque",
-            nombre: "Cables de tanque",
-            ang: 90,
-            dib: 3,
-            lado: "der",
-            cables: ["azul", "verde", "marron"],
-          },
-        ],
-      },
-    ],
-  },
-];
-
 // Tipos de cinta para la leyenda. La muestra imita la textura: la aislante
 // es lisa y brillante, la de tela tiene trama.
 const CINTAS = {
@@ -189,8 +50,17 @@ const CINTAS = {
   tela: { n: "Cinta de tela", clase: "is-tela" },
 };
 
+const esc_ = (s) =>
+  String(s ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]);
+
+function cm_(cm) {
+  return cm >= 100 ? `${(cm / 100).toFixed(2)} m` : `${cm} cm`;
+}
+
+const obs_ = (lista) => lista.map((o) => `<div class="plano__det">${esc_(o)}</div>`).join("");
+
 function cintaHTML_(p) {
-  if (!p.cinta?.length) return "";
+  if (!p.cinta.length) return "";
   const filas = p.cinta
     .map((c) => {
       const t = CINTAS[c.tipo] || { n: c.tipo, clase: "" };
@@ -200,44 +70,12 @@ function cintaHTML_(p) {
   return `<div class="plano__cinta"><div class="plano__secT">Cinta</div>${filas}</div>`;
 }
 
-const esc_ = (s) =>
-  String(s ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]);
-
-function cm_(cm) {
-  return cm >= 100 ? `${(cm / 100).toFixed(2)} m` : `${cm} cm`;
-}
-
 // ── Referencia de medidas (por plano, guardada en el celular) ──────────
-// Las medidas del plano son los largos que se miden de una pieza: los
-// tramos del tronco y las ramas comunes. Los largos totales (RPM = 26 + 20)
-// se arman sumando sus partes, así que no son entradas propias.
-function medidasDe_(p) {
-  const m = new Map(); // cm → { papel, usos }
-  const suma = (cm, papel, uso) => {
-    const e = m.get(cm) || { cm, papel: "", usos: [] };
-    if (!e.papel && papel) e.papel = papel;
-    e.usos.push(uso);
-    m.set(cm, e);
-  };
-  let prev = "conector";
-  for (const st of p.paradas) {
-    const destino = st.ramas[0]?.grupo ? st.ramas[0].nombre.toLowerCase() : st.ramas[0]?.nombre || "fin";
-    suma(st.tramo.cm, st.tramo.medida, `tronco: ${prev} → ${destino}`);
-    prev = destino;
-    const walk = (r) => {
-      if (r.cm) suma(r.cm, r.medida, r.nombre.toLowerCase());
-      (r.hijos || []).forEach(walk);
-    };
-    st.ramas.forEach(walk);
-  }
-  return [...m.values()].sort((a, b) => a.cm - b.cm);
-}
-
 const refKey_ = (p) => `glp.planos.ref.${p.id}`;
 
 function refCargar_(p) {
   const ref = {};
-  for (const e of medidasDe_(p)) ref[e.cm] = e.papel;
+  for (const e of p.medidas()) ref[e.cm] = e.medida;
   try {
     const mias = JSON.parse(localStorage.getItem(refKey_(p)) || "null");
     if (mias && typeof mias === "object") {
@@ -262,22 +100,29 @@ function refBorrar_(p) {
   try { localStorage.removeItem(refKey_(p)); } catch { /* nada que borrar */ }
 }
 
-// «35 cm (2/4 + 1 pulgar)», con la referencia resaltada. `segs` son los
-// tramos que forman un largo total (RPM: [26, 20]).
-function medidaHTML_(cm, ref, segs = [cm]) {
-  const notas = segs.map((s) => ref?.[s]).filter(Boolean);
-  const txt = notas.length === segs.length ? notas.join(" + ") : "";
+// «35 cm (2/4 + 1 pulgar)», con la referencia resaltada. `tramos` son las
+// partes que forman un largo total (RPM: [26, 20]).
+function medidaHTML_(cm, ref, tramos = [cm]) {
+  const notas = tramos.map((s) => ref?.[s]).filter(Boolean);
+  const txt = notas.length === tramos.length ? notas.join(" + ") : "";
   return `${cm_(cm)}${txt ? ` <mark class="plano__mia">(${esc_(txt)})</mark>` : ""}`;
 }
 
+function largoHTML_(r, ref) {
+  if (!r.largo) return "largo no indicado";
+  const partes = r.tramos.length > 1 ? ` <span class="plano__papel">= ${r.tramos.map(cm_).join(" + ")}</span>` : "";
+  return medidaHTML_(r.largo, ref, r.tramos) + partes;
+}
+
 function referenciaHTML_(p, ref) {
-  const filas = medidasDe_(p)
+  const filas = p
+    .medidas()
     .map(
       (e) => `
       <div class="plano__refFila">
         <span class="plano__refCm">${cm_(e.cm)}</span>
         <input type="text" class="plano__refIn" data-ref-cm="${e.cm}" value="${esc_(ref[e.cm] ?? "")}"
-               placeholder="${esc_(e.papel || "anota cómo la mides")}" autocomplete="off" enterkeyhint="done"
+               placeholder="${esc_(e.medida || "anota cómo la mides")}" autocomplete="off" enterkeyhint="done"
                aria-label="Cómo se mide ${esc_(cm_(e.cm))}">
         <span class="plano__refUso">${e.usos.length === 1 ? esc_(e.usos[0]) : `${e.usos.length} veces en el plano`}</span>
       </div>`
@@ -308,34 +153,6 @@ function cablesHTML_(keys) {
     .join("")}</div>`;
 }
 
-// ── Índice: cada rama con su largo total desde el tronco ───────────────
-// Lo usan la lista y la ficha que se abre al tocar el dibujo, para que las
-// dos digan exactamente lo mismo. `segs`: los tramos que suman ese total.
-function indexar_(p) {
-  const idx = new Map();
-  let acum = 0;
-  for (const st of p.paradas) {
-    acum += st.tramo.cm;
-    const walk = (r, base, padre) => {
-      const segs = r.cm ? [...base.segs, r.cm] : base.segs;
-      const total = segs.reduce((a, b) => a + b, 0);
-      idx.set(r.id, { r, desde: acum, total, segs, padre });
-      for (const h of r.hijos || []) {
-        // Un hijo que sale a mitad de la rama (en < 1) no hereda su largo.
-        walk(h, (h.en ?? 1) >= 1 && r.cm ? { segs } : { segs: [] }, r);
-      }
-    };
-    for (const r of st.ramas) walk(r, { segs: [] }, null);
-  }
-  return idx;
-}
-
-function largoHTML_(it, ref) {
-  if (!it.total) return "largo no indicado";
-  const partes = it.segs.length > 1 ? ` <span class="plano__papel">= ${it.segs.map(cm_).join(" + ")}</span>` : "";
-  return medidaHTML_(it.total, ref, it.segs) + partes;
-}
-
 // ── Conectores dibujados como la pieza (de las fotos del taller) ────────
 // Coordenadas locales: el cable entra por la izquierda en (0,0) y la pieza
 // crece hacia +x. Se colocan con translate+rotate según hacia dónde apunta
@@ -346,7 +163,7 @@ function largoHTML_(it, ref) {
 //   map        cuerpo negro con seguro rosado del lado del cable, pestaña
 //              y frente gris de 4 vías.
 //   interface  redondo: funda, aro amarillo, cilindro negro y brida.
-const COL = { amarillo: "#facc15", amarilloOsc: "#ca8a04", rojo: "#dc2626", rosado: "#f05a78", gris: "#c8cacc", negro: "#1f2124", naranja: "#f97316" };
+const COL = { amarillo: "#facc15", rojo: "#dc2626", rosado: "#f05a78", gris: "#c8cacc", negro: "#1f2124", naranja: "#f97316" };
 
 const PIEZAS = {
   iny: {
@@ -409,10 +226,11 @@ function miniPiezaSVG_(tipo) {
     <line x1="-28" y1="0" x2="0" y2="0" class="pl-rama"/>${PIEZAS[tipo].svg()}</svg>`;
 }
 
-// ── Dibujo a escala (SVG) ──────────────────────────────────────────────
+// ── Dibujo (SVG) ───────────────────────────────────────────────────────
 // Con la forma del boceto del taller (las ramas salen con sus ángulos),
 // el haz en línea gruesa, los conectores como la pieza y las puntas
-// abiertas en sus cables de color.
+// abiertas en sus cables de color. Largos reales, salvo los tramos más
+// largos que `dibujo.tramoMax` del ramal: esos se dibujan cortados (⫽).
 const S = 4;        // px de dibujo por cm
 // Ampliado (como abre): el dibujo a un tamaño en que la letra se lee
 // (~14 px) y se arrastra con el dedo. «Ver todo» lo ajusta al ancho.
@@ -430,7 +248,7 @@ const RAYAS = {
   rojoNegro: { linea: ["#dc2626", "#1a1a1a"] },
 };
 
-function dibujoSVG_(p, idx, ref) {
+function dibujoSVG_(p, ref) {
   const out = { trazos: [], marcas: [], textos: [] };
   const caja = { x0: 0, y0: 0, x1: 0, y1: 0 };
   const crece = (x, y) => {
@@ -440,6 +258,8 @@ function dibujoSVG_(p, idx, ref) {
   const dir = (ang) => [Math.cos((ang * Math.PI) / 180), Math.sin((ang * Math.PI) / 180)];
   const f = (n) => Math.round(n * 10) / 10;
   const anchoTxt = (s, fs = FS) => s.length * fs * TXT_W;
+  const tramoMax = p.dibujo.tramoMax || Infinity;
+  let hayCortes = false;
 
   // Texto con su caja aproximada, para que el viewBox no lo corte.
   // `extra` es un segundo texto más tenue en la misma línea (el largo).
@@ -501,13 +321,25 @@ function dibujoSVG_(p, idx, ref) {
     return `<g transform="translate(${f(x)} ${f(y)}) rotate(${ang})">${pz.svg()}</g>`;
   };
 
+  // Marca de corte (⫽) a media línea: el tramo es más largo de lo que se
+  // dibuja. Un hueco del color del fondo y dos rayas cruzadas.
+  const corte = (x, y, d) => {
+    const k = dir((Math.atan2(d[1], d[0]) * 180) / Math.PI + 60); // raya inclinada
+    const raya = (o) => {
+      const cx = x + d[0] * o, cy = y + d[1] * o;
+      return `<line x1="${f(cx - k[0] * 11)}" y1="${f(cy - k[1] * 11)}" x2="${f(cx + k[0] * 11)}" y2="${f(cy + k[1] * 11)}" class="pl-corte"/>`;
+    };
+    return `<line x1="${f(x - d[0] * 6)}" y1="${f(y - d[1] * 6)}" x2="${f(x + d[0] * 6)}" y2="${f(y + d[1] * 6)}" class="pl-corteHueco"/>` +
+      raya(-5) + raya(5);
+  };
+
   // Nombre (y largo total, si se conoce) junto a la punta.
   const rotulo = (x, y, d, r) => {
-    const it = idx.get(r.id);
-    const largo = it && it.total && !r.sinLargo ? cm_(it.total) : "";
+    const dib = r.dibujo;
+    const largo = r.largo && !dib.sinLargo ? cm_(r.largo) : "";
     const largoPz = r.conector ? PIEZAS[r.conector]?.caja[2] || 0 : 0;
-    const lejos = r.cables?.length ? COLA + 6 : largoPz + 10;
-    let lado = r.lado;
+    const lejos = r.cables.length ? COLA + 6 : largoPz + 10;
+    let lado = dib.lado;
     if (!lado) lado = d[0] > 0.5 ? "der" : d[0] < -0.5 ? "izq" : d[1] < 0 ? "arriba" : "abajo";
     const nom = r.corto || r.nombre;
     // Pieza con el nombre al costado de su cuerpo (no en la punta): a media
@@ -526,9 +358,9 @@ function dibujoSVG_(p, idx, ref) {
   };
 
   // Largo de un tramo: los cm y, debajo y resaltado, la referencia. Solo en
-  // los verticales (tronco, rama del conmutador), que tienen aire al
-  // costado; en los horizontales del haz no entra junto a INY/MAP: ahí la
-  // referencia sale en la ficha al tocar la rama y en el paso a paso.
+  // los verticales (tronco), que tienen aire al costado; en las ramas
+  // diagonales no entra junto a las piezas: ahí la referencia sale en la
+  // ficha al tocar la rama y en el paso a paso.
   const cota = (ax, ay, bx, by, cm, cls = "pl-cota", lado = "der", abajo = false) => {
     let nota = String(ref?.[cm] || "");
     if (nota.length > 16) nota = `${nota.slice(0, 15)}…`;
@@ -545,8 +377,15 @@ function dibujoSVG_(p, idx, ref) {
   };
 
   const rama = (x, y, r) => {
-    const largo = (r.cm ?? r.dib ?? 0) * S;
-    const legs = (r.codo || [[r.ang, r.cm ?? r.dib ?? 0]]).map(([a, c]) => [dir(a), c * S]);
+    const dib = r.dibujo;
+    // Largo dibujado: el real, recortado a tramoMax (con marca de corte), o
+    // el de dibujo si el papel no lo da.
+    const real = r.cm || dib.largo || 0;
+    const dibujado = r.cm && r.cm > tramoMax ? tramoMax : real;
+    const cortada = dibujado < real;
+    const k = real ? dibujado / real : 1;
+    const legs = (dib.codo || [[dib.ang ?? 0, real]]).map(([a, c]) => [dir(a), c * k * S]);
+    const largo = dibujado * S;
     const pts = [[x, y]];
     for (const [dl, l] of legs) {
       const [px, py] = pts[pts.length - 1];
@@ -555,7 +394,7 @@ function dibujoSVG_(p, idx, ref) {
     const [ex, ey] = pts[pts.length - 1];
     const d = legs[legs.length - 1][0];
     pts.forEach(([px, py]) => crece(px, py));
-    // Punto a una fracción t del largo total (para hijos que salen a mitad).
+    // Punto a una fracción t del largo dibujado (hijos que salen a mitad).
     const enT = (t) => {
       let falta = largo * t;
       for (let i = 0; i < legs.length; i++) {
@@ -571,16 +410,21 @@ function dibujoSVG_(p, idx, ref) {
       const poly = pts.map(([px, py]) => `${f(px)},${f(py)}`).join(" ");
       g += `<polyline points="${poly}" class="pl-rama${r.cm ? "" : " is-dib"}"/>`;
       g += `<polyline points="${poly}" class="pl-toque"/>`;
-      // Cota solo en las ramas comunes; va en el tramo más largo del trazo.
-      if (r.cm && r.grupo) {
+      if (cortada) {
+        hayCortes = true;
+        const [cx, cy] = enT(0.2);
+        g += corte(cx, cy, legs[0][0]);
+      }
+      // Cota solo en los empalmes (ramas comunes); va en el tramo más largo.
+      if (r.cm && r.esEmpalme) {
         let i = 0;
-        legs.forEach(([, l], k) => { if (l > legs[i][1]) i = k; });
-        g += cota(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], r.cm, "pl-cota", "der", r.cotaAbajo);
+        legs.forEach(([, l], j) => { if (l > legs[i][1]) i = j; });
+        g += cota(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], r.cm, "pl-cota", "der", dib.cotaAbajo);
       }
     }
-    if (r.grupo) {
+    if (r.esEmpalme) {
       g += `<circle cx="${f(ex)}" cy="${f(ey)}" r="5" class="pl-union"/>`;
-    } else if (r.cables?.length) {
+    } else if (r.cables.length) {
       g += abanico(ex, ey, d, r.cables);
       g += rotulo(ex, ey, d, r);
     } else {
@@ -589,10 +433,9 @@ function dibujoSVG_(p, idx, ref) {
     }
     out.trazos.push(`<g class="pl-g" data-rama="${esc_(r.id)}">${g}</g>`);
 
-    for (const h of r.hijos || []) {
-      const t = h.en ?? 1;
-      const [hx, hy] = enT(t);
-      if (t < 1) out.marcas.push(`<circle cx="${f(hx)}" cy="${f(hy)}" r="5" class="pl-union"/>`);
+    for (const h of r.ramas) {
+      const [hx, hy] = enT(h.en);
+      if (h.en < 1) out.marcas.push(`<circle cx="${f(hx)}" cy="${f(hy)}" r="5" class="pl-union"/>`);
       rama(hx, hy, h);
     }
   };
@@ -601,60 +444,63 @@ function dibujoSVG_(p, idx, ref) {
   // más cuesta (el ramal entero queda al revés).
   const con = `<g class="pl-g" data-rama="conector">${PRINCIPAL.svg()}</g>`;
   crece(PRINCIPAL.caja[0], PRINCIPAL.caja[1]); crece(PRINCIPAL.caja[2], PRINCIPAL.caja[3]);
-  const avisoTxt = "INVERTIDO · 4 puntos abajo";
-  const aw = anchoTxt(avisoTxt, FS - 3) + 22, acx = -29, ay = -100;
-  crece(acx - aw / 2, ay); crece(acx + aw / 2, ay + 28);
-  const conTxt = texto(PRINCIPAL.caja[2] + 10, -24, "Conector", "pl-nom", "start") +
-    `<rect x="${f(acx - aw / 2)}" y="${ay}" width="${f(aw)}" height="28" rx="14" class="pl-aviso"/>` +
-    `<text x="${acx}" y="${ay + 19}" text-anchor="middle" font-size="${FS - 3}" class="pl-avisoT">${avisoTxt}</text>` +
-    `<path d="M${acx} ${ay + 28}v${PRINCIPAL.caja[1] - ay - 28}" class="pl-avisoL"/>`;
+  let conTxt = texto(PRINCIPAL.caja[2] + 10, -24, "Conector", "pl-nom", "start");
+  if (p.conector.invertido) {
+    const avisoTxt = "INVERTIDO · 4 puntos abajo";
+    const aw = anchoTxt(avisoTxt, FS - 3) + 22, acx = -29, ay = -100;
+    crece(acx - aw / 2, ay); crece(acx + aw / 2, ay + 28);
+    conTxt +=
+      `<rect x="${f(acx - aw / 2)}" y="${ay}" width="${f(aw)}" height="28" rx="14" class="pl-aviso"/>` +
+      `<text x="${acx}" y="${ay + 19}" text-anchor="middle" font-size="${FS - 3}" class="pl-avisoT">${avisoTxt}</text>` +
+      `<path d="M${acx} ${ay + 28}v${PRINCIPAL.caja[1] - ay - 28}" class="pl-avisoL"/>`;
+  }
 
-  let y = 0;
-  for (const st of p.paradas) {
-    const y0 = y;
-    y += st.tramo.cm * S;
+  for (const sec of p.tronco.secciones) {
+    const y0 = sec.desde * S, y = sec.hasta * S;
     out.trazos.unshift(`<line x1="0" y1="${f(y0)}" x2="0" y2="${f(y)}" class="pl-tronco"/>`);
     // Las medidas del tronco van a la derecha, como en el boceto: a la
     // izquierda salen el conmutador y el haz de sensores.
-    out.textos.push(cota(0, y0, 0, y, st.tramo.cm, "pl-cota pl-cota--tronco", "der"));
-    for (const r of st.ramas) rama(0, y, r);
-    if (!st.fin) out.marcas.push(`<circle cx="0" cy="${f(y)}" r="5.5" class="pl-union"/>`);
+    out.textos.push(cota(0, y0, 0, y, sec.cm, "pl-cota pl-cota--tronco", "der"));
+    for (const r of sec.salidas) rama(0, y, r);
+    if (!sec.esUltima) out.marcas.push(`<circle cx="0" cy="${f(y)}" r="5.5" class="pl-union"/>`);
   }
-  crece(0, y);
+  crece(0, p.tronco.largo * S);
 
   const pad = 8;
   const vb = [caja.x0 - pad, caja.y0 - pad, caja.x1 - caja.x0 + pad * 2, caja.y1 - caja.y0 + pad * 2].map(f);
 
-  return `
+  const svg = `
     <svg class="pl-svg" viewBox="${vb.join(" ")}" width="${vb[2]}" role="img"
          style="--plw:${f(vb[2] * ZOOM)}px" data-x0="${vb[0]}" data-w="${vb[2]}"
-         aria-label="Dibujo del ramal ${esc_(p.titulo)} a escala">
+         aria-label="Dibujo del ramal ${esc_(p.modelo)}">
       ${out.trazos.join("")}
       ${con}${conTxt}
       ${out.marcas.join("")}
       ${out.textos.join("")}
     </svg>`;
+  return { svg, hayCortes };
 }
 
 // ── Sección «Conectores»: cada pieza en grande, con cómo va ────────────
-function conectoresHTML_(p, idx) {
+function conectoresHTML_(p) {
   const fichas = [];
+  const c = p.conector;
   fichas.push(`
     <div class="plano__con plano__con--principal" data-rama="conector">
       ${miniPiezaSVG_("principal")}
       <div>
-        <div class="plano__conNom">Conector principal <span class="plano__conTag">INVERTIDO</span></div>
-        <div class="plano__det">Los 4 puntos van hacia abajo. Bloque grande a la izquierda y el sello rojo a su derecha.</div>
+        <div class="plano__conNom">Conector principal${c.invertido ? ` <span class="plano__conTag">INVERTIDO</span>` : ""}</div>
+        ${obs_(c.observaciones)}
+        <div class="plano__det">Bloque grande a la izquierda y el sello rojo a su derecha.</div>
       </div>
     </div>`);
-  for (const it of idx.values()) {
-    const r = it.r;
+  for (const r of p.ramas()) {
     if (!r.conector) continue;
     fichas.push(`
       <div class="plano__con" data-rama="${esc_(r.id)}">
         ${miniPiezaSVG_(r.conector)}
         <div class="plano__conNom">${esc_(r.nombre)}</div>
-        ${r.detalle ? `<div class="plano__det">${esc_(r.detalle)}</div>` : ""}
+        ${obs_(r.observaciones)}
       </div>`);
   }
   return `
@@ -665,43 +511,41 @@ function conectoresHTML_(p, idx) {
 }
 
 // ── Lista paso a paso ──────────────────────────────────────────────────
-function tarjeta_(it, ref) {
-  const r = it.r;
+function tarjeta_(r, ref) {
   return `
     <div class="plano__salida" data-rama="${esc_(r.id)}">
       <div class="plano__salidaHead">
         <span class="plano__salidaNom">${esc_(r.nombre)}</span>
       </div>
-      ${it.total ? `<div class="plano__largo">${largoHTML_(it, ref)}</div>` : ""}
-      ${r.detalle ? `<div class="plano__det">${esc_(r.detalle)}</div>` : ""}
+      ${r.largo ? `<div class="plano__largo">${largoHTML_(r, ref)}</div>` : ""}
+      ${obs_(r.observaciones)}
       ${cablesHTML_(r.cables)}
     </div>`;
 }
 
-function listaHTML_(p, idx, ref) {
-  let acum = 0;
-  // Las ramas comunes no son destino: se listan sus puntas (aunque estén
-  // anidadas, como RPM/EMUL dentro del haz) y su explicación como nota.
-  const destinos = (r) => (r.grupo ? r.hijos.flatMap(destinos) : [idx.get(r.id)]);
+function listaHTML_(p, ref) {
+  // Los empalmes no son destino: se listan sus puntas (aunque estén
+  // anidados, como RPM/EMUL dentro del haz) y su explicación como nota.
   const notasDe = (r) =>
-    r.grupo ? [`${r.nombre} (${medidaHTML_(r.cm, ref)}). ${esc_(r.detalle || "")}`, ...r.hijos.flatMap(notasDe)] : [];
-  const filas = p.paradas
-    .map((st) => {
-      acum += st.tramo.cm;
-      return `
+    r.esEmpalme
+      ? [`<b>${esc_(r.nombre)}</b> (${medidaHTML_(r.cm, ref)}). ${r.observaciones.map(esc_).join(" ")}`, ...r.ramas.flatMap(notasDe)]
+      : [];
+  const filas = p.tronco.secciones
+    .map(
+      (sec) => `
       <div class="plano__tramo">
         <div class="plano__eje"></div>
-        <div class="plano__tramoTxt">${medidaHTML_(st.tramo.cm, ref)}</div>
+        <div class="plano__tramoTxt">${medidaHTML_(sec.cm, ref)}${obs_(sec.observaciones)}</div>
       </div>
-      <div class="plano__parada${st.fin ? " is-fin" : ""}">
-        <div class="plano__acum">${cm_(acum)}</div>
+      <div class="plano__parada${sec.esUltima ? " is-fin" : ""}">
+        <div class="plano__acum">${cm_(sec.hasta)}</div>
         <div class="plano__nodo"></div>
         <div class="plano__salidas">
-          ${st.ramas.flatMap(notasDe).map((n) => `<div class="plano__nota">${n}</div>`).join("")}
-          ${st.ramas.flatMap(destinos).map((it) => tarjeta_(it, ref)).join("")}
+          ${sec.salidas.flatMap(notasDe).map((n) => `<div class="plano__nota">${n}</div>`).join("")}
+          ${sec.salidas.flatMap((r) => r.puntas).map((r) => tarjeta_(r, ref)).join("")}
         </div>
-      </div>`;
-    })
+      </div>`
+    )
     .join("");
 
   return `
@@ -710,28 +554,33 @@ function listaHTML_(p, idx, ref) {
         <div class="plano__nodo plano__nodo--con"></div>
         <div class="plano__salidas"><div class="plano__salida plano__salida--con" data-rama="conector">
           <span class="plano__salidaNom">Conector principal</span>
-          <span class="plano__det"><b>invertido</b> · 4 puntos abajo</span>
+          ${p.conector.invertido ? `<span class="plano__det"><b>invertido</b> · ${p.conector.observaciones.map(esc_).join(" ")}</span>` : ""}
         </div></div>
       </div>
       ${filas}
-      <div class="plano__total">Tronco total: <b>${cm_(acum)}</b></div>`;
+      <div class="plano__total">Tronco total: <b>${cm_(p.tronco.largo)}</b></div>`;
 }
 
 export function planoHTML_(p, ref = refCargar_(p)) {
-  const idx = indexar_(p);
+  const { svg, hayCortes } = dibujoSVG_(p, ref);
+  const notas = [
+    ...(p.conector.invertido ? [`Conector INVERTIDO: ${p.conector.observaciones.join(" ")}`] : []),
+    ...p.observaciones,
+  ];
   return `
     <div class="plano" data-plano-id="${esc_(p.id)}">
-      ${p.notas?.length ? `<ul class="plano__notas">${p.notas.map((n) => `<li>${esc_(n)}</li>`).join("")}</ul>` : ""}
+      ${notas.length ? `<ul class="plano__notas">${notas.map((n) => `<li>${esc_(n)}</li>`).join("")}</ul>` : ""}
       ${cintaHTML_(p)}
 
       <div class="plano__secHead">
-        <span class="plano__secT">Dibujo a escala</span>
+        <span class="plano__secT">Dibujo</span>
         <button type="button" class="plano__zoom" data-plano-zoom aria-pressed="true">Ver todo</button>
       </div>
-      <div class="plano__lienzo is-zoom" id="planoLienzo">${dibujoSVG_(p, idx, ref)}</div>
+      <div class="plano__lienzo is-zoom" id="planoLienzo">${svg}</div>
       <div class="plano__ley">
         <span><i class="plano__leyL"></i> largo medido</span>
         <span><i class="plano__leyL is-dib"></i> largo no indicado en el plano</span>
+        ${hayCortes ? `<span><b class="plano__leyCorte">⫽</b> tramo largo dibujado más corto (vale su cota)</span>` : ""}
         <span><mark class="plano__mia">(1/4)</mark> = tu referencia</span>
       </div>
 
@@ -741,7 +590,7 @@ export function planoHTML_(p, ref = refCargar_(p)) {
 
       ${referenciaHTML_(p, ref)}
 
-      ${conectoresHTML_(p, idx)}
+      ${conectoresHTML_(p)}
 
       <div class="plano__secHead plano__secHead--lista">
         <span class="plano__secT">Recorrido paso a paso</span>
@@ -749,7 +598,7 @@ export function planoHTML_(p, ref = refCargar_(p)) {
       <div class="plano__ley">
         <span>Izquierda: distancia desde el conector</span>
       </div>
-      ${listaHTML_(p, idx, ref)}
+      ${listaHTML_(p, ref)}
     </div>`;
 }
 
@@ -765,23 +614,25 @@ function seleccionar_(root, id, desdeAbajo) {
 
   const ficha = root.querySelector("#planoFicha");
   if (id === "conector") {
+    const c = p.conector;
     ficha.innerHTML = `
       <div class="plano__salidaHead"><span class="plano__salidaNom">Conector principal</span></div>
-      <div class="plano__det"><b>Va invertido:</b> los 4 puntos quedan hacia abajo. De aquí se mide todo el tronco.</div>`;
+      ${c.invertido ? `<div class="plano__det"><b>Va invertido:</b> ${c.observaciones.map(esc_).join(" ")}</div>` : obs_(c.observaciones)}
+      <div class="plano__det">De aquí se mide todo el tronco.</div>`;
   } else {
-    const it = indexar_(p).get(id);
-    if (!it) return;
-    const desde = it.padre
-      ? `Sale de: ${it.padre.grupo ? it.padre.nombre.toLowerCase() : it.padre.nombre}`
-      : `Sale del tronco a ${cm_(it.desde)} del conector`;
+    const r = p.buscar(id);
+    if (!r) return;
+    const desde = r.padre
+      ? `Sale de: ${r.padre.esEmpalme ? r.padre.nombre.toLowerCase() : r.padre.nombre}`
+      : `Sale del tronco a ${cm_(r.desdeConector)} del conector`;
     ficha.innerHTML = `
       <div class="plano__salidaHead">
-        <span class="plano__salidaNom">${esc_(it.r.nombre)}</span>
+        <span class="plano__salidaNom">${esc_(r.nombre)}</span>
       </div>
-      <div class="plano__largo">${largoHTML_(it, ref)}</div>
+      <div class="plano__largo">${largoHTML_(r, ref)}</div>
       <div class="plano__det">${esc_(desde)}</div>
-      ${it.r.detalle ? `<div class="plano__det">${esc_(it.r.detalle)}</div>` : ""}
-      ${cablesHTML_(it.r.cables)}`;
+      ${obs_(r.observaciones)}
+      ${cablesHTML_(r.cables)}`;
   }
   ficha.classList.add("is-on");
 
@@ -894,11 +745,13 @@ function abrirPlano_(id) {
   if (!p) return;
   abierto_ = id;
   const m = ensureModal_();
-  m.querySelector("#planoModalTitle").textContent = `Plano · ${p.titulo}`;
+  m.querySelector("#planoModalTitle").textContent = `Plano · ${p.modelo}`;
+  m.querySelector("#planoModalBody").innerHTML = "";
   pintarPlano_("", true);
   m.classList.add("show");
   m.setAttribute("aria-hidden", "false");
   document.body.classList.add("modal-open");
+  requestAnimationFrame(() => centrarLienzo_(m.querySelector(".plano")));
 }
 
 function cerrarPlano_() {
@@ -912,7 +765,7 @@ export function planosListaHTML() {
   return PLANOS.map(
     (p) => `
     <button type="button" class="planoBtn" data-plano="${esc_(p.id)}">
-      <span class="planoBtn__t">${esc_(p.titulo)}</span>
+      <span class="planoBtn__t">${esc_(p.modelo)}</span>
       <span class="planoBtn__a">Ver plano ›</span>
     </button>`
   ).join("");
