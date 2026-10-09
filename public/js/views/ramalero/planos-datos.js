@@ -26,6 +26,28 @@ export const RAMALES = [
       observaciones: ["Los 4 puntos van hacia la parte inferior."],
     },
     cinta: [{ tipo: "aislante", donde: "Todo el ramal" }],
+    // Guía de armado: una «posición» por paso, de la 0 a la final.
+    guia: {
+      pasos: [
+        {
+          id: "p0",
+          titulo: "Posición 0 · Tendido",
+          texto:
+            "Conector en posición normal: los 4 puntos arriba y la parte más protuberante a la derecha. " +
+            "Cada rama cortada a su largo desde el conector, colgando en vertical.",
+          vista: "tendido",
+          conectorInvertido: false,
+          orden: ["conmutador", "chapa", "iny", "map", "rpm", "emul", "alimentacion", "tanque", "temperatura", "electrovalvula", "interface"],
+        },
+        {
+          id: "final",
+          titulo: "Posición final · Ramal armado",
+          texto: "El ramal terminado, con el conector invertido (los 4 puntos abajo).",
+          vista: "plano",
+          conectorInvertido: true,
+        },
+      ],
+    },
     observaciones: [],
     // escalaTronco: el tronco se estira para dar aire entre nodos.
     dibujo: { tramoMax: 60, escalaTronco: 1.5 },

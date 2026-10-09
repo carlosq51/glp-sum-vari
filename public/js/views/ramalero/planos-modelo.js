@@ -9,7 +9,8 @@
 // su vez, llevar a otras juntas un trecho y abrirse en un nodo propio
 // (conmutador + chapa, electroválvula + temperatura).
 //
-//   Ramal ── conector principal, cinta, observaciones
+//   Ramal ── conector principal, cinta, observaciones, guía de armado
+//     ├─ Guía ── pasos (Posición 0 · tendido … Final · ramal armado)
 //     └─ Tronco ── secciones en orden desde el conector
 //          └─ Sección ── cm, medida («1/4»), observaciones
 //               └─ Nodo ── donde termina la sección y salen ramas
@@ -173,6 +174,64 @@ export class Tronco {
   }
 }
 
+/**
+ * Un paso de la guía de armado: una «posición» del ramal mientras se arma.
+ * `vista` dice cómo se dibuja: "tendido" (todas las ramas colgando en
+ * vertical del conector) o "plano" (el ramal armado).
+ * @typedef {Object} PasoJSON_
+ * @property {string} id
+ * @property {string} titulo
+ * @property {string} [texto]            qué se hace en este paso
+ * @property {string} vista              "tendido" | "plano"
+ * @property {boolean} [conectorInvertido]
+ * @property {string[]} [orden]          tendido: ramas de izquierda a derecha
+ */
+export class Paso {
+  constructor(json, { guia, n }) {
+    this.guia = guia;
+    this.n = n;
+    this.id = json.id;
+    this.titulo = json.titulo;
+    this.texto = json.texto || "";
+    this.vista = json.vista || "plano";
+    this.conectorInvertido = json.conectorInvertido ?? this.vista === "plano";
+    this.orden = json.orden || [];
+  }
+
+  get esUltimo() {
+    return this.n === this.guia.pasos.length - 1;
+  }
+
+  /**
+   * Tendido: las ramas que llegan a una punta, en el orden pedido (las que
+   * no estén en `orden` van al final, en el orden del tronco).
+   */
+  get ramasTendidas() {
+    const puntas = [];
+    for (const s of this.guia.ramal.tronco.secciones) for (const r of s.nodo.ramas) puntas.push(...r.puntas);
+    const pos = (r) => {
+      const i = this.orden.indexOf(r.id);
+      return i < 0 ? this.orden.length + puntas.indexOf(r) : i;
+    };
+    return puntas.sort((a, b) => pos(a) - pos(b));
+  }
+}
+
+/** La guía de armado de un ramal: sus pasos en orden. */
+export class Guia {
+  constructor(json, ramal) {
+    this.ramal = ramal;
+    const pasos = json?.pasos?.length
+      ? json.pasos
+      : [{ id: "final", titulo: "Ramal armado", vista: "plano" }];
+    this.pasos = pasos.map((p, n) => new Paso(p, { guia: this, n }));
+  }
+
+  get final() {
+    return this.pasos[this.pasos.length - 1];
+  }
+}
+
 export class Ramal {
   constructor(json) {
     this.id = json.id;
@@ -182,6 +241,7 @@ export class Ramal {
     this.observaciones = json.observaciones || [];
     this.dibujo = json.dibujo || {};
     this.tronco = new Tronco(json.tronco || {});
+    this.guia = new Guia(json.guia, this);
   }
 
   /** Todas las ramas, a cualquier profundidad. */

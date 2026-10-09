@@ -464,3 +464,34 @@
 .pl-camino { fill: none; stroke: var(--btnBg); stroke-width: 4; stroke-linejoin: round; stroke-linecap: round; display: none; }
 .pl-camino.is-camino { display: inline; }
 .pl-nodo { fill: var(--surface); stroke: var(--text); stroke-width: 3; }
+
+/* ── Guía de armado: selector de pasos ─────────────────────────────── */
+.plano__guia {
+  display: grid;
+  grid-template-columns: 44px 1fr 44px;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 8px;
+  border: var(--border-w) solid var(--pillLine);
+  border-radius: var(--radiusSm);
+  background: var(--pillBg);
+}
+.plano__guiaBtn {
+  height: 44px;
+  border-radius: var(--radiusSm);
+  background: var(--grad-btn);
+  color: var(--btnText);
+  border: var(--border-w) solid var(--btnLine);
+  font-size: 26px;
+  font-weight: var(--fw-black);
+  line-height: 1;
+}
+.plano__guiaBtn:disabled { opacity: .3; }
+.plano__guiaTxt { display: grid; gap: 6px; justify-items: center; text-align: center; font-size: var(--fs-md); }
+.plano__guiaPuntos { display: flex; gap: 6px; }
+.plano__guiaPunto { width: 10px; height: 10px; padding: 0; border-radius: 50%; border: 0; background: var(--pillLine); }
+.plano__guiaPunto.is-on { background: var(--btnBg); }
+.plano__guiaDesc { margin: 0 0 10px; font-size: var(--fs-sm); color: var(--muted); }
+.pl-marcaT { stroke: var(--btnBg); stroke-width: 3; stroke-linecap: round; }
+.plano__ley .plano__leyMarca { display: inline-block; width: 14px; height: 0; margin-right: 4px; vertical-align: middle; border-top: 3px solid var(--btnBg); }
