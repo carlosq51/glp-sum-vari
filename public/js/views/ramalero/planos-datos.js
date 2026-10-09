@@ -128,11 +128,11 @@ export const RAMALES = [
                 cm: 20,
                 medida: "1/4",
                 observaciones: ["Electroválvula y temperatura van juntas 20 cm y ahí se abren."],
-                dibujo: { ang: 55 },
+                dibujo: { ang: 0 },
                 nodo: {
                   ramas: [
-                    { id: "electrovalvula", nombre: "Electroválvula", corto: "Elctr", cables: ["azul", "negro"], dibujo: { ang: 100, largo: 14, lado: "abajo", sinLargo: true } },
-                    { id: "temperatura", nombre: "Temperatura", corto: "Temp", cables: ["anaranjado", "negro"], dibujo: { ang: 150, largo: 14, lado: "izq", sinLargo: true } },
+                    { id: "electrovalvula", nombre: "Electroválvula", corto: "Elctr", cables: ["azul", "negro"], dibujo: { ang: -12, largo: 14, lado: "der", sinLargo: true } },
+                    { id: "temperatura", nombre: "Temperatura", corto: "Temp", cables: ["anaranjado", "negro"], dibujo: { ang: 20, largo: 14, lado: "der", sinLargo: true } },
                   ],
                 },
               },
@@ -142,20 +142,18 @@ export const RAMALES = [
         {
           cm: 20,
           medida: "1/4",
-          dibujo: { ang: 0 },
           nodo: {
             ramas: [
-              { id: "alimentacion", nombre: "Alimentación", corto: "Alim", cables: ["rojo", "negro"], dibujo: { ang: 100, largo: 18, lado: "abajo" } },
+              { id: "alimentacion", nombre: "Alimentación", corto: "Alim", cables: ["rojo", "negro"], dibujo: { ang: 145, largo: 18, lado: "izq" } },
             ],
           },
         },
         {
           cm: 20,
           medida: "1/4",
-          dibujo: { ang: 0 },
           nodo: {
             ramas: [
-              { id: "tanque", nombre: "Cables de tanque", corto: "Tanque", cables: ["azul", "verde", "marron"], dibujo: { ang: 0, largo: 6, lado: "der" } },
+              { id: "tanque", nombre: "Cables de tanque", corto: "Tanque", cables: ["azul", "verde", "marron"], dibujo: { ang: 90, largo: 3, lado: "der" } },
             ],
           },
         },

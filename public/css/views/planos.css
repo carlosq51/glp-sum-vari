@@ -242,7 +242,7 @@
 .plano__lienzo.is-zoom .pl-svg { width: max(100%, var(--plw)); max-width: none; }
 
 /* El haz va en el color del texto (negro de día, como en el papel). */
-.pl-tronco { stroke: var(--text); stroke-width: 7; stroke-linecap: round; }
+.pl-tronco { fill: none; stroke: var(--text); stroke-width: 14; stroke-linecap: round; stroke-linejoin: round; }
 .pl-rama, .pl-toque { fill: none; stroke-linejoin: round; }
 .pl-rama   { stroke: var(--text); stroke-width: 4; stroke-linecap: round; }
 .pl-rama.is-dib { stroke-dasharray: 6 5; stroke-width: 3; opacity: .7; }
@@ -274,7 +274,6 @@
 /* El camino de esa rama hasta el conector (tronco y ramas que la llevan). */
 .pl-svg.has-sel .pl-g.is-camino { opacity: 1; }
 .pl-g.is-camino .pl-rama { stroke: var(--btnBg); stroke-width: 4.5; opacity: 1; }
-.pl-tronco.is-camino { stroke: var(--btnBg); }
 
 .plano__ley .plano__leyL {
   display: inline-block;
@@ -456,8 +455,9 @@
 .pl-medida { fill: #b45309; font-weight: 800; }
 :root:not([data-theme="day"]) .pl-medida { fill: var(--btnBg); }
 
-/* ── Tronco como haz de carriles (una rama por carril) ─────────────── */
-.pl-carril { fill: none; stroke: var(--text); stroke-width: 5; stroke-linejoin: round; stroke-linecap: round; }
-.pl-nudo { stroke: var(--text); stroke-width: 3; stroke-linecap: round; }
-.pl-svg.has-sel .pl-carril { opacity: .3; }
-.pl-svg.has-sel .pl-carril.is-camino { opacity: 1; stroke: var(--btnBg); stroke-width: 6; }
+/* ── Tronco grueso; la rama tocada se ve como una fracción de él ──── */
+/* Línea delgada del color de acento por dentro del tronco, del conector al
+   nodo de la rama. Oculta hasta que se toca una rama. */
+.pl-camino { fill: none; stroke: var(--btnBg); stroke-width: 4; stroke-linejoin: round; stroke-linecap: round; display: none; }
+.pl-camino.is-camino { display: inline; }
+.pl-nodo { fill: var(--surface); stroke: var(--text); stroke-width: 3; }
