@@ -27,7 +27,8 @@ export const RAMALES = [
     },
     cinta: [{ tipo: "aislante", donde: "Todo el ramal" }],
     observaciones: [],
-    dibujo: { tramoMax: 60 },
+    // escalaTronco: el tronco se estira para dar aire entre nodos.
+    dibujo: { tramoMax: 60, escalaTronco: 1.5 },
     tronco: {
       secciones: [
         {
@@ -58,6 +59,7 @@ export const RAMALES = [
                     {
                       id: "conmutador",
                       nombre: "Conmutador",
+                      corto: "Conm",
                       cables: ["negro", "blancoVerde", "rojo"],
                       dibujo: { ang: 160, largo: 10, lado: "izq", sinLargo: true },
                     },
@@ -85,6 +87,7 @@ export const RAMALES = [
               {
                 id: "iny",
                 nombre: "INY",
+                corto: "INY",
                 cm: 26,
                 medida: "1/4",
                 conector: "iny",
@@ -92,7 +95,7 @@ export const RAMALES = [
                 observaciones: ["Los 4 inyectores de la bobina."],
                 dibujo: { ang: 165, lado: "izq" },
               },
-              { id: "map", nombre: "MAP", cm: 26, medida: "1/4", conector: "map", dibujo: { ang: 140, lado: "abajo" } },
+              { id: "map", nombre: "MAP", cm: 26, medida: "1/4", conector: "map", dibujo: { ang: 140, lado: "izq" } },
               {
                 id: "rpm",
                 nombre: "RPM",
@@ -115,6 +118,8 @@ export const RAMALES = [
         {
           cm: 20,
           medida: "1/4",
+          // Sale en ángulo hacia la derecha, como en el boceto.
+          dibujo: { ang: 40 },
           nodo: {
             ramas: [
               {
@@ -123,11 +128,11 @@ export const RAMALES = [
                 cm: 20,
                 medida: "1/4",
                 observaciones: ["Electroválvula y temperatura van juntas 20 cm y ahí se abren."],
-                dibujo: { ang: 0 },
+                dibujo: { ang: 55 },
                 nodo: {
                   ramas: [
-                    { id: "electrovalvula", nombre: "Electroválvula", cables: ["azul", "negro"], dibujo: { ang: -10, largo: 14, sinLargo: true } },
-                    { id: "temperatura", nombre: "Temperatura", cables: ["anaranjado", "negro"], dibujo: { ang: 18, largo: 14, sinLargo: true } },
+                    { id: "electrovalvula", nombre: "Electroválvula", corto: "Elctr", cables: ["azul", "negro"], dibujo: { ang: 100, largo: 14, lado: "abajo", sinLargo: true } },
+                    { id: "temperatura", nombre: "Temperatura", corto: "Temp", cables: ["anaranjado", "negro"], dibujo: { ang: 150, largo: 14, lado: "izq", sinLargo: true } },
                   ],
                 },
               },
@@ -137,18 +142,20 @@ export const RAMALES = [
         {
           cm: 20,
           medida: "1/4",
+          dibujo: { ang: 0 },
           nodo: {
             ramas: [
-              { id: "alimentacion", nombre: "Alimentación", cables: ["rojo", "negro"], dibujo: { ang: 120, largo: 18, lado: "izq" } },
+              { id: "alimentacion", nombre: "Alimentación", corto: "Alim", cables: ["rojo", "negro"], dibujo: { ang: 100, largo: 18, lado: "abajo" } },
             ],
           },
         },
         {
           cm: 20,
           medida: "1/4",
+          dibujo: { ang: 0 },
           nodo: {
             ramas: [
-              { id: "tanque", nombre: "Cables de tanque", cables: ["azul", "verde", "marron"], dibujo: { ang: 90, largo: 3, lado: "der" } },
+              { id: "tanque", nombre: "Cables de tanque", corto: "Tanque", cables: ["azul", "verde", "marron"], dibujo: { ang: 0, largo: 6, lado: "der" } },
             ],
           },
         },

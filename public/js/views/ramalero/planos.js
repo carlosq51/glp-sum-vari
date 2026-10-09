@@ -263,6 +263,7 @@ const ZOOM = 0.7;
 const FS = 20;      // tamaño de letra en unidades del dibujo
 const TXT_W = 0.6;  // ancho medio de un carácter, en FS
 const COLA = 26;    // largo de dibujo de cada cable suelto en la punta
+const CARRIL = 9;   // separación entre carriles del tronco (una rama por carril)
 // Varias piezas iguales en una punta (INY ×4): cada una a la mitad de
 // tamaño (un cuarto del área: las cuatro ocupan lo que ocupaba una), en
 // peine, separadas PEINE_PASO y a PEINE del final de la rama.
@@ -280,7 +281,7 @@ const RAYAS = {
 };
 
 function dibujoSVG_(p, ref) {
-  const out = { trazos: [], marcas: [], textos: [] };
+  const out = { carriles: [], trazos: [], marcas: [], textos: [] };
   const caja = { x0: 0, y0: 0, x1: 0, y1: 0 };
   const crece = (x, y) => {
     caja.x0 = Math.min(caja.x0, x); caja.x1 = Math.max(caja.x1, x);
@@ -390,7 +391,9 @@ function dibujoSVG_(p, ref) {
     const lejos = r.cables.length ? COLA + 6 : largoPz + 10;
     let lado = dib.lado;
     if (!lado) lado = d[0] > 0.5 ? "der" : d[0] < -0.5 ? "izq" : d[1] < 0 ? "arriba" : "abajo";
-    const nom = `${r.corto || r.nombre}${r.cantidad > 1 ? ` ×${r.cantidad}` : ""}`;
+    // En el dibujo manda el nombre corto (Conm, Elctr…); sin él, el nombre
+    // y la cantidad (las 4 piezas ya se ven en el peine).
+    const nom = r.corto || `${r.nombre}${r.cantidad > 1 ? ` ×${r.cantidad}` : ""}`;
     // Pieza con el nombre al costado de su cuerpo (no en la punta): a media
     // pieza, pegado a ella.
     if (largoPz && lado === "der" && Math.abs(d[1]) > 0.5) {
@@ -516,18 +519,95 @@ function dibujoSVG_(p, ref) {
       `<path d="M${acx} ${ay + 28}v${PRINCIPAL.caja[1] - ay - 28}" class="pl-avisoL"/>`;
   }
 
-  let yDib = 0;
-  for (const sec of p.tronco.secciones) {
-    const y0 = yDib, y = (yDib += (sec.dibujo.largo ?? sec.cm) * S);
-    // `data-hasta`: al tocar una rama se resalta el tronco hasta su nodo.
-    out.trazos.unshift(`<line x1="0" y1="${f(y0)}" x2="0" y2="${f(y)}" class="pl-tronco" data-hasta="${sec.hasta}"/>`);
-    // Las medidas del tronco van a la derecha, como en el boceto: a la
-    // izquierda salen el conmutador y el haz de sensores.
-    out.textos.push(cota(0, y0, 0, y, sec.cm, "pl-cota pl-cota--tronco", "der"));
-    for (const r of sec.nodo.ramas) rama(0, y, r);
-    if (!sec.esUltima) out.marcas.push(`<circle cx="0" cy="${f(y)}" r="5.5" class="pl-union"/>`);
+  // ── Tronco: un haz de carriles, uno por cada rama que nace en el conector.
+  // Todas las ramas salen del conector y van juntas: cada una corre por su
+  // carril, al costado de las otras, hasta su nodo, y ahí se separa. El haz
+  // se adelgaza a medida que salen ramas y ninguna se monta sobre otra.
+  //
+  // Centro del tronco: un punto por nodo. Cada sección puede llevar su
+  // ángulo (`dibujo.ang`, 90 = abajo) y todas se estiran `escalaTronco`
+  // para dar aire entre nodos.
+  const escT = p.dibujo.escalaTronco || 1;
+  const secs = p.tronco.secciones;
+  const P = [[0, 0]];
+  const D = [];
+  for (const sec of secs) {
+    const dd = dir(sec.dibujo.ang ?? 90);
+    const l = (sec.dibujo.largo ?? sec.cm) * S * escT;
+    const [px, py] = P[P.length - 1];
+    P.push([px + dd[0] * l, py + dd[1] * l]);
+    D.push(dd);
+    crece(px + dd[0] * l, py + dd[1] * l);
   }
-  crece(0, yDib);
+  const nrm = (d) => [-d[1], d[0]]; // normal de la sección (bajando: + apunta a la izquierda en pantalla)
+
+  // Carriles. Lado: hacia dónde sale la rama respecto del tronco (signo del
+  // producto cruz). De cada lado, la que sale antes va más afuera; en el
+  // mismo nodo, la que dobla más. La que sigue de frente (tanque) va al centro.
+  const carriles = [];
+  secs.forEach((sec, k) => {
+    for (const r of sec.nodo.ramas) {
+      const b = dir(r.dibujo.ang ?? r.dibujo.codo?.[0]?.[0] ?? 90);
+      const cruz = D[k][0] * b[1] - D[k][1] * b[0];
+      carriles.push({ r, k, cruz, lado: Math.abs(cruz) < 0.2 ? 0 : Math.sign(cruz) });
+    }
+  });
+  const afuera = (a, b) => a.k - b.k || Math.abs(b.cruz) - Math.abs(a.cruz);
+  const pos = carriles.filter((c) => c.lado > 0).sort(afuera);
+  const neg = carriles.filter((c) => c.lado < 0).sort(afuera);
+  pos.forEach((c, i) => (c.o = (pos.length - i) * CARRIL));
+  neg.forEach((c, i) => (c.o = -(neg.length - i) * CARRIL));
+  carriles.filter((c) => c.lado === 0).forEach((c) => (c.o = 0));
+  const centro = (Math.max(...carriles.map((c) => c.o)) + Math.min(...carriles.map((c) => c.o))) / 2;
+  carriles.forEach((c) => (c.o -= centro));
+
+  // Punto del carril de desplazamiento `o` en el nodo j (esquina en inglete).
+  const enCarril = (j, o) => {
+    const [px, py] = P[j];
+    if (j === 0) return [px + nrm(D[0])[0] * o, py + nrm(D[0])[1] * o];
+    if (j === P.length - 1 || !D[j]) return [px + nrm(D[j - 1])[0] * o, py + nrm(D[j - 1])[1] * o];
+    const n1 = nrm(D[j - 1]), n2 = nrm(D[j]);
+    let m = [n1[0] + n2[0], n1[1] + n2[1]];
+    const lm = Math.hypot(m[0], m[1]) || 1;
+    m = [m[0] / lm, m[1] / lm];
+    const k = o / (m[0] * n1[0] + m[1] * n1[1]);
+    return [px + m[0] * k, py + m[1] * k];
+  };
+
+  // Por sección: la raya del nodo y la medida, según los carriles que pasan.
+  secs.forEach((sec, k) => {
+    const os = carriles.filter((c) => c.k >= k).map((c) => c.o);
+    const mn = Math.min(...os), mx = Math.max(...os);
+    // Nodo: una raya de lado a lado del haz, como las marcas del boceto.
+    if (!sec.esUltima) {
+      const n = nrm(D[k]), [qx, qy] = P[k + 1];
+      out.marcas.push(`<line x1="${f(qx + n[0] * (mn - 9))}" y1="${f(qy + n[1] * (mn - 9))}" x2="${f(qx + n[0] * (mx + 9))}" y2="${f(qy + n[1] * (mx + 9))}" class="pl-nudo"/>`);
+    }
+    // Medida de la sección, del lado de afuera del haz (el de las ramas
+    // cortas a la derecha): la del taller arriba y los cm de aclaración.
+    const m = medidaPartes_(sec.cm, ref);
+    const n = nrm(D[k]);
+    const [cx0, cy0] = [(P[k][0] + P[k + 1][0]) / 2, (P[k][1] + P[k + 1][1]) / 2];
+    const qx = cx0 + n[0] * (mn - 16), qy = cy0 + n[1] * (mn - 16);
+    const an = -n[0] > 0.3 ? "start" : -n[0] < -0.3 ? "end" : "middle";
+    const clsP = m.aclaracion ? "pl-std" : "pl-cota pl-cota--tronco";
+    if (an === "middle") {
+      out.textos.push(texto(qx, qy - (m.aclaracion ? 18 : 2), m.principal, clsP, an, FS - 1));
+      if (m.aclaracion) out.textos.push(texto(qx, qy - 2, `(${m.aclaracion})`, "pl-acl", an, FS - 5));
+    } else {
+      out.textos.push(texto(qx, qy + (m.aclaracion ? -3 : 6), m.principal, clsP, an, FS - 1));
+      if (m.aclaracion) out.textos.push(texto(qx, qy + FS - 5, `(${m.aclaracion})`, "pl-acl", an, FS - 5));
+    }
+  });
+
+  // Cada carril, del conector a su nodo, y desde ahí su rama.
+  for (const c of carriles) {
+    const pts = [];
+    for (let j = 0; j <= c.k + 1; j++) pts.push(enCarril(j, c.o));
+    out.carriles.push(`<polyline points="${pts.map(([x, y]) => `${f(x)},${f(y)}`).join(" ")}" class="pl-carril" data-carril="${esc_(c.r.id)}"/>`);
+    const [sx, sy] = pts[pts.length - 1];
+    rama(sx, sy, c.r);
+  }
 
   const pad = 8;
   const vb = [caja.x0 - pad, caja.y0 - pad, caja.x1 - caja.x0 + pad * 2, caja.y1 - caja.y0 + pad * 2].map(f);
@@ -536,6 +616,7 @@ function dibujoSVG_(p, ref) {
     <svg class="pl-svg" viewBox="${vb.join(" ")}" width="${vb[2]}" role="img"
          style="--plw:${f(vb[2] * ZOOM)}px" data-x0="${vb[0]}" data-w="${vb[2]}"
          aria-label="Dibujo del ramal ${esc_(p.modelo)}">
+      ${out.carriles.join("")}
       ${out.trazos.join("")}
       ${con}${conTxt}
       ${out.marcas.join("")}
@@ -680,17 +761,17 @@ function seleccionar_(root, id, desdeAbajo) {
 
   // El camino de sus cables hasta el conector: toda rama nace ahí. Se
   // resaltan las ramas que la llevan (la chapa va dentro de la de 1.29 m)
-  // y el tronco hasta el nodo donde sale.
+  // y su carril del tronco.
   const camino = new Set(["conector"]);
-  let tope = null;
+  let carril = null;
   const r0 = id === "conector" ? null : p.buscar(id);
   if (r0) {
     let top = r0;
     for (let a = r0.padre; a; a = a.padre) { camino.add(a.id); top = a; }
-    tope = top.sale;
+    carril = top.id;
   }
   svg?.querySelectorAll(".pl-g").forEach((g) => g.classList.toggle("is-camino", g.dataset.rama !== id && camino.has(g.dataset.rama)));
-  svg?.querySelectorAll(".pl-tronco").forEach((l) => l.classList.toggle("is-camino", tope != null && Number(l.dataset.hasta) <= tope));
+  svg?.querySelectorAll(".pl-carril").forEach((l) => l.classList.toggle("is-camino", l.dataset.carril === carril));
 
   const ficha = root.querySelector("#planoFicha");
   if (id === "conector") {
