@@ -34,7 +34,7 @@ export const RAMALES = [
           titulo: "Posición 0 · Tendido",
           texto:
             "Conector en posición normal: los 4 puntos arriba y la parte más protuberante a la derecha. " +
-            "Cada rama cortada a su largo desde el conector, colgando en vertical.",
+            "Todos los cables ya cortados a su largo, juntos en un solo manojo.",
           vista: "tendido",
           conectorInvertido: false,
           orden: ["conmutador", "chapa", "iny", "map", "rpm", "emul", "alimentacion", "tanque", "temperatura", "electrovalvula", "interface"],

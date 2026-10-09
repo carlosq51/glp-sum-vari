@@ -232,13 +232,13 @@ const PIEZAS = {
 // la franja naranja a su izquierda y el bloque de pines más a la izquierda.
 const PRINCIPAL = {
   caja: [-98, -64, 24, 0],
-  svg: (puntosArriba = false) =>
+  svg: (puntosArriba = false, palanca = true) =>
     `<rect x="-98" y="-52" width="66" height="48" rx="4" class="pz-negro"/>` +
     `<path d="M-92 -44h54M-92 -34h54M-92 -24h54" class="pz-ranura"/>` +
     [-86, -74, -62, -50].map((x) => `<circle cx="${x}" cy="${puntosArriba ? -45 : -11}" r="3.2" fill="${COL.amarillo}"/>`).join("") +
     `<rect x="-31" y="-54" width="8" height="52" rx="2" fill="${COL.naranja}"/>` +
     `<rect x="-22" y="-50" width="44" height="46" rx="3" class="pz-negro"/>` +
-    `<path d="M-17 -50c4 -14 30 -16 34 0" class="pz-palanca"/>` +
+    (palanca ? `<path d="M-17 -50c4 -14 30 -16 34 0" class="pz-palanca"/>` : "") +
     `<circle cx="0" cy="-27" r="6" class="pz-eje"/>` +
     `<rect x="-8" y="-4" width="16" height="6" rx="1.5" class="pz-negro"/>`,
 };
@@ -600,86 +600,35 @@ function dibujoSVG_(p, ref) {
   return { svg, hayCortes };
 }
 
-// ── Posición de tendido: todos los cables juntos, colgando del conector ──
-// Es la posición 0: nada armado todavía. Cada rama ya cortada a su largo
-// desde el conector y todas juntas, en un manojo vertical. Sin medidas ni
-// nodos (eso llega en las posiciones siguientes): solo dónde termina cada
-// cable y qué lleva en la punta. Tocar un cable abre su ficha.
-const S_TENDIDO = 3;      // px de dibujo por cm
-const PASO_TENDIDO = 15;  // separación entre cables del manojo
-const ABANICO_T = 28;     // alto en que los cables salen del conector y se juntan
-const ESC_PUNTA_T = 0.55; // piezas de la punta chicas: el manojo es angosto
-const SEP_NOMBRES = 24;   // separación mínima entre nombres del mismo lado
-
+// ── Posición de tendido (posición 0): todo junto, como un solo tronco ──
+// Nada armado todavía: el conector en posición normal y todos los cables,
+// ya cortados, juntos en un solo manojo. Sin nombres, medidas ni nodos;
+// eso aparece en las posiciones siguientes.
+//
+// El conector normal es el del plano girado 180°: el cable sale por arriba
+// del cuadrado, la franja naranja a su derecha y el bloque de pines con
+// los 4 puntos arriba. Va abajo y el manojo sube. Misma escala que el
+// plano (no se agranda para llenar el ancho), para que no cambie la
+// relación de tamaños entre posiciones.
 function tendidoSVG_(p, ref, paso) {
-  const ramas = paso.ramasTendidas;
-  const n = ramas.length;
   const f = (v) => Math.round(v * 10) / 10;
-  const caja = { x0: PRINCIPAL.caja[0], y0: PRINCIPAL.caja[1], x1: PRINCIPAL.caja[2] + 150, y1: 0 };
-  const crece = (x, y) => {
-    caja.x0 = Math.min(caja.x0, x); caja.x1 = Math.max(caja.x1, x);
-    caja.y0 = Math.min(caja.y0, y); caja.y1 = Math.max(caja.y1, y);
-  };
-  const ancho = ((n - 1) / 2) * PASO_TENDIDO;
-
-  const cables = ramas.map((r, i) => {
-    const x = (i - (n - 1) / 2) * PASO_TENDIDO;
-    // Largo conocido desde el conector; si el papel no da la punta, va punteada.
-    const conocido = r.hastaPunta ?? r.sale ?? 0;
-    const resto = r.hastaPunta == null ? r.dibujo.largo || 8 : 0;
-    const y1 = ABANICO_T + conocido * S_TENDIDO, y2 = y1 + resto * S_TENDIDO;
-    let g = `<polyline points="${f(x * 0.25)},2 ${f(x)},${ABANICO_T} ${f(x)},${f(y1)}" class="pl-cableT"/>`;
-    if (resto) g += `<line x1="${f(x)}" y1="${f(y1)}" x2="${f(x)}" y2="${f(y2)}" class="pl-cableT is-dib"/>`;
-    g += `<polyline points="${f(x * 0.25)},2 ${f(x)},${ABANICO_T} ${f(x)},${f(y2)}" class="pl-toque"/>`;
-    let fin = y2;
-    if (r.conector && PIEZAS[r.conector]) {
-      g += `<g transform="translate(${f(x)} ${f(y2)}) rotate(90) scale(${ESC_PUNTA_T})">${PIEZAS[r.conector].svg()}</g>`;
-      fin += PIEZAS[r.conector].caja[2] * ESC_PUNTA_T;
-    } else if (r.cables.length) {
-      const k = r.cables.length;
-      r.cables.forEach((c, j) => {
-        const dx = k === 1 ? 0 : (j - (k - 1) / 2) * 4;
-        const col = CABLE[c]?.c || RAYAS[c]?.rayas?.[1] || RAYAS[c]?.linea?.[0] || "#888";
-        g += `<line x1="${f(x)}" y1="${f(y2)}" x2="${f(x + dx)}" y2="${f(y2 + 14)}" class="pl-cable" stroke="${col}"/>`;
-      });
-      fin += 14;
-    }
-    crece(x - 12, fin + 4);
-    return { r, x, g, y: (y2 + fin) / 2 };
-  });
-
-  // Nombres a los costados del manojo, del mismo lado al que sale la rama
-  // en el ramal armado, con una guía fina hasta su punta y sin pisarse.
-  const ladoDe = (r) => {
-    let top = r;
-    while (top.padre) top = top.padre;
-    return Math.cos(((top.dibujo.ang ?? 90) * Math.PI) / 180) < -0.1 ? "izq" : "der";
-  };
-  for (const lado of ["izq", "der"]) {
-    const deLado = cables.filter((c) => ladoDe(c.r) === lado).sort((a, b) => a.y - b.y);
-    let antes = -Infinity;
-    for (const c of deLado) {
-      const y = Math.max(c.y, antes + SEP_NOMBRES);
-      antes = y;
-      const xl = lado === "izq" ? -ancho - 26 : ancho + 26;
-      const nom = `${c.r.corto || c.r.nombre}${c.r.cantidad > 1 ? ` ×${c.r.cantidad}` : ""}`;
-      c.g += `<path d="M${f(c.x)} ${f(c.y)} L${f(xl + (lado === "izq" ? 4 : -4))} ${f(y)}" class="pl-guiaT"/>`;
-      c.g += `<text x="${f(xl)}" y="${f(y + 6)}" text-anchor="${lado === "izq" ? "end" : "start"}" font-size="18" class="pl-nom">${esc_(nom)}</text>`;
-      const w = nom.length * 18 * TXT_W;
-      crece(lado === "izq" ? xl - w : xl + w, y + 8);
-    }
-  }
-
-  const con = `<g class="pl-g" data-rama="conector">${PRINCIPAL.svg(!paso.conectorInvertido)}</g>` +
-    `<text x="${PRINCIPAL.caja[2] + 10}" y="-26" font-size="${FS}" class="pl-nom">Conector</text>` +
-    `<text x="${PRINCIPAL.caja[2] + 10}" y="-4" font-size="${FS - 5}" class="pl-acl">${paso.conectorInvertido ? "invertido · puntos abajo" : "normal · puntos arriba"}</text>`;
-  const pad = 10;
-  const vb = [caja.x0 - pad, caja.y0 - pad, caja.x1 - caja.x0 + pad * 2, caja.y1 - caja.y0 + pad * 2].map(f);
+  const largo = Math.max(...paso.ramasTendidas.map((r) => r.hastaPunta ?? r.sale ?? 0)) * S;
+  const [cx0, cy0, cx1, cy1] = PRINCIPAL.caja;
+  // Caja del conector girado 180° alrededor de la salida del cable.
+  const con = { x0: -cx1, x1: -cx0, y0: largo - cy1, y1: largo - cy0 };
+  const txtX = con.x1 + 12;
+  const vb = [con.x0 - 10, -10, txtX + 190 - (con.x0 - 10), con.y1 + 20].map(f);
+  const conector = paso.conectorInvertido
+    ? `<g transform="translate(0 ${f(largo)})">${PRINCIPAL.svg(false)}</g>`
+    : `<g transform="translate(0 ${f(largo)}) rotate(180)">${PRINCIPAL.svg(false, false)}</g>`;
   return `
-    <svg class="pl-svg" viewBox="${vb.join(" ")}" width="${vb[2]}" role="img"
+    <svg class="pl-svg pl-svg--fijo" viewBox="${vb.join(" ")}" width="${vb[2]}" role="img"
          style="--plw:${f(vb[2] * ZOOM)}px" data-x0="${vb[0]}" data-w="${vb[2]}"
          aria-label="Ramal ${esc_(p.modelo)}: ${esc_(paso.titulo)}">
-      ${cables.map((c) => `<g class="pl-g" data-rama="${esc_(c.r.id)}">${c.g}</g>`).join("")}${con}
+      <line x1="0" y1="0" x2="0" y2="${f(largo)}" class="pl-tronco"/>
+      <g class="pl-g" data-rama="conector">${conector}</g>
+      <text x="${f(txtX)}" y="${f(largo + 30)}" font-size="${FS}" class="pl-nom">Conector</text>
+      <text x="${f(txtX)}" y="${f(largo + 52)}" font-size="${FS - 5}" class="pl-acl">${paso.conectorInvertido ? "invertido · puntos abajo" : "normal · puntos arriba"}</text>
     </svg>`;
 }
 
@@ -807,8 +756,8 @@ export function planoHTML_(p, ref = refCargar_(p), paso = p.guia.final) {
       ${guiaHTML_(p, paso)}
       <div class="plano__lienzo is-zoom" id="planoLienzo">${svg}</div>
       <div class="plano__ley">
-        ${tendido ? `<span>Cada cable cortado a su largo desde el conector. Toca uno para ver su medida.</span>` : `<span><i class="plano__leyL"></i> largo medido</span>`}
-        <span><i class="plano__leyL is-dib"></i> largo no indicado en el plano</span>
+        ${tendido ? "" : `<span><i class="plano__leyL"></i> largo medido</span>`}
+        ${tendido ? "" : `<span><i class="plano__leyL is-dib"></i> largo no indicado en el plano</span>`}
         ${hayCortes ? `<span><b class="plano__leyCorte">···</b> sigue: tramo largo dibujado más corto (vale su cota)</span>` : ""}
         ${tendido ? "" : `<span><b class="plano__std">1/4</b> medida del taller · <span class="plano__acl">(20 cm)</span> aclaración</span>`}
       </div>
