@@ -102,10 +102,20 @@ function refBorrar_(p) {
 
 // «35 cm (2/4 + 1 pulgar)», con la referencia resaltada. `tramos` son las
 // partes que forman un largo total (RPM: [26, 20]).
-function medidaHTML_(cm, ref, tramos = [cm]) {
+// Lo que manda es la medida del taller («2/4 + 1 pulgar»); los cm van
+// de aclaración. Si esa medida todavía no tiene estándar, los cm son la
+// principal. `tramos`: las partes que forman un largo (chapa: [129]).
+function medidaPartes_(cm, ref, tramos = [cm]) {
   const notas = tramos.map((s) => ref?.[s]).filter(Boolean);
-  const txt = notas.length === tramos.length ? notas.join(" + ") : "";
-  return `${cm_(cm)}${txt ? ` <mark class="plano__mia">(${esc_(txt)})</mark>` : ""}`;
+  const std = notas.length === tramos.length ? notas.join(" + ") : "";
+  return std ? { principal: std, aclaracion: cm_(cm) } : { principal: cm_(cm), aclaracion: "" };
+}
+
+function medidaHTML_(cm, ref, tramos = [cm]) {
+  const { principal, aclaracion } = medidaPartes_(cm, ref, tramos);
+  return aclaracion
+    ? `<b class="plano__std">${esc_(principal)}</b> <span class="plano__acl">(${esc_(aclaracion)})</span>`
+    : `<b>${esc_(principal)}</b>`;
 }
 
 // Toda rama nace en el conector: el largo al que se cortan sus cables es
@@ -146,11 +156,11 @@ function referenciaHTML_(p, ref) {
   return `
     <div class="plano__ref">
       <div class="plano__secHead">
-        <span class="plano__secT">📏 Referencia de medidas</span>
+        <span class="plano__secT">📏 Medidas del taller</span>
         <button type="button" class="plano__zoom plano__zoom--nw" data-ref-papel>↺ Papel</button>
       </div>
-      <p class="plano__det">Las medidas de este plano. Anota cómo las mides tú (1/4, 6/4 + 1 puño…)
-        y saldrán <mark class="plano__mia">(resaltadas)</mark> en todo el plano. Se guarda en este celular.</p>
+      <p class="plano__det">La medida del taller (1/4, 6/4 + 1 puño…) es la que manda en todo el plano;
+        los cm quedan de aclaración. Anota o corrige cada una. Se guarda en este celular.</p>
       <div class="plano__refLista">${filas}</div>
       <div class="plano__refMsg plano__det" aria-live="polite"></div>
     </div>`;
@@ -284,12 +294,12 @@ function dibujoSVG_(p, ref) {
 
   // Texto con su caja aproximada, para que el viewBox no lo corte.
   // `extra` es un segundo texto más tenue en la misma línea (el largo).
-  const texto = (x, y, s, cls, anchor = "middle", fs = FS, extra = "") => {
+  const texto = (x, y, s, cls, anchor = "middle", fs = FS, extra = "", extraCls = "pl-cota") => {
     const full = extra ? `${s}  ${extra}` : s;
     const w = anchoTxt(full, fs);
     const xa = anchor === "end" ? x - w : anchor === "middle" ? x - w / 2 : x;
     crece(xa, y - fs); crece(xa + w, y + fs * 0.3);
-    const tsp = extra ? `<tspan class="pl-cota" dx="6">${esc_(extra)}</tspan>` : "";
+    const tsp = extra ? `<tspan class="${extraCls}" dx="6">${esc_(extra)}</tspan>` : "";
     return `<text x="${f(x)}" y="${f(y)}" class="${cls}" text-anchor="${anchor}" font-size="${fs}">${esc_(s)}${tsp}</text>`;
   };
 
@@ -368,7 +378,12 @@ function dibujoSVG_(p, ref) {
   // Nombre (y largo total, si se conoce) junto a la punta.
   const rotulo = (x, y, d, r) => {
     const dib = r.dibujo;
-    const largo = r.largo && !dib.sinLargo ? cm_(r.largo) : "";
+    // Medida junto al nombre: la del taller y, entre paréntesis, los cm.
+    let largo = "";
+    if (r.largo && !dib.sinLargo) {
+      const m = medidaPartes_(r.largo, ref, r.tramos);
+      largo = m.aclaracion ? `${m.principal} (${m.aclaracion})` : m.principal;
+    }
     const largoPz = !r.conector ? 0
       : r.cantidad > 1 ? PEINE + (PIEZAS[r.conector]?.caja[2] || 0) * ESC_VARIAS
       : PIEZAS[r.conector]?.caja[2] || 0;
@@ -379,35 +394,48 @@ function dibujoSVG_(p, ref) {
     // Pieza con el nombre al costado de su cuerpo (no en la punta): a media
     // pieza, pegado a ella.
     if (largoPz && lado === "der" && Math.abs(d[1]) > 0.5) {
-      return texto(x + 22, y + d[1] * (largoPz / 2) + 7, nom, "pl-nom", "start", FS, largo);
+      return texto(x + 22, y + d[1] * (largoPz / 2) + 7, nom, "pl-nom", "start", FS, largo, "pl-medida");
     }
     if (largoPz && (lado === "arriba" || lado === "abajo") && Math.abs(d[0]) > 0.5) {
       const cx = x + d[0] * (largoPz / 2);
-      return texto(cx, lado === "arriba" ? y - 24 : y + 24 + FS, nom, "pl-nom", "middle", FS, largo);
+      return texto(cx, lado === "arriba" ? y - 24 : y + 24 + FS, nom, "pl-nom", "middle", FS, largo, "pl-medida");
     }
-    if (lado === "der") return texto(x + lejos, y + 6, nom, "pl-nom", "start", FS, largo);
-    if (lado === "izq") return texto(x - lejos, y + 6, nom, "pl-nom", "end", FS, largo);
-    if (lado === "arriba") return texto(x + d[0] * lejos * 0.6, y - lejos + 2, nom, "pl-nom", "middle", FS, largo);
-    return texto(x, y + lejos + FS, nom, "pl-nom", "middle", FS, largo);
+    if (lado === "der") return texto(x + lejos, y + 6, nom, "pl-nom", "start", FS, largo, "pl-medida");
+    if (lado === "izq") return texto(x - lejos, y + 6, nom, "pl-nom", "end", FS, largo, "pl-medida");
+    if (lado === "arriba") return texto(x + d[0] * lejos * 0.6, y - lejos + 2, nom, "pl-nom", "middle", FS, largo, "pl-medida");
+    return texto(x, y + lejos + FS, nom, "pl-nom", "middle", FS, largo, "pl-medida");
   };
 
   // Largo de un tramo: los cm y, debajo y resaltado, la referencia. Solo en
   // los verticales (tronco), que tienen aire al costado; en las ramas
   // diagonales no entra junto a las piezas: ahí la referencia sale en la
   // ficha al tocar la rama y en el paso a paso.
-  const cota = (ax, ay, bx, by, cm, cls = "pl-cota", lado = "der", abajo = false, t = 0.62) => {
-    let nota = String(ref?.[cm] || "");
-    if (nota.length > 16) nota = `${nota.slice(0, 15)}…`;
+  // Largo de un tramo: arriba la medida del taller (la principal) y debajo,
+  // más chica, los cm de aclaración. Sin estándar todavía, solo los cm.
+  const cota = (ax, ay, bx, by, cm, cls = "pl-cota", lado = "der", t = 0.62) => {
+    const m = medidaPartes_(cm, ref);
+    let principal = m.principal;
+    if (principal.length > 16) principal = `${principal.slice(0, 15)}…`;
+    const clsP = m.aclaracion ? "pl-std" : cls;
+    const acl = m.aclaracion ? `(${m.aclaracion})` : "";
     const mx = (ax + bx) / 2, my = (ay + by) / 2;
     if (Math.abs(bx - ax) < Math.abs(by - ay)) {
       const dx = lado === "izq" ? -10 : 10, an = lado === "izq" ? "end" : "start";
-      const y0 = nota ? my - 3 : my + 6;
-      return texto(mx + dx, y0, cm_(cm), cls, an, FS - 1) +
-        (nota ? texto(mx + dx, y0 + FS, `(${nota})`, "pl-mia", an, FS - 4) : "");
+      const y0 = acl ? my - 3 : my + 6;
+      return texto(mx + dx, y0, principal, clsP, an, FS - 1) +
+        (acl ? texto(mx + dx, y0 + FS - 2, acl, "pl-acl", an, FS - 5) : "");
     }
-    // Corrida hacia el final del tramo: al inicio suelen estar las piezas.
-    if (abajo) return texto(ax + (bx - ax) * 0.55 + 12, my + FS + 2, cm_(cm), cls, "middle", FS - 1);
-    return texto(ax + (bx - ax) * t, ay + (by - ay) * t - 9, cm_(cm), cls, "middle", FS - 1);
+    // Diagonal u horizontal: la principal encima de la línea y la aclaración
+    // debajo, corridas hacia el final del tramo (al inicio están las piezas).
+    const px = ax + (bx - ax) * t, py = ay + (by - ay) * t;
+    // Horizontal: todo en una línea encima, empezando pasado el tronco
+    // (debajo o centrada chocaría con las cotas del tronco).
+    if (Math.abs(by - ay) * 3 < Math.abs(bx - ax)) {
+      const der = bx > ax;
+      return texto(ax + (der ? 14 : -14), py - 9, principal, clsP, der ? "start" : "end", FS - 1, acl, "pl-acl");
+    }
+    return texto(px, py - 9, principal, clsP, "middle", FS - 1) +
+      (acl ? texto(px, py + FS + 1, acl, "pl-acl", "middle", FS - 5) : "");
   };
 
   const rama = (x, y, r) => {
@@ -455,7 +483,7 @@ function dibujoSVG_(p, ref) {
         let i = 0;
         legs.forEach(([, l], j) => { if (l > legs[i][1]) i = j; });
         // En una rama cortada la cota va hacia la punta, lejos de los «···».
-        g += cota(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], r.cm, "pl-cota", "der", dib.cotaAbajo, cortada ? 0.72 : 0.62);
+        g += cota(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], r.cm, "pl-cota", "der", cortada ? 0.72 : 0.62);
       }
     }
     if (r.esEmpalme) {
@@ -619,7 +647,7 @@ export function planoHTML_(p, ref = refCargar_(p)) {
         <span><i class="plano__leyL"></i> largo medido</span>
         <span><i class="plano__leyL is-dib"></i> largo no indicado en el plano</span>
         ${hayCortes ? `<span><b class="plano__leyCorte">···</b> sigue: tramo largo dibujado más corto (vale su cota)</span>` : ""}
-        <span><mark class="plano__mia">(1/4)</mark> = tu referencia</span>
+        <span><b class="plano__std">1/4</b> medida del taller · <span class="plano__acl">(20 cm)</span> aclaración</span>
       </div>
 
       <div class="plano__ficha" id="planoFicha" aria-live="polite">
