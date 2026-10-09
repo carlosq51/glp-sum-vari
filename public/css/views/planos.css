@@ -432,7 +432,8 @@
   box-shadow: 0 0 0 1px var(--inputLine);
 }
 
-/* ── Corte (⫽): tramo largo dibujado más corto ─────────────────────── */
+/* ── Continuación («···»): tramo largo dibujado más corto ───────── */
 .pl-corteHueco { stroke: var(--surface); stroke-width: 12; stroke-linecap: butt; }
-.pl-corte { stroke: var(--text); stroke-width: 3; stroke-linecap: round; }
+.pl-corte { fill: var(--text); stroke: none; }
 .plano__leyCorte { font-size: var(--fs-lg); line-height: 1; }
+.pl-rama--fina { stroke-width: 2; }

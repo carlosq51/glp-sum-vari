@@ -238,6 +238,12 @@ const ZOOM = 0.7;
 const FS = 20;      // tamaño de letra en unidades del dibujo
 const TXT_W = 0.6;  // ancho medio de un carácter, en FS
 const COLA = 26;    // largo de dibujo de cada cable suelto en la punta
+// Varias piezas iguales en una punta (INY ×4): cada una a la mitad de
+// tamaño (un cuarto del área: las cuatro ocupan lo que ocupaba una), en
+// peine, separadas PEINE_PASO y a PEINE del final de la rama.
+const ESC_VARIAS = 0.5;
+const PEINE = 20;
+const PEINE_PASO = 18;
 
 // Cables de dos o más colores. `rayas`: tramos alternados (blanco/verde).
 // `linea`: color base con una línea fina a lo largo (rojo con línea negra).
@@ -310,38 +316,51 @@ function dibujoSVG_(p, ref) {
     return svg;
   };
 
-  // La pieza al final de la rama, girada hacia donde apunta el cable.
-  const pieza = (x, y, d, tipo) => {
+  // La pieza al final de la rama, girada hacia donde apunta el cable. Si
+  // son varias iguales (INY ×4), un peine: cables cortos que se abren y una
+  // pieza chica en cada punta.
+  const pieza = (x, y, d, tipo, cantidad = 1) => {
     const pz = PIEZAS[tipo];
     if (!pz) return "";
     const ang = Math.round((Math.atan2(d[1], d[0]) * 180) / Math.PI);
     const [x0, y0, x1, y1] = pz.caja;
     const c = Math.cos((ang * Math.PI) / 180), s = Math.sin((ang * Math.PI) / 180);
-    for (const [px, py] of [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]) crece(x + px * c - py * s, y + px * s + py * c);
-    return `<g transform="translate(${f(x)} ${f(y)}) rotate(${ang})">${pz.svg()}</g>`;
+    const una = (px0, py0, esc) => {
+      for (const [px, py] of [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]) {
+        crece(px0 + (px * c - py * s) * esc, py0 + (px * s + py * c) * esc);
+      }
+      return `<g transform="translate(${f(px0)} ${f(py0)}) rotate(${ang}) scale(${esc})">${pz.svg()}</g>`;
+    };
+    if (cantidad <= 1) return una(x, y, 1);
+    const nrm = [-d[1], d[0]];
+    let svg = "";
+    for (let i = 0; i < cantidad; i++) {
+      const off = (i - (cantidad - 1) / 2) * PEINE_PASO;
+      const tx = x + d[0] * PEINE + nrm[0] * off, ty = y + d[1] * PEINE + nrm[1] * off;
+      svg += `<line x1="${f(x)}" y1="${f(y)}" x2="${f(tx)}" y2="${f(ty)}" class="pl-rama pl-rama--fina"/>` + una(tx, ty, ESC_VARIAS);
+    }
+    return svg;
   };
 
-  // Marca de corte (⫽) a media línea: el tramo es más largo de lo que se
-  // dibuja. Un hueco del color del fondo y dos rayas cruzadas.
+  // Continuación («···») a media línea: el tramo es más largo de lo que
+  // se dibuja. Un hueco del color del fondo con tres puntos.
   const corte = (x, y, d) => {
-    const k = dir((Math.atan2(d[1], d[0]) * 180) / Math.PI + 60); // raya inclinada
-    const raya = (o) => {
-      const cx = x + d[0] * o, cy = y + d[1] * o;
-      return `<line x1="${f(cx - k[0] * 11)}" y1="${f(cy - k[1] * 11)}" x2="${f(cx + k[0] * 11)}" y2="${f(cy + k[1] * 11)}" class="pl-corte"/>`;
-    };
-    return `<line x1="${f(x - d[0] * 6)}" y1="${f(y - d[1] * 6)}" x2="${f(x + d[0] * 6)}" y2="${f(y + d[1] * 6)}" class="pl-corteHueco"/>` +
-      raya(-5) + raya(5);
+    const punto = (o) => `<circle cx="${f(x + d[0] * o)}" cy="${f(y + d[1] * o)}" r="3" class="pl-corte"/>`;
+    return `<line x1="${f(x - d[0] * 14)}" y1="${f(y - d[1] * 14)}" x2="${f(x + d[0] * 14)}" y2="${f(y + d[1] * 14)}" class="pl-corteHueco"/>` +
+      punto(-8) + punto(0) + punto(8);
   };
 
   // Nombre (y largo total, si se conoce) junto a la punta.
   const rotulo = (x, y, d, r) => {
     const dib = r.dibujo;
     const largo = r.largo && !dib.sinLargo ? cm_(r.largo) : "";
-    const largoPz = r.conector ? PIEZAS[r.conector]?.caja[2] || 0 : 0;
+    const largoPz = !r.conector ? 0
+      : r.cantidad > 1 ? PEINE + (PIEZAS[r.conector]?.caja[2] || 0) * ESC_VARIAS
+      : PIEZAS[r.conector]?.caja[2] || 0;
     const lejos = r.cables.length ? COLA + 6 : largoPz + 10;
     let lado = dib.lado;
     if (!lado) lado = d[0] > 0.5 ? "der" : d[0] < -0.5 ? "izq" : d[1] < 0 ? "arriba" : "abajo";
-    const nom = r.corto || r.nombre;
+    const nom = `${r.corto || r.nombre}${r.cantidad > 1 ? ` ×${r.cantidad}` : ""}`;
     // Pieza con el nombre al costado de su cuerpo (no en la punta): a media
     // pieza, pegado a ella.
     if (largoPz && lado === "der" && Math.abs(d[1]) > 0.5) {
@@ -361,7 +380,7 @@ function dibujoSVG_(p, ref) {
   // los verticales (tronco), que tienen aire al costado; en las ramas
   // diagonales no entra junto a las piezas: ahí la referencia sale en la
   // ficha al tocar la rama y en el paso a paso.
-  const cota = (ax, ay, bx, by, cm, cls = "pl-cota", lado = "der", abajo = false) => {
+  const cota = (ax, ay, bx, by, cm, cls = "pl-cota", lado = "der", abajo = false, t = 0.62) => {
     let nota = String(ref?.[cm] || "");
     if (nota.length > 16) nota = `${nota.slice(0, 15)}…`;
     const mx = (ax + bx) / 2, my = (ay + by) / 2;
@@ -373,7 +392,7 @@ function dibujoSVG_(p, ref) {
     }
     // Corrida hacia el final del tramo: al inicio suelen estar las piezas.
     if (abajo) return texto(ax + (bx - ax) * 0.55 + 12, my + FS + 2, cm_(cm), cls, "middle", FS - 1);
-    return texto(ax + (bx - ax) * 0.62, my - 9, cm_(cm), cls, "middle", FS - 1);
+    return texto(ax + (bx - ax) * t, ay + (by - ay) * t - 9, cm_(cm), cls, "middle", FS - 1);
   };
 
   const rama = (x, y, r) => {
@@ -412,14 +431,15 @@ function dibujoSVG_(p, ref) {
       g += `<polyline points="${poly}" class="pl-toque"/>`;
       if (cortada) {
         hayCortes = true;
-        const [cx, cy] = enT(0.2);
+        const [cx, cy] = enT(0.32);
         g += corte(cx, cy, legs[0][0]);
       }
       // Cota solo en los empalmes (ramas comunes); va en el tramo más largo.
       if (r.cm && r.esEmpalme) {
         let i = 0;
         legs.forEach(([, l], j) => { if (l > legs[i][1]) i = j; });
-        g += cota(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], r.cm, "pl-cota", "der", dib.cotaAbajo);
+        // En una rama cortada la cota va hacia la punta, lejos de los «···».
+        g += cota(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], r.cm, "pl-cota", "der", dib.cotaAbajo, cortada ? 0.72 : 0.62);
       }
     }
     if (r.esEmpalme) {
@@ -428,7 +448,7 @@ function dibujoSVG_(p, ref) {
       g += abanico(ex, ey, d, r.cables);
       g += rotulo(ex, ey, d, r);
     } else {
-      g += pieza(ex, ey, d, r.conector);
+      g += pieza(ex, ey, d, r.conector, r.cantidad);
       g += rotulo(ex, ey, d, r);
     }
     out.trazos.push(`<g class="pl-g" data-rama="${esc_(r.id)}">${g}</g>`);
@@ -455,8 +475,9 @@ function dibujoSVG_(p, ref) {
       `<path d="M${acx} ${ay + 28}v${PRINCIPAL.caja[1] - ay - 28}" class="pl-avisoL"/>`;
   }
 
+  let yDib = 0;
   for (const sec of p.tronco.secciones) {
-    const y0 = sec.desde * S, y = sec.hasta * S;
+    const y0 = yDib, y = (yDib += (sec.dibujo.largo ?? sec.cm) * S);
     out.trazos.unshift(`<line x1="0" y1="${f(y0)}" x2="0" y2="${f(y)}" class="pl-tronco"/>`);
     // Las medidas del tronco van a la derecha, como en el boceto: a la
     // izquierda salen el conmutador y el haz de sensores.
@@ -464,7 +485,7 @@ function dibujoSVG_(p, ref) {
     for (const r of sec.salidas) rama(0, y, r);
     if (!sec.esUltima) out.marcas.push(`<circle cx="0" cy="${f(y)}" r="5.5" class="pl-union"/>`);
   }
-  crece(0, p.tronco.largo * S);
+  crece(0, yDib);
 
   const pad = 8;
   const vb = [caja.x0 - pad, caja.y0 - pad, caja.x1 - caja.x0 + pad * 2, caja.y1 - caja.y0 + pad * 2].map(f);
@@ -499,7 +520,7 @@ function conectoresHTML_(p) {
     fichas.push(`
       <div class="plano__con" data-rama="${esc_(r.id)}">
         ${miniPiezaSVG_(r.conector)}
-        <div class="plano__conNom">${esc_(r.nombre)}</div>
+        <div class="plano__conNom">${esc_(r.nombre)}${r.cantidad > 1 ? ` ×${r.cantidad}` : ""}</div>
         ${obs_(r.observaciones)}
       </div>`);
   }
@@ -580,7 +601,7 @@ export function planoHTML_(p, ref = refCargar_(p)) {
       <div class="plano__ley">
         <span><i class="plano__leyL"></i> largo medido</span>
         <span><i class="plano__leyL is-dib"></i> largo no indicado en el plano</span>
-        ${hayCortes ? `<span><b class="plano__leyCorte">⫽</b> tramo largo dibujado más corto (vale su cota)</span>` : ""}
+        ${hayCortes ? `<span><b class="plano__leyCorte">···</b> sigue: tramo largo dibujado más corto (vale su cota)</span>` : ""}
         <span><mark class="plano__mia">(1/4)</mark> = tu referencia</span>
       </div>
 

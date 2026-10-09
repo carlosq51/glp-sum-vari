@@ -31,6 +31,7 @@
  * @property {string[]} [cables]         colores de los cables de la punta
  * @property {string} [conector]         pieza de la punta: "iny" | "map" | "interface"
  * @property {string[]} [observaciones]
+ * @property {number} [cantidad]         piezas iguales en la punta (INY ×4)
  * @property {number} [en]               0–1: en qué punto de la rama madre sale (1 = al final)
  * @property {RamaJSON[]} [ramas]
  * @property {Object} [dibujo]           { ang, codo, largo, lado, sinLargo, cotaAbajo }
@@ -46,6 +47,7 @@ export class Rama {
     this.medida = json.medida || "";
     this.cables = json.cables || [];
     this.conector = json.conector || "";
+    this.cantidad = json.cantidad || 1;
     this.observaciones = json.observaciones || [];
     this.en = json.en ?? 1;
     this.dibujo = json.dibujo || {};
@@ -96,6 +98,9 @@ export class Seccion {
     this.cm = json.cm;
     this.medida = json.medida || "";
     this.observaciones = json.observaciones || [];
+    // { largo }: cuántos cm se dibuja (más corto que el real, sin marca),
+    // para acomodar lo que sale después. La cota dice el real.
+    this.dibujo = json.dibujo || {};
     this.desde = desde;               // cm del conector al inicio
     this.hasta = desde + json.cm;     // cm del conector al final (donde salen las ramas)
     this.salidas = (json.salidas || []).map((r) => new Rama(r, { seccion: this }));

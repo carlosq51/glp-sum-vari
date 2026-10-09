@@ -34,6 +34,8 @@ export const RAMALES = [
         {
           cm: 35,
           medida: "2/4 + 1 pulgar",
+          // Más corta en el dibujo para que la rama de 1.29 m salga más arriba.
+          dibujo: { largo: 20 },
           salidas: [
             {
               id: "rama-conmutador",
@@ -47,7 +49,7 @@ export const RAMALES = [
                   id: "conmutador",
                   nombre: "Conmutador",
                   cables: ["negro", "blancoVerde", "rojo"],
-                  dibujo: { ang: 141, largo: 18, lado: "izq", sinLargo: true },
+                  dibujo: { ang: 160, largo: 10, lado: "izq", sinLargo: true },
                 },
                 {
                   id: "chapa",
@@ -55,7 +57,7 @@ export const RAMALES = [
                   corto: "Chapa",
                   cables: ["rojoNegro"],
                   observaciones: ["Un solo cable, rojo con una línea negra."],
-                  dibujo: { ang: 186, largo: 14, lado: "arriba", sinLargo: true },
+                  dibujo: { ang: 215, largo: 14, lado: "arriba", sinLargo: true },
                 },
               ],
             },
@@ -77,19 +79,20 @@ export const RAMALES = [
                   id: "iny",
                   nombre: "INY",
                   conector: "iny",
-                  observaciones: ["Inyectores de la bobina"],
-                  dibujo: { ang: 180, largo: 5, lado: "arriba", sinLargo: true },
+                  cantidad: 4,
+                  observaciones: ["Los 4 inyectores de la bobina."],
+                  dibujo: { ang: 200, largo: 4, lado: "izq", sinLargo: true },
                 },
-                { id: "map", nombre: "MAP", conector: "map", dibujo: { ang: 128, largo: 5, lado: "izq", sinLargo: true } },
+                { id: "map", nombre: "MAP", conector: "map", dibujo: { ang: 135, largo: 8, lado: "izq", sinLargo: true } },
                 {
                   id: "haz-rpm-emul",
                   nombre: "Tramo de 20 cm",
                   cm: 20,
                   observaciones: ["Desde INY y MAP, 20 cm más hasta donde salen RPM y EMUL."],
-                  dibujo: { ang: 140, cotaAbajo: true },
+                  dibujo: { ang: 90 },
                   ramas: [
-                    { id: "rpm", nombre: "RPM", cables: ["marron"], dibujo: { ang: 170, largo: 8, lado: "izq", sinLargo: true } },
-                    { id: "emul", nombre: "EMUL.", cables: ["multicolor"], dibujo: { ang: 115, largo: 8, lado: "izq", sinLargo: true } },
+                    { id: "rpm", nombre: "RPM", cables: ["marron"], dibujo: { ang: 180, largo: 8, lado: "izq", sinLargo: true } },
+                    { id: "emul", nombre: "EMUL.", cables: ["multicolor"], dibujo: { ang: 130, largo: 8, lado: "izq", sinLargo: true } },
                   ],
                 },
               ],
