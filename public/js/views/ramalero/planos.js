@@ -491,7 +491,8 @@ function dibujoSVG_(p, ref) {
   let yDib = 0;
   for (const sec of p.tronco.secciones) {
     const y0 = yDib, y = (yDib += (sec.dibujo.largo ?? sec.cm) * S);
-    out.trazos.unshift(`<line x1="0" y1="${f(y0)}" x2="0" y2="${f(y)}" class="pl-tronco"/>`);
+    // `data-hasta`: al tocar una rama se resalta el tronco hasta su nodo.
+    out.trazos.unshift(`<line x1="0" y1="${f(y0)}" x2="0" y2="${f(y)}" class="pl-tronco" data-hasta="${sec.hasta}"/>`);
     // Las medidas del tronco van a la derecha, como en el boceto: a la
     // izquierda salen el conmutador y el haz de sensores.
     out.textos.push(cota(0, y0, 0, y, sec.cm, "pl-cota pl-cota--tronco", "der"));
@@ -648,6 +649,20 @@ function seleccionar_(root, id, desdeAbajo) {
   const svg = root.querySelector(".pl-svg");
   svg?.classList.add("has-sel");
   svg?.querySelectorAll(".pl-g").forEach((g) => g.classList.toggle("is-sel", g.dataset.rama === id));
+
+  // El camino de sus cables hasta el conector: toda rama nace ahí. Se
+  // resaltan las ramas que la llevan (la chapa va dentro de la de 1.29 m)
+  // y el tronco hasta el nodo donde sale.
+  const camino = new Set(["conector"]);
+  let tope = null;
+  const r0 = id === "conector" ? null : p.buscar(id);
+  if (r0) {
+    let top = r0;
+    for (let a = r0.padre; a; a = a.padre) { camino.add(a.id); top = a; }
+    tope = top.sale;
+  }
+  svg?.querySelectorAll(".pl-g").forEach((g) => g.classList.toggle("is-camino", g.dataset.rama !== id && camino.has(g.dataset.rama)));
+  svg?.querySelectorAll(".pl-tronco").forEach((l) => l.classList.toggle("is-camino", tope != null && Number(l.dataset.hasta) <= tope));
 
   const ficha = root.querySelector("#planoFicha");
   if (id === "conector") {

@@ -271,6 +271,10 @@
 .pl-svg.has-sel .pl-g.is-sel { opacity: 1; }
 .pl-g.is-sel .pl-rama { stroke: var(--btnBg); stroke-width: 4.5; opacity: 1; }
 .pl-g.is-sel .pl-caja { stroke: var(--btnBg); }
+/* El camino de esa rama hasta el conector (tronco y ramas que la llevan). */
+.pl-svg.has-sel .pl-g.is-camino { opacity: 1; }
+.pl-g.is-camino .pl-rama { stroke: var(--btnBg); stroke-width: 4.5; opacity: 1; }
+.pl-tronco.is-camino { stroke: var(--btnBg); }
 
 .plano__ley .plano__leyL {
   display: inline-block;
