@@ -437,3 +437,9 @@
 .pl-corte { fill: var(--text); stroke: none; }
 .plano__leyCorte { font-size: var(--fs-lg); line-height: 1; }
 .pl-rama--fina { stroke-width: 2; }
+
+/* Largo de corte (desde el conector) y pasos de cada rama */
+.plano__desdeCon { margin-top: 2px; font-size: var(--fs-sm); color: var(--muted); font-weight: var(--fw-bold); }
+.plano__desdeCon b { color: var(--text); }
+.plano__pasos { margin: 6px 0 0; padding-left: 20px; font-size: var(--fs-sm); }
+.plano__pasos li + li { margin-top: 2px; }

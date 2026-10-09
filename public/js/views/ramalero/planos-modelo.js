@@ -1,45 +1,80 @@
 // =========================
 // public/js/views/ramalero/planos-modelo.js
-// El modelo de un plano de ramal, con las palabras del taller:
+// El modelo de un plano de ramal, con las palabras del taller.
+//
+// CÓMO SE PIENSA UN RAMAL
+// ───────────────────────
+// Todas las ramas nacen en el conector principal. Mientras van juntas son
+// el TRONCO; en cada NODO se separan las que salen ahí. Una rama puede, a
+// su vez, llevar a otras juntas un trecho y abrirse en un nodo propio
+// (conmutador + chapa, electroválvula + temperatura).
 //
 //   Ramal ── conector principal, cinta, observaciones
 //     └─ Tronco ── secciones en orden desde el conector
-//          └─ Sección ── cm, medida («1/4»), observaciones, salidas
-//               └─ Rama ── cm, medida, cables o conector, observaciones
-//                    └─ Rama …   (una rama puede abrirse en más ramas)
+//          └─ Sección ── cm, medida («1/4»), observaciones
+//               └─ Nodo ── donde termina la sección y salen ramas
+//                    └─ Rama ── cm, medida, cables o pieza, pasos
+//                         └─ Nodo ── si la rama lleva a otras y se abre
+//                              └─ Rama …
+//
+// Cada rama es independiente: sabe de qué nodo sale, cuánto mide y a
+// cuánto del conector termina (el largo al que se cortan sus cables), y
+// lleva sus propios pasos (dobleces y lo que haya que hacerle).
 //
 // LOS DATOS SON JSON; LAS CLASES SON LA LÓGICA
 // ────────────────────────────────────────────
 // Un plano se escribe como JSON plano (planos-datos.js), que es lo que un
 // día vivirá en la base y editará un supervisor. Las clases lo envuelven
-// para responder lo que la pantalla pregunta: ¿a cuánto del conector sale
-// esta rama?, ¿cuánto mide hasta la punta?, ¿qué medidas usa el plano?
-// Así nadie recalcula sumas a mano en la vista, y agregar un modelo es
-// agregar datos, no código.
-//
-// Lo que es solo de dibujo (ángulo, dónde va el nombre…) va aparte, en
-// `dibujo`, para que la forma no se mezcle con las medidas.
+// para responder lo que la pantalla pregunta. Lo que es solo de dibujo
+// (ángulo, dónde va el nombre…) va aparte, en `dibujo`.
 // =========================
 
 /**
+ * @typedef {Object} NodoJSON
+ * @property {string[]} [observaciones]
+ * @property {RamaJSON[]} ramas          las que salen aquí
+ *
+ * @typedef {Object} PasoJSON            algo que se le hace a la rama
+ * @property {string} tipo               "doblez" | "nota" | …
+ * @property {string} texto
+ * @property {number} [cm]               a cuántos cm del nodo de salida
+ *
  * @typedef {Object} RamaJSON
  * @property {string} id
  * @property {string} nombre
  * @property {string} [corto]            nombre corto para el dibujo
- * @property {number} [cm]               largo real; sin él la rama va punteada
+ * @property {number} [cm]               largo desde su nodo; sin él la rama va punteada
  * @property {string} [medida]           cómo la dice el papel («6/4 + 1 puño»)
  * @property {string[]} [cables]         colores de los cables de la punta
  * @property {string} [conector]         pieza de la punta: "iny" | "map" | "interface"
- * @property {string[]} [observaciones]
  * @property {number} [cantidad]         piezas iguales en la punta (INY ×4)
- * @property {number} [en]               0–1: en qué punto de la rama madre sale (1 = al final)
- * @property {RamaJSON[]} [ramas]
- * @property {Object} [dibujo]           { ang, codo, largo, lado, sinLargo, cotaAbajo }
+ * @property {string[]} [observaciones]
+ * @property {PasoJSON[]} [pasos]
+ * @property {NodoJSON} [nodo]           si lleva otras ramas y se abre al final
+ * @property {Object} [dibujo]           { ang, codo, largo, lado, sinLargo }
  */
+
+export class Nodo {
+  /**
+   * @param {NodoJSON} json
+   * @param {{ distancia:number, de: Seccion|Rama }} donde
+   */
+  constructor(json, { distancia, de }) {
+    this.distancia = distancia;         // cm desde el conector (null si no se sabe)
+    this.de = de;                       // la sección del tronco o la rama que termina aquí
+    this.observaciones = json?.observaciones || [];
+    this.ramas = (json?.ramas || []).map((r) => new Rama(r, { origen: this }));
+  }
+
+  get enTronco() {
+    return this.de instanceof Seccion;
+  }
+}
 
 export class Rama {
   /** @param {RamaJSON} json */
-  constructor(json, { padre = null, seccion }) {
+  constructor(json, { origen }) {
+    this.origen = origen;               // nodo del que sale
     this.id = json.id;
     this.nombre = json.nombre;
     this.corto = json.corto || "";
@@ -49,46 +84,54 @@ export class Rama {
     this.conector = json.conector || "";
     this.cantidad = json.cantidad || 1;
     this.observaciones = json.observaciones || [];
-    this.en = json.en ?? 1;
+    this.pasos = json.pasos || [];
     this.dibujo = json.dibujo || {};
-    this.padre = padre;
-    this.seccion = seccion;
-    this.ramas = (json.ramas || []).map((r) => new Rama(r, { padre: this, seccion }));
+    const fin = this.cm && origen.distancia != null ? origen.distancia + this.cm : null;
+    this.nodo = json.nodo ? new Nodo(json.nodo, { distancia: fin, de: this }) : null;
   }
 
-  /** Rama común (empalme): no termina en nada, solo se abre en otras. */
+  /** Lleva a otras ramas juntas y se abre al final: no termina en nada. */
   get esEmpalme() {
-    return this.ramas.length > 0 && !this.cables.length && !this.conector;
+    return !!this.nodo;
   }
 
-  /** A cuántos cm del conector principal está la sección de donde sale. */
-  get desdeConector() {
-    return this.seccion.hasta;
+  /** La rama que la lleva hasta su nodo (null si sale del tronco). */
+  get padre() {
+    return this.origen.enTronco ? null : this.origen.de;
+  }
+
+  /** A cuántos cm del conector está el nodo de donde sale. */
+  get sale() {
+    return this.origen.distancia;
+  }
+
+  /** A cuántos cm del conector termina (null si no se sabe su largo). */
+  get hastaPunta() {
+    return this.cm && this.sale != null ? this.sale + this.cm : null;
   }
 
   /**
    * Los tramos medidos desde el tronco hasta el final de esta rama.
-   * RPM → [26, 20]. Una rama que sale a mitad de su madre (en < 1) no
-   * hereda el largo de la madre: no se sabe en qué cm sale.
+   * Chapa → [129] (va con el conmutador); una rama del tronco → [cm].
    */
   get tramos() {
-    const base = this.padre && this.en >= 1 && this.padre.cm ? this.padre.tramos : [];
+    const base = this.padre ? this.padre.tramos : [];
     return this.cm ? [...base, this.cm] : base;
   }
 
-  /** Largo total desde el tronco (0 si no se sabe). */
+  /** Largo desde el tronco hasta la punta (0 si no se sabe). */
   get largo() {
     return this.tramos.reduce((a, b) => a + b, 0);
   }
 
-  /** Las puntas de verdad: si es empalme, las de sus ramas. */
+  /** Las puntas de verdad: si es empalme, las de las ramas de su nodo. */
   get puntas() {
-    return this.esEmpalme ? this.ramas.flatMap((r) => r.puntas) : [this];
+    return this.esEmpalme ? this.nodo.ramas.flatMap((r) => r.puntas) : [this];
   }
 
   *recorrer() {
     yield this;
-    for (const r of this.ramas) yield* r.recorrer();
+    if (this.nodo) for (const r of this.nodo.ramas) yield* r.recorrer();
   }
 }
 
@@ -102,8 +145,8 @@ export class Seccion {
     // para acomodar lo que sale después. La cota dice el real.
     this.dibujo = json.dibujo || {};
     this.desde = desde;               // cm del conector al inicio
-    this.hasta = desde + json.cm;     // cm del conector al final (donde salen las ramas)
-    this.salidas = (json.salidas || []).map((r) => new Rama(r, { seccion: this }));
+    this.hasta = desde + json.cm;     // cm del conector al final, donde está su nodo
+    this.nodo = new Nodo(json.nodo, { distancia: this.hasta, de: this });
   }
 
   get esUltima() {
@@ -124,6 +167,10 @@ export class Tronco {
   get largo() {
     return this.secciones.reduce((a, s) => a + s.cm, 0);
   }
+
+  get nodos() {
+    return this.secciones.map((s) => s.nodo);
+  }
 }
 
 export class Ramal {
@@ -139,7 +186,7 @@ export class Ramal {
 
   /** Todas las ramas, a cualquier profundidad. */
   *ramas() {
-    for (const s of this.tronco.secciones) for (const r of s.salidas) yield* r.recorrer();
+    for (const n of this.tronco.nodos) for (const r of n.ramas) yield* r.recorrer();
   }
 
   buscar(id) {
@@ -149,8 +196,8 @@ export class Ramal {
 
   /**
    * Las medidas que usa este plano: cada largo que se mide de una pieza
-   * (secciones del tronco y ramas con cm). Los totales (RPM = 26 + 20) se
-   * arman con sus partes, así que no son entradas propias.
+   * (secciones del tronco y ramas con cm). Los totales (chapa = 1.29 m del
+   * conmutador) se arman con sus partes, así que no son entradas propias.
    * @returns {{cm:number, medida:string, usos:string[]}[]}
    */
   medidas() {
@@ -163,7 +210,7 @@ export class Ramal {
     };
     let antes = "conector";
     for (const s of this.tronco.secciones) {
-      const ahora = s.salidas[0]?.nombre?.toLowerCase() || "fin";
+      const ahora = s.nodo.ramas[0]?.nombre?.toLowerCase() || "fin";
       suma(s.cm, s.medida, `tronco: ${antes} → ${ahora}`);
       antes = ahora;
     }

@@ -108,6 +108,21 @@ function medidaHTML_(cm, ref, tramos = [cm]) {
   return `${cm_(cm)}${txt ? ` <mark class="plano__mia">(${esc_(txt)})</mark>` : ""}`;
 }
 
+// Toda rama nace en el conector: el largo al que se cortan sus cables es
+// la distancia del nodo de salida más lo que mide la rama.
+function desdeConectorHTML_(r) {
+  const txt = r.hastaPunta != null ? cm_(r.hastaPunta) : r.sale != null ? `${cm_(r.sale)} + punta` : "";
+  return txt ? `<div class="plano__desdeCon">Desde el conector: <b>${txt}</b></div>` : "";
+}
+
+// Lo que hay que hacerle a la rama (dobleces y demás), en orden.
+function pasosHTML_(r) {
+  if (!r.pasos.length) return "";
+  return `<ol class="plano__pasos">${r.pasos
+    .map((p) => `<li><b>${esc_(p.tipo)}</b>${p.cm != null ? ` a ${cm_(p.cm)}` : ""}: ${esc_(p.texto)}</li>`)
+    .join("")}</ol>`;
+}
+
 function largoHTML_(r, ref) {
   if (!r.largo) return "largo no indicado";
   const partes = r.tramos.length > 1 ? ` <span class="plano__papel">= ${r.tramos.map(cm_).join(" + ")}</span>` : "";
@@ -397,10 +412,11 @@ function dibujoSVG_(p, ref) {
 
   const rama = (x, y, r) => {
     const dib = r.dibujo;
-    // Largo dibujado: el real, recortado a tramoMax (con marca de corte), o
-    // el de dibujo si el papel no lo da.
+    // Largo dibujado: el real; recortado (con «···») si pasa de tramoMax o
+    // si la rama pide uno más corto en `dibujo.largo`; o el de dibujo si
+    // el papel no da el largo.
     const real = r.cm || dib.largo || 0;
-    const dibujado = r.cm && r.cm > tramoMax ? tramoMax : real;
+    const dibujado = !r.cm ? real : Math.min(r.cm, tramoMax, dib.largo || Infinity);
     const cortada = dibujado < real;
     const k = real ? dibujado / real : 1;
     const legs = (dib.codo || [[dib.ang ?? 0, real]]).map(([a, c]) => [dir(a), c * k * S]);
@@ -453,11 +469,8 @@ function dibujoSVG_(p, ref) {
     }
     out.trazos.push(`<g class="pl-g" data-rama="${esc_(r.id)}">${g}</g>`);
 
-    for (const h of r.ramas) {
-      const [hx, hy] = enT(h.en);
-      if (h.en < 1) out.marcas.push(`<circle cx="${f(hx)}" cy="${f(hy)}" r="5" class="pl-union"/>`);
-      rama(hx, hy, h);
-    }
+    // Las ramas que lleva se separan en su nodo, al final.
+    for (const h of r.nodo?.ramas || []) rama(ex, ey, h);
   };
 
   // Conector principal, con la marca INVERTIDO encima: es el error que
@@ -482,7 +495,7 @@ function dibujoSVG_(p, ref) {
     // Las medidas del tronco van a la derecha, como en el boceto: a la
     // izquierda salen el conmutador y el haz de sensores.
     out.textos.push(cota(0, y0, 0, y, sec.cm, "pl-cota pl-cota--tronco", "der"));
-    for (const r of sec.salidas) rama(0, y, r);
+    for (const r of sec.nodo.ramas) rama(0, y, r);
     if (!sec.esUltima) out.marcas.push(`<circle cx="0" cy="${f(y)}" r="5.5" class="pl-union"/>`);
   }
   crece(0, yDib);
@@ -539,7 +552,9 @@ function tarjeta_(r, ref) {
         <span class="plano__salidaNom">${esc_(r.nombre)}</span>
       </div>
       ${r.largo ? `<div class="plano__largo">${largoHTML_(r, ref)}</div>` : ""}
+      ${desdeConectorHTML_(r)}
       ${obs_(r.observaciones)}
+      ${pasosHTML_(r)}
       ${cablesHTML_(r.cables)}
     </div>`;
 }
@@ -549,7 +564,7 @@ function listaHTML_(p, ref) {
   // anidados, como RPM/EMUL dentro del haz) y su explicación como nota.
   const notasDe = (r) =>
     r.esEmpalme
-      ? [`<b>${esc_(r.nombre)}</b> (${medidaHTML_(r.cm, ref)}). ${r.observaciones.map(esc_).join(" ")}`, ...r.ramas.flatMap(notasDe)]
+      ? [`<b>${esc_(r.nombre)}</b> (${medidaHTML_(r.cm, ref)}). ${r.observaciones.map(esc_).join(" ")}`, ...r.nodo.ramas.flatMap(notasDe)]
       : [];
   const filas = p.tronco.secciones
     .map(
@@ -562,8 +577,9 @@ function listaHTML_(p, ref) {
         <div class="plano__acum">${cm_(sec.hasta)}</div>
         <div class="plano__nodo"></div>
         <div class="plano__salidas">
-          ${sec.salidas.flatMap(notasDe).map((n) => `<div class="plano__nota">${n}</div>`).join("")}
-          ${sec.salidas.flatMap((r) => r.puntas).map((r) => tarjeta_(r, ref)).join("")}
+          ${sec.nodo.observaciones.map((o) => `<div class="plano__nota">${esc_(o)}</div>`).join("")}
+          ${sec.nodo.ramas.flatMap(notasDe).map((n) => `<div class="plano__nota">${n}</div>`).join("")}
+          ${sec.nodo.ramas.flatMap((r) => r.puntas).map((r) => tarjeta_(r, ref)).join("")}
         </div>
       </div>`
     )
@@ -644,14 +660,16 @@ function seleccionar_(root, id, desdeAbajo) {
     const r = p.buscar(id);
     if (!r) return;
     const desde = r.padre
-      ? `Sale de: ${r.padre.esEmpalme ? r.padre.nombre.toLowerCase() : r.padre.nombre}`
-      : `Sale del tronco a ${cm_(r.desdeConector)} del conector`;
+      ? `Sale del nodo de la ${r.padre.nombre.toLowerCase()}`
+      : `Sale del tronco a ${cm_(r.sale)} del conector`;
     ficha.innerHTML = `
       <div class="plano__salidaHead">
         <span class="plano__salidaNom">${esc_(r.nombre)}</span>
       </div>
       <div class="plano__largo">${largoHTML_(r, ref)}</div>
+      ${desdeConectorHTML_(r)}
       <div class="plano__det">${esc_(desde)}</div>
+      ${pasosHTML_(r)}
       ${obs_(r.observaciones)}
       ${cablesHTML_(r.cables)}`;
   }
