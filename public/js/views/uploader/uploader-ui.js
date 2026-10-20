@@ -17,6 +17,7 @@ import {
 
 import { createScanner } from "../../core/qr-scanner.js";
 import { ahorroLegible } from "../../core/image-compress.js";
+import { tomarFoto } from "../../core/camara-app.js";
 import { SLOTS_REGISTRO } from "../../../../lib/fin-prerequisites.js";
 
 export function initUploaderUI(root, options = {}) {
@@ -955,7 +956,14 @@ export function initUploaderUI(root, options = {}) {
       const slot = btn.getAttribute("data-slot");
       if (!slot || !PANTALLA_DE_SLOT[slot]) return;
 
-      if (btn.getAttribute("data-pick") === "cam")  $(`${slot}_cam`)?.click();
+      // 📷 abre la cámara dentro de la app: con la del teléfono, Android
+      // mataba Chrome por RAM y el técnico volvía al menú sin la foto.
+      if (btn.getAttribute("data-pick") === "cam") {
+        const titulo = btn.closest(".slotCard")?.querySelector("label")?.firstChild?.textContent?.trim() || "Foto";
+        tomarFoto({ titulo, inputNativo: $(`${slot}_cam`), antes: stopAllScanners })
+          .then((f) => (f ? subirASlot(slot, f) : null))
+          .catch(() => {});
+      }
       if (btn.getAttribute("data-pick") === "file") $(`${slot}_file`)?.click();
 
       // Reintentar con el archivo que ya está en el teléfono. Este botón es
@@ -1034,7 +1042,11 @@ export function initUploaderUI(root, options = {}) {
     $("btnStop_conf")?.addEventListener("click", () => stopScanner("conf"));
 
     // Falla files
-    $("btnFallaCam")?.addEventListener("click", () => $("falla_cam")?.click());
+    $("btnFallaCam")?.addEventListener("click", () => {
+      tomarFoto({ titulo: "Foto de la falla", inputNativo: $("falla_cam"), antes: stopAllScanners })
+        .then((f) => { if (f) addFallaFiles([f]); })
+        .catch(() => {});
+    });
     $("btnFallaFile")?.addEventListener("click", () => $("falla_file")?.click());
     $("btnFallaClear")?.addEventListener("click", () => {
       fallaFiles = [];
@@ -1150,7 +1162,15 @@ export function initUploaderUI(root, options = {}) {
     });
 
     // Conformidad
-    $("btnConfCam")?.addEventListener("click", () => $("conf_cam")?.click());
+    $("btnConfCam")?.addEventListener("click", () => {
+      tomarFoto({ titulo: "Foto de conformidad", inputNativo: $("conf_cam"), antes: stopAllScanners })
+        .then((f) => {
+          if (!f) return;
+          confFile = f;
+          renderConfPhoto();
+        })
+        .catch(() => {});
+    });
     $("btnConfFile")?.addEventListener("click", () => $("conf_file")?.click());
     $("btnConfClear")?.addEventListener("click", () => {
       confFile = null;

@@ -12,6 +12,7 @@ import {
 
 import { createSuggest_ } from "../../../core/suggest.js";
 import { comprimirImagen, ahorroLegible } from "../../../core/image-compress.js";
+import { tomarFoto } from "../../../core/camara-app.js";
 
 import {
   renderActivas_, renderFinalizados_, patchVisibleCards_,
@@ -558,7 +559,9 @@ export function initIncidenciasUI_() {
   // --------------------------
   incEl("btnIncFotoCam")?.addEventListener("click", () => {
     incSetMsg("");
-    incFotoCamInput()?.click();
+    tomarFoto({ titulo: "Foto de la incidencia", inputNativo: incFotoCamInput() })
+      .then((f) => { if (f) onIncFotoChange_({ target: { files: [f] } }); })
+      .catch(() => {});
   });
 
   incEl("btnIncFotoFile")?.addEventListener("click", () => {
