@@ -120,15 +120,54 @@ function opcionesTecnicos_(tecnicos, rol) {
     (otros.length ? `<optgroup label="Otras especialidades">${otros.map(opt).join("")}</optgroup>` : "");
 }
 
-function puestoHTML_(carro, tecnicos, rol) {
+/** "2h 40m" · "35m" */
+function durTxt_(ms) {
+  const min = Math.max(0, Math.floor(ms / 60_000));
+  if (min < 60) return `${min}m`;
+  const h = Math.floor(min / 60), m = min % 60;
+  return m ? `${h}h ${String(m).padStart(2, "0")}m` : `${h}h`;
+}
+
+/**
+ * Cuánto lleva este técnico en su mitad contra lo que tarda de normal, con el
+ * exceso en rojo. `t` sale de tiemposDeZona_ (el mapa), no del panel: el reloj
+ * viaja en /api/zonas. Si el nombre no cuadra —acaban de cambiar al técnico y
+ * el mapa todavía no se enteró— no se pinta: sería el tiempo del anterior.
+ */
+function tiempoHTML_(p, t) {
+  if (!t || !t.baseMs) return "";
+  const pila = s => String(s || "").trim().split(/\s+/)[0].toLowerCase();
+  if (t.nombre && pila(t.nombre) !== pila(p.nombre)) return "";
+  const pasado = t.excesoMs >= 60_000 && t.estado !== "FINALIZADO";
+  const pct = Math.min(100, Math.round((t.hechoMs / t.baseMs) * 100));
+  return `
+    <div class="zdTiempo${pasado ? " zdTiempo--pasado" : ""}">
+      <div class="zdTiempoTxt">
+        <span>Lleva <b>${durTxt_(t.hechoMs)}</b></span>
+        ${pasado
+          ? `<span class="zdTiempoExceso">${durTxt_(t.excesoMs)} de más</span>`
+          : `<span>lo normal ~${durTxt_(t.baseMs)}</span>`}
+      </div>
+      <div class="zdBarra"><span style="width:${pct}%"></span></div>
+    </div>`;
+}
+
+function inicial_(nombre) {
+  return escapeHtml(String(nombre || "?").trim().charAt(0).toUpperCase() || "?");
+}
+
+function puestoHTML_(carro, tecnicos, rol, tiempo) {
   const p = carro?.puestos?.[rol] || null;
 
   if (!p) {
     return `
       <div class="zdPuesto zdPuesto--libre" data-rol="${rol}">
         <div class="zdPuestoTop">
-          <span class="zdRol zdRol--${rol}">${escapeHtml(ROL_LABEL[rol])}</span>
-          <span class="zdNombre zdNombre--libre">Puesto vacío</span>
+          <span class="zdAvatar zdAvatar--libre">+</span>
+          <div class="zdPuestoQuien">
+            <span class="zdRol zdRol--${rol}">${escapeHtml(ROL_LABEL[rol])}</span>
+            <span class="zdNombre zdNombre--libre">Puesto vacío</span>
+          </div>
         </div>
         <div class="zdForm">
           <select class="zdSelect" data-sel="${rol}">${opcionesTecnicos_(tecnicos, rol)}</select>
@@ -149,31 +188,41 @@ function puestoHTML_(carro, tecnicos, rol) {
       <button class="zdBtn zdBtn--rev" type="button" data-ayuda-quitar="${rol}">Quitar apoyo</button>
     </div>` : "";
 
-  const pausas = (p.asignacionId && !p.terminado) ? `
-    <div class="zdPausas">
-      ${p.pausado
-        ? `<button class="zdBtn zdBtn--pri" type="button" data-reanudar="${escapeHtml(p.asignacionId)}">▶ Reanudar</button>
-           <span class="zdNota">${escapeHtml(p.pausaTxt || "en pausa")}</span>`
-        : `<span class="zdNota">Pausar:</span>` + PAUSAS_MIN.map(m => `
-            <button class="zdBtn" type="button" data-pausa="${escapeHtml(p.asignacionId)}" data-min="${m}">
-              ${m ? `${m} min` : "Indefinida"}
-            </button>`).join("")}
+  // Las pausas van plegadas detrás de un botón: eran cinco botones por puesto,
+  // diez en la hoja, y eran lo que la estiraba fuera de la pantalla.
+  const pausable = p.asignacionId && !p.terminado;
+  const pausas = (pausable && !p.pausado) ? `
+    <div class="zdPausas" hidden>
+      ${PAUSAS_MIN.map(m => `
+        <button class="zdChip" type="button" data-pausa="${escapeHtml(p.asignacionId)}" data-min="${m}">
+          ${m ? `${m} min` : "Sin límite"}
+        </button>`).join("")}
     </div>` : "";
 
+  const claseEstado = p.pausado ? "PAUSADO" : (p.estadoOt || "");
+
   return `
-    <div class="zdPuesto" data-rol="${rol}">
+    <div class="zdPuesto zdPuesto--${escapeHtml(claseEstado || "PUBLICADO")}" data-rol="${rol}">
       <div class="zdPuestoTop">
-        <span class="zdRol zdRol--${rol}">${escapeHtml(ROL_LABEL[rol])}</span>
-        <span class="zdNombre">${escapeHtml(p.nombre || "—")}</span>
-        ${estado ? `<span class="zdEstado">${escapeHtml(estado)}</span>` : ""}
+        <span class="zdAvatar zdAvatar--${rol}">${inicial_(p.nombre)}</span>
+        <div class="zdPuestoQuien">
+          <span class="zdRol zdRol--${rol}">${escapeHtml(ROL_LABEL[rol])}</span>
+          <span class="zdNombre">${escapeHtml(p.nombre || "—")}</span>
+        </div>
+        ${estado ? `<span class="zdEstado zdEstado--${escapeHtml(claseEstado)}">${escapeHtml(estado)}</span>` : ""}
       </div>
+      ${p.pausado && p.pausaTxt ? `<div class="zdNota">⏸ ${escapeHtml(p.pausaTxt)}</div>` : ""}
+      ${tiempoHTML_(p, tiempo)}
       ${p.razon ? `<div class="zdRazon">${escapeHtml(p.razon)}</div>` : ""}
       <div class="zdAcciones">
-        <button class="zdBtn" type="button" data-cambiar="${rol}">Cambiar</button>
+        <button class="zdBtn" type="button" data-cambiar="${rol}">⇄ Cambiar</button>
+        ${pausable ? (p.pausado
+          ? `<button class="zdBtn zdBtn--pri" type="button" data-reanudar="${escapeHtml(p.asignacionId)}">▶ Reanudar</button>`
+          : `<button class="zdBtn" type="button" data-pausar-abrir="${rol}" aria-expanded="false">⏸ Pausar</button>`) : ""}
         <button class="zdBtn zdBtn--rev" type="button" data-quitar="${rol}">Quitar</button>
       </div>
-      ${ayuda}
       ${pausas}
+      ${ayuda}
     </div>`;
 }
 
@@ -274,7 +323,7 @@ export async function montarPuestos_(contenedor, zona, cbs = {}, fresco = false)
   }
 
   const repintar = async () => {
-    await montarPuestos_(contenedor, { zonaId: zona.zonaId, vin: carro.vin }, cbs, true);
+    await montarPuestos_(contenedor, { zonaId: zona.zonaId, vin: carro.vin, tiempos: zona.tiempos }, cbs, true);
     if (onCambio) await onCambio();
   };
 
@@ -287,8 +336,8 @@ export async function montarPuestos_(contenedor, zona, cbs = {}, fresco = false)
 
   contenedor.innerHTML = `
     <div class="zdTitulo">Técnicos del carro</div>
-    ${puestoHTML_(carro, panel.tecnicos, "MOTOR")}
-    ${puestoHTML_(carro, panel.tecnicos, "TANQUE")}
+    ${puestoHTML_(carro, panel.tecnicos, "MOTOR", zona.tiempos?.MOTOR)}
+    ${puestoHTML_(carro, panel.tecnicos, "TANQUE", zona.tiempos?.TANQUE)}
     ${ambos ? `<button class="zdBtn zdBtn--rev zdBtn--ancho" type="button" data-quitar-ambos="1">
         Quitar a los dos</button>` : ""}
     <div class="zdError small"></div>`;
@@ -346,6 +395,19 @@ export async function montarPuestos_(contenedor, zona, cbs = {}, fresco = false)
       const ok = form.querySelector("button");
       ok.onclick = () => correr(ok, () =>
         cambiarPuesto_(carro, rol, form.querySelector("select").value));
+      // La hoja hace scroll por dentro: que el desplegable nuevo quede a la vista.
+      form.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    };
+  });
+
+  contenedor.querySelectorAll("[data-pausar-abrir]").forEach(btn => {
+    btn.onclick = () => {
+      const fila = contenedor.querySelector(`.zdPuesto[data-rol="${btn.dataset.pausarAbrir}"] .zdPausas`);
+      if (!fila) return;
+      fila.hidden = !fila.hidden;
+      btn.setAttribute("aria-expanded", String(!fila.hidden));
+      btn.classList.toggle("zdBtn--on", !fila.hidden);
+      if (!fila.hidden) fila.scrollIntoView({ block: "nearest", behavior: "smooth" });
     };
   });
 

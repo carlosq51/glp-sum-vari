@@ -23,10 +23,10 @@
 // =========================
 
 import { cfg } from "../../core/config.js";
-import { hhmmAMin_, minutosPE_ } from "../../core/format.js";
+import { escapeHtml, hhmmAMin_, minutosPE_ } from "../../core/format.js";
 import { puedeDespachar_ } from "./zonas-despacho.js";
 import {
-  etaCarro_, minutosUtiles_, MOTIVO_ETA, PUESTOS_CARRO,
+  etaCarro_, minutosUtiles_, relojesPorPuesto_, MOTIVO_ETA, PUESTOS_CARRO,
 } from "../../../../lib/eta-carro.js";
 
 /** Minutos de trabajo que quedan hoy, según el reloj del taller. */
@@ -74,42 +74,64 @@ function faltaTexto_(ms) {
 const PUESTO_FALTA = { MOTOR: "delantero", TANQUE: "tanquero" };
 
 /**
+ * Cada mitad de la plaza con su reloj y quién la lleva; {} si no hay con qué.
+ * La usan la tarjeta (el exceso en rojo) y la hoja (la barra de cada técnico).
+ */
+export function tiemposDeZona_(zona, medianas) {
+  if (!zona?.vin || !medianas || zona.estado === "FINALIZADO") return {};
+  const t = zona.tecnicos || {};
+  const r = relojesPorPuesto_({
+    puestos: t.relojes || {}, medianas, modelo: zona.modelo || "", ahoraMs: Date.now(),
+  });
+  for (const rol of Object.keys(r)) r[rol].nombre = t[PUESTO_FALTA[rol]] || "";
+  return r;
+}
+
+/** "+25m" · "+1h 10m": el mismo idioma que el cronómetro de la tarjeta. */
+export function excesoTexto_(ms) {
+  const min = Math.floor(ms / 60_000);
+  if (min < 60) return `+${min}m`;
+  const h = Math.floor(min / 60), m = min % 60;
+  return m ? `+${h}h ${m}m` : `+${h}h`;
+}
+
+/**
  * La línea corta de la tarjeta. Devuelve "" cuando no hay nada que decir: un
  * hueco en una tarjeta de 15 es mejor que un "—" que hay que descifrar.
  *
  * Dos lecturas según quién mira (ver cabecera):
- *   · supervisión → "~1 h 15" y el color del veredicto
+ *   · supervisión → "~1 h 15" y el color del veredicto, y en rojo, por
+ *     técnico, el que ya pasó lo normal de su mitad: "JOSE +25m"
  *   · movilizador → "hoy" / "no hoy", sin número
+ *
+ * La media dupla NO se escribe: la tarjeta ya late en ámbar, y un "falta
+ * tanquero" encima era decir dos veces lo mismo en el poco sitio que hay.
  */
-export function etaBadgeHTML_(eta) {
+export function etaBadgeHTML_(eta, tiempos = {}) {
   if (!eta) return "";
   const conNumero = puedeDespachar_();
 
-  if (!eta.estimable) {
-    // Se avisa de UN solo caso, y solo cuando falta UNA mitad: el carro que
-    // parece ocupado y no va a salir porque está a medias. Eso no se ve en la
-    // tarjeta y es lo que hay que mover.
-    //
-    // Si faltan las DOS, no se dice nada: la tarjeta ya lo grita —sin nombres
-    // y en el color de "nadie encima" (dotacionClass_)— y repetirlo pondría
-    // media rejilla en rojo cada noche, que es la forma más rápida de que
-    // nadie vuelva a mirar los avisos.
-    const faltan = eta.faltanPuestos || [];
-    if (eta.motivo === MOTIVO_ETA.FALTA_UNO && faltan.length === 1) {
-      return `<span class="zonaEta zonaEta--falta">falta ${PUESTO_FALTA[faltan[0]] || faltan[0]}</span>`;
-    }
-    return "";
-  }
+  // El exceso es de cada técnico, no del carro: se dice aunque el carro no
+  // tenga estimado (a medias, en pausa). La mitad ya cerrada no cuenta.
+  const rojas = !conNumero ? "" : PUESTOS_CARRO
+    .map(rol => tiempos[rol])
+    .filter(x => x && x.estado !== "FINALIZADO" && x.excesoMs >= 60_000)
+    .map(x => `<span class="zonaEta zonaEta--pasado">${
+      x.nombre ? `${escapeHtml(x.nombre)} ` : ""}${excesoTexto_(x.excesoMs)}</span>`)
+    .join("");
+
+  if (!eta.estimable) return rojas;
 
   if (eta.pasado && !eta.faltaMs) {
-    return `<span class="zonaEta zonaEta--ya">${conNumero ? "ya pasó lo normal" : "en cualquier momento"}</span>`;
+    // Con los nombres en rojo ya está dicho; el genérico, solo si no los hay.
+    return rojas || `<span class="zonaEta zonaEta--ya">${conNumero ? "ya pasó lo normal" : "en cualquier momento"}</span>`;
   }
 
   const clase = eta.alcanzaHoy ? "zonaEta--hoy" : "zonaEta--manana";
   const texto = conNumero
     ? faltaTexto_(eta.faltaMs)
     : (eta.alcanzaHoy ? "sale hoy" : "no sale hoy");
-  return `<span class="zonaEta ${clase}">${texto}</span>`;
+  return `<span class="zonaEta ${clase}">${texto}</span>${rojas}`;
 }
 
 /**

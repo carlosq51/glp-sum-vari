@@ -24,9 +24,10 @@ vi.mock("../public/js/core/format.js", () => ({
     return m ? Number(m[1]) * 60 + Number(m[2]) : null;
   },
   minutosPE_: () => 11 * 60,
+  escapeHtml: (s) => String(s),
 }));
 
-const { etaDeZona_, etaBadgeHTML_, etaLineaHTML_ } = await import("../public/js/views/zonas/zonas-eta.js");
+const { etaDeZona_, etaBadgeHTML_, etaLineaHTML_, tiemposDeZona_ } = await import("../public/js/views/zonas/zonas-eta.js");
 
 const H = 3_600_000;
 // Como lo manda armarMapaZonas_: medianas planas (los Map no sobreviven a JSON).
@@ -109,10 +110,12 @@ describe("quién ve qué", () => {
 });
 
 describe("los casos sin número", () => {
-  it("falta UNA mitad: se avisa, porque el carro parece ocupado y no va a salir", () => {
+  it("falta UNA mitad: no se escribe, la tarjeta ya late en ámbar", () => {
     ROL = "MOVILIZADOR";
-    const html = etaBadgeHTML_({ estimable: false, motivo: "FALTA_UNO", faltanPuestos: ["TANQUE"] });
-    expect(html).toContain("falta tanquero");
+    expect(etaBadgeHTML_({ estimable: false, motivo: "FALTA_UNO", faltanPuestos: ["TANQUE"] })).toBe("");
+    // En la hoja sí se explica.
+    expect(etaLineaHTML_({ estimable: false, motivo: "FALTA_UNO", faltanPuestos: ["TANQUE"] }))
+      .toContain("Falta tanquero");
   });
 
   it("faltan las DOS: la tarjeta ya lo dice sola, no se repite en rojo", () => {
@@ -136,5 +139,45 @@ describe("los casos sin número", () => {
   it("sin estimado no se pinta nada", () => {
     expect(etaBadgeHTML_(null)).toBe("");
     expect(etaLineaHTML_(null)).toBe("");
+  });
+});
+
+describe("el tiempo de más, por técnico", () => {
+  const pasado = (h) => ({ estado: "TRABAJANDO", tiempoMs: h * H, runningSince: null });
+
+  it("supervisión ve nombre y exceso en rojo, en vez de 'ya pasó lo normal'", () => {
+    ROL = "ADMIN";
+    const z = zona({ MOTOR: pasado(3.5), TANQUE: pasado(4.25) });
+    const html = etaBadgeHTML_(etaDeZona_(z, MEDIANAS), tiemposDeZona_(z, MEDIANAS));
+    expect(html).toContain("JOSE +30m");
+    expect(html).toContain("LUIS +1h 15m");
+    expect(html).toContain("zonaEta--pasado");
+    expect(html).not.toContain("ya pasó lo normal");
+  });
+
+  it("uno pasado y otro no: el estimado del que falta y el exceso del otro", () => {
+    ROL = "SUPERVISOR";
+    const z = zona({ MOTOR: pasado(3.5), TANQUE: pasado(2) });
+    const html = etaBadgeHTML_(etaDeZona_(z, MEDIANAS), tiemposDeZona_(z, MEDIANAS));
+    expect(html).toContain("~1 h");
+    expect(html).toContain("JOSE +30m");
+    expect(html).not.toContain("LUIS");
+  });
+
+  it("se dice aunque el carro esté a medias o en pausa", () => {
+    ROL = "ADMIN";
+    const z = zona({ MOTOR: { estado: "PAUSADO", tiempoMs: 4 * H } });
+    expect(etaBadgeHTML_(etaDeZona_(z, MEDIANAS), tiemposDeZona_(z, MEDIANAS))).toContain("JOSE +1h");
+  });
+
+  it("la mitad ya cerrada no cuenta, y el movilizador no ve números", () => {
+    ROL = "ADMIN";
+    const z = zona({ MOTOR: { estado: "FINALIZADO", tiempoMs: 5 * H }, TANQUE: pasado(1) });
+    expect(etaBadgeHTML_(etaDeZona_(z, MEDIANAS), tiemposDeZona_(z, MEDIANAS))).not.toContain("JOSE");
+    ROL = "MOVILIZADOR";
+    const z2 = zona({ MOTOR: pasado(4), TANQUE: pasado(4) });
+    const html = etaBadgeHTML_(etaDeZona_(z2, MEDIANAS), tiemposDeZona_(z2, MEDIANAS));
+    expect(html).toContain("en cualquier momento");
+    expect(html).not.toMatch(/\d/);
   });
 });

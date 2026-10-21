@@ -333,7 +333,16 @@
 .zonaEta--hoy    { color: var(--ok); }
 .zonaEta--manana { color: var(--warn); }
 .zonaEta--ya     { color: var(--note); }
-.zonaEta--falta  { color: var(--danger); }
+/* Un técnico que ya pasó lo normal de su mitad: su nombre y cuánto de más.
+   Una línea por técnico, porque el exceso es de una persona, no del carro. */
+.zonaEta--pasado {
+  color: var(--danger);
+  font-weight: 900;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
 
 /* La misma línea, explicada, en la hoja de acciones de la plaza. */
 .zonaEtaLinea { margin-top: -4px; }
@@ -459,14 +468,10 @@
   font-size: var(--fs-2xs);
   color: var(--muted);
 }
-/* El puesto que falta, en ambar: es lo unico de este chip sobre lo que hay
-   algo que hacer, y tiene que distinguirse del nombre de quien ya esta. */
-.zonaLibreVinFalta {
-  font-family: var(--font-body);
-  font-weight: 800;
-  font-size: var(--fs-2xs);
-  color: var(--st-wait);
-  white-space: nowrap;
+/* Media dupla: el ámbar de la tarjeta que late, sin escribirlo. */
+.zonaLibreVin--c1 {
+  border-color: var(--st-wait);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--st-wait) 45%, transparent), var(--elev-1);
 }
 
 /* ── Leyenda (pills) ── */
@@ -609,6 +614,12 @@
   border-radius: var(--radius) var(--radius) 0 0;
   width: 100%;
   max-width: 480px;
+  /* Nunca más alta que la pantalla: lo que no quepa hace scroll por dentro.
+     Sin esto la hoja crecía hacia arriba y el ✕ quedaba fuera de alcance. */
+  max-height: 92vh;
+  max-height: 92dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 20px 16px calc(24px + var(--safeBottom));
   display: flex;
   flex-direction: column;
@@ -616,9 +627,67 @@
   box-shadow: var(--elev-3);
   animation: zonaSheetUp var(--dur-base) ease;
 }
-.zonasActionHead { display: flex; align-items: center; justify-content: space-between; }
+.zonasActionHead { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .zonasActionTitle { font-size: var(--fs-xl); font-weight: var(--fw-extrabold); color: var(--text); }
 .zonasActionVin { font-size: var(--fs-md); color: var(--muted); font-family: var(--font-mono); margin-top: 2px; }
+
+/* Hoja de la plaza: cabecera fija (con el ✕ y el asa) y cuerpo que hace scroll. */
+.zonasActionBox--scroll { padding: 0; gap: 0; overflow: hidden; }
+.zonasActionBox--scroll .zonasActionHead {
+  position: relative;
+  flex-shrink: 0;
+  align-items: flex-start;
+  padding: 22px 16px 14px;
+  border-bottom: 1px solid var(--surfaceLine);
+}
+.zonasActionBox--scroll .zonasActionHead::before {
+  content: "";
+  position: absolute;
+  top: 8px; left: 50%;
+  width: 40px; height: 4px;
+  margin-left: -20px;
+  border-radius: 2px;
+  background: var(--surfaceLine);
+}
+.zonasActionHeadTxt { flex: 1; min-width: 0; }
+.zonasActionBox--scroll .zonasActionTitle {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  font-size: var(--fs-lg);
+  line-height: 1.2;
+}
+.zonasActionBox--scroll .zonasActionEstado { font-size: var(--fs-2xs); padding: 3px 10px; }
+.zonasActionBox--scroll .zonasActionVin { font-size: var(--fs-sm); word-break: break-all; }
+.zonasActionMeta { font-size: var(--fs-xs); color: var(--muted); margin-top: 3px; }
+.zonasActionZona {
+  flex-shrink: 0;
+  width: 46px; height: 46px;
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono);
+  font-size: var(--fs-md);
+  font-weight: 900;
+  color: var(--muted);
+  background: var(--glass);
+  border: 1px solid var(--surfaceLine);
+}
+.zonasActionZona--esperando     { color: var(--st-wait); background: rgba(245,158,11,.14); border-color: rgba(245,158,11,.4); }
+.zonasActionZona--en_conversion { color: var(--st-conv); background: rgba(59,130,246,.14); border-color: rgba(59,130,246,.4); }
+.zonasActionZona--finalizado    { color: var(--st-done); background: rgba(34,197,94,.14);  border-color: rgba(34,197,94,.4); }
+.zonasActionBody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 14px 16px calc(24px + var(--safeBottom));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.zonasActionBody .zonaEtaLinea { margin-top: 0; }
 .zonasActionEstado {
   display: inline-flex;
   align-items: center;
@@ -783,12 +852,6 @@
   0%, 100% { box-shadow: inset 0 0 22px color-mix(in srgb, var(--st-wait) 14%, transparent); }
   50%      { box-shadow: inset 0 0 26px color-mix(in srgb, var(--st-wait) 38%, transparent),
                          0 0 0 2px color-mix(in srgb, var(--st-wait) 45%, transparent); }
-}
-/* El puesto vacío se dice con letras, no solo con color. */
-.zonaCard--c1 .zonaCarLabel:empty::before {
-  content: "falta";
-  font-style: italic;
-  opacity: .8;
 }
 
 /* Recién llegado a su plaza: destella 3 veces, como en la TV. */
@@ -962,3 +1025,105 @@
   text-decoration: none;
   display: block;
 }
+
+/* ── Puesto: quién, en qué está y cuánto lleva ──────────────────────────────
+   El avatar lleva el color del rol (azul delantero, ámbar tanquero) para que
+   se lea igual que en la TV; el borde izquierdo del puesto, el de su estado. */
+.zdPuesto { border-left-width: 3px; }
+.zdPuesto--TRABAJANDO { border-left-color: var(--st-conv); }
+.zdPuesto--PAUSADO    { border-left-color: var(--st-wait); }
+.zdPuesto--FINALIZADO { border-left-color: var(--st-done); }
+.zdPuesto--libre      { border-left-width: 1px; }
+
+.zdPuestoTop { flex-wrap: nowrap; }
+.zdPuestoQuien {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+}
+.zdPuestoQuien .zdRol { font-size: 10px; padding: 1px 7px; }
+
+.zdAvatar {
+  flex-shrink: 0;
+  width: 38px; height: 38px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: var(--fs-md);
+  font-weight: 900;
+  color: #fff;
+}
+.zdAvatar--MOTOR  { background: linear-gradient(160deg, #60a5fa, var(--st-conv)); }
+.zdAvatar--TANQUE { background: linear-gradient(160deg, #fbbf24, var(--st-wait)); }
+.zdAvatar--libre  { background: transparent; color: var(--muted); border: 1.5px dashed var(--surfaceLine); }
+
+.zdEstado {
+  flex-shrink: 0;
+  padding: 3px 9px;
+  border-radius: var(--radius-full);
+  background: var(--glass);
+  border: 1px solid var(--surfaceLine);
+  white-space: nowrap;
+}
+.zdEstado--TRABAJANDO { color: var(--st-conv); background: rgba(59,130,246,.14); border-color: transparent; }
+.zdEstado--PAUSADO    { color: var(--st-wait); background: rgba(245,158,11,.14); border-color: transparent; }
+.zdEstado--FINALIZADO { color: var(--st-done); background: rgba(34,197,94,.14);  border-color: transparent; }
+
+/* Tiempo de la mitad contra lo normal; en rojo cuando ya se pasó. */
+.zdTiempo { display: flex; flex-direction: column; gap: 5px; }
+.zdTiempoTxt {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  font-weight: var(--fw-bold);
+}
+.zdTiempoTxt b { color: var(--text); font-weight: 900; }
+.zdTiempoExceso { color: var(--danger); font-weight: 900; }
+.zdBarra {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surfaceLine);
+  overflow: hidden;
+}
+.zdBarra > span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--st-conv);
+  transition: width var(--dur-slow) var(--ease-out);
+}
+.zdTiempo--pasado .zdBarra > span { background: var(--danger); }
+.zdTiempo--pasado .zdTiempoTxt b  { color: var(--danger); }
+
+.zdAcciones .zdBtn { flex: 1 1 auto; }
+.zdBtn--on { border-color: var(--st-wait); color: var(--st-wait); }
+
+/* Opciones de pausa, plegadas detrás de "⏸ Pausar". */
+.zdPausas[hidden] { display: none; }
+.zdPausas {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  padding: 8px;
+  border-radius: var(--radiusSm);
+  background: rgba(245,158,11,.08);
+  border: 1px dashed rgba(245,158,11,.35);
+}
+.zdChip {
+  min-height: 36px;
+  border-radius: var(--radius-full);
+  border: 1px solid rgba(245,158,11,.4);
+  background: var(--surface);
+  color: var(--st-wait);
+  font-family: var(--font-body);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-extrabold);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.zdChip:active   { transform: scale(.97); }
+.zdChip:disabled { opacity: .5; cursor: progress; }

@@ -9,7 +9,8 @@ import { createScanner } from "../../core/qr-scanner.js";
 import { startPoll, stopPoll } from "../../core/poll.js";
 import { zonaCardHTML_, zonasGridHTML_ } from "./zonas-layout.js";
 import { puedeDespachar_, montarPuestos_, CONSOLA_DESPACHO } from "./zonas-despacho.js";
-import { etaDeZona_, etaBadgeHTML_, etaLineaHTML_ } from "./zonas-eta.js";
+import { etaDeZona_, etaBadgeHTML_, etaLineaHTML_, tiemposDeZona_ } from "./zonas-eta.js";
+import { fmtElapsedMin_ } from "../../core/format.js";
 
 // Toda escritura del mapa va firmada con la cuenta en sesión: el servidor
 // resuelve el nombre contra `usuarios` y lo guarda en zonas_historial. Antes
@@ -76,7 +77,7 @@ function renderZonaCard_(z, readOnly, nuevos, medianas) {
     extraClass: dotacionClass_(z, nuevos),
     // El estimado de la plaza. Quién ve el número y quién solo el veredicto lo
     // decide zonas-eta.js; aquí se pinta lo que devuelva.
-    badge: etaBadgeHTML_(etaDeZona_(z, medianas)),
+    badge: etaBadgeHTML_(etaDeZona_(z, medianas), tiemposDeZona_(z, medianas)),
   });
 }
 
@@ -134,22 +135,18 @@ function renderMapa_(container, zonas, sinZona, readOnly, medianas = null) {
       // es justo lo que hacía inútil la lista.
       const t = v.tecnicos || null;
       const gente = [t?.delantero, t?.tanquero].filter(Boolean).join(" · ");
-      // El puesto que falta se dice con todas las letras. Es la mitad de la
-      // razón de esta lista: un carro cuyo delantero cerró y que nunca tuvo
-      // tanquero se ve igual que uno normal si solo se pintan los nombres, y
-      // es justo el que hay que atender. Solo se marca cuando ya hay alguien
-      // en el carro — el colocado a mano y vacío se ve vacío de por sí.
-      const falta = t
-        ? [!t.delantero && "delantero", !t.tanquero && "tanquero"].filter(Boolean)
-        : [];
-      return `<span class="zonaLibreVin zonaLibreVin--${css}${v.auto ? " zonaLibreVin--auto" : ""}${roClass}"
+      // Media dupla: el chip lleva el ámbar de la tarjeta que late, sin
+      // escribirlo. Es el que hay que atender —un carro cuyo delantero cerró y
+      // que nunca tuvo tanquero— y ese color ya se lee en las 15 plazas.
+      // Solo cuando ya hay alguien: el colocado a mano y vacío se ve vacío.
+      const medio = !!t && !!t.delantero !== !!t.tanquero;
+      return `<span class="zonaLibreVin zonaLibreVin--${css}${v.auto ? " zonaLibreVin--auto" : ""}${medio ? " zonaLibreVin--c1" : ""}${roClass}"
                 data-vin="${escapeHtml(v.vin)}"
                 data-zona="16"
                 ${quien ? `title="${escapeHtml(quien)}"` : ""}
                 data-estado="${v.estado}">
         ${escapeHtml(v.vin)}
         ${gente ? `<span class="zonaLibreVinGente">${escapeHtml(gente)}</span>` : ""}
-        ${falta.length ? `<span class="zonaLibreVinFalta">falta ${escapeHtml(falta.join(" y "))}</span>` : ""}
         <span class="zonaLibreVinEstado">${v.estado === "FINALIZADO" ? "✅" : "🔧"}</span>
       </span>`;
     }).join("");
@@ -205,18 +202,28 @@ function openActionSheet_(zona, onRefresh) {
   const supervision = puedeDespachar_();
   const despacho    = hasVin && supervision;
 
+  const enPlaza = hasVin ? fmtElapsedMin_(zona.registrado_at) : "";
+  const meta = [zona.modelo, enPlaza && `en la plaza hace ${enPlaza}`].filter(Boolean).join(" · ");
+
+  // La cabecera (con el ✕) queda fija y lo de abajo hace scroll: con los dos
+  // puestos abiertos —cambiar, pausas— la hoja pasaba del alto de la pantalla
+  // y, anclada abajo, se comía el ✕ por arriba sin forma de cerrarla.
   const sheet = document.createElement("div");
   sheet.className = "zonasActionSheet";
   sheet.innerHTML = `
-    <div class="zonasActionBox">
+    <div class="zonasActionBox zonasActionBox--scroll" role="dialog" aria-modal="true" aria-label="${zonaNom}">
       <div class="zonasActionHead">
-        <div>
-          <div class="zonasActionTitle">${zonaNom}</div>
+        <span class="zonasActionZona zonasActionZona--${css}">${esLibre ? "ZL" : `Z${zona.zona_id}`}</span>
+        <div class="zonasActionHeadTxt">
+          <div class="zonasActionTitle">${zonaNom}
+            <span class="zonasActionEstado zonasActionEstado--${css}">${label}</span>
+          </div>
           ${hasVin ? `<div class="zonasActionVin">${escapeHtml(zona.vin)}</div>` : ""}
+          ${meta ? `<div class="zonasActionMeta">${escapeHtml(meta)}</div>` : ""}
         </div>
-        <button class="zonasPickerClose" id="zonasActionCloseBtn" type="button">✕</button>
+        <button class="zonasPickerClose" id="zonasActionCloseBtn" type="button" aria-label="Cerrar">✕</button>
       </div>
-      <span class="zonasActionEstado zonasActionEstado--${css}">${label}</span>
+      <div class="zonasActionBody">
       ${hasVin ? etaLineaHTML_(etaDeZona_(zona, _zonaData?.eta_medianas)) : ""}
 
       <!-- Los técnicos del carro van ARRIBA de los botones de la plaza: quien
@@ -241,6 +248,7 @@ function openActionSheet_(zona, onRefresh) {
             Consola de despacho ↗ <span class="zdNota">duplas, cola y carros sin plaza</span>
           </a>` : ""}
       </div>
+      </div>
     </div>`;
 
   document.body.appendChild(sheet);
@@ -248,11 +256,12 @@ function openActionSheet_(zona, onRefresh) {
 
   sheet.addEventListener("click", e => { if (e.target === sheet) closeActionSheet_(); });
   sheet.querySelector("#zonasActionCloseBtn").addEventListener("click", closeActionSheet_);
+  document.addEventListener("keydown", escCierra_);
 
   if (despacho) {
     montarPuestos_(
       sheet.querySelector("#zonasActionPuestos"),
-      { zonaId: zona.zona_id, vin: zona.vin },
+      { zonaId: zona.zona_id, vin: zona.vin, tiempos: tiemposDeZona_(zona, _zonaData?.eta_medianas) },
       {
         // El mapa de atrás tiene que reflejar el cambio: el color de la plaza
         // sale de cuántos puestos están cubiertos.
@@ -289,7 +298,13 @@ function openActionSheet_(zona, onRefresh) {
   }
 }
 
-function closeActionSheet_() { removeEl_(_actionSheetEl); _actionSheetEl = null; }
+function closeActionSheet_() {
+  removeEl_(_actionSheetEl);
+  _actionSheetEl = null;
+  document.removeEventListener("keydown", escCierra_);
+}
+
+function escCierra_(e) { if (e.key === "Escape") closeActionSheet_(); }
 
 // Mini form para asignar un VIN a una zona específica (desde click en spot)
 function openPickerForZone_(zonaId, onRefresh) {
@@ -594,8 +609,11 @@ function bindMapaClicks_(container, onZoneAction) {
       // es el único sitio donde ese carro se ve. Al movilizador le sigue
       // saliendo el picker directo, que es lo único que necesita.
       if (puedeDespachar_()) {
+        // La fila entera de sin_zona, no solo el VIN: lleva los relojes y el
+        // modelo con los que la hoja pinta el tiempo de cada técnico.
+        const fila = (_zonaData.sin_zona || []).find(v => v.vin === vin) || {};
         openActionSheet_(
-          { zona_id: 16, vin, estado: libVin.dataset.estado || "EN_CONVERSION" },
+          { ...fila, zona_id: 16, vin, estado: libVin.dataset.estado || "EN_CONVERSION" },
           doRefresh_,
         );
       } else {
