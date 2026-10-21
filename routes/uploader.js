@@ -8,6 +8,7 @@ import {
   r2DeleteSlot,
   r2UploadAvatar,
 } from "../r2-uploads.js";
+import { fotosCopiadas_ } from "../lib/fotos-huella.js";
 
 const router = Router();
 
@@ -66,6 +67,22 @@ router.post("/api/uploader/proxy", async (req, res) => {
     }
     console.error("[R2_UPLOADER] ERROR:", e.message);
     return res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
+// =========================
+// GET /api/fotos/copiadas?vins=A,B — qué carros traen una foto copiada de
+// otra subida antes. Lo usa la tarjeta de CALIDAD para avisar sin abrir las
+// fotos (public/js/work/fotos-aviso.js).
+// =========================
+router.get("/api/fotos/copiadas", async (req, res) => {
+  try {
+    const vins = String(req.query.vins || "").split(",")
+      .map(v => v.trim().toUpperCase()).filter(v => /^[A-Z0-9-]{5,30}$/.test(v)).slice(0, 50);
+    res.json({ ok: true, copiadas: await fotosCopiadas_(vins) });
+  } catch (e) {
+    console.error("[fotos] copiadas:", e.message);
+    res.status(500).json({ ok: false, error: String(e.message || e) });
   }
 });
 

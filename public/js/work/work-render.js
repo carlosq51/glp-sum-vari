@@ -10,6 +10,7 @@ import { computeLiveMs_ } from "./work-time.js";
 import { buildAsignadoHTML_, buildBotonesByEstado_, buildIncidenciasBtnHTML_ } from "./work-templates.js";
 import { personalCalidadHTML_ } from "./llamado-voz.js";
 import { informeEstadoHTML_, pintarInformes_ } from "./informe-estado.js";
+import { fotosAvisoHTML_, pintarFotosCopiadas_ } from "./fotos-aviso.js";
 
 /** La línea del informe, solo donde hay informe: técnico de MOTOR o TANQUE. */
 function informeDe_(it) {
@@ -80,6 +81,7 @@ export function renderActivas_() {
                 <span class="small js-personal">${personalCalidadHTML_(it)}</span>` : ""}
             </div>
             ${informeDe_(it)}
+            ${CORE.state.currentModule === "CALIDAD" ? fotosAvisoHTML_(it.vin) : ""}
           </div>
           <div class="jobRight">
             <div class="jobTimePill js-tiempo">⏱ ${live}</div>
@@ -148,6 +150,7 @@ export function renderActivas_() {
 
   box.innerHTML = out;
   pintarInformes_();
+  pintarFotosCopiadas_();
 }
 
 export function renderFinalizados_(avgTopHTML = "") {

@@ -13,7 +13,7 @@
 
 import { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
 import { normalizeImage, isHeicBuffer_, huellaImagen } from "./lib/image-optimize.js";
-import { registrarHuella_, fotosRepetidas_ } from "./lib/fotos-huella.js";
+import { registrarHuella_, fotosRepetidas_, olvidarCopias_ } from "./lib/fotos-huella.js";
 import { supabaseGet_ } from "./lib/supabase.js";
 
 /** Mensaje para el técnico: lo único que arregla esto es cambiar la cámara. */
@@ -187,6 +187,7 @@ export async function r2UploadOne({ vin, dateStr, slot, b64, mimeType = "image/j
   try {
     const huella = await huellaImagen(body);
     await registrarHuella_({ clave: key, vin, slot, huella, subidoPor: quien });
+    olvidarCopias_(vin);
     repetida = (await fotosRepetidas_(vin))[key] || [];
     if (repetida.length) {
       console.log(`[R2] foto repetida ${key} (${quien || "?"}) = ${repetida.map(r => `${r.vin}/${r.slot}`).join(", ")}`);

@@ -98,6 +98,27 @@
 .jobInforme[data-tono="falta"] { border-color: var(--warn); background: var(--warnBg); }
 .jobInforme[data-tono="ok"]    { border-color: var(--ok);   background: var(--okBg); }
 
+/* Carro con una foto copiada de otra subida antes (tarjeta de CALIDAD).
+   Va con la tarjeta cerrada: calidad tiene que verlo antes de abrir fotos.
+   Lógica en public/js/work/fotos-aviso.js. */
+.jobCard.fotosCopiadas {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 2px var(--danger);
+  background: var(--dangerBg);
+}
+.jobFotosCopiadas {
+  margin-top: 8px;
+  padding: 7px 10px;
+  border-radius: var(--radiusSm);
+  border: 1px solid var(--danger);
+  background: var(--dangerBg);
+  color: var(--danger);
+  font-size: 13px;
+  font-weight: var(--fw-bold, 700);
+  line-height: 1.3;
+}
+.jobFotosCopiadas[hidden] { display: none; }
+
 /* =====================================================================
    Llamado por voz desde CALIDAD — "🔧 MOTOR: Juan  [📢 Llamar]"
    ---------------------------------------------------------------------
