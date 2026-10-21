@@ -13,7 +13,7 @@
 
 import { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
 import { normalizeImage, isHeicBuffer_, huellaImagen } from "./lib/image-optimize.js";
-import { registrarHuella_, fotosRepetidas_, olvidarCopias_ } from "./lib/fotos-huella.js";
+import { registrarHuella_, fotosRepetidas_, olvidarCopias_, marcarCopia_ } from "./lib/fotos-huella.js";
 import { supabaseGet_ } from "./lib/supabase.js";
 
 /** Mensaje para el técnico: lo único que arregla esto es cambiar la cámara. */
@@ -192,6 +192,10 @@ export async function r2UploadOne({ vin, dateStr, slot, b64, mimeType = "image/j
     if (repetida.length) {
       console.log(`[R2] foto repetida ${key} (${quien || "?"}) = ${repetida.map(r => `${r.vin}/${r.slot}`).join(", ")}`);
     }
+    // Las que se le parecen ya estaban: esta es la copia. Volver a subir la
+    // casilla con una foto nueva la deja en null.
+    await marcarCopia_(key, repetida[0]?.clave || null)
+      .catch((e) => console.warn("[R2] copia_de:", e.message));
   } catch (e) {
     console.warn("[R2] huella:", e.message);
   }

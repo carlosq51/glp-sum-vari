@@ -49,7 +49,7 @@ const CLAVE = /^(registro|calidad)\/\d{4}-\d{2}\/([^/]+)\/([a-z0-9_]+)\.jpg$/i;
 
 async function guardadas() {
   const r = await supabaseFetchAll_(
-    `${SB}/rest/v1/fotos_huella?select=clave,vin,slot,huella,subido_por,created_at&order=clave`,
+    `${SB}/rest/v1/fotos_huella?select=clave,vin,slot,huella,subido_por,created_at,copia_de&order=clave`,
     H, { pageSize: 1000, maxRows: 500_000 }
   );
   if (!r.ok) throw new Error(`fotos_huella ${r.status} ${r.error}`);
@@ -173,6 +173,7 @@ for (let a = 1; a < n; a++) {
     const y = filas[b];
     if (x.vin === y.vin && x.slot === y.slot) continue;
     copias++;
+    x.copiaCalculada = y.clave;
     const q = x.subido_por || "(sin dato)";
     porAutor[q] = (porAutor[q] || 0) + 1;
     const mes = x.clave.split("/")[1];
@@ -183,3 +184,15 @@ for (let a = 1; a < n; a++) {
 console.log(`fotos que repiten una anterior: ${copias} de ${n}`);
 console.table(Object.entries(porMes).sort().map(([mes, copias]) => ({ mes, copias })));
 console.table(Object.entries(porAutor).sort((a, b) => b[1] - a[1]).map(([quien, fotos]) => ({ quien, fotos })));
+
+// ── 4. copia_de (migración 009): de qué foto anterior es copia cada una ─────
+// Lo mismo que hace r2UploadOne al subir, para lo que ya estaba.
+if (APPLY) {
+  const cambian = filas.filter(f => (f.copiaCalculada || null) !== (f.copia_de || null));
+  for (let k = 0; k < cambian.length; k += LOTE) {
+    await subirLote(cambian.slice(k, k + LOTE).map(f => ({
+      clave: f.clave, vin: f.vin, slot: f.slot, huella: f.huella, copia_de: f.copiaCalculada || null,
+    })));
+  }
+  console.log(`copia_de actualizado en ${cambian.length} fotos`);
+}

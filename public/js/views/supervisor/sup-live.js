@@ -611,8 +611,35 @@ function kpisHTML_(data, techs, modelo) {
         valor: `${m.parcial ? "≥" : ""}${Number(m.convDone) || 0}`, unidad: `/ ${m.metaMes}`,
         pie: `${mesDelta >= 0 ? "+" : "−"}${Math.abs(mesDelta)} vs. ${m.metaAcum} esperados`,
       }) : ""}
+      ${copiasTile_(data, "parametros", "Fotos copiadas · parámetros")}
+      ${copiasTile_(data, "soldadura", "Fotos copiadas · soldadura")}
     </div>
   </div>`;
+}
+
+/**
+ * % de carros con alguna foto copiada de otra subida antes (lib/fotos-huella.js).
+ * El número grande es la jornada; el pie, el mes y desde siempre, que es
+ * contra lo que se lee si la jornada mejoró. Es un número a BAJAR: cualquier
+ * copia lo pone en rojo.
+ */
+function copiasTile_(data, grupo, label) {
+  const r = data.fotosCopias?.resumen;
+  if (!r) return "";
+  const pct = (g) => g.carros > 0 ? Math.round(g.carrosConCopia / g.carros * 100) : null;
+  const j = r.jornada[grupo], m = r.mes[grupo], gen = r.general[grupo];
+  const pj = pct(j), pm = pct(m), pg = pct(gen);
+  const fmt = (p) => p == null ? "—" : `${p} %`;
+  const quien = esHoy_ ? "hoy" : "esa jornada";
+  return `
+    <button type="button" class="statTile statTile--tap${j.carrosConCopia ? " statTile--badEdge" : ""}"
+      data-drill="copias-${grupo}">
+      <div class="statTile__label">${escapeHtml(label)}</div>
+      <div class="statTile__value">${pj == null ? "—" : pj}${pj == null ? "" : `<span class="unit">%</span>`}</div>
+      <div class="statTile__foot">${j.carros
+        ? `${j.carrosConCopia} de ${j.carros} carros ${quien}`
+        : `sin fotos ${quien}`} · mes ${fmt(pm)} · general ${fmt(pg)}</div>
+    </button>`;
 }
 
 // ── 2. El contenedor de cada visual ───────────────────────────────────
@@ -1778,6 +1805,37 @@ function abrirDrill_(cual, data, techs) {
   const fila = (izq, der) => `
     <div class="lvDrill__row"><span>${izq}</span><span>${der}</span></div>`;
   const vacio = `<div class="lvDrill__empty">Nada que mostrar.</div>`;
+
+  if (cual === "copias-parametros" || cual === "copias-soldadura") {
+    // Las copias del mes, una fila por carro y jornada: qué fotos son copia,
+    // de qué carro salieron y quién las subió. La jornada mirada va primero.
+    const grupo = cual.slice("copias-".length);
+    const lista = (data.fotosCopias?.detalle || []).filter(d => d.grupo === grupo);
+    const porCarro = new Map();
+    for (const d of lista) {
+      const k = `${d.jornada}|${d.vin}`;
+      if (!porCarro.has(k)) porCarro.set(k, { jornada: d.jornada, vin: d.vin, quien: new Set(), fotos: [] });
+      const c = porCarro.get(k);
+      if (d.quien) c.quien.add(d.quien);
+      c.fotos.push(d);
+    }
+    const carros = [...porCarro.values()]
+      .sort((a, b) => (b.jornada === data.fecha) - (a.jornada === data.fecha) || b.jornada.localeCompare(a.jornada));
+    const html = carros.length
+      ? carros.map(c => fila(
+          `🚨 <code>${escapeHtml(c.vin)}</code> · ${escapeHtml([...c.quien].join(", ") || "sin autor")}<br>
+           <small>${c.fotos.map(f => `${escapeHtml(f.etiqueta)} = ${f.igualVin === c.vin
+             ? escapeHtml(f.igualEtiqueta) + " del mismo carro"
+             : `${escapeHtml(f.igualEtiqueta)} de <code>${escapeHtml(f.igualVin)}</code>${f.igualQuien ? ` (${escapeHtml(f.igualQuien)})` : ""}`}`).join("<br>")}</small>`,
+          escapeHtml(fmtFechaCorta_(c.jornada)))).join("")
+      : vacio;
+    openDrilldown({
+      title: grupo === "parametros" ? "Fotos copiadas · parámetros" : "Fotos copiadas · soldadura",
+      subtitle: `carros del mes con fotos iguales a otras subidas antes · hasta el ${fmtFechaCorta_(data.fecha)}`,
+      badge: carros.length, html,
+    });
+    return;
+  }
 
   if (cual === "conv" || cual === "cal") {
     const esCal = cual === "cal";

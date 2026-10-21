@@ -39,4 +39,50 @@ describe("fotos repetidas (glp_fotos_repetidas)", () => {
     ]);
     await db.close();
   }, 60_000);
+
+  it("cuenta el % de carros con copias por jornada, mes y general (009)", async () => {
+    const db = new PGlite();
+    await db.exec(PRELUDIO);
+    for (const f of archivosMigracion()) {
+      await db.exec(fs.readFileSync(path.join("supabase/migrations", f), "utf8"));
+    }
+    await db.exec(`INSERT INTO usuarios (email, nombre) VALUES ('ana@x.com', 'ANA PEREZ')`);
+    const fila = (clave, vin, slot, at, copia = null) =>
+      db.query(
+        `INSERT INTO fotos_huella (clave, vin, slot, huella, subido_por, created_at, copia_de)
+         VALUES ($1, $2, $3, $4::bit(256), 'ana@x.com', $5, $6)`,
+        [clave, vin, slot, BASE, at, copia]
+      );
+    // 15:00 UTC = 10:00 en Lima: la jornada es ese mismo día.
+    await fila("r/09/A/comp_1.jpg", "A", "comp_1", "2026-09-20T15:00:00Z");
+    await fila("r/10/B/comp_1.jpg", "B", "comp_1", "2026-10-05T15:00:00Z", "r/09/A/comp_1.jpg");
+    await fila("r/10/C/comp_1.jpg", "C", "comp_1", "2026-10-21T15:00:00Z");
+    await fila("r/10/C/voltaje.jpg", "C", "voltaje", "2026-10-21T15:00:00Z");
+    await fila("r/10/D/comp_1.jpg", "D", "comp_1", "2026-10-21T15:00:00Z", "r/10/B/comp_1.jpg");
+    await fila("r/10/D/sold_sensor_antes.jpg", "D", "sold_sensor_antes", "2026-10-21T15:00:00Z", "r/10/C/comp_1.jpg");
+    await fila("r/10/E/calidad_1.jpg", "E", "calidad_1", "2026-10-21T15:00:00Z", "r/10/C/comp_1.jpg");
+
+    const { rows } = await db.query(
+      `SELECT alcance, grupo, carros, carros_con_copia, fotos, fotos_copiadas
+       FROM glp_fotos_copias_resumen('2026-10-21') ORDER BY alcance, grupo`
+    );
+    expect(rows).toEqual([
+      { alcance: "general", grupo: "parametros", carros: 4, carros_con_copia: 2, fotos: 5, fotos_copiadas: 2 },
+      { alcance: "general", grupo: "soldadura",  carros: 1, carros_con_copia: 1, fotos: 1, fotos_copiadas: 1 },
+      { alcance: "jornada", grupo: "parametros", carros: 2, carros_con_copia: 1, fotos: 3, fotos_copiadas: 1 },
+      { alcance: "jornada", grupo: "soldadura",  carros: 1, carros_con_copia: 1, fotos: 1, fotos_copiadas: 1 },
+      { alcance: "mes",     grupo: "parametros", carros: 3, carros_con_copia: 2, fotos: 4, fotos_copiadas: 2 },
+      { alcance: "mes",     grupo: "soldadura",  carros: 1, carros_con_copia: 1, fotos: 1, fotos_copiadas: 1 },
+    ]);
+
+    const det = await db.query(
+      `SELECT vin, slot, nombre, igual_vin, igual_slot FROM glp_fotos_copias_detalle('2026-10-21')
+       WHERE grupo = 'parametros' ORDER BY created_at`
+    );
+    expect(det.rows).toEqual([
+      { vin: "B", slot: "comp_1", nombre: "ANA PEREZ", igual_vin: "A", igual_slot: "comp_1" },
+      { vin: "D", slot: "comp_1", nombre: "ANA PEREZ", igual_vin: "B", igual_slot: "comp_1" },
+    ]);
+    await db.close();
+  }, 60_000);
 });

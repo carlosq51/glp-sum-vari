@@ -7,6 +7,7 @@ import { jornadaFecha_, esDuplaApoyo_, vinDeDuplaApoyo_ } from "../lib/despacho.
 import { fechaPeruMenosDias_, normalizeModelo_, jornadaPeru_ } from "../lib/utils.js";
 import { proyeccionDeJornada_ } from "./produccion.js";
 import { usuariosActivos_ } from "../lib/authz.js";
+import { copiasDelLive_ } from "../lib/fotos-huella.js";
 
 const router = Router();
 
@@ -1317,10 +1318,16 @@ async function armarLiveSupervisor_(fechaPedida = null) {
       cfg, jornadaStr, asistencia, allUsers, metaDia,
     }).catch((e) => { console.error("[LIVE proyección]", e.message); return null; });
 
+    // 7. Fotos copiadas: % de carros con fotos que copian otra subida antes
+    // (lib/fotos-huella.js). Si la base aún no tiene la migración 009, el
+    // LIVE se pinta sin estos tiles.
+    const fotosCopias = await copiasDelLive_(jornadaStr)
+      .catch((e) => { console.error("[LIVE fotos copiadas]", e.message); return null; });
+
     const duration = Date.now() - t1;
     return {
       ok: true, techs, fecha: jornadaStr, esHoy, vinsSummary,
-      mes, cierres, cierresDet, carrosMedios, asistenciaConv, tiemposMedios, proyeccion,
+      mes, cierres, cierresDet, carrosMedios, asistenciaConv, tiemposMedios, proyeccion, fotosCopias,
       _timing: `${duration}ms`,
     };
 

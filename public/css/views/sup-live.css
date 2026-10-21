@@ -427,6 +427,9 @@ button.lvKpi--tap:hover { border-top-color: var(--accent); border-right-color: v
 /* Un tile que avisa de algo parado lleva el aviso en el borde, no en el número:
    un número en rojo se confunde con "mal dato". */
 .statTile--warnEdge { border-left: 3px solid var(--warn); }
+/* Fotos copiadas: cualquier copia en la jornada lo marca (sup-live · copiasTile_). */
+.statTile--badEdge { border-left: 3px solid var(--danger); }
+.statTile--badEdge .statTile__value { color: var(--danger); }
 
 /* ── Rejilla de visuales ──────────────────────────────────────────────*/
 .lvDash__grid {
