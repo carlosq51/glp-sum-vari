@@ -65,6 +65,32 @@ export const GRUPOS_FOTOS = [
   },
 ];
 
+/** "Juan Pérez" si está en usuarios; si no, el correo sin el dominio. */
+function quien_(p) {
+  return p?.nombre || String(p?.email || "").split("@")[0] || "";
+}
+
+function fecha_(iso) {
+  const d = iso ? new Date(iso) : null;
+  if (!d || isNaN(d)) return "";
+  return d.toLocaleDateString("es-PE", { day: "2-digit", month: "2-digit" });
+}
+
+/**
+ * Aviso de foto repetida: con qué otra(s) foto(s) coincide. Cuando es otro
+ * carro va el final del VIN, que es como lo nombra el taller.
+ */
+function htmlRepetida_(lista) {
+  if (!lista?.length) return "";
+  const items = lista.slice(0, 3).map(r => {
+    const donde = r.mismoVin ? "este carro" : `VIN …${esc_(String(r.vin).slice(-6))}`;
+    const extra = [quien_(r), fecha_(r.fecha)].filter(Boolean).map(esc_).join(" · ");
+    return `<div>= ${esc_(r.etiqueta)} de ${donde}${extra ? ` <span class="fvRepMeta">(${extra})</span>` : ""}</div>`;
+  }).join("");
+  const mas = lista.length > 3 ? `<div>y ${lista.length - 3} más</div>` : "";
+  return `<div class="fvRep" title="La misma foto ya se subió en otro lado">⚠️ Repetida${items}${mas}</div>`;
+}
+
 function esc_(s) {
   return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;")
     .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -84,13 +110,14 @@ function esc_(s) {
  */
 export async function cargarFotosVin_(vin) {
   const hoy = new Date().toISOString().slice(0, 10);
-  let res = await postJSON("/api/uploader/proxy", { action: "getStatus", vin, dateStr: hoy });
+  // detalle: además de las fotos, quién subió cada una y si se repite.
+  let res = await postJSON("/api/uploader/proxy", { action: "getStatus", vin, dateStr: hoy, detalle: true });
 
   if (!Object.values(res?.status || {}).some(Boolean)) {
     const prev = new Date();
     prev.setMonth(prev.getMonth() - 1);
     const res2 = await postJSON("/api/uploader/proxy", {
-      action: "getStatus", vin, dateStr: prev.toISOString().slice(0, 10),
+      action: "getStatus", vin, dateStr: prev.toISOString().slice(0, 10), detalle: true,
     });
     if (Object.values(res2?.status || {}).some(Boolean)) res = res2;
   }
@@ -119,15 +146,20 @@ export function htmlFotosVin_({ status, previews }, ids = null) {
     if (!slots.some(s => status[s])) continue;
 
     const celdas = slots.map(slot => {
-      const url = previews[slot]?.imgUrl || "";
-      const lbl = esc_(g.slots[slot]);
+      const p     = previews[slot] || {};
+      const url   = p.imgUrl || "";
+      const lbl   = esc_(g.slots[slot]);
+      const tiene = status[slot] && url;
+      const autor = tiene && p.subidoPor ? quien_(p.subidoPor) : "";
       return `
-        <div class="fvCell">
+        <div class="fvCell${tiene && p.repetida?.length ? " fvCellRep" : ""}">
           <div class="fvLabel">${lbl}</div>
-          ${status[slot] && url
+          ${tiene
             ? `<a href="${esc_(url)}" target="_blank" rel="noopener noreferrer">
                  <img src="${esc_(url)}" alt="${lbl}" loading="lazy" class="fvImg">
-               </a>`
+               </a>
+               ${autor ? `<div class="fvAutor" title="${esc_(p.subidoPor.email)}">👤 ${esc_(autor)}</div>` : ""}
+               ${htmlRepetida_(p.repetida)}`
             : `<div class="fvEmpty">Sin foto</div>`}
         </div>`;
     }).join("");
@@ -137,6 +169,13 @@ export function htmlFotosVin_({ status, previews }, ids = null) {
         <div class="fvGroupTitle">${g.icono} ${esc_(g.titulo)}</div>
         <div class="fvGrid">${celdas}</div>
       </div>`);
+  }
+
+  // Resumen arriba: con varias repetidas, que no haga falta recorrer todo.
+  const repetidas = grupos.flatMap(g => Object.keys(g.slots))
+    .filter(s => status[s] && previews[s]?.repetida?.length).length;
+  if (partes.length && repetidas) {
+    partes.unshift(`<div class="fvRepResumen">⚠️ ${repetidas} ${repetidas === 1 ? "foto repetida" : "fotos repetidas"}: ya se habían subido en otro carro o en otra casilla.</div>`);
   }
 
   if (!partes.length) {
@@ -160,6 +199,15 @@ export function asegurarEstilosFotos_() {
     .fvImg { width: 100%; max-height: 150px; object-fit: cover; border-radius: 8px; cursor: zoom-in; display: block; }
     .fvEmpty { height: 90px; display: flex; align-items: center; justify-content: center;
                background: rgba(0,0,0,.2); border-radius: 8px; color: rgba(255,255,255,.4); font-size: 11px; }
+    .fvAutor { font-size: 11px; margin-top: 6px; opacity: .8; overflow: hidden;
+               text-overflow: ellipsis; white-space: nowrap; }
+    .fvCellRep { border-color: #e5484d; background: rgba(229,72,77,.12); }
+    .fvRep { margin-top: 6px; font-size: 11px; font-weight: 700; color: #ff8589;
+             text-align: left; line-height: 1.35; }
+    .fvRepMeta { font-weight: 400; opacity: .85; }
+    .fvRepResumen { margin-bottom: 12px; padding: 8px 10px; border-radius: 10px; font-size: 12px;
+                    font-weight: 800; color: #ff8589; background: rgba(229,72,77,.12);
+                    border: 1px solid #e5484d; }
     .fvNone { padding: 18px; text-align: center; opacity: .6; font-size: 13px; }
   `;
   document.head.appendChild(st);

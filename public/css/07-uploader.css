@@ -53,6 +53,10 @@
 
 .uploader-shell .slotCard[data-estado="error"] { border-color: var(--danger); }
 
+/* Guardada, pero es la misma foto que otra ya subida (ver fotos_huella). */
+.uploader-shell .slotCard[data-repetida][data-estado="ok"]::before { background: var(--danger); }
+.uploader-shell .slotCard[data-repetida][data-estado="ok"] { border-color: var(--danger); }
+
 /* Barra de avance: no sabemos cuánto falta (el navegador no reporta progreso
    de un POST con base64), así que se anima en bucle. Dice "sigue trabajando",
    que es la pregunta real, y no miente con un porcentaje inventado. */

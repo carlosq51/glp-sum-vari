@@ -12,7 +12,9 @@
 // =========================
 
 import { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
-import { normalizeImage, isHeicBuffer_ } from "./lib/image-optimize.js";
+import { normalizeImage, isHeicBuffer_, huellaImagen } from "./lib/image-optimize.js";
+import { registrarHuella_, fotosRepetidas_ } from "./lib/fotos-huella.js";
+import { supabaseGet_ } from "./lib/supabase.js";
 
 /** Mensaje para el técnico: lo único que arregla esto es cambiar la cámara. */
 export const MSG_FOTO_HEIC =
@@ -86,6 +88,11 @@ function batchId() {
 }
 
 async function put(key, b64OrBuffer, contentType = "image/jpeg", metadata = undefined) {
+  return (await subir_(key, b64OrBuffer, contentType, metadata)).url;
+}
+
+/** Como put, pero devuelve también lo que de verdad quedó guardado (para la huella). */
+async function subir_(key, b64OrBuffer, contentType = "image/jpeg", metadata = undefined) {
   const client = getClient();
   const raw = Buffer.isBuffer(b64OrBuffer)
     ? b64OrBuffer
@@ -120,7 +127,7 @@ async function put(key, b64OrBuffer, contentType = "image/jpeg", metadata = unde
     ContentType: finalType,
     ...(metadata ? { Metadata: metadata } : {}),
   }));
-  return r2Url(key);
+  return { url: r2Url(key), body };
 }
 
 // ─── slot maps (mirror of gas/00_config_core.js) ────────────────────────────
@@ -172,7 +179,21 @@ export async function r2UploadOne({ vin, dateStr, slot, b64, mimeType = "image/j
   // Producción marca COMPRESIÓN y SCANNER a quien subió esas fotos, no a
   // quien tenga el rol que "suele" hacerlas.
   const quien = String(email || "").trim().toLowerCase();
-  const url = await put(key, b64, mimeType, quien ? { "subido-por": quien } : undefined);
+  const { url, body } = await subir_(key, b64, mimeType, quien ? { "subido-por": quien } : undefined);
+
+  // Huella para hallar fotos repetidas (lib/fotos-huella.js). Si falla, la
+  // foto ya está guardada: solo se pierde el aviso.
+  let repetida = [];
+  try {
+    const huella = await huellaImagen(body);
+    await registrarHuella_({ clave: key, vin, slot, huella, subidoPor: quien });
+    repetida = (await fotosRepetidas_(vin))[key] || [];
+    if (repetida.length) {
+      console.log(`[R2] foto repetida ${key} (${quien || "?"}) = ${repetida.map(r => `${r.vin}/${r.slot}`).join(", ")}`);
+    }
+  } catch (e) {
+    console.warn("[R2] huella:", e.message);
+  }
 
   return {
     ok: true,
@@ -181,6 +202,7 @@ export async function r2UploadOne({ vin, dateStr, slot, b64, mimeType = "image/j
     folderKind: isCalidad ? "CALIDAD" : "REGISTRO",
     saved: { slot, key, url },
     preview: { key, url, thumbUrl: url, imgUrl: url },
+    repetida,
   };
 }
 
@@ -331,7 +353,7 @@ export async function r2UploadIncidencia({ vin, tipo, file }) {
  * getStatus — lista qué slots existen en R2 para un VIN
  * (equivalente al getStatus de Apps Script, sin crear nada)
  */
-export async function r2GetStatus({ vin, dateStr }) {
+export async function r2GetStatus({ vin, dateStr, detalle = false }) {
   if (!vin) throw new Error("Falta VIN");
   const month  = currentYYYYMM(dateStr);
   const client = getClient();
@@ -386,6 +408,10 @@ export async function r2GetStatus({ vin, dateStr }) {
 
   const hasAny = Object.values(status).some(Boolean) || Object.values(calidadStatus).some(Boolean);
 
+  // El visor de fotos (no el uploader) pide además quién subió cada una y
+  // si se repite en otro lado.
+  if (detalle) await agregarDetalle_(vin, [previews, calidadPreviews]);
+
   return {
     ok: true,
     vin,
@@ -408,6 +434,38 @@ export async function r2GetStatus({ vin, dateStr }) {
       count:  fallaCount,
     },
   };
+}
+
+/**
+ * agregarDetalle_ — a cada preview le pone `subidoPor` { email, nombre } y
+ * `repetida` (ver fotosRepetidas_). El autor sale del metadato de la foto en
+ * R2; las subidas antes de que existiera ese metadato quedan sin autor.
+ */
+async function agregarDetalle_(vin, grupos) {
+  const client = getClient();
+  const todas = grupos.flatMap(g => Object.values(g));
+  if (!todas.length) return;
+
+  const [, repetidas, usuarios] = await Promise.all([
+    Promise.all(todas.map(async (p) => {
+      try {
+        const h = await client.send(new HeadObjectCommand({ Bucket: R2_BUCKET(), Key: p.key }));
+        const email = h.Metadata?.["subido-por"];
+        if (email) p.subidoPor = { email, nombre: "" };
+      } catch { /* sin metadato */ }
+    })),
+    fotosRepetidas_(vin).catch((e) => { console.warn("[R2] repetidas:", e.message); return {}; }),
+    supabaseGet_("usuarios").catch(() => []),
+  ]);
+
+  const nombrePorEmail = {};
+  for (const u of usuarios || []) {
+    if (u?.email) nombrePorEmail[String(u.email).trim().toLowerCase()] = u.nombre || "";
+  }
+  for (const p of todas) {
+    if (p.subidoPor) p.subidoPor.nombre = nombrePorEmail[p.subidoPor.email] || "";
+    p.repetida = repetidas[p.key] || [];
+  }
 }
 
 /**

@@ -542,6 +542,17 @@ export function initUploaderUI(root, options = {}) {
         // de 4 MB del iPhone no se fue entera por los datos del técnico.
         marcarSlot(slot, "ok", `✅ Guardada · ${ahorroLegible(j.foto)}`);
         setText(outId, `✅ Guardado: ${slot} (${ahorroLegible(j.foto)})`);
+
+        // La misma foto ya estaba subida (en otro carro o en otra casilla).
+        // Se guarda igual, pero se le dice en la cara: el supervisor la verá
+        // marcada como repetida.
+        const card = tarjetaSlot(slot);
+        const r = j.repetida?.[0];
+        if (card) card.toggleAttribute("data-repetida", !!r);
+        if (r) {
+          const donde = r.mismoVin ? "este mismo carro" : `el VIN …${String(r.vin).slice(-6)}`;
+          marcarSlot(slot, "ok", `⚠️ Esta foto ya se subió en ${r.etiqueta} de ${donde}. Toma una foto nueva.`);
+        }
         return j;
       } catch (e) {
         // La foto no sirve tal como está (HEIC): reintentar daría lo mismo.
