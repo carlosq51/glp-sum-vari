@@ -129,7 +129,10 @@ async function trabajador() {
   while (sig < faltan.length) {
     const o = faltan[sig++];
     try {
-      pendientes.push(await huellaDe(o));
+      // En dos pasos: `pendientes.push(await …)` toma el arreglo ANTES del
+      // await, y si vaciar() lo cambió mientras tanto la fila se pierde.
+      const fila = await huellaDe(o);
+      pendientes.push(fila);
       hechas++;
       vaciar();
     } catch (e) {
