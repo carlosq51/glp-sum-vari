@@ -5,11 +5,13 @@
 // Las nuevas la guardan solas al subirse (r2UploadOne).
 //
 // Uso (Node 22: sharp no carga en Node 20.9):
-//   npx -y node@22 scripts/fotos-huella-backfill.js                 → DRY RUN: cuenta y muestra repetidas
-//   npx -y node@22 scripts/fotos-huella-backfill.js --apply         → además las guarda en Supabase
-//   npx -y node@22 scripts/fotos-huella-backfill.js --prefix registro/2026-10/
+//   npx -y node@22 scripts/fotos-huella-backfill.js --apply         → guarda las que falten y resume
+//   npx -y node@22 scripts/fotos-huella-backfill.js                 → solo cuenta cuántas faltan
+//   npx -y node@22 scripts/fotos-huella-backfill.js --apply --prefix registro/2026-10/
 //
-// Idempotente: la fila se identifica por la clave de R2.
+// Son ~40 000 fotos y tarda más de una hora: guarda por tandas mientras avanza
+// y salta las que ya están en la tabla. Si se corta (la red de la laptop se
+// cayó a la mitad la primera vez), se vuelve a correr y sigue donde quedó.
 // =========================
 
 import dotenv from "dotenv";
@@ -17,7 +19,7 @@ dotenv.config();
 
 import { S3Client, ListObjectsV2Command, GetObjectCommand } from "@aws-sdk/client-s3";
 import { huellaImagen } from "../lib/image-optimize.js";
-import { supabaseServiceHeaders_ } from "../lib/supabase.js";
+import { supabaseServiceHeaders_, supabaseFetchAll_ } from "../lib/supabase.js";
 import { UMBRAL_REPETIDA } from "../lib/fotos-huella.js";
 
 const APPLY = process.argv.includes("--apply");
@@ -25,6 +27,7 @@ const i = process.argv.indexOf("--prefix");
 const PREFIJOS = i !== -1 && process.argv[i + 1] ? [process.argv[i + 1]] : ["registro/", "calidad/"];
 const CONCURRENCIA = 8;
 const LOTE = 200;
+const REINTENTOS = 4;
 
 const BUCKET = process.env.R2_BUCKET || "glp-fotos";
 const client = new S3Client({
@@ -35,10 +38,34 @@ const client = new S3Client({
     secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
   },
 });
+const H = supabaseServiceHeaders_();
+if (!H) throw new Error("Falta SUPABASE_URL / SUPABASE_SERVICE_KEY");
+const SB = process.env.SUPABASE_URL;
+
+const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // registro/AAAA-MM/VIN/slot.jpg
 const CLAVE = /^(registro|calidad)\/\d{4}-\d{2}\/([^/]+)\/([a-z0-9_]+)\.jpg$/i;
 
+async function guardadas() {
+  const r = await supabaseFetchAll_(
+    `${SB}/rest/v1/fotos_huella?select=clave,vin,slot,huella,subido_por,created_at&order=clave`,
+    H, { pageSize: 1000, maxRows: 500_000 }
+  );
+  if (!r.ok) throw new Error(`fotos_huella ${r.status} ${r.error}`);
+  return r.rows;
+}
+
+async function subirLote(filas) {
+  const res = await fetch(`${SB}/rest/v1/fotos_huella?on_conflict=clave`, {
+    method: "POST",
+    headers: { ...H, Prefer: "resolution=merge-duplicates,return=minimal" },
+    body: JSON.stringify(filas),
+  });
+  if (!res.ok) throw new Error(`fotos_huella ${res.status} ${(await res.text()).slice(0, 300)}`);
+}
+
+// ── 1. Qué falta ─────────────────────────────────────────────────────────
 const objetos = [];
 for (const prefijo of PREFIJOS) {
   let token;
@@ -48,69 +75,108 @@ for (const prefijo of PREFIJOS) {
     token = r.NextContinuationToken;
   } while (token);
 }
-console.log(`${objetos.length} fotos en ${PREFIJOS.join(", ")}`);
+const yaEstan = new Set((await guardadas()).map(f => f.clave));
+const faltan = objetos.filter(o => !yaEstan.has(o.Key));
+console.log(`${objetos.length} fotos en ${PREFIJOS.join(", ")} · ya guardadas ${objetos.length - faltan.length} · faltan ${faltan.length}`);
 
-const filas = [];
-let sig = 0, fallas = 0;
-async function trabajador() {
-  while (sig < objetos.length) {
-    const o = objetos[sig++];
+if (!APPLY) {
+  console.log("Sin --apply no se calcula ni se guarda nada.");
+  process.exit(0);
+}
+
+// ── 2. Huella de las que faltan, guardando por tandas ───────────────────
+let pendientes = [];
+let hechas = 0, fallas = 0, sig = 0;
+let guardando = Promise.resolve();
+
+function vaciar(forzar = false) {
+  if (!pendientes.length || (!forzar && pendientes.length < LOTE)) return guardando;
+  const lote = pendientes;
+  pendientes = [];
+  guardando = guardando.then(() => subirLote(lote));
+  return guardando;
+}
+
+async function huellaDe(o) {
+  for (let intento = 1; ; intento++) {
     try {
-      const r = await client.send(new GetObjectCommand({ Bucket: BUCKET, Key: o.Key }));
-      const buf = Buffer.from(await r.Body.transformToByteArray());
+      // Con la red caída una descarga puede quedar colgada para siempre (la
+      // primera corrida terminó con un await que nunca se resolvió).
+      const buf = await Promise.race([
+        client.send(new GetObjectCommand({ Bucket: BUCKET, Key: o.Key }))
+          .then(async (r) => Object.assign(Buffer.from(await r.Body.transformToByteArray()), { meta: r.Metadata })),
+        esperar(60_000).then(() => { throw new Error("tiempo agotado"); }),
+      ]);
       const [, , vin, slot] = o.Key.match(CLAVE);
-      filas.push({
+      return {
         clave: o.Key,
         vin: vin.toUpperCase(),
         slot,
         huella: await huellaImagen(buf),
-        subido_por: r.Metadata?.["subido-por"] || null,
+        subido_por: buf.meta?.["subido-por"] || null,
         created_at: o.LastModified.toISOString(),
-      });
+      };
+    } catch (e) {
+      // Formato que sharp no abre (HEIC viejos): reintentar daría lo mismo.
+      const deRed = !/Input buffer|unsupported image|heif/i.test(e.message);
+      if (!deRed || intento > REINTENTOS) throw e;
+      await esperar(5000 * intento);
+    }
+  }
+}
+
+async function trabajador() {
+  while (sig < faltan.length) {
+    const o = faltan[sig++];
+    try {
+      pendientes.push(await huellaDe(o));
+      hechas++;
+      vaciar();
     } catch (e) {
       fallas++;
       console.warn("✗", o.Key, e.message);
     }
-    if ((filas.length + fallas) % 200 === 0) console.log(`  ${filas.length + fallas}/${objetos.length}`);
+    if ((hechas + fallas) % 500 === 0) console.log(`  ${hechas + fallas}/${faltan.length}`);
   }
 }
 await Promise.all(Array.from({ length: CONCURRENCIA }, trabajador));
-console.log(`huellas: ${filas.length} · fallas: ${fallas}`);
+await vaciar(true);
+console.log(`nuevas: ${hechas} · fallas: ${fallas}`);
 
-// Resumen: cuántas fotos son copia de otra anterior (misma regla que glp_fotos_repetidas).
-const dist = (a, b) => { let n = 0; for (let k = 0; k < 256; k++) if (a[k] !== b[k]) n++; return n; };
-filas.sort((a, b) => a.created_at.localeCompare(b.created_at));
+// ── 3. Resumen sobre TODO lo guardado ────────────────────────────────────
+// Cuántas fotos son copia de otra anterior (misma regla que
+// glp_fotos_repetidas). La huella pasa a 8 enteros de 32 bits: comparar
+// texto carácter por carácter era inviable con decenas de miles de fotos.
+const filas = (await guardadas()).sort((a, b) => a.created_at.localeCompare(b.created_at));
+const popcount = (v) => {
+  v -= (v >>> 1) & 0x55555555;
+  v = (v & 0x33333333) + ((v >>> 2) & 0x33333333);
+  return (((v + (v >>> 4)) & 0x0f0f0f0f) * 0x01010101) >>> 24;
+};
+const n = filas.length;
+const palabras = new Uint32Array(n * 8);
+filas.forEach((f, a) => {
+  for (let w = 0; w < 8; w++) palabras[a * 8 + w] = parseInt(f.huella.slice(w * 32, w * 32 + 32), 2) >>> 0;
+});
 const porAutor = {};
+const porMes = {};
 let copias = 0;
-for (let a = 1; a < filas.length; a++) {
+for (let a = 1; a < n; a++) {
+  const x = filas[a];
   for (let b = 0; b < a; b++) {
-    const x = filas[a], y = filas[b];
+    let d = 0;
+    for (let w = 0; w < 8 && d <= UMBRAL_REPETIDA; w++) d += popcount(palabras[a * 8 + w] ^ palabras[b * 8 + w]);
+    if (d > UMBRAL_REPETIDA) continue;
+    const y = filas[b];
     if (x.vin === y.vin && x.slot === y.slot) continue;
-    if (dist(x.huella, y.huella) <= UMBRAL_REPETIDA) {
-      copias++;
-      const q = x.subido_por || "(sin dato)";
-      porAutor[q] = (porAutor[q] || 0) + 1;
-      break;
-    }
+    copias++;
+    const q = x.subido_por || "(sin dato)";
+    porAutor[q] = (porAutor[q] || 0) + 1;
+    const mes = x.clave.split("/")[1];
+    porMes[mes] = (porMes[mes] || 0) + 1;
+    break;
   }
 }
-console.log(`fotos que repiten una anterior: ${copias}`);
+console.log(`fotos que repiten una anterior: ${copias} de ${n}`);
+console.table(Object.entries(porMes).sort().map(([mes, copias]) => ({ mes, copias })));
 console.table(Object.entries(porAutor).sort((a, b) => b[1] - a[1]).map(([quien, fotos]) => ({ quien, fotos })));
-
-if (!APPLY) {
-  console.log("DRY RUN — no se guardó nada. Usa --apply para guardar las huellas.");
-  process.exit(0);
-}
-
-const h = supabaseServiceHeaders_();
-if (!h) throw new Error("Falta SUPABASE_URL / SUPABASE_SERVICE_KEY");
-for (let k = 0; k < filas.length; k += LOTE) {
-  const res = await fetch(`${process.env.SUPABASE_URL}/rest/v1/fotos_huella?on_conflict=clave`, {
-    method: "POST",
-    headers: { ...h, Prefer: "resolution=merge-duplicates,return=minimal" },
-    body: JSON.stringify(filas.slice(k, k + LOTE)),
-  });
-  if (!res.ok) throw new Error(`fotos_huella ${res.status} ${(await res.text()).slice(0, 300)}`);
-  console.log(`  guardadas ${Math.min(k + LOTE, filas.length)}/${filas.length}`);
-}
-console.log("Listo.");
