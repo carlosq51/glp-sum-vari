@@ -616,6 +616,34 @@ button.lvKpi--tap:hover { border-top-color: var(--accent); border-right-color: v
 .lvDrill__ok   { color: var(--muted); }
 
 .lvDrill__rol { margin-left: 6px; color: var(--muted); font-size: var(--fs-2xs); }
+/* Fotos copiadas: cada copia al lado de su original (sup-live · abrirDrill_). */
+.lvCopiaFila > span:last-child { text-align: right; }
+.lvCopia__ver {
+  margin-top: 6px;
+  height: auto;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: var(--fw-bold, 700);
+  border-radius: var(--radiusSm);
+}
+.lvCopia__panel { padding: 4px 0 12px; }
+.lvCopia__panel[hidden] { display: none; }
+.lvCopia { margin-top: 10px; }
+.lvCopia__titulo { font-size: 12px; font-weight: var(--fw-extrabold); margin-bottom: 6px; }
+.lvCopia__par { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.lvCopia__par figure { margin: 0; min-width: 0; }
+.lvCopia__par img {
+  display: block; width: 100%; aspect-ratio: 3 / 4; object-fit: cover;
+  border-radius: var(--radiusSm); border: 1px solid var(--border);
+  background: var(--glass);
+}
+.lvCopia__par figure:first-child img { border-color: var(--danger); }
+.lvCopia__borrada {
+  display: flex; align-items: center; justify-content: center; aspect-ratio: 3 / 4;
+  border-radius: var(--radiusSm); border: 1px dashed var(--border);
+  color: var(--muted); font-size: 12px;
+}
+.lvCopia__par figcaption { font-size: 11px; color: var(--muted); margin-top: 4px; line-height: 1.3; overflow-wrap: anywhere; }
 .lvDrill__row--tap { cursor: pointer; }
 .lvDrill__row--tap:hover { background: var(--glass); }
 

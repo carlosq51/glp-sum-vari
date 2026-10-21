@@ -1821,18 +1821,67 @@ function abrirDrill_(cual, data, techs) {
     }
     const carros = [...porCarro.values()]
       .sort((a, b) => (b.jornada === data.fecha) - (a.jornada === data.fecha) || b.jornada.localeCompare(a.jornada));
+
+    // hh:mm en Lima de la subida. La fila dice cuándo se subió la copia; la
+    // original lleva día y hora porque suele ser de otro día.
+    const hora_ = (iso) => iso ? new Date(iso).toLocaleTimeString("es-PE",
+      { timeZone: "America/Lima", hour: "2-digit", minute: "2-digit", hour12: false }) : "";
+    const diaHora_ = (iso) => iso ? `${new Date(iso).toLocaleDateString("es-PE",
+      { timeZone: "America/Lima", day: "2-digit", month: "2-digit" })} ${hora_(iso)}` : "";
+
+    // Cada copia junto a su original, para que el supervisor lo vea con sus
+    // ojos antes de reclamar: el sistema dice "igual", la decisión es suya.
+    const comparar_ = (c) => c.fotos.map(f => `
+      <div class="lvCopia">
+        <div class="lvCopia__titulo">${escapeHtml(f.etiqueta)}</div>
+        <div class="lvCopia__par">
+          <figure>
+            ${f.url ? `<a href="${escapeHtml(f.url)}" target="_blank" rel="noopener"><img src="${escapeHtml(f.url)}" alt="" loading="lazy"></a>` : ""}
+            <figcaption><b>Copia</b> · <code>${escapeHtml(c.vin.slice(-6))}</code><br>${escapeHtml(f.quien || "sin autor")} · ${escapeHtml(diaHora_(f.at))}</figcaption>
+          </figure>
+          <figure>
+            ${f.igualUrl ? `<a href="${escapeHtml(f.igualUrl)}" target="_blank" rel="noopener"><img src="${escapeHtml(f.igualUrl)}" alt="" loading="lazy"></a>` : ""}
+            <figcaption><b>Original</b> · ${f.igualVin === c.vin ? "mismo carro" : `<code>${escapeHtml(f.igualVin.slice(-6))}</code>`} · ${escapeHtml(f.igualEtiqueta)}<br>${escapeHtml(f.igualQuien || "sin autor")} · ${escapeHtml(diaHora_(f.igualAt))}</figcaption>
+          </figure>
+        </div>
+      </div>`).join("");
+
     const html = carros.length
-      ? carros.map(c => fila(
-          `🚨 <code>${escapeHtml(c.vin)}</code> · ${escapeHtml([...c.quien].join(", ") || "sin autor")}<br>
-           <small>${c.fotos.map(f => `${escapeHtml(f.etiqueta)} = ${f.igualVin === c.vin
-             ? escapeHtml(f.igualEtiqueta) + " del mismo carro"
-             : `${escapeHtml(f.igualEtiqueta)} de <code>${escapeHtml(f.igualVin)}</code>${f.igualQuien ? ` (${escapeHtml(f.igualQuien)})` : ""}`}`).join("<br>")}</small>`,
-          escapeHtml(fmtFechaCorta_(c.jornada)))).join("")
+      ? carros.map((c, i) => `
+          <div class="lvDrill__row lvCopiaFila">
+            <span>🚨 <code>${escapeHtml(c.vin)}</code> · ${escapeHtml([...c.quien].join(", ") || "sin autor")}<br>
+              <small>${c.fotos.map(f => `${escapeHtml(f.etiqueta)} = ${f.igualVin === c.vin
+                ? escapeHtml(f.igualEtiqueta) + " del mismo carro"
+                : `${escapeHtml(f.igualEtiqueta)} de <code>${escapeHtml(f.igualVin)}</code>${f.igualQuien ? ` (${escapeHtml(f.igualQuien)})` : ""}`}`).join("<br>")}</small><br>
+              <button type="button" class="lvCopia__ver" data-ver-copia="${i}">📷 Ver fotos (${c.fotos.length})</button>
+            </span>
+            <span>${escapeHtml(fmtFechaCorta_(c.jornada))}<br><b>${escapeHtml(hora_(c.fotos[c.fotos.length - 1].at))}</b></span>
+          </div>
+          <div class="lvCopia__panel" data-panel-copia="${i}" hidden></div>`).join("")
       : vacio;
-    openDrilldown({
+    const body = openDrilldown({
       title: grupo === "parametros" ? "Fotos copiadas · parámetros" : "Fotos copiadas · soldadura",
       subtitle: `carros del mes con fotos iguales a otras subidas antes · hasta el ${fmtFechaCorta_(data.fecha)}`,
       badge: carros.length, html,
+    });
+    // Las fotos se montan al abrir el panel, no antes: con cientos de copias
+    // en el mes, cargarlas todas de entrada bajaría megas por nada.
+    body?.querySelectorAll("[data-ver-copia]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const i = Number(btn.dataset.verCopia);
+        const panel = body.querySelector(`[data-panel-copia="${i}"]`);
+        if (!panel) return;
+        if (!panel.innerHTML) {
+          panel.innerHTML = comparar_(carros[i]);
+          // Una foto que ya no está en R2 (la borraron) se dice, no se deja rota.
+          panel.querySelectorAll("img").forEach(img => img.addEventListener("error", () => {
+            img.closest("a")?.replaceWith(Object.assign(document.createElement("div"),
+              { className: "lvCopia__borrada", textContent: "Foto borrada" }));
+          }, { once: true }));
+        }
+        panel.hidden = !panel.hidden;
+        btn.textContent = panel.hidden ? `📷 Ver fotos (${carros[i].fotos.length})` : "Ocultar fotos";
+      });
     });
     return;
   }

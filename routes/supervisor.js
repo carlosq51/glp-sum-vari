@@ -772,6 +772,11 @@ async function armarLiveSupervisor_(fechaPedida = null) {
     const jornadaHoy = jornadaPeru_(INICIO_JORNADA);
     const jornadaStr = fechaPedida || jornadaHoy;
     const esHoy      = jornadaStr === jornadaHoy;
+
+    // Fotos copiadas (lib/fotos-huella.js): arranca ya y corre en paralelo con
+    // todo lo demás; se espera al final. Si la base falla, el LIVE va sin ella.
+    const fotosCopiasP = copiasDelLive_(jornadaStr)
+      .catch((e) => { console.error("[LIVE fotos copiadas]", e.message); return null; });
     /** La jornada a la que pertenece un instante cualquiera. */
     const jornadaDe_ = (ms) => (ms ? jornadaPeru_(INICIO_JORNADA, new Date(ms)) : "");
     /** "2026-09-28" + n días, en el calendario (Date.UTC normaliza mes y año). */
@@ -1318,11 +1323,8 @@ async function armarLiveSupervisor_(fechaPedida = null) {
       cfg, jornadaStr, asistencia, allUsers, metaDia,
     }).catch((e) => { console.error("[LIVE proyección]", e.message); return null; });
 
-    // 7. Fotos copiadas: % de carros con fotos que copian otra subida antes
-    // (lib/fotos-huella.js). Si la base aún no tiene la migración 009, el
-    // LIVE se pinta sin estos tiles.
-    const fotosCopias = await copiasDelLive_(jornadaStr)
-      .catch((e) => { console.error("[LIVE fotos copiadas]", e.message); return null; });
+    // 7. Fotos copiadas: % de carros con fotos que copian otra subida antes.
+    const fotosCopias = await fotosCopiasP;
 
     const duration = Date.now() - t1;
     return {

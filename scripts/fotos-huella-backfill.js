@@ -79,6 +79,22 @@ const yaEstan = new Set((await guardadas()).map(f => f.clave));
 const faltan = objetos.filter(o => !yaEstan.has(o.Key));
 console.log(`${objetos.length} fotos en ${PREFIJOS.join(", ")} · ya guardadas ${objetos.length - faltan.length} · faltan ${faltan.length}`);
 
+// Huellas de fotos que ya no están en R2 (las borraron antes de que deleteSlot
+// borrara también la huella): contarían un carro "con copia" por una foto que
+// ya no tiene.
+const enR2 = new Set(objetos.map(o => o.Key));
+const huerfanas = [...yaEstan].filter(k => PREFIJOS.some(p => k.startsWith(p)) && !enR2.has(k));
+console.log(`huellas de fotos borradas: ${huerfanas.length}`);
+if (APPLY) {
+  for (let k = 0; k < huerfanas.length; k += 80) {
+    const lista = huerfanas.slice(k, k + 80).map(c => `"${c.replace(/"/g, "")}"`).join(",");
+    const res = await fetch(`${SB}/rest/v1/fotos_huella?clave=in.(${encodeURIComponent(lista)})`, {
+      method: "DELETE", headers: { ...H, Prefer: "return=minimal" },
+    });
+    if (!res.ok) throw new Error(`borrar huérfanas ${res.status} ${(await res.text()).slice(0, 200)}`);
+  }
+}
+
 if (!APPLY) {
   console.log("Sin --apply no se calcula ni se guarda nada.");
   process.exit(0);

@@ -13,7 +13,7 @@
 
 import { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
 import { normalizeImage, isHeicBuffer_, huellaImagen } from "./lib/image-optimize.js";
-import { registrarHuella_, fotosRepetidas_, olvidarCopias_, marcarCopia_ } from "./lib/fotos-huella.js";
+import { registrarHuella_, fotosRepetidas_, olvidarCopias_, marcarCopia_, borrarHuella_ } from "./lib/fotos-huella.js";
 import { supabaseGet_ } from "./lib/supabase.js";
 
 /** Mensaje para el técnico: lo único que arregla esto es cambiar la cámara. */
@@ -522,6 +522,10 @@ export async function r2DeleteSlot({ vin, dateStr, slot }) {
     Bucket: R2_BUCKET(),
     Key:    key,
   }));
+
+  // Sin la foto, su huella no tiene que seguir contando (ver fotos-huella).
+  await borrarHuella_(key).catch((e) => console.warn("[R2] borrar huella:", e.message));
+  olvidarCopias_(vin);
 
   return { ok: true, vin, slot, deleted: key };
 }
