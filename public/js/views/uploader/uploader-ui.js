@@ -967,17 +967,43 @@ export function initUploaderUI(root, options = {}) {
     }
 
     /**
-     * confirmarPisar — si la casilla ya tiene una foto en el servidor, pregunta
-     * antes de reemplazarla o borrarla. R2 no guarda la anterior: un toque de
-     * más (o el compañero de dupla subiendo la misma casilla al día siguiente)
-     * y la foto de ayer se perdía sin aviso.
+     * confirmarPisar — si la casilla ya tiene una foto en el servidor, el
+     * primer toque solo arma el botón ("¿Reemplazar? Toca otra vez") y el
+     * segundo lo hace. R2 no guarda la anterior: un toque de más (o el
+     * compañero de dupla subiendo la misma casilla al día siguiente) y la foto
+     * de ayer se perdía sin aviso.
+     *
+     * No es window.confirm: en algunos celulares el cuadro no aparece y
+     * devuelve "no" solo (el técnico tocaba 🗑 o 📷 y no pasaba nada), y
+     * cuando sí aparece, abrir la galería después ya no cuenta como toque y
+     * Chrome no la deja abrir. El segundo toque es un toque de verdad.
      */
-    function confirmarPisar(slot, accion) {
-      if (tarjetaSlot(slot)?.getAttribute("data-guardada") !== "1") return true;
-      const nombre = slotLabels[slot] || slot;
-      return window.confirm(accion === "borrar"
-        ? `¿Borrar la foto "${nombre}" ya guardada?\n\nNo se puede recuperar.`
-        : `"${nombre}" ya tiene una foto guardada.\n\n¿Reemplazarla por una nueva? La anterior se pierde.`);
+    const ARMADO_MS = 4000;
+
+    function desarmar(btn) {
+      clearTimeout(btn._armado);
+      btn.removeAttribute("data-armado");
+      const et = btn.querySelector("span:last-child");
+      if (et && btn._etiqueta != null) et.textContent = btn._etiqueta;
+    }
+
+    function confirmarPisar(btn, slot, accion) {
+      const card = tarjetaSlot(slot);
+      if (card?.getAttribute("data-guardada") !== "1") return true;
+      if (btn.getAttribute("data-armado") === "1") {
+        desarmar(btn);
+        return true;
+      }
+
+      card.querySelectorAll("button[data-armado]").forEach(desarmar);
+      const et = btn.querySelector("span:last-child");
+      if (et) {
+        btn._etiqueta = et.textContent;
+        et.textContent = accion === "borrar" ? "¿Borrar? Toca otra vez" : "¿Reemplazar? Toca otra vez";
+      }
+      btn.setAttribute("data-armado", "1");
+      btn._armado = setTimeout(() => desarmar(btn), ARMADO_MS);
+      return false;
     }
 
     shell.addEventListener("click", (ev) => {
@@ -987,8 +1013,8 @@ export function initUploaderUI(root, options = {}) {
       const slot = btn.getAttribute("data-slot");
       if (!slot || !PANTALLA_DE_SLOT[slot]) return;
 
-      if (btn.getAttribute("data-pick") && !confirmarPisar(slot, "reemplazar")) return;
-      if (btn.getAttribute("data-clear") === "1" && !confirmarPisar(slot, "borrar")) return;
+      if (btn.getAttribute("data-pick") && !confirmarPisar(btn, slot, "reemplazar")) return;
+      if (btn.getAttribute("data-clear") === "1" && !confirmarPisar(btn, slot, "borrar")) return;
 
       // 📷 abre la cámara dentro de la app: con la del teléfono, Android
       // mataba Chrome por RAM y el técnico volvía al menú sin la foto.

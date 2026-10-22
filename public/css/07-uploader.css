@@ -533,3 +533,11 @@
   display: grid;
   place-items: center;
 }
+/* Primer toque sobre una casilla ya guardada (ver confirmarPisar): el botón
+   pide un segundo toque, con etiqueta aunque la tarjeta la esconda. */
+.uploader-shell .btnUp[data-armado="1"] {
+  border-color: var(--warn);
+  color: var(--warn);
+  background: linear-gradient(160deg, var(--warnBg) 0%, var(--surface) 100%);
+}
+.uploader-shell .btnUp[data-armado="1"] span:last-child { display: inline; }
