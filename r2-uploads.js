@@ -13,7 +13,7 @@
 
 import { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
 import { normalizeImage, isHeicBuffer_, huellaImagen } from "./lib/image-optimize.js";
-import { registrarHuella_, fotosRepetidas_, olvidarCopias_, marcarCopia_, borrarHuella_ } from "./lib/fotos-huella.js";
+import { registrarHuella_, fotosRepetidas_, olvidarCopias_, marcarCopia_, borrarHuella_, fotosDelVin_ } from "./lib/fotos-huella.js";
 import { supabaseGet_ } from "./lib/supabase.js";
 
 /** Mensaje para el técnico: lo único que arregla esto es cambiar la cámara. */
@@ -72,6 +72,55 @@ function currentYYYYMM(dateStr) {
   if (dateStr && dateStr.length >= 7) return dateStr.substring(0, 7);
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/** El mes anterior a un "YYYY-MM". */
+function mesAnterior_(mes) {
+  const [a, m] = mes.split("-").map(Number);
+  return m === 1 ? `${a - 1}-12` : `${a}-${String(m - 1).padStart(2, "0")}`;
+}
+
+/**
+ * carpetaDelVin_ — en qué carpeta de mes viven las fotos de un carro.
+ *
+ * La ruta lleva el mes (registro/AAAA-MM/VIN/…), y antes se sacaba de la
+ * fecha del día. Un carro que empezó el 30 y siguió el 1 quedaba partido: el
+ * uploader del día 1 miraba la carpeta nueva, no veía las fotos de ayer y el
+ * técnico las daba por borradas. Ahora la carpeta es del carro: si el VIN ya
+ * tiene fotos, se sigue usando su mes; solo un carro nuevo estrena el mes de
+ * la fecha.
+ *
+ * El índice es fotos_huella (cada foto de r2UploadOne deja ahí su clave). Si
+ * no responde, se cae a lo de antes: el mes de la fecha y el anterior.
+ *
+ * Devuelve { meses, mesDe(slot) }: `meses` son las carpetas donde mirar y
+ * `mesDe` dónde subir o borrar esa casilla — donde ya está, para reemplazarla
+ * y no dejar dos; si no está, en la carpeta más nueva del carro.
+ */
+async function carpetaDelVin_(vin, dateStr) {
+  const actual = currentYYYYMM(dateStr);
+  let filas = [];
+  try {
+    filas = await fotosDelVin_(vin);
+  } catch (e) {
+    console.warn("[R2] carpeta del VIN:", e.message);
+  }
+
+  const meses = new Set([actual, mesAnterior_(actual)]);
+  const vigente = {};   // slot → { mes, at } de su foto más nueva
+  let ultimo = "";
+  for (const f of filas || []) {
+    const mes = String(f.clave || "").split("/")[1] || "";
+    if (!/^\d{4}-\d{2}$/.test(mes)) continue;
+    meses.add(mes);
+    if (mes > ultimo) ultimo = mes;
+    if (!vigente[f.slot] || f.created_at > vigente[f.slot].at) vigente[f.slot] = { mes, at: f.created_at };
+  }
+
+  return {
+    meses: [...meses],
+    mesDe: (slot) => vigente[slot]?.mes || ultimo || actual,
+  };
 }
 
 function batchId() {
@@ -162,6 +211,7 @@ const CALIDAD_SLOT_NAMES = {
  * uploadOne — 1 foto a REGISTRO o CALIDAD (según slot)
  * Ruta R2: registro/{YYYY-MM}/{VIN}/{slot}.jpg
  *          calidad/{YYYY-MM}/{VIN}/{slot}.jpg
+ * El mes es el de la carpeta del carro (carpetaDelVin_), no el del día.
  */
 export async function r2UploadOne({ vin, dateStr, slot, b64, mimeType = "image/jpeg", email = "" }) {
   if (!vin || !slot || !b64) throw new Error("Faltan parámetros: vin, slot, b64");
@@ -170,7 +220,7 @@ export async function r2UploadOne({ vin, dateStr, slot, b64, mimeType = "image/j
   const isRegistro = !!SLOT_NAMES[slot];
   if (!isCalidad && !isRegistro) throw new Error(`Slot desconocido: ${slot}`);
 
-  const month    = currentYYYYMM(dateStr);
+  const month    = (await carpetaDelVin_(vin, dateStr)).mesDe(slot);
   const fileName = isCalidad ? CALIDAD_SLOT_NAMES[slot] : SLOT_NAMES[slot];
   const category = isCalidad ? "calidad" : "registro";
   const key      = `${category}/${month}/${vin}/${fileName}`;
@@ -357,30 +407,43 @@ export async function r2UploadIncidencia({ vin, tipo, file }) {
 /**
  * getStatus — lista qué slots existen en R2 para un VIN
  * (equivalente al getStatus de Apps Script, sin crear nada)
+ * Mira todas las carpetas de mes del carro: si una casilla está en dos, gana
+ * la foto más nueva.
  */
 export async function r2GetStatus({ vin, dateStr, detalle = false }) {
   if (!vin) throw new Error("Falta VIN");
-  const month  = currentYYYYMM(dateStr);
-  const client = getClient();
+  const carpeta = await carpetaDelVin_(vin, dateStr);
+  const month   = carpeta.mesDe("");
+  const client  = getClient();
 
-  const [regRes, calRes, falRes] = await Promise.all([
-    client.send(new ListObjectsV2Command({ Bucket: R2_BUCKET(), Prefix: `registro/${month}/${vin}/` }))
-      .catch(() => ({ Contents: [] })),
-    client.send(new ListObjectsV2Command({ Bucket: R2_BUCKET(), Prefix: `calidad/${month}/${vin}/` }))
-      .catch(() => ({ Contents: [] })),
-    client.send(new ListObjectsV2Command({ Bucket: R2_BUCKET(), Prefix: `fallas/${month}/${vin}/` }))
-      .catch(() => ({ Contents: [] })),
+  const listar = (cat) => Promise.all(carpeta.meses.map(mes =>
+    client.send(new ListObjectsV2Command({ Bucket: R2_BUCKET(), Prefix: `${cat}/${mes}/${vin}/` }))
+      .then(r => r.Contents || [])
+      .catch(() => [])
+  )).then(listas => listas.flat());
+
+  const [regObjs, calObjs, falObjs] = await Promise.all([
+    listar("registro"), listar("calidad"), listar("fallas"),
   ]);
+
+  /** nombre de archivo → clave de su foto más nueva */
+  const porNombre = (objs) => {
+    const out = {};
+    const t = {};
+    for (const obj of objs) {
+      const nombre = obj.Key.split("/").pop();
+      const ts = obj.LastModified?.getTime?.() || 0;
+      if (!out[nombre] || ts > t[nombre]) { out[nombre] = obj.Key; t[nombre] = ts; }
+    }
+    return out;
+  };
 
   // ── REGISTRO ─────────────────────────────────────────────────────────────
   const status   = {};
   const previews = {};
   Object.keys(SLOT_NAMES).forEach(s => { status[s] = false; });
 
-  const regByName = {};
-  for (const obj of (regRes.Contents || [])) {
-    regByName[obj.Key.split("/").pop()] = obj.Key;
-  }
+  const regByName = porNombre(regObjs);
   for (const slot of Object.keys(SLOT_NAMES)) {
     const name = SLOT_NAMES[slot];
     if (regByName[name]) {
@@ -395,10 +458,7 @@ export async function r2GetStatus({ vin, dateStr, detalle = false }) {
   const calidadPreviews = {};
   Object.keys(CALIDAD_SLOT_NAMES).forEach(s => { calidadStatus[s] = false; });
 
-  const calByName = {};
-  for (const obj of (calRes.Contents || [])) {
-    calByName[obj.Key.split("/").pop()] = obj.Key;
-  }
+  const calByName = porNombre(calObjs);
   for (const slot of Object.keys(CALIDAD_SLOT_NAMES)) {
     const name = CALIDAD_SLOT_NAMES[slot];
     if (calByName[name]) {
@@ -409,7 +469,7 @@ export async function r2GetStatus({ vin, dateStr, detalle = false }) {
   }
 
   // ── FALLAS ────────────────────────────────────────────────────────────────
-  const fallaCount = (falRes.Contents || []).filter(o => o.Key.endsWith(".jpg")).length;
+  const fallaCount = falObjs.filter(o => o.Key.endsWith(".jpg")).length;
 
   const hasAny = Object.values(status).some(Boolean) || Object.values(calidadStatus).some(Boolean);
 
@@ -483,7 +543,8 @@ export async function r2AutoresRegistro({ vin, meses = [], slots = [] }) {
   if (!vin || !slots.length) return {};
   const client = getClient();
   const autores = {};
-  const unicos = [...new Set(meses.filter(Boolean).map(m => currentYYYYMM(m)))];
+  const carpeta = await carpetaDelVin_(vin);
+  const unicos = [...new Set([...meses.filter(Boolean).map(m => currentYYYYMM(m)), ...carpeta.meses])];
 
   await Promise.all(slots.filter(s => SLOT_NAMES[s]).flatMap(slot =>
     unicos.map(async (mes) => {
@@ -513,7 +574,7 @@ export async function r2DeleteSlot({ vin, dateStr, slot }) {
   const isRegistro = !!SLOT_NAMES[slot];
   if (!isCalidad && !isRegistro) throw new Error(`Slot desconocido: ${slot}`);
 
-  const month    = currentYYYYMM(dateStr);
+  const month    = (await carpetaDelVin_(vin, dateStr)).mesDe(slot);
   const fileName = isCalidad ? CALIDAD_SLOT_NAMES[slot] : SLOT_NAMES[slot];
   const category = isCalidad ? "calidad" : "registro";
   const key      = `${category}/${month}/${vin}/${fileName}`;

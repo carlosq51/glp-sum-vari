@@ -10,7 +10,7 @@ import {
 } from "../lib/supabase.js";
 import { addServerTiming_ } from "../lib/timing.js";
 import { r2GetStatus } from "../r2-uploads.js";
-import { bloqueosDeFotos, fusionarStatus } from "../lib/fin-prerequisites.js";
+import { bloqueosDeFotos } from "../lib/fin-prerequisites.js";
 import { pendingSuggestions_ } from "../lib/ml-state.js";
 import { emitEvent_ } from "../lib/events.js";
 import { getConfig_ } from "../lib/config.js";
@@ -1285,23 +1285,18 @@ router.post("/api/fin-prerequisites", async (req, res) => {
     if (vin) {
       // Usar siempre hora Lima para evitar desfase UTC vs Peru (bug al finalizar después de 7 PM)
       const limaToday = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Lima" }).format(new Date());
-      // Mes anterior como fallback: trabajos iniciados el último día del mes previo
-      const prevMonthDate = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Lima" }));
-      prevMonthDate.setDate(0); // día 0 = último día del mes anterior
-      const limaPrev = `${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth() + 1).padStart(2, "0")}-${String(prevMonthDate.getDate()).padStart(2, "0")}`;
 
       try {
-        const [r2Cur, r2Prev] = await Promise.all([
-          r2GetStatus({ vin, dateStr: limaToday }),
-          r2GetStatus({ vin, dateStr: limaPrev }),
-        ]);
+        // r2GetStatus ya mira todas las carpetas de mes del carro (también el
+        // mes anterior), así que un carro que cruzó de mes sale completo.
+        const r2 = await r2GetStatus({ vin, dateStr: limaToday });
 
         // Qué falta lo decide lib/fin-prerequisites.js. Aquí solo se consigue
         // el estado; la regla vive aparte porque es la parte que cambia y la
         // única que se puede probar sin R2 delante.
         const fotos = bloqueosDeFotos({
           rol: rolUp,
-          status: fusionarStatus(r2Cur.status, r2Prev.status),
+          status: r2.status,
           esUltimo,
         });
         blockers.push(...fotos.bloqueos);

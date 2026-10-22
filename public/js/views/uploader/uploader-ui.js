@@ -244,6 +244,7 @@ export function initUploaderUI(root, options = {}) {
     if (!file) {
       miniatura(box, null, { vacio: "Sin foto" });
       marcarSlot(slot, null, "Ningún archivo seleccionado.");
+      tarjetaSlot(slot)?.removeAttribute("data-guardada");
       return;
     }
 
@@ -259,6 +260,10 @@ export function initUploaderUI(root, options = {}) {
     const box = $(`${slot}_previewBox`);
     const meta = $(`${slot}_meta`);
     if (!box || !meta || !p) return;
+
+    // Que ya hay una en el servidor importa para no pisarla sin querer (ver
+    // confirmarPisar).
+    tarjetaSlot(slot)?.setAttribute("data-guardada", "1");
 
     const src1 = p.thumbUrl || "";
     const src2 = p.imgUrl || "";
@@ -951,6 +956,7 @@ export function initUploaderUI(root, options = {}) {
 
       const j = await uploadOneClient(slot, file, ctx.outId, vinDe(slot), fechaDe(slot));
       if (j && j.ok) {
+        tarjetaSlot(slot)?.setAttribute("data-guardada", "1");
         const cam = $(`${slot}_cam`);
         const fil = $(`${slot}_file`);
         if (cam) cam.value = "";
@@ -960,12 +966,29 @@ export function initUploaderUI(root, options = {}) {
       return j;
     }
 
+    /**
+     * confirmarPisar — si la casilla ya tiene una foto en el servidor, pregunta
+     * antes de reemplazarla o borrarla. R2 no guarda la anterior: un toque de
+     * más (o el compañero de dupla subiendo la misma casilla al día siguiente)
+     * y la foto de ayer se perdía sin aviso.
+     */
+    function confirmarPisar(slot, accion) {
+      if (tarjetaSlot(slot)?.getAttribute("data-guardada") !== "1") return true;
+      const nombre = slotLabels[slot] || slot;
+      return window.confirm(accion === "borrar"
+        ? `¿Borrar la foto "${nombre}" ya guardada?\n\nNo se puede recuperar.`
+        : `"${nombre}" ya tiene una foto guardada.\n\n¿Reemplazarla por una nueva? La anterior se pierde.`);
+    }
+
     shell.addEventListener("click", (ev) => {
       const btn = ev.target.closest("button");
       if (!btn) return;
 
       const slot = btn.getAttribute("data-slot");
       if (!slot || !PANTALLA_DE_SLOT[slot]) return;
+
+      if (btn.getAttribute("data-pick") && !confirmarPisar(slot, "reemplazar")) return;
+      if (btn.getAttribute("data-clear") === "1" && !confirmarPisar(slot, "borrar")) return;
 
       // 📷 abre la cámara dentro de la app: con la del teléfono, Android
       // mataba Chrome por RAM y el técnico volvía al menú sin la foto.
