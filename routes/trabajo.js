@@ -13,6 +13,7 @@ import { r2GetStatus } from "../r2-uploads.js";
 import { bloqueosDeFotos } from "../lib/fin-prerequisites.js";
 import { pendingSuggestions_ } from "../lib/ml-state.js";
 import { emitEvent_ } from "../lib/events.js";
+import { avisarCarroListo_ } from "../lib/aviso-listos.js";
 import { getConfig_ } from "../lib/config.js";
 import {
   esOtDeUnSoloRol_, estadoGeneralDeAsignacion_, estadoGeneralDeConversion_, inicioDiaPeruISO_,
@@ -918,6 +919,8 @@ router.post("/api/evento", async (req, res) => {
           woPatch.fecha_sin_calidad = new Date().toISOString();
         }
         await supabasePatch_("work_orders", { id: workOrderId }, woPatch);
+        // El carro se puso verde en el mapa: aviso a quien lo mueve.
+        if (estadoGeneral === "FINALIZADO" && accion === "FIN") avisarCarroListo_(vin);
         console.log(`[EVENTO] estado_general actualizado: ${estadoGeneral}`);
       } catch (err) {
         console.warn("[EVENTO] No se pudo actualizar estado_general:", err.message);

@@ -14,6 +14,7 @@ import { icon } from "../../core/icons.js";
 import { initZonasMapa, promptZonaForVin } from "../zonas/zonas-mapa.js";
 import { startPoll, stopPoll } from "../../core/poll.js";
 import { exportCsv_ } from "../../core/csv.js";
+import { requestNotifPermission } from "../../core/push-client.js";
 
 // VINs del panel salida que aún no tienen OT según el último render
 let _vinsSinOT_ = new Set();
@@ -1491,6 +1492,11 @@ function stopPoll_() {
 // ─── Public API ───────────────────────────────────────────────────────
 
 export function init() {
+  // Push nativo: el movilizador recibe "carro listo para salida" cuando un
+  // carro del mapa se pone verde (ver lib/aviso-listos.js).
+  const email = String(CORE.state.currentProfile?.email || document.getElementById("email")?.value || "").trim().toLowerCase();
+  if (email) requestNotifPermission(email);
+
   document.getElementById("btnMovRefresh")?.addEventListener("click", () => {
     refreshAll_({ fresh: true }).catch(() => {});
   });
