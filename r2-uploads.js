@@ -53,6 +53,21 @@ export function r2Url(key) {
   return `${pub}/${key}`;
 }
 
+/**
+ * vistaPrevia_ — las URLs que pinta el celular, con la hora de la foto.
+ *
+ * Reemplazar una casilla deja la MISMA clave en R2, así que la URL no cambiaba
+ * y el navegador del técnico seguía mostrando la foto vieja de su caché (en
+ * otro celular, sin caché, salía la nueva). Con `?v=<hora>` cada versión de la
+ * foto tiene su propia URL. `url` queda limpia: es la que se guarda y se
+ * compara en otras partes.
+ */
+function vistaPrevia_(key, ts) {
+  const url = r2Url(key);
+  const ver = ts ? `${url}?v=${ts}` : url;
+  return { key, url, thumbUrl: ver, imgUrl: ver };
+}
+
 /** Si foto_file_id contiene "/" es una clave R2, sino es un Drive file ID (legacy) */
 export function photoUrls(fotoFileId) {
   if (!fotoFileId) return { url: "", thumbUrl: "", imgUrl: "" };
@@ -256,7 +271,7 @@ export async function r2UploadOne({ vin, dateStr, slot, b64, mimeType = "image/j
     slot,
     folderKind: isCalidad ? "CALIDAD" : "REGISTRO",
     saved: { slot, key, url },
-    preview: { key, url, thumbUrl: url, imgUrl: url },
+    preview: vistaPrevia_(key, Date.now()),
     repetida,
   };
 }
@@ -426,14 +441,13 @@ export async function r2GetStatus({ vin, dateStr, detalle = false }) {
     listar("registro"), listar("calidad"), listar("fallas"),
   ]);
 
-  /** nombre de archivo → clave de su foto más nueva */
+  /** nombre de archivo → { key, ts } de su foto más nueva */
   const porNombre = (objs) => {
     const out = {};
-    const t = {};
     for (const obj of objs) {
       const nombre = obj.Key.split("/").pop();
       const ts = obj.LastModified?.getTime?.() || 0;
-      if (!out[nombre] || ts > t[nombre]) { out[nombre] = obj.Key; t[nombre] = ts; }
+      if (!out[nombre] || ts > out[nombre].ts) out[nombre] = { key: obj.Key, ts };
     }
     return out;
   };
@@ -448,8 +462,7 @@ export async function r2GetStatus({ vin, dateStr, detalle = false }) {
     const name = SLOT_NAMES[slot];
     if (regByName[name]) {
       status[slot] = true;
-      const url = r2Url(regByName[name]);
-      previews[slot] = { key: regByName[name], url, thumbUrl: url, imgUrl: url };
+      previews[slot] = vistaPrevia_(regByName[name].key, regByName[name].ts);
     }
   }
 
@@ -463,8 +476,7 @@ export async function r2GetStatus({ vin, dateStr, detalle = false }) {
     const name = CALIDAD_SLOT_NAMES[slot];
     if (calByName[name]) {
       calidadStatus[slot] = true;
-      const url = r2Url(calByName[name]);
-      calidadPreviews[slot] = { key: calByName[name], url, thumbUrl: url, imgUrl: url };
+      calidadPreviews[slot] = vistaPrevia_(calByName[name].key, calByName[name].ts);
     }
   }
 
