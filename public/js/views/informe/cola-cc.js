@@ -7,7 +7,7 @@
 // al cerrarse el diálogo de impresión quedan marcadas como impresas. Para
 // volver a sacar una ya impresa, se busca por VIN.
 //
-// Las hojas se imprimen en una pestaña aparte con la página que arma el servidor
+// Las hojas se imprimen en esta misma pestaña con la página que arma el servidor
 // (/api/hojas-calidad/hojas): así el papel no hereda nada de la app.
 // =========================
 
@@ -125,20 +125,17 @@ async function buscar_(vin) {
 }
 
 /**
- * Abre las hojas en una pestaña nueva que lanza sola el diálogo de
- * impresión y, al cerrarlo, las marca como impresas y se cierra (ver
- * routes/hojas-calidad.js). Antes se imprimían desde un iframe oculto y el
- * papel salía en blanco. window.open va sin await delante: si no, el
- * navegador ya no lo cuenta como clic y bloquea la ventana.
+ * Lleva esta misma pestaña a las hojas: ahí se abre sola el diálogo de
+ * impresión y, al cerrarlo, quedan marcadas como impresas y se vuelve aquí
+ * (ver routes/hojas-calidad.js). No va en una pestaña nueva porque el
+ * navegador la bloquea como ventana emergente, ni en un iframe oculto
+ * porque así el papel salía en blanco.
  */
 function imprimir_(ids) {
   if (!ids.length) return;
-  const url = `/api/hojas-calidad/hojas?imprimir=1&ids=${ids.map(encodeURIComponent).join(",")}&email=${encodeURIComponent(email_())}`;
-  const w = window.open(url, "_blank");
-  aviso_ = w
-    ? `Se abrieron ${ids.length} hoja${ids.length === 1 ? "" : "s"} para imprimir. Al cerrar el diálogo quedan marcadas como impresas; si alguna no salió, búscala por VIN.`
-    : "El navegador bloqueó la ventana de impresión. Permite las ventanas emergentes de esta página y vuelve a pulsar.";
-  pintar_();
+  const volver = location.pathname + location.search;
+  location.href = `/api/hojas-calidad/hojas?imprimir=1&ids=${ids.map(encodeURIComponent).join(",")}`
+    + `&email=${encodeURIComponent(email_())}&volver=${encodeURIComponent(volver)}`;
 }
 
 async function anular_(id) {
