@@ -109,11 +109,6 @@
 /* La nota de la bujía se sale de su celda hasta la casilla, como en el Excel. */
 .ccTabla td.ccSinIzq { border-left: 0; vertical-align: middle; overflow: visible; }
 .ccCaja { background: #fff; }
-/* Filas que en ese modelo normalmente no se marcan (X5: emulador). Fondo
-   rojo claro y letra roja oscura: en una impresora a color se ve rojo, y en
-   una blanco y negro sigue saliendo como una franja gris que se distingue. */
-.ccTabla td.ccRoja, .ccTabla td.ccOk.ccRoja { background: #ffc7ce; color: #9c0006; }
-
 /* Valores de parámetros que no son del modelo: rayados, como a mano. */
 .ccRaya { text-decoration: line-through; text-decoration-thickness: 1px; }
 .ccTabla td.ccOk {

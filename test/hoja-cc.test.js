@@ -15,7 +15,7 @@ describe("modeloCc_", () => {
     expect(modeloCc_(normalizeModelo_("JETOUR X70 1.5T DELUXE"))).toBe(CC_MODELOS.X70);
   });
   it("devuelve null para un modelo sin hoja", () => {
-    expect(modeloCc_(normalizeModelo_("KYC NEW V7"))).toBeNull();
+    expect(modeloCc_(normalizeModelo_("SEAT ARONA"))).toBeNull();
     expect(modeloCc_(null)).toBeNull();
   });
 });
@@ -97,7 +97,33 @@ describe("hojas KYC", () => {
     const casillas = [...hojaCcHtml({ cc: CC_MODELOS.X5 }).matchAll(/<td class="ccOk[^"]*">([^<]*)<\/td>/g)].map(m => m[1]);
     const porNumero = Object.fromEntries(CC_FILAS.filter(f => f.n).map((f, i) => [f.n, casillas[i]]));
     expect([porNumero[40], porNumero[41], porNumero[38], porNumero[55]]).toEqual(["ok", "ok", "-", "-"]);
-    expect(hojaCcHtml({ cc: CC_MODELOS.X5 }).match(/class="ccTxt ccRoja"/g)).toHaveLength(2);
-    expect(hojaCcHtml({ cc: CC_MODELOS.X70 })).not.toContain("ccRoja");
+  });
+});
+
+describe("hojas KYC V7 y Volkswagen", () => {
+  const rayas = (cc) => [...hojaCcHtml({ cc }).matchAll(/<s class="ccRaya">([^<]*)<\/s>/g)].map(m => m[1].trim());
+  const marcas = (cc) => {
+    const casillas = [...hojaCcHtml({ cc }).matchAll(/<td class="ccOk[^"]*">([^<]*)<\/td>/g)].map(m => m[1]);
+    return Object.fromEntries(CC_FILAS.filter(f => f.n).map((f, i) => [f.n, casillas[i]]));
+  };
+
+  it("se encuentran por su canónico", () => {
+    expect(modeloCc_(normalizeModelo_("KYC NEW V7"))).toBe(CC_MODELOS.V7);
+    expect(modeloCc_(normalizeModelo_("VW POLO TRACK"))).toBe(CC_MODELOS.POLO);
+    expect(modeloCc_(normalizeModelo_("TERA COMFORTLINE"))).toBe(CC_MODELOS.TERA);
+  });
+
+  it("V7 deja V7 y raya V5 V3 y X70; 22, 38 y 55 con guion", () => {
+    expect(rayas(CC_MODELOS.V7)).toEqual(["(12.5,11.5,11.5,12.5) V5 V3", "( 13,11,11,13 ) X70", "1.25bar                       V5 V3", "1.25bar             X70"]);
+    const m = marcas(CC_MODELOS.V7);
+    expect([m[22], m[38], m[55], m[40], m[41]]).toEqual(["-", "-", "-", "ok", "ok"]);
+  });
+
+  it("Polo y Tera rayan las tres familias; 22 con guion", () => {
+    for (const cc of [CC_MODELOS.POLO, CC_MODELOS.TERA]) {
+      expect(rayas(cc)).toHaveLength(6);
+      const m = marcas(cc);
+      expect([m[22], m[38], m[55], m[40], m[41]]).toEqual(["-", "", "", "ok", "ok"]);
+    }
   });
 });

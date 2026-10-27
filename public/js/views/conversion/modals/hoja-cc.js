@@ -47,17 +47,22 @@ function cabecera_(modelo, pendiente) {
     ${pendiente ? `<div class="small muted">Ya la pediste y sigue en la oficina sin imprimir. Si cambias algo, se corrige esa misma.</div>` : ""}`;
 }
 
-/** Una casilla. `marcada` = sale "ok". */
+/**
+ * Una casilla. `marcada` = sale "ok". Los puntos que el modelo no lleva
+ * ("-") van en rojo: normalmente no se marcan, y así se ven de un vistazo.
+ */
 function casilla_(f, marcada, sinMarcar) {
+  const noLleva = sinMarcar === "-";
   return `
-    <label class="iotCk">
+    <label class="iotCk${noLleva ? " is-noLleva" : ""}">
       <input type="checkbox" data-hcc-punto="${f.n}"${marcada ? " checked" : ""}>
-      <span><b>${f.n}</b> ${escapeHtml(f.t.trim())}${sinMarcar === "x" || sinMarcar === "-" ? ` <small class="muted">(sin marcar: ${sinMarcar})</small>` : ""}</span>
+      <span><b>${f.n}</b> ${escapeHtml(f.t.trim())}${noLleva ? ` <small>(este modelo no lo lleva: sale "-")</small>` : ""}</span>
     </label>`;
 }
 
 function pintarPuntos_(cc, previas = {}) {
-  const puntos = CC_FILAS.filter(f => f.n);
+  // Los "x" (sensores de oxígeno) no se tocan nunca: no se enseñan.
+  const puntos = CC_FILAS.filter(f => f.n && marcaModelo_(cc, f.n) !== "x");
   const valor = (n) => previas[n] ?? marcaModelo_(cc, n);
   // Lo que el modelo no da por hecho: es lo que hay que revisar.
   const revisar = puntos.filter(f => marcaModelo_(cc, f.n) !== "ok");

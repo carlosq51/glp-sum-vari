@@ -119,13 +119,18 @@ export const CC_FILAS = [
 
 // Lo que cambia de un modelo a otro: título, cómo se escribe el carro y
 // qué marca lleva cada punto. Todo punto va "ok" salvo lo que diga `marcas`
-// ("" = en blanco). `parametros` es la familia cuyos valores valen en las
-// filas 40-41 ("x70", "v5v3", o null si no vale ninguna): las demás salen
-// rayadas, y la casilla va con ok. La clave es el modelo de normalizeModelo_
-// sin la marca.
+// ("" = en blanco, "x" = fija, "-" = ese modelo no lo lleva). `parametros`
+// es la familia cuyos valores valen en las filas 40-41 ("v7", "v5v3",
+// "x70", o null si no vale ninguna): las demás salen rayadas, y la casilla
+// va con ok. La clave es el modelo de normalizeModelo_ sin la marca.
+//
+// Los "-" son puntos que ese modelo normalmente no lleva: en el modal del
+// inspector salen en rojo (ver views/conversion/modals/hoja-cc.js); en el
+// papel, solo el guion. Los "x" no salen en el modal: siempre van así.
 //
 // Un carro de un modelo que no esté aquí no se puede pedir (ver modeloCc_).
 const MARCAS_BASE = { 22: "", 38: "", 50: "x", 51: "x", 53: "", 55: "", 68: "" };
+const sinLlevar_ = (...ns) => ({ ...MARCAS_BASE, ...Object.fromEntries(ns.map(n => [n, "-"])) });
 
 export const CC_MODELOS = {
   X70: {
@@ -138,14 +143,14 @@ export const CC_MODELOS = {
   // V3 y V5: como el X70, pero valen los parámetros de V5 V3.
   V3: { titulo: "CONTROL FINAL -KYC V3", marca: "KYC", modelo: "V3", parametros: "v5v3", marcas: MARCAS_BASE },
   V5: { titulo: "CONTROL FINAL -KYC V5", marca: "KYC", modelo: "V5", parametros: "v5v3", marcas: MARCAS_BASE },
-  // X5: ninguna de las tres familias de parámetros es la suya, se rayan
-  // todas. No lleva emulador: 38 y 55 van con "-" y la fila en rojo
-  // (`rojas`), para que se vea que esas normalmente no se marcan.
-  X5: {
-    titulo: "CONTROL FINAL -KYC X5", marca: "KYC", modelo: "X5", parametros: null,
-    marcas: { ...MARCAS_BASE, 38: "-", 55: "-" },
-    rojas: [38, 55],
-  },
+  // V7: valen los parámetros de V7. No lleva conexiones "T" ni emulador.
+  V7: { titulo: "CONTROL FINAL -KYC V7", marca: "KYC", modelo: "V7", parametros: "v7", marcas: sinLlevar_(22, 38, 55) },
+  // X5: ninguna familia de parámetros es la suya, se rayan las tres. No
+  // lleva emulador.
+  X5: { titulo: "CONTROL FINAL -KYC X5", marca: "KYC", modelo: "X5", parametros: null, marcas: sinLlevar_(38, 55) },
+  // Volkswagen: se rayan las tres familias. No lleva conexiones "T".
+  POLO: { titulo: "CONTROL FINAL -VOLKSWAGEN POLO", marca: "VOLKSWAGEN", modelo: "POLO", parametros: null, marcas: sinLlevar_(22) },
+  TERA: { titulo: "CONTROL FINAL -VOLKSWAGEN TERA", marca: "VOLKSWAGEN", modelo: "TERA", parametros: null, marcas: sinLlevar_(22) },
 };
 
 /** "Jetour X70, KYC V3…" — para decir qué hojas hay cuando falta una. */
@@ -227,8 +232,7 @@ export function hojaCcHtml({ cc, fecha = "", vin = "", tecnico = "", marcas = {}
         <td class="ccTxt ccSinIzq" colspan="4">${E(f.nota)}</td>
         <td class="ccOk">${E(marca(f.n))}</td>`, alto);
     }
-    const roja = cc.rojas?.includes(f.n) ? " ccRoja" : "";
-    return borde(`<td class="ccTxt${roja}" colspan="6">${E(f.t)}</td><td class="ccOk${roja}">${E(marca(f.n))}</td>`, alto);
+    return borde(`<td class="ccTxt" colspan="6">${E(f.t)}</td><td class="ccOk">${E(marca(f.n))}</td>`, alto);
   }).join("");
 
   return `

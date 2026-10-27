@@ -186,3 +186,19 @@
 .iotPersona > small { font-size: 11px; color: var(--muted); }
 
 .iotGrid1 { grid-template-columns: 1fr; }
+
+/* Hoja de control final (modal del inspector, hoja-cc.js). Aquí sin marcar
+   NO es una alarma —muchos puntos van en blanco a propósito—, así que las
+   casillas van normales. En rojo solo los puntos que ese modelo no lleva,
+   para que se vea que normalmente no se marcan. */
+#hccModal .iotCk:not(:has(input:checked)) {
+  border-color: var(--surfaceLine);
+  background: var(--surface);
+}
+#hccModal .iotCk.is-noLleva,
+#hccModal .iotCk.is-noLleva:not(:has(input:checked)) {
+  border-color: var(--danger);
+  background: var(--dangerBg);
+  color: var(--danger);
+}
+#hccModal .iotCk.is-noLleva b { color: var(--danger); }
