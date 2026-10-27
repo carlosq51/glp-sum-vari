@@ -109,6 +109,8 @@
 /* La nota de la bujía se sale de su celda hasta la casilla, como en el Excel. */
 .ccTabla td.ccSinIzq { border-left: 0; vertical-align: middle; overflow: visible; }
 .ccCaja { background: #fff; }
+/* Valores de parámetros que no son del modelo: rayados, como a mano. */
+.ccRaya { text-decoration: line-through; text-decoration-thickness: 1px; }
 .ccTabla td.ccOk {
   border: 1px solid #000;
   color: #0070c0;

@@ -67,13 +67,14 @@ export const CC_FILAS = [
   { n: 38, t: "EMULADOR DE NIVEL DE GASOLINA", alto: 10.8 },
   { n: 39, t: "REVISION DEL RAMAL DE MOTOR AL INTERIOR, POR DEBAJO DEL PISO DE COPILOTO", alto: 10.8 },
   { ok: "OK" },
-  // Las dos filas de parámetros llevan el valor de cada familia en cajas
-  // aparte. El texto de D trae los espacios del Excel: con ellos "1.28 BAR
-  // V7" cae al final de la celda, como en el papel.
-  { n: 40, tipo: "param", t: "VERIFICAR LONGITUD DE MANGUERAS DE INYECCION  (14,13,13,14 ) V7",
-    f: "(12.5,11.5,11.5,12.5) V5 V3", h: "( 13,11,11,13 ) X70" },
-  { n: 41, tipo: "param", t: "PRESIONDE GAS PARAMETRO                                                     1.28 BAR V7",
-    f: "1.25bar                       V5 V3", h: "1.25bar             X70" },
+  // Las dos filas de parámetros llevan el valor de cada familia: V7 al
+  // final del texto, V5 V3 y X70 en cajas aparte. El texto trae los
+  // espacios del Excel: con ellos "1.28 BAR V7" cae al final de la celda,
+  // como en el papel. Cada modelo raya los valores que no son suyos.
+  { n: 40, tipo: "param", t: "VERIFICAR LONGITUD DE MANGUERAS DE INYECCION  ", v7: "(14,13,13,14 ) V7",
+    v5v3: "(12.5,11.5,11.5,12.5) V5 V3", x70: "( 13,11,11,13 ) X70" },
+  { n: 41, tipo: "param", t: "PRESIONDE GAS PARAMETRO                                                     ", v7: "1.28 BAR V7",
+    v5v3: "1.25bar                       V5 V3", x70: "1.25bar             X70" },
   { n: 42, t: "PRESION MAP", alto: 10.8 },
   { n: 43, t: "TEMPERATURA DEL REDUCTOR", alto: 10.8 },
   { n: 44, t: "LECTURA RPM" },
@@ -118,7 +119,9 @@ export const CC_FILAS = [
 
 // Lo que cambia de un modelo a otro: título, cómo se escribe el carro y
 // qué marca lleva cada punto. Todo punto va "ok" salvo lo que diga `marcas`
-// ("" = en blanco). La clave es el modelo de normalizeModelo_ sin la marca.
+// ("" = en blanco). `parametros` es la familia cuyos valores valen en las
+// filas 40-41: los de las otras salen rayados. La clave es el modelo de
+// normalizeModelo_ sin la marca.
 //
 // Solo está el X70: es la única hoja que nos han pasado. Un carro de otro
 // modelo no se puede pedir hasta que esté aquí (ver modeloCc_).
@@ -127,7 +130,8 @@ export const CC_MODELOS = {
     titulo: "CONTROL FINAL -JETOUR X70",
     marca: "JETOUR",
     modelo: "X70 FL",
-    marcas: { 22: "", 38: "", 40: "", 41: "", 50: "x", 51: "x", 53: "", 55: "", 68: "" },
+    parametros: "x70",
+    marcas: { 22: "", 38: "", 50: "x", 51: "x", 53: "", 55: "", 68: "" },
   },
 };
 
@@ -175,10 +179,11 @@ export function hojaCcHtml({ cc, fecha = "", vin = "", tecnico = "" } = {}) {
     }
     const alto = ALTOS[f.alto] || "";
     if (f.tipo === "param") {
+      const v = (fam) => (cc.parametros && fam !== cc.parametros ? `<s class="ccRaya">${E(f[fam])}</s>` : E(f[fam]));
       return borde(`
-        <td class="ccTxt" colspan="2">${E(f.t)}</td>
-        <td class="ccTxt ccCaja" colspan="2">${E(f.f)}</td>
-        <td class="ccTxt ccCaja" colspan="2">${E(f.h)}</td>
+        <td class="ccTxt" colspan="2">${E(f.t)}${v("v7")}</td>
+        <td class="ccTxt ccCaja" colspan="2">${v("v5v3")}</td>
+        <td class="ccTxt ccCaja" colspan="2">${v("x70")}</td>
         <td class="ccOk ccOkParam">${E(marca(f.n))}</td>`, alto);
     }
     if (f.tipo === "nota") {

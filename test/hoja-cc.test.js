@@ -32,10 +32,12 @@ describe("hojaCcHtml · X70", () => {
 
   it("marca como el Excel", () => {
     const porNumero = Object.fromEntries(CC_FILAS.filter(f => f.n).map((f, i) => [f.n, casillas[i]]));
-    for (const n of [22, 38, 40, 41, 53, 55, 68]) expect(porNumero[n]).toBe("");
+    for (const n of [22, 38, 53, 55, 68]) expect(porNumero[n]).toBe("");
+    expect(porNumero[40]).toBe("ok");
+    expect(porNumero[41]).toBe("ok");
     expect(porNumero[50]).toBe("x");
     expect(porNumero[51]).toBe("x");
-    expect(casillas.filter(c => c === "ok")).toHaveLength(66);
+    expect(casillas.filter(c => c === "ok")).toHaveLength(68);
   });
 
   it("lleva los datos del carro y de quien la pidió", () => {
@@ -43,5 +45,15 @@ describe("hojaCcHtml · X70", () => {
     expect(html).toContain("27-10-2026");
     expect(html).toContain("LVTDB21B8RD123456");
     expect(html).toContain("WILMER VICENTE");
+  });
+});
+
+describe("hojaCcHtml · parámetros del X70", () => {
+  const html = hojaCcHtml({ cc: CC_MODELOS.X70 });
+  it("raya V7 y V5 V3, deja el del X70", () => {
+    const rayas = [...html.matchAll(/<s class="ccRaya">([^<]*)<\/s>/g)].map(m => m[1]);
+    expect(rayas).toEqual(["(14,13,13,14 ) V7", "(12.5,11.5,11.5,12.5) V5 V3", "1.28 BAR V7", "1.25bar                       V5 V3"]);
+    expect(html).toContain("( 13,11,11,13 ) X70");
+    expect(html).not.toMatch(/<s class="ccRaya">[^<]*X70/);
   });
 });
