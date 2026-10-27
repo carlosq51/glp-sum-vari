@@ -22,7 +22,7 @@ describe("modeloCc_", () => {
 
 describe("hojaCcHtml · X70", () => {
   const html = hojaCcHtml({ cc: CC_MODELOS.X70, fecha: "27-10-2026", vin: "LVTDB21B8RD123456", tecnico: "WILMER VICENTE" });
-  const casillas = [...html.matchAll(/<td class="ccOk(?: ccOkParam)?">([^<]*)<\/td>/g)].map(m => m[1]);
+  const casillas = [...html.matchAll(/<td class="ccOk[^"]*">([^<]*)<\/td>/g)].map(m => m[1]);
 
   it("tiene los 75 puntos numerados en orden", () => {
     const ns = CC_FILAS.filter(f => f.n).map(f => f.n);
@@ -69,7 +69,7 @@ describe("marcas del inspector", () => {
 
   it("lo que marcó pisa al modelo en el papel", () => {
     const html = hojaCcHtml({ cc, marcas: { 22: "ok", 2: "" } });
-    const casillas = [...html.matchAll(/<td class="ccOk(?: ccOkParam)?">([^<]*)<\/td>/g)].map(m => m[1]);
+    const casillas = [...html.matchAll(/<td class="ccOk[^"]*">([^<]*)<\/td>/g)].map(m => m[1]);
     const porNumero = Object.fromEntries(CC_FILAS.filter(f => f.n).map((f, i) => [f.n, casillas[i]]));
     expect(porNumero[22]).toBe("ok");
     expect(porNumero[2]).toBe("");
@@ -94,8 +94,10 @@ describe("hojas KYC", () => {
 
   it("X5 raya las tres familias y la casilla va con ok", () => {
     expect(rayas(CC_MODELOS.X5)).toHaveLength(6);
-    const casillas = [...hojaCcHtml({ cc: CC_MODELOS.X5 }).matchAll(/<td class="ccOk(?: ccOkParam)?">([^<]*)<\/td>/g)].map(m => m[1]);
+    const casillas = [...hojaCcHtml({ cc: CC_MODELOS.X5 }).matchAll(/<td class="ccOk[^"]*">([^<]*)<\/td>/g)].map(m => m[1]);
     const porNumero = Object.fromEntries(CC_FILAS.filter(f => f.n).map((f, i) => [f.n, casillas[i]]));
-    expect([porNumero[40], porNumero[41], porNumero[38], porNumero[55]]).toEqual(["ok", "ok", "", ""]);
+    expect([porNumero[40], porNumero[41], porNumero[38], porNumero[55]]).toEqual(["ok", "ok", "-", "-"]);
+    expect(hojaCcHtml({ cc: CC_MODELOS.X5 }).match(/class="ccTxt ccRoja"/g)).toHaveLength(2);
+    expect(hojaCcHtml({ cc: CC_MODELOS.X70 })).not.toContain("ccRoja");
   });
 });

@@ -139,8 +139,13 @@ export const CC_MODELOS = {
   V3: { titulo: "CONTROL FINAL -KYC V3", marca: "KYC", modelo: "V3", parametros: "v5v3", marcas: MARCAS_BASE },
   V5: { titulo: "CONTROL FINAL -KYC V5", marca: "KYC", modelo: "V5", parametros: "v5v3", marcas: MARCAS_BASE },
   // X5: ninguna de las tres familias de parámetros es la suya, se rayan
-  // todas. No lleva emulador: 38 y 55 nunca se marcan.
-  X5: { titulo: "CONTROL FINAL -KYC X5", marca: "KYC", modelo: "X5", parametros: null, marcas: MARCAS_BASE },
+  // todas. No lleva emulador: 38 y 55 van con "-" y la fila en rojo
+  // (`rojas`), para que se vea que esas normalmente no se marcan.
+  X5: {
+    titulo: "CONTROL FINAL -KYC X5", marca: "KYC", modelo: "X5", parametros: null,
+    marcas: { ...MARCAS_BASE, 38: "-", 55: "-" },
+    rojas: [38, 55],
+  },
 };
 
 /** "Jetour X70, KYC V3…" — para decir qué hojas hay cuando falta una. */
@@ -159,7 +164,7 @@ export function limpiarMarcasCc_(cc, marcas) {
   const out = {};
   for (const [k, v] of Object.entries(marcas && typeof marcas === "object" ? marcas : {})) {
     const n = Number(k);
-    if (!validos.has(n) || !["ok", "x", ""].includes(v)) continue;
+    if (!validos.has(n) || !["ok", "x", "-", ""].includes(v)) continue;
     if (v !== marcaModelo_(cc, n)) out[n] = v;
   }
   return out;
@@ -222,7 +227,8 @@ export function hojaCcHtml({ cc, fecha = "", vin = "", tecnico = "", marcas = {}
         <td class="ccTxt ccSinIzq" colspan="4">${E(f.nota)}</td>
         <td class="ccOk">${E(marca(f.n))}</td>`, alto);
     }
-    return borde(`<td class="ccTxt" colspan="6">${E(f.t)}</td><td class="ccOk">${E(marca(f.n))}</td>`, alto);
+    const roja = cc.rojas?.includes(f.n) ? " ccRoja" : "";
+    return borde(`<td class="ccTxt${roja}" colspan="6">${E(f.t)}</td><td class="ccOk${roja}">${E(marca(f.n))}</td>`, alto);
   }).join("");
 
   return `

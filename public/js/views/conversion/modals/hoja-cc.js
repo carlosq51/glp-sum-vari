@@ -52,7 +52,7 @@ function casilla_(f, marcada, sinMarcar) {
   return `
     <label class="iotCk">
       <input type="checkbox" data-hcc-punto="${f.n}"${marcada ? " checked" : ""}>
-      <span><b>${f.n}</b> ${escapeHtml(f.t.trim())}${sinMarcar === "x" ? ` <small class="muted">(sin marcar: x)</small>` : ""}</span>
+      <span><b>${f.n}</b> ${escapeHtml(f.t.trim())}${sinMarcar === "x" || sinMarcar === "-" ? ` <small class="muted">(sin marcar: ${sinMarcar})</small>` : ""}</span>
     </label>`;
 }
 
