@@ -7,7 +7,7 @@
 // al cerrarse el diálogo de impresión quedan marcadas como impresas. Para
 // volver a sacar una ya impresa, se busca por VIN.
 //
-// Las hojas se imprimen desde un iframe con la página que arma el servidor
+// Las hojas se imprimen en una pestaña aparte con la página que arma el servidor
 // (/api/hojas-calidad/hojas): así el papel no hereda nada de la app.
 // =========================
 
@@ -19,7 +19,6 @@ let host_ = null;
 let pendientes_ = [];
 let encontradas_ = null;   // null = no se ha buscado
 let aviso_ = "";
-let imprimiendo_ = false;
 let escuchando_ = false;
 
 const email_ = () => CORE.state.currentProfile?.email || CORE.state.email || "";
@@ -77,8 +76,8 @@ function pintar_() {
   host_.innerHTML = `
     <div class="ciHead">
       <div class="ciCuenta">Control de calidad · ${n} pendiente${n === 1 ? "" : "s"}</div>
-      <button type="button" class="ciAbrir" id="ccqImprimir" ${n && !imprimiendo_ ? "" : "disabled"}>
-        ${imprimiendo_ ? "Imprimiendo…" : `🖨 Imprimir ${n || ""}`.trim()}
+      <button type="button" class="ciAbrir" id="ccqImprimir" ${n ? "" : "disabled"}>
+        ${`🖨 Imprimir ${n || ""}`.trim()}
       </button>
     </div>
     ${aviso_ ? `<div class="ccqAviso">${escapeHtml(aviso_)}</div>` : ""}
@@ -126,50 +125,20 @@ async function buscar_(vin) {
 }
 
 /**
- * Carga las hojas en un iframe oculto y abre el diálogo de impresión.
- * Resuelve cuando el diálogo se cierra (print() bloquea hasta entonces).
+ * Abre las hojas en una pestaña nueva que lanza sola el diálogo de
+ * impresión y, al cerrarlo, las marca como impresas y se cierra (ver
+ * routes/hojas-calidad.js). Antes se imprimían desde un iframe oculto y el
+ * papel salía en blanco. window.open va sin await delante: si no, el
+ * navegador ya no lo cuenta como clic y bloquea la ventana.
  */
-function imprimirEnIframe_(ids) {
-  return new Promise((resolve, reject) => {
-    const fr = document.createElement("iframe");
-    fr.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
-    fr.src = `/api/hojas-calidad/hojas?ids=${ids.map(encodeURIComponent).join(",")}&email=${encodeURIComponent(email_())}`;
-    fr.onload = () => {
-      try {
-        fr.contentWindow.focus();
-        fr.contentWindow.print();
-        resolve();
-      } catch (err) {
-        reject(err);
-      } finally {
-        // El diálogo ya se cerró; se quita después para no cortar la cola
-        // de impresión de un navegador que imprime en segundo plano.
-        setTimeout(() => fr.remove(), 60_000);
-      }
-    };
-    fr.onerror = () => { fr.remove(); reject(new Error("No se pudieron cargar las hojas.")); };
-    document.body.appendChild(fr);
-  });
-}
-
-async function imprimir_(ids) {
-  if (!ids.length || imprimiendo_) return;
-  imprimiendo_ = true;
-  aviso_ = "";
+function imprimir_(ids) {
+  if (!ids.length) return;
+  const url = `/api/hojas-calidad/hojas?imprimir=1&ids=${ids.map(encodeURIComponent).join(",")}&email=${encodeURIComponent(email_())}`;
+  const w = window.open(url, "_blank");
+  aviso_ = w
+    ? `Se abrieron ${ids.length} hoja${ids.length === 1 ? "" : "s"} para imprimir. Al cerrar el diálogo quedan marcadas como impresas; si alguna no salió, búscala por VIN.`
+    : "El navegador bloqueó la ventana de impresión. Permite las ventanas emergentes de esta página y vuelve a pulsar.";
   pintar_();
-  try {
-    await imprimirEnIframe_(ids);
-    const r = await postJSON("/api/hojas-calidad/impresas", { ids, email: email_() });
-    if (!r?.ok) throw new Error(r?.error || "No se pudieron marcar como impresas.");
-    aviso_ = `${r.n} hoja${r.n === 1 ? "" : "s"} marcada${r.n === 1 ? "" : "s"} como impresa${r.n === 1 ? "" : "s"}. Si alguna no salió, búscala por VIN.`;
-  } catch (err) {
-    aviso_ = String(err?.message || err);
-  } finally {
-    imprimiendo_ = false;
-  }
-  await cargar_();
-  const q = host_?.querySelector("#ccqVin")?.value;
-  if (encontradas_ && q) await buscar_(q);
 }
 
 async function anular_(id) {
@@ -212,7 +181,7 @@ export async function renderColaCc(el) {
   if (!escuchando_) {
     // Un inspector pidió una hoja (o se imprimió en otra PC).
     window.addEventListener("glp:live", (e) => {
-      if (e.detail?.topic === "hojas-calidad" && host_?.isConnected && !imprimiendo_) cargar_();
+      if (e.detail?.topic === "hojas-calidad" && host_?.isConnected) cargar_();
     });
     escuchando_ = true;
   }

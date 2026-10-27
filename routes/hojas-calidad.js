@@ -168,11 +168,28 @@ router.get("/api/hojas-calidad/hojas", requireRol_("ADMIN", "SUPERVISOR"), async
       });
     }).join("");
 
+    // Con ?imprimir=1 la página abre sola el diálogo y, al cerrarlo, marca
+    // las hojas como impresas y se cierra. Se imprime desde una pestaña
+    // visible y no desde un iframe oculto: así el papel salía en blanco.
+    const auto = req.query.imprimir === "1" ? `<script>
+addEventListener("load", () => {
+  addEventListener("afterprint", async () => {
+    try {
+      await fetch("/api/hojas-calidad/impresas", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(${JSON.stringify({ ids: filas.map(f => f.id), email: emailDe_(req) })}),
+      });
+    } finally { window.close(); }
+  }, { once: true });
+  setTimeout(() => window.print(), 300);
+});
+</script>` : "";
+
     res.type("html").send(`<!doctype html>
 <html lang="es"><head><meta charset="utf-8">
 <title>Control final · ${filas.length} hoja${filas.length === 1 ? "" : "s"}</title>
-<style>body{margin:0;background:#fff}${cssHoja_()}</style>
-</head><body>${hojas}</body></html>`);
+<style>@media screen{body{margin:0;padding:24px 0;background:#6b7280}.ccHoja+.ccHoja{margin-top:24px}}${cssHoja_()}</style>
+</head><body>${hojas}${auto}</body></html>`);
   } catch (err) {
     console.error("[hojas-calidad] hojas:", err.message);
     res.status(500).send(escapeHtml(mensajeUtil_(err)));
