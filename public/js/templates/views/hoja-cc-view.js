@@ -120,20 +120,31 @@ export const CC_FILAS = [
 // Lo que cambia de un modelo a otro: título, cómo se escribe el carro y
 // qué marca lleva cada punto. Todo punto va "ok" salvo lo que diga `marcas`
 // ("" = en blanco). `parametros` es la familia cuyos valores valen en las
-// filas 40-41: los de las otras salen rayados. La clave es el modelo de
-// normalizeModelo_ sin la marca.
+// filas 40-41 ("x70", "v5v3", o null si no vale ninguna): las demás salen
+// rayadas, y la casilla va con ok. La clave es el modelo de normalizeModelo_
+// sin la marca.
 //
-// Solo está el X70: es la única hoja que nos han pasado. Un carro de otro
-// modelo no se puede pedir hasta que esté aquí (ver modeloCc_).
+// Un carro de un modelo que no esté aquí no se puede pedir (ver modeloCc_).
+const MARCAS_BASE = { 22: "", 38: "", 50: "x", 51: "x", 53: "", 55: "", 68: "" };
+
 export const CC_MODELOS = {
   X70: {
     titulo: "CONTROL FINAL -JETOUR X70",
     marca: "JETOUR",
     modelo: "X70 FL",
     parametros: "x70",
-    marcas: { 22: "", 38: "", 50: "x", 51: "x", 53: "", 55: "", 68: "" },
+    marcas: MARCAS_BASE,
   },
+  // V3 y V5: como el X70, pero valen los parámetros de V5 V3.
+  V3: { titulo: "CONTROL FINAL -KYC V3", marca: "KYC", modelo: "V3", parametros: "v5v3", marcas: MARCAS_BASE },
+  V5: { titulo: "CONTROL FINAL -KYC V5", marca: "KYC", modelo: "V5", parametros: "v5v3", marcas: MARCAS_BASE },
+  // X5: ninguna de las tres familias de parámetros es la suya, se rayan
+  // todas. No lleva emulador: 38 y 55 nunca se marcan.
+  X5: { titulo: "CONTROL FINAL -KYC X5", marca: "KYC", modelo: "X5", parametros: null, marcas: MARCAS_BASE },
 };
+
+/** "Jetour X70, KYC V3…" — para decir qué hojas hay cuando falta una. */
+export const MODELOS_CC_TEXTO = Object.values(CC_MODELOS).map(c => `${c.marca === "JETOUR" ? "Jetour" : c.marca} ${c.modelo.split(" ")[0]}`).join(", ");
 
 /** La hoja CC de un modelo canónico ("Jetour X70"), o null si no hay. */
 /** Lo que lleva el punto n en un modelo, antes de que el inspector toque nada. */
@@ -198,7 +209,7 @@ export function hojaCcHtml({ cc, fecha = "", vin = "", tecnico = "", marcas = {}
     }
     const alto = ALTOS[f.alto] || "";
     if (f.tipo === "param") {
-      const v = (fam) => (cc.parametros && fam !== cc.parametros ? `<s class="ccRaya">${E(f[fam])}</s>` : E(f[fam]));
+      const v = (fam) => (fam !== cc.parametros ? `<s class="ccRaya">${E(f[fam])}</s>` : E(f[fam]));
       return borde(`
         <td class="ccTxt" colspan="2">${E(f.t)}${v("v7")}</td>
         <td class="ccTxt ccCaja" colspan="2">${v("v5v3")}</td>

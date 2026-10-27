@@ -26,7 +26,7 @@ import { supabaseServiceHeaders_ } from "../lib/supabase.js";
 import { requireRol_, getUsuarioByEmail_, padron_ } from "../lib/authz.js";
 import { emitEvent_ } from "../lib/events.js";
 import { normalizeModelo_ } from "../lib/utils.js";
-import { hojaCcHtml, modeloCc_, limpiarMarcasCc_ } from "../public/js/templates/views/hoja-cc-view.js";
+import { hojaCcHtml, modeloCc_, limpiarMarcasCc_, MODELOS_CC_TEXTO } from "../public/js/templates/views/hoja-cc-view.js";
 import { escapeHtml } from "../public/js/core/format.js";
 
 const router = Router();
@@ -128,7 +128,7 @@ router.post("/api/hojas-calidad", async (req, res) => {
       return res.status(422).json({
         ok: false,
         error: modelo
-          ? `Todavía no está cargada la hoja CC del ${modelo}. Por ahora solo hay la del Jetour X70.`
+          ? `Todavía no está cargada la hoja CC del ${modelo}. Hay hoja para: ${MODELOS_CC_TEXTO}.`
           : `No sé qué modelo es el ${vin}: no está en el padrón de carros.`,
       });
     }

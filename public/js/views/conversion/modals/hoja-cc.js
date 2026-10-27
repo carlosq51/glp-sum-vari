@@ -13,7 +13,7 @@
 import { CORE } from "../../../core/state.js";
 import { getJSON, postJSON } from "../../../core/api.js";
 import { escapeHtml } from "../../../core/format.js";
-import { CC_FILAS, modeloCc_, marcaModelo_ } from "../../../templates/views/hoja-cc-view.js";
+import { CC_FILAS, modeloCc_, marcaModelo_, MODELOS_CC_TEXTO } from "../../../templates/views/hoja-cc-view.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -101,7 +101,7 @@ export async function abrirHojaCc_(vinRaw) {
     if (!cc) {
       $("hccPuntos").innerHTML = "";
       msg_(r.modelo
-        ? `Todavía no está cargada la hoja CC del ${r.modelo}. Por ahora solo hay la del Jetour X70.`
+        ? `Todavía no está cargada la hoja CC del ${r.modelo}. Hay hoja para: ${MODELOS_CC_TEXTO}.`
         : `No sé qué modelo es el ${vin}: no está en el padrón de carros.`, true);
       return;
     }

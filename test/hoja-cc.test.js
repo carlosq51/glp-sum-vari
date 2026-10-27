@@ -15,7 +15,7 @@ describe("modeloCc_", () => {
     expect(modeloCc_(normalizeModelo_("JETOUR X70 1.5T DELUXE"))).toBe(CC_MODELOS.X70);
   });
   it("devuelve null para un modelo sin hoja", () => {
-    expect(modeloCc_(normalizeModelo_("KYC NEW X5"))).toBeNull();
+    expect(modeloCc_(normalizeModelo_("KYC NEW V7"))).toBeNull();
     expect(modeloCc_(null)).toBeNull();
   });
 });
@@ -74,5 +74,28 @@ describe("marcas del inspector", () => {
     expect(porNumero[22]).toBe("ok");
     expect(porNumero[2]).toBe("");
     expect(porNumero[38]).toBe("");
+  });
+});
+
+describe("hojas KYC", () => {
+  const rayas = (cc) => [...hojaCcHtml({ cc }).matchAll(/<s class="ccRaya">([^<]*)<\/s>/g)].map(m => m[1].trim());
+
+  it("V3 y V5 se encuentran por su canónico", () => {
+    expect(modeloCc_(normalizeModelo_("KYC NEW V3"))).toBe(CC_MODELOS.V3);
+    expect(modeloCc_(normalizeModelo_("V5 CARGO"))).toBe(CC_MODELOS.V5);
+    expect(modeloCc_(normalizeModelo_("KYC NEW X5"))).toBe(CC_MODELOS.X5);
+  });
+
+  it("V3/V5 rayan V7 y X70 y dejan V5 V3", () => {
+    for (const cc of [CC_MODELOS.V3, CC_MODELOS.V5]) {
+      expect(rayas(cc)).toEqual(["(14,13,13,14 ) V7", "( 13,11,11,13 ) X70", "1.28 BAR V7", "1.25bar             X70"]);
+    }
+  });
+
+  it("X5 raya las tres familias y la casilla va con ok", () => {
+    expect(rayas(CC_MODELOS.X5)).toHaveLength(6);
+    const casillas = [...hojaCcHtml({ cc: CC_MODELOS.X5 }).matchAll(/<td class="ccOk(?: ccOkParam)?">([^<]*)<\/td>/g)].map(m => m[1]);
+    const porNumero = Object.fromEntries(CC_FILAS.filter(f => f.n).map((f, i) => [f.n, casillas[i]]));
+    expect([porNumero[40], porNumero[41], porNumero[38], porNumero[55]]).toEqual(["ok", "ok", "", ""]);
   });
 });
