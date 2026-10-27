@@ -25,6 +25,20 @@ export function hojaCcModal() {
 
         <div class="modalBody">
           <div class="iotCabecera" id="hccCabecera"></div>
+
+          <!-- Lo que va arriba y abajo del papel. Por defecto hoy y quien
+               cerró la calidad; se cambia al regularizar hojas atrasadas. -->
+          <div class="iotGrid">
+            <label class="iotCampo">
+              <span>Fecha de la hoja</span>
+              <input id="hccFecha" type="date">
+            </label>
+            <label class="iotCampo">
+              <span>Técnico en la hoja</span>
+              <select id="hccTecnico"></select>
+            </label>
+          </div>
+
           <div id="hccPuntos"></div>
           <div class="iotMsg" id="hccMsg"></div>
 

@@ -202,3 +202,14 @@
   color: var(--danger);
 }
 #hccModal .iotCk.is-noLleva b { color: var(--danger); }
+
+/* Buscador de la vista de Calidad para hojas de carros ya cerrados. */
+.hccBuscar {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: var(--surface2);
+  border: 1px solid var(--surfaceLine);
+  border-radius: var(--radius);
+}
+.hccBuscarTit { font-size: 13px; font-weight: 800; margin-bottom: 8px; }
+.hccBuscar input { width: 100%; text-transform: uppercase; }

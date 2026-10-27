@@ -6,7 +6,8 @@
 //
 // EL FLUJO
 // ────────
-//   · GET  /api/hojas-calidad/carro?vin=   modelo del carro para el modal
+//   · GET  /api/hojas-calidad/sugerir?q=   carros con la calidad cerrada
+//   · GET  /api/hojas-calidad/carro?vin=   modelo y quién cerró, para el modal
 //   · POST /api/hojas-calidad              el inspector la valida en el
 //                                          modal y la pide. Queda PENDIENTE.
 //   · GET  /api/hojas-calidad              la oficina ve las pendientes;
@@ -31,7 +32,8 @@ import { escapeHtml } from "../public/js/core/format.js";
 
 const router = Router();
 const TABLA = "hojas_calidad";
-// `marcas` entra solo donde se pinta el papel: la lista no la necesita.
+// La lista no necesita marcas, fecha ni técnico. Donde se pinta el papel se
+// pide select=*: así sigue andando aunque falte correr una migración.
 const CAMPOS = "id,vin,estado,solicitado_por,created_at,impresa_at,impresa_por";
 
 const s_ = (v) => String(v ?? "").trim();
@@ -64,6 +66,37 @@ function fechaPeru_(iso) {
   return `${d}-${m}-${y}`;
 }
 
+/** "aaaa-mm-dd" de hoy en Lima. */
+const hoyLima_ = () => fmtFecha_.format(Date.now());
+
+/** "aaaa-mm-dd" → "dd-mm-aaaa". */
+const fechaPapel_ = (iso) => (/^\d{4}-\d{2}-\d{2}$/.test(s_(iso)) ? s_(iso).split("-").reverse().join("-") : "");
+
+/**
+ * Quién cerró la OT de calidad de cada carro, y cuándo: { vin → { userId,
+ * nombre, at } }. Es el que va por defecto en TÉCNICO: — el inspector que
+ * hizo el control, aunque la hoja la pida otro días después.
+ */
+async function cierresCalidad_(vins) {
+  const unicos = [...new Set(vins.filter(Boolean))];
+  if (!unicos.length) return new Map();
+  const wos = await sb_(`work_orders?select=id,vin&tipo_ot=eq.CALIDAD&estado_general=eq.FINALIZADO&vin=in.(${unicos.map(encodeURIComponent).join(",")})`);
+  if (!wos?.length) return new Map();
+  const vinDe = new Map(wos.map(w => [w.id, w.vin]));
+  const [asgs, p] = await Promise.all([
+    sb_(`asignaciones?select=work_order_id,user_id,updated_at&tipo_ot=eq.CALIDAD&estado_actual=eq.FINALIZADO&activo=eq.true`
+      + `&work_order_id=in.(${wos.map(w => w.id).join(",")})&order=updated_at.desc`),
+    padron_(),
+  ]);
+  const out = new Map();
+  for (const a of asgs || []) {
+    const vin = vinDe.get(a.work_order_id);
+    if (!vin || out.has(vin)) continue;   // el más reciente de cada carro
+    out.set(vin, { userId: a.user_id, nombre: p.porId.get(a.user_id)?.nombre || "", at: a.updated_at });
+  }
+  return out;
+}
+
 /** { vin: "Jetour X70" } de los carros pedidos. */
 async function modelosDe_(vins) {
   const unicos = [...new Set(vins.filter(Boolean))];
@@ -79,26 +112,60 @@ async function enriquecer_(filas) {
   return filas.map(f => ({
     ...f,
     solicitado_nombre: nombre(f.solicitado_por),
+    // Quien va en TÉCNICO: del papel. Sin elegir, el que la pidió.
+    tecnico_nombre: (f.tecnico_user_id && p.porId.get(f.tecnico_user_id)?.nombre) || nombre(f.solicitado_por),
     impresa_nombre: f.impresa_por ? nombre(f.impresa_por) : "",
     modelo: modelos.get(f.vin) || "",
   }));
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+//  GET /api/hojas-calidad/sugerir?q= — carros con la calidad ya cerrada,
+//  por cualquier inspector. Es el buscador de la vista de Calidad: quien
+//  hace las hojas no siempre es quien cerró el carro.
+// ─────────────────────────────────────────────────────────────────────────
+router.get("/api/hojas-calidad/sugerir", async (req, res) => {
+  try {
+    const q = s_(req.query.q).toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (q.length < 3) return res.json({ ok: true, items: [] });
+    const limite = Math.min(Number(req.query.limit) || 12, 30);
+    const wos = await sb_(`work_orders?select=vin&tipo_ot=eq.CALIDAD&estado_general=eq.FINALIZADO`
+      + `&vin=ilike.*${encodeURIComponent(q)}*&order=fecha_creacion.desc&limit=${limite * 2}`);
+    const vins = [...new Set((wos || []).map(w => w.vin))].slice(0, limite);
+    const [modelos, cierres] = await Promise.all([modelosDe_(vins), cierresCalidad_(vins)]);
+    res.json({
+      ok: true,
+      items: vins.map(vin => ({ vin, modelo: modelos.get(vin) || "", cerro: cierres.get(vin)?.nombre || "", at: cierres.get(vin)?.at || null })),
+    });
+  } catch (err) {
+    console.error("[hojas-calidad] sugerir:", err.message);
+    res.status(500).json({ ok: false, error: mensajeUtil_(err) });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
 //  GET /api/hojas-calidad/carro?vin= — lo que el modal del inspector
-//  necesita: el modelo (para saber qué hoja va) y, si ya la pidió y sigue
-//  pendiente, lo que marcó entonces.
+//  necesita: el modelo (para saber qué hoja va), quién cerró la calidad
+//  (va por defecto en TÉCNICO:) y, si ya la pidió y sigue pendiente, lo que
+//  marcó entonces.
 // ─────────────────────────────────────────────────────────────────────────
 router.get("/api/hojas-calidad/carro", async (req, res) => {
   try {
     const vin = s_(req.query.vin).toUpperCase();
     if (!vin) return res.status(400).json({ ok: false, error: "Falta el VIN del carro." });
-    const [modelos, previa] = await Promise.all([
+    const [modelos, previa, cierres, yo] = await Promise.all([
       modelosDe_([vin]),
-      sb_(`${TABLA}?select=${CAMPOS},marcas&vin=eq.${encodeURIComponent(vin)}&estado=eq.PENDIENTE&limit=1`),
+      sb_(`${TABLA}?select=*&vin=eq.${encodeURIComponent(vin)}&estado=eq.PENDIENTE&limit=1`),
+      cierresCalidad_([vin]),
+      getUsuarioByEmail_(emailDe_(req)),
     ]);
     const modelo = modelos.get(vin) || "";
-    res.json({ ok: true, vin, modelo, tieneHoja: !!modeloCc_(modelo), pendiente: previa?.[0] || null });
+    res.json({
+      ok: true, vin, modelo, tieneHoja: !!modeloCc_(modelo), pendiente: previa?.[0] || null,
+      hoy: hoyLima_(),
+      cerro: cierres.get(vin) || null,
+      yo: yo ? { userId: yo.id, nombre: yo.nombre } : null,
+    });
   } catch (err) {
     console.error("[hojas-calidad] carro:", err.message);
     res.status(500).json({ ok: false, error: mensajeUtil_(err) });
@@ -137,16 +204,28 @@ router.post("/api/hojas-calidad", async (req, res) => {
     // respecto del modelo.
     const marcas = limpiarMarcasCc_(cc, req.body?.marcas);
 
+    // La fecha del papel: la que eligió, nunca una del futuro.
+    const fecha = s_(req.body?.fecha);
+    if (fecha && (!/^\d{4}-\d{2}-\d{2}$/.test(fecha) || fecha > hoyLima_())) {
+      return res.status(400).json({ ok: false, error: "La fecha no es válida (no puede ser posterior a hoy)." });
+    }
+    // Quién va en TÉCNICO:. Tiene que ser una persona del padrón.
+    const tecnicoId = s_(req.body?.tecnico_user_id);
+    if (tecnicoId && !(await padron_()).porId.has(tecnicoId)) {
+      return res.status(400).json({ ok: false, error: "Ese técnico no está en el padrón." });
+    }
+    const datos = { marcas, solicitado_por: u.email, fecha_hoja: fecha || hoyLima_(), tecnico_user_id: tecnicoId || null };
+
     // Una sola pendiente por carro. Pedirla otra vez no imprime dos: se
     // corrigen las marcas de la que ya estaba, y firma quien la mandó.
     const previa = await sb_(`${TABLA}?select=id&vin=eq.${encodeURIComponent(vin)}&estado=eq.PENDIENTE&limit=1`);
     if (previa?.[0]) {
-      const act = await sb_(`${TABLA}?id=eq.${previa[0].id}`, { method: "PATCH", body: { marcas, solicitado_por: u.email } });
+      const act = await sb_(`${TABLA}?id=eq.${previa[0].id}`, { method: "PATCH", body: datos });
       emitEvent_("hojas-calidad", { accion: "corregida", id: previa[0].id });
       return res.json({ ok: true, yaEstaba: true, hoja: act?.[0] });
     }
 
-    const creadas = await sb_(TABLA, { method: "POST", body: { vin, solicitado_por: u.email, marcas } });
+    const creadas = await sb_(TABLA, { method: "POST", body: { vin, ...datos } });
     const hoja = Array.isArray(creadas) ? creadas[0] : creadas;
     emitEvent_("hojas-calidad", { accion: "nueva", id: hoja?.id });
     res.json({ ok: true, hoja });
@@ -189,7 +268,7 @@ router.get("/api/hojas-calidad/hojas", requireRol_("ADMIN", "SUPERVISOR"), async
     const ids = s_(req.query.ids).split(",").map(s_).filter(x => /^[0-9a-f-]{36}$/i.test(x)).slice(0, 100);
     if (!ids.length) return res.status(400).send("No hay hojas que imprimir.");
 
-    const filas = await enriquecer_(await sb_(`${TABLA}?select=${CAMPOS},marcas&id=in.(${ids.join(",")})&order=created_at.asc`) || []);
+    const filas = await enriquecer_(await sb_(`${TABLA}?select=*&id=in.(${ids.join(",")})&order=created_at.asc`) || []);
     const hojas = filas.map(f => {
       const cc = modeloCc_(f.modelo);
       // Un carro cuyo modelo cambió en el padrón después de pedirla: mejor
@@ -197,9 +276,9 @@ router.get("/api/hojas-calidad/hojas", requireRol_("ADMIN", "SUPERVISOR"), async
       if (!cc) return `<div class="ccHoja"><p>${escapeHtml(f.vin)}: no hay hoja CC para ${escapeHtml(f.modelo || "este modelo")}.</p></div>`;
       return hojaCcHtml({
         cc,
-        fecha: fechaPeru_(f.created_at),
+        fecha: fechaPapel_(f.fecha_hoja) || fechaPeru_(f.created_at),
         vin: f.vin,
-        tecnico: s_(f.solicitado_nombre).toUpperCase(),
+        tecnico: s_(f.tecnico_nombre).toUpperCase(),
         marcas: f.marcas,
       });
     }).join("");
@@ -256,6 +335,9 @@ router.post("/api/hojas-calidad/:id/anular", requireRol_("ADMIN", "SUPERVISOR"),
 /** Si falta la tabla, se dice qué migración correr. */
 function mensajeUtil_(err) {
   const m = String(err?.message || err);
+  if (/fecha_hoja|tecnico_user_id/.test(m) && /column|PGRST204|42703/i.test(m)) {
+    return "Faltan columnas de la hoja de calidad. Ejecuta supabase/migrations/012_hojas-calidad-fecha-tecnico.sql en Supabase.";
+  }
   if (/marcas/.test(m) && /column|PGRST204/i.test(m)) {
     return "Falta la columna de marcas. Ejecuta supabase/migrations/011_hojas-calidad-marcas.sql en Supabase.";
   }

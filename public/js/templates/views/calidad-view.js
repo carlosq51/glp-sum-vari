@@ -36,6 +36,16 @@ export function calidadView() {
           </button>
         </div>
 
+        <!-- Hojas de control final de carros ya cerrados, por cualquier
+             inspector: quien hace las hojas no siempre cerró el carro. -->
+        <div class="hccBuscar">
+          <div class="hccBuscarTit">🖨 Hoja de control final de un carro cerrado</div>
+          <div class="vinWrap">
+            <input id="vinHojaCc" placeholder="Busca el VIN (lo cerró quien sea)" autocomplete="off" />
+            <div id="vinSuggestHojaCc" class="vinSuggest hidden" role="listbox"></div>
+          </div>
+        </div>
+
         <div id="estadoBoxQ" class="small"></div>
         <div id="activasBoxQ"></div>
 

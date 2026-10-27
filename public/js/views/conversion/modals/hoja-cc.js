@@ -12,6 +12,7 @@
 
 import { CORE } from "../../../core/state.js";
 import { getJSON, postJSON } from "../../../core/api.js";
+import { createSuggest_ } from "../../../core/suggest.js";
 import { escapeHtml } from "../../../core/format.js";
 import { CC_FILAS, modeloCc_, marcaModelo_, MODELOS_CC_TEXTO } from "../../../templates/views/hoja-cc-view.js";
 
@@ -80,6 +81,24 @@ function pintarPuntos_(cc, previas = {}) {
 }
 
 /**
+ * Fecha y técnico del papel. Por defecto hoy y quien cerró la calidad del
+ * carro (que no siempre es quien hace la hoja); si ya estaba pedida, lo
+ * que se eligió entonces.
+ */
+function pintarFechaTecnico_(r) {
+  const fecha = $("hccFecha");
+  fecha.max = r.hoy;
+  fecha.value = r.pendiente?.fecha_hoja || r.hoy;
+
+  const opciones = [];
+  if (r.cerro?.userId) opciones.push({ id: r.cerro.userId, nombre: r.cerro.nombre, nota: "cerró la calidad" });
+  if (r.yo?.userId && r.yo.userId !== r.cerro?.userId) opciones.push({ id: r.yo.userId, nombre: r.yo.nombre, nota: "tú" });
+  const elegido = r.pendiente?.tecnico_user_id || opciones[0]?.id || "";
+  $("hccTecnico").innerHTML = opciones.map(o =>
+    `<option value="${escapeHtml(o.id)}"${o.id === elegido ? " selected" : ""}>${escapeHtml(o.nombre)} (${o.nota})</option>`).join("");
+}
+
+/**
  * Abre el modal para un carro.
  * @param {string} vinRaw
  */
@@ -92,6 +111,7 @@ export async function abrirHojaCc_(vinRaw) {
   msg_("");
   cabecera_("…", null);
   $("hccPuntos").innerHTML = `<p class="small muted">Cargando…</p>`;
+  $("hccTecnico").innerHTML = "";
   $("hccEnviar").disabled = true;
   m.classList.add("show");
   m.setAttribute("aria-hidden", "false");
@@ -111,6 +131,7 @@ export async function abrirHojaCc_(vinRaw) {
       return;
     }
     actual_.cc = cc;
+    pintarFechaTecnico_(r);
     pintarPuntos_(cc, r.pendiente?.marcas || {});
     $("hccEnviar").disabled = false;
   } catch (err) {
@@ -136,7 +157,11 @@ async function enviar_() {
   $("hccEnviar").disabled = true;
   msg_("Enviando…");
   try {
-    const r = await postJSON("/api/hojas-calidad", { email: email_(), vin, marcas });
+    const r = await postJSON("/api/hojas-calidad", {
+      email: email_(), vin, marcas,
+      fecha: $("hccFecha").value,
+      tecnico_user_id: $("hccTecnico").value,
+    });
     if (!r?.ok) throw new Error(r?.error || "No se pudo pedir la hoja.");
     msg_(r.yaEstaba ? "Listo: se corrigió la hoja que ya estaba en la oficina." : "Listo: la hoja está en la oficina para imprimir.");
     setTimeout(() => { if (actual_?.vin === vin) cerrarHojaCc_(); }, 1500);
@@ -148,8 +173,37 @@ async function enviar_() {
   }
 }
 
+// Buscador de la vista de Calidad: carros con la calidad ya cerrada, la
+// haya cerrado quien la haya cerrado. Elegir uno abre este mismo modal.
+const buscador_ = createSuggest_({
+  input: "vinHojaCc",
+  box: "vinSuggestHojaCc",
+  min: 3,
+  guard: () => CORE.state.currentModule === "CALIDAD",
+  async fetchFn(q, lim) {
+    try {
+      const r = await getJSON(`/api/hojas-calidad/sugerir?q=${encodeURIComponent(q)}&limit=${lim}&email=${encodeURIComponent(email_())}`);
+      return r?.ok ? r.items || [] : [];
+    } catch { return []; }
+  },
+  renderItem(it, i, active) {
+    const cuando = it.at ? new Date(it.at).toLocaleDateString("es-PE", { timeZone: "America/Lima", day: "2-digit", month: "2-digit" }) : "";
+    const pie = [it.modelo, it.cerro && `cerró ${it.cerro}`, cuando].filter(Boolean).join(" · ");
+    return `<div class="vsItem${active ? " active" : ""}" data-sug-idx="${i}" role="option" aria-selected="${active}">
+      <div class="vsVin">${escapeHtml(it.vin)}</div>
+      ${pie ? `<div class="vsHint">${escapeHtml(pie)}</div>` : ""}
+    </div>`;
+  },
+  onPick(it) {
+    const inp = $("vinHojaCc");
+    if (inp) inp.value = "";
+    abrirHojaCc_(it.vin);
+  },
+});
+
 /** Bind de listeners. Se llama una sola vez al arranque. */
 export function initHojaCc_() {
+  buscador_.bind();
   $("hccClose")?.addEventListener("click", cerrarHojaCc_);
   $("hccEnviar")?.addEventListener("click", enviar_);
   $("hccModal")?.addEventListener("click", (e) => {
