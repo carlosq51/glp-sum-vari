@@ -120,7 +120,7 @@ export function renderActivas_() {
                   🔩 Ver fotos de soldadura
                 </button>
                 <button class="btnRF" type="button" data-go="HOJA_CC" style="margin-bottom:6px;">
-                  🖨 Pedir hoja de control final
+                  🖨 Hoja de control final
                 </button>`
               : ""}
 
@@ -219,7 +219,7 @@ export function renderFinalizados_(avgTopHTML = "") {
             ? `<button class="btnRF" type="button" data-go="RF">📸 Registrar fotos / fallas</button>`
             : CORE.state.currentModule === "CALIDAD"
               ? `<button class="btnRF" type="button" data-go="RF">📸 Registrar calidad / fallas</button>
-                 <button class="btnRF" type="button" data-go="HOJA_CC">🖨 Pedir hoja de control final</button>`
+                 <button class="btnRF" type="button" data-go="HOJA_CC">🖨 Hoja de control final</button>`
               : ""
         }
       </div>

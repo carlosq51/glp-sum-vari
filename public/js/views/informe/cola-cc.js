@@ -7,7 +7,7 @@
 // al cerrarse el diálogo de impresión quedan marcadas como impresas. Para
 // volver a sacar una ya impresa, se busca por VIN.
 //
-// Las hojas se imprimen en esta misma pestaña con la página que arma el servidor
+// Las hojas se imprimen desde un iframe con la página que arma el servidor
 // (/api/hojas-calidad/hojas): así el papel no hereda nada de la app.
 // =========================
 
@@ -125,17 +125,51 @@ async function buscar_(vin) {
 }
 
 /**
- * Lleva esta misma pestaña a las hojas: ahí se abre sola el diálogo de
- * impresión y, al cerrarlo, quedan marcadas como impresas y se vuelve aquí
- * (ver routes/hojas-calidad.js). No va en una pestaña nueva porque el
- * navegador la bloquea como ventana emergente, ni en un iframe oculto
- * porque así el papel salía en blanco.
+ * Baja las hojas con fetch y las imprime desde un iframe armado con ese
+ * HTML (srcdoc). Resuelve cuando el diálogo se cierra.
+ *
+ * Por qué así: la página de las hojas NO se puede abrir dentro de la app —
+ * ni en un iframe con src, ni en esta pestaña, ni en otra—. El service
+ * worker contesta toda navegación con la app misma (NavigationRoute), así
+ * que el papel salía en blanco y la pestaña "no se abría". Un fetch no es
+ * una navegación, y un srcdoc tampoco.
  */
-function imprimir_(ids) {
+async function imprimirHojas_(ids) {
+  const r = await fetch(`/api/hojas-calidad/hojas?ids=${ids.map(encodeURIComponent).join(",")}&email=${encodeURIComponent(email_())}`);
+  const html = await r.text();
+  if (!r.ok) throw new Error(html || "No se pudieron cargar las hojas.");
+
+  const fr = document.createElement("iframe");
+  // Fuera de la pantalla pero con tamaño de papel: un iframe de 0×0 o
+  // invisible puede imprimirse vacío.
+  fr.style.cssText = "position:fixed;left:-10000px;top:0;width:210mm;height:297mm;border:0";
+  await new Promise((resolve) => {
+    fr.onload = resolve;
+    // <base> para que /img/… (el logo de fondo) cargue desde aquí.
+    fr.srcdoc = html.replace("<head>", `<head><base href="${location.origin}/">`);
+    document.body.appendChild(fr);
+  });
+  try {
+    fr.contentWindow.focus();
+    fr.contentWindow.print();
+  } finally {
+    setTimeout(() => fr.remove(), 60_000);
+  }
+}
+
+async function imprimir_(ids) {
   if (!ids.length) return;
-  const volver = location.pathname + location.search;
-  location.href = `/api/hojas-calidad/hojas?imprimir=1&ids=${ids.map(encodeURIComponent).join(",")}`
-    + `&email=${encodeURIComponent(email_())}&volver=${encodeURIComponent(volver)}`;
+  aviso_ = "Preparando las hojas…";
+  pintar_();
+  try {
+    await imprimirHojas_(ids);
+    const r = await postJSON("/api/hojas-calidad/impresas", { ids, email: email_() });
+    if (!r?.ok) throw new Error(r?.error || "No se pudieron marcar como impresas.");
+    aviso_ = `${r.n} hoja${r.n === 1 ? "" : "s"} marcada${r.n === 1 ? "" : "s"} como impresa${r.n === 1 ? "" : "s"}. Si alguna no salió, búscala por VIN.`;
+  } catch (err) {
+    aviso_ = String(err?.message || err);
+  }
+  await cargar_();
 }
 
 async function anular_(id) {

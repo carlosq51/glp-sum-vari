@@ -136,6 +136,24 @@ export const CC_MODELOS = {
 };
 
 /** La hoja CC de un modelo canónico ("Jetour X70"), o null si no hay. */
+/** Lo que lleva el punto n en un modelo, antes de que el inspector toque nada. */
+export const marcaModelo_ = (cc, n) => cc.marcas?.[n] ?? "ok";
+
+/**
+ * Las marcas que mandó el navegador, limpias: solo puntos que existen,
+ * solo ok / x / en blanco, y solo lo que difiere del modelo.
+ */
+export function limpiarMarcasCc_(cc, marcas) {
+  const validos = new Set(CC_FILAS.filter(f => f.n).map(f => f.n));
+  const out = {};
+  for (const [k, v] of Object.entries(marcas && typeof marcas === "object" ? marcas : {})) {
+    const n = Number(k);
+    if (!validos.has(n) || !["ok", "x", ""].includes(v)) continue;
+    if (v !== marcaModelo_(cc, n)) out[n] = v;
+  }
+  return out;
+}
+
 export function modeloCc_(modeloCanon) {
   const clave = String(modeloCanon || "").trim().toUpperCase().split(" ").slice(1).join(" ");
   return CC_MODELOS[clave] || null;
@@ -164,11 +182,12 @@ const ALTOS = { 10.8: "h108", 9: "h9" };
  * @param {string} d.fecha    dd-mm-aaaa — el día en que se pidió
  * @param {string} d.vin
  * @param {string} d.tecnico  el inspector que la pidió
+ * @param {object} d.marcas   lo que el inspector cambió: { n: "ok" | "x" | "" }
  */
-export function hojaCcHtml({ cc, fecha = "", vin = "", tecnico = "" } = {}) {
+export function hojaCcHtml({ cc, fecha = "", vin = "", tecnico = "", marcas = {} } = {}) {
   const E = escapeHtml;
   const D = (v) => `<span class="ccDato">${E(v)}</span>`;
-  const marca = (n) => (cc.marcas?.[n] ?? "ok");
+  const marca = (n) => marcas?.[n] ?? marcaModelo_(cc, n);
   const cols = ANCHOS_MM.map(w => `<col style="width:${w}mm">`).join("");
   const borde = (dentro, clase = "") =>
     `<tr${clase ? ` class="${clase}"` : ""}><td class="ccIzq"></td>${dentro}<td class="ccDer"></td></tr>`;

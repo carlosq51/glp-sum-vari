@@ -24,6 +24,7 @@ import { rfTecnicoModal } from "../modals/rf-tecnico-modal.js";
 
 import { confirmFinishModal } from "../modals/confirm-finish-modal.js";
 import { informeOtModal } from "../modals/informe-ot-modal.js";
+import { hojaCcModal } from "../modals/hoja-cc-modal.js";
 import { errorModal } from "../modals/error-modal.js";
 
 export function appShell() {
@@ -70,6 +71,7 @@ export function appShell() {
     ${rfTecnicoModal()}
     ${confirmFinishModal()}
     ${informeOtModal()}
+    ${hojaCcModal()}
     ${errorModal()}
     ${supIncModal()}
     ${liveDetailModal()}

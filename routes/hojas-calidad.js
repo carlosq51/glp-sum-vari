@@ -6,17 +6,18 @@
 //
 // EL FLUJO
 // ────────
-//   · POST /api/hojas-calidad              el inspector la pide desde su
-//                                          tarjeta. Queda PENDIENTE.
+//   · GET  /api/hojas-calidad/carro?vin=   modelo del carro para el modal
+//   · POST /api/hojas-calidad              el inspector la valida en el
+//                                          modal y la pide. Queda PENDIENTE.
 //   · GET  /api/hojas-calidad              la oficina ve las pendientes;
 //                                          con ?vin= busca para reimprimir
 //   · GET  /api/hojas-calidad/hojas?ids=   las hojas como página, para papel
 //   · POST /api/hojas-calidad/impresas     salieron: se marcan IMPRESA
 //   · POST /api/hojas-calidad/:id/anular   pedida por error
 //
-// La hoja no guarda marcas: todas salen del modelo del carro (CC_MODELOS).
-// Lo único propio de cada papel es el VIN, el día en que se pidió y quién
-// la pidió, que va en TÉCNICO:.
+// Las marcas salen del modelo del carro (CC_MODELOS) más lo que el
+// inspector cambió en el modal (columna marcas). Lo demás propio de cada
+// papel es el VIN, el día en que se pidió y quién la pidió (TÉCNICO:).
 // =========================
 
 import { Router } from "express";
@@ -25,11 +26,12 @@ import { supabaseServiceHeaders_ } from "../lib/supabase.js";
 import { requireRol_, getUsuarioByEmail_, padron_ } from "../lib/authz.js";
 import { emitEvent_ } from "../lib/events.js";
 import { normalizeModelo_ } from "../lib/utils.js";
-import { hojaCcHtml, modeloCc_ } from "../public/js/templates/views/hoja-cc-view.js";
+import { hojaCcHtml, modeloCc_, limpiarMarcasCc_ } from "../public/js/templates/views/hoja-cc-view.js";
 import { escapeHtml } from "../public/js/core/format.js";
 
 const router = Router();
 const TABLA = "hojas_calidad";
+// `marcas` entra solo donde se pinta el papel: la lista no la necesita.
 const CAMPOS = "id,vin,estado,solicitado_por,created_at,impresa_at,impresa_por";
 
 const s_ = (v) => String(v ?? "").trim();
@@ -83,6 +85,27 @@ async function enriquecer_(filas) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+//  GET /api/hojas-calidad/carro?vin= — lo que el modal del inspector
+//  necesita: el modelo (para saber qué hoja va) y, si ya la pidió y sigue
+//  pendiente, lo que marcó entonces.
+// ─────────────────────────────────────────────────────────────────────────
+router.get("/api/hojas-calidad/carro", async (req, res) => {
+  try {
+    const vin = s_(req.query.vin).toUpperCase();
+    if (!vin) return res.status(400).json({ ok: false, error: "Falta el VIN del carro." });
+    const [modelos, previa] = await Promise.all([
+      modelosDe_([vin]),
+      sb_(`${TABLA}?select=${CAMPOS},marcas&vin=eq.${encodeURIComponent(vin)}&estado=eq.PENDIENTE&limit=1`),
+    ]);
+    const modelo = modelos.get(vin) || "";
+    res.json({ ok: true, vin, modelo, tieneHoja: !!modeloCc_(modelo), pendiente: previa?.[0] || null });
+  } catch (err) {
+    console.error("[hojas-calidad] carro:", err.message);
+    res.status(500).json({ ok: false, error: mensajeUtil_(err) });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
 //  POST /api/hojas-calidad — el inspector pide la hoja de un carro
 // ─────────────────────────────────────────────────────────────────────────
 router.post("/api/hojas-calidad", async (req, res) => {
@@ -100,7 +123,8 @@ router.post("/api/hojas-calidad", async (req, res) => {
     // Sin hoja para el modelo no se acepta: si entrara, la oficina
     // imprimiría el X70 a un KYC y nadie lo notaría hasta firmarlo.
     const modelo = (await modelosDe_([vin])).get(vin);
-    if (!modeloCc_(modelo)) {
+    const cc = modeloCc_(modelo);
+    if (!cc) {
       return res.status(422).json({
         ok: false,
         error: modelo
@@ -109,11 +133,20 @@ router.post("/api/hojas-calidad", async (req, res) => {
       });
     }
 
-    // Una sola pendiente por carro. Pedirla dos veces no imprime dos.
-    const previa = await sb_(`${TABLA}?select=${CAMPOS}&vin=eq.${encodeURIComponent(vin)}&estado=eq.PENDIENTE&limit=1`);
-    if (previa?.[0]) return res.json({ ok: true, yaEstaba: true, hoja: previa[0] });
+    // Lo que el inspector validó en el modal. Se guarda solo lo que cambia
+    // respecto del modelo.
+    const marcas = limpiarMarcasCc_(cc, req.body?.marcas);
 
-    const creadas = await sb_(TABLA, { method: "POST", body: { vin, solicitado_por: u.email } });
+    // Una sola pendiente por carro. Pedirla otra vez no imprime dos: se
+    // corrigen las marcas de la que ya estaba, y firma quien la mandó.
+    const previa = await sb_(`${TABLA}?select=id&vin=eq.${encodeURIComponent(vin)}&estado=eq.PENDIENTE&limit=1`);
+    if (previa?.[0]) {
+      const act = await sb_(`${TABLA}?id=eq.${previa[0].id}`, { method: "PATCH", body: { marcas, solicitado_por: u.email } });
+      emitEvent_("hojas-calidad", { accion: "corregida", id: previa[0].id });
+      return res.json({ ok: true, yaEstaba: true, hoja: act?.[0] });
+    }
+
+    const creadas = await sb_(TABLA, { method: "POST", body: { vin, solicitado_por: u.email, marcas } });
     const hoja = Array.isArray(creadas) ? creadas[0] : creadas;
     emitEvent_("hojas-calidad", { accion: "nueva", id: hoja?.id });
     res.json({ ok: true, hoja });
@@ -143,8 +176,10 @@ router.get("/api/hojas-calidad", requireRol_("ADMIN", "SUPERVISOR"), async (req,
 
 // ─────────────────────────────────────────────────────────────────────────
 //  GET /api/hojas-calidad/hojas?ids=a,b — las hojas como página
-//  La oficina la carga en un iframe y la imprime de una vez: una hoja por
-//  papel. El CSS va dentro para no depender del bundle de la app.
+//  La oficina la baja con fetch y la imprime de una vez desde un iframe
+//  (srcdoc): una hoja por papel. El CSS va dentro para no depender del
+//  bundle de la app. Abierta como página dentro de la app NO sirve: el
+//  service worker contesta cualquier navegación con la app (NavigationRoute).
 // ─────────────────────────────────────────────────────────────────────────
 let css_ = null;
 const cssHoja_ = () => (css_ ??= readFileSync(new URL("../public/css/views/hoja-cc.css", import.meta.url), "utf8"));
@@ -154,7 +189,7 @@ router.get("/api/hojas-calidad/hojas", requireRol_("ADMIN", "SUPERVISOR"), async
     const ids = s_(req.query.ids).split(",").map(s_).filter(x => /^[0-9a-f-]{36}$/i.test(x)).slice(0, 100);
     if (!ids.length) return res.status(400).send("No hay hojas que imprimir.");
 
-    const filas = await enriquecer_(await sb_(`${TABLA}?select=${CAMPOS}&id=in.(${ids.join(",")})&order=created_at.asc`) || []);
+    const filas = await enriquecer_(await sb_(`${TABLA}?select=${CAMPOS},marcas&id=in.(${ids.join(",")})&order=created_at.asc`) || []);
     const hojas = filas.map(f => {
       const cc = modeloCc_(f.modelo);
       // Un carro cuyo modelo cambió en el padrón después de pedirla: mejor
@@ -165,36 +200,15 @@ router.get("/api/hojas-calidad/hojas", requireRol_("ADMIN", "SUPERVISOR"), async
         fecha: fechaPeru_(f.created_at),
         vin: f.vin,
         tecnico: s_(f.solicitado_nombre).toUpperCase(),
+        marcas: f.marcas,
       });
     }).join("");
-
-    // Con ?imprimir=1 la página abre sola el diálogo y, al cerrarlo, marca
-    // las hojas como impresas y vuelve a la app (?volver=). Se abre en la
-    // MISMA pestaña: una nueva la bloquea el navegador como ventana
-    // emergente, y desde un iframe oculto el papel salía en blanco.
-    const volver = /^\/(?!\/)/.test(s_(req.query.volver)) ? s_(req.query.volver) : "/";
-    // `<` escapado: el JSON va dentro de un <script>.
-    const datos = JSON.stringify({ ids: filas.map(f => f.id), email: emailDe_(req), volver }).replace(/</g, "\\u003c");
-    const auto = req.query.imprimir === "1" ? `<script>
-const D = ${datos};
-addEventListener("load", () => {
-  addEventListener("afterprint", async () => {
-    try {
-      await fetch("/api/hojas-calidad/impresas", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids: D.ids, email: D.email }),
-      });
-    } finally { location.replace(D.volver); }
-  }, { once: true });
-  setTimeout(() => window.print(), 300);
-});
-</script>` : "";
 
     res.type("html").send(`<!doctype html>
 <html lang="es"><head><meta charset="utf-8">
 <title>Control final · ${filas.length} hoja${filas.length === 1 ? "" : "s"}</title>
 <style>@media screen{body{margin:0;padding:24px 0;background:#6b7280}.ccHoja+.ccHoja{margin-top:24px}}${cssHoja_()}</style>
-</head><body>${hojas}${auto}</body></html>`);
+</head><body>${hojas}</body></html>`);
   } catch (err) {
     console.error("[hojas-calidad] hojas:", err.message);
     res.status(500).send(escapeHtml(mensajeUtil_(err)));
@@ -242,6 +256,9 @@ router.post("/api/hojas-calidad/:id/anular", requireRol_("ADMIN", "SUPERVISOR"),
 /** Si falta la tabla, se dice qué migración correr. */
 function mensajeUtil_(err) {
   const m = String(err?.message || err);
+  if (/marcas/.test(m) && /column|PGRST204/i.test(m)) {
+    return "Falta la columna de marcas. Ejecuta supabase/migrations/011_hojas-calidad-marcas.sql en Supabase.";
+  }
   if (/hojas_calidad/.test(m) && /does not exist|relation|PGRST205/i.test(m)) {
     return "Falta la tabla de hojas de calidad. Ejecuta supabase/migrations/010_hojas-calidad.sql en Supabase.";
   }

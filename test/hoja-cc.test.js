@@ -7,7 +7,7 @@
 // =========================
 
 import { describe, it, expect } from "vitest";
-import { CC_FILAS, CC_MODELOS, modeloCc_, hojaCcHtml } from "../public/js/templates/views/hoja-cc-view.js";
+import { CC_FILAS, CC_MODELOS, modeloCc_, hojaCcHtml, limpiarMarcasCc_ } from "../public/js/templates/views/hoja-cc-view.js";
 import { normalizeModelo_ } from "../lib/utils.js";
 
 describe("modeloCc_", () => {
@@ -55,5 +55,24 @@ describe("hojaCcHtml · parámetros del X70", () => {
     expect(rayas).toEqual(["(14,13,13,14 ) V7", "(12.5,11.5,11.5,12.5) V5 V3", "1.28 BAR V7", "1.25bar                       V5 V3"]);
     expect(html).toContain("( 13,11,11,13 ) X70");
     expect(html).not.toMatch(/<s class="ccRaya">[^<]*X70/);
+  });
+});
+
+describe("marcas del inspector", () => {
+  const cc = CC_MODELOS.X70;
+
+  it("guarda solo lo que cambia respecto del modelo, y solo valores válidos", () => {
+    expect(limpiarMarcasCc_(cc, { 22: "ok", 1: "ok", 50: "x", 51: "ok", 2: "", 99: "ok", 3: "si" }))
+      .toEqual({ 22: "ok", 51: "ok", 2: "" });
+    expect(limpiarMarcasCc_(cc, null)).toEqual({});
+  });
+
+  it("lo que marcó pisa al modelo en el papel", () => {
+    const html = hojaCcHtml({ cc, marcas: { 22: "ok", 2: "" } });
+    const casillas = [...html.matchAll(/<td class="ccOk(?: ccOkParam)?">([^<]*)<\/td>/g)].map(m => m[1]);
+    const porNumero = Object.fromEntries(CC_FILAS.filter(f => f.n).map((f, i) => [f.n, casillas[i]]));
+    expect(porNumero[22]).toBe("ok");
+    expect(porNumero[2]).toBe("");
+    expect(porNumero[38]).toBe("");
   });
 });
