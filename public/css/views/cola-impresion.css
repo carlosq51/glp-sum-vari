@@ -129,3 +129,36 @@
   padding: 11px 18px;
   cursor: pointer;
 }
+
+/* ---------- Hojas de control de calidad (cola-cc.js) ----------
+   Debajo de los informes, en la misma pestaña. Aquí no se abre nada: un
+   botón imprime todas las pendientes de una vez. */
+.ciCalidad {
+  margin-top: 28px;
+  padding-top: 18px;
+  border-top: 1px solid var(--surfaceLine);
+}
+.ccqWrap .ciAbrir:disabled { opacity: .45; cursor: default; transform: none; }
+.ccqAviso {
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  background: var(--surface2);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radiusSm);
+  font-size: 13px;
+}
+.ccqBuscar { display: flex; gap: 8px; margin-bottom: 10px; }
+.ccqBuscar input {
+  flex: 1; min-width: 0;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+}
+.ccqBuscar button {
+  background: var(--surface2);
+  border: 1px solid var(--surfaceLine);
+  border-radius: var(--radiusSm);
+  color: var(--text);
+  font: inherit; font-weight: 700;
+  padding: 9px 14px;
+  cursor: pointer;
+}

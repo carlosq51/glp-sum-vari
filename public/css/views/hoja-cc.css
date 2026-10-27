@@ -1,0 +1,156 @@
+/* =========================================================================
+   public/css/views/hoja-cc.css
+   CONTROL FINAL del inspector de calidad. Copia literal de la hoja
+   "CC WILMER" de CERTIFICADOS GLP.xlsx.
+
+   No la carga la app: la mete routes/hojas-calidad.js dentro de la página
+   que se imprime, junto con sus propias reglas de papel (abajo).
+
+   ── DE DÓNDE SALEN LAS MEDIDAS ─────────────────────────────────────────
+     · Columnas B, D..K (C está oculta en el Excel; A y L quedan fuera del
+       marco).  px = anchoExcel * 7 + 5 ;  mm = px * 25.4/96 * 0.79
+       El 0.79 es <pageSetup scale="79"/>.
+     · Alto de fila: 10.35pt casi todas (× 0.79 = 8.18pt = 2.885mm).
+       Excepciones: 10.8 (.h108), 9 (.h9) y las del encabezado y el cierre.
+     · Márgenes: 0.75in arriba y abajo (los del Excel). Los laterales van
+       centrados en vez de los 0.71in del original, como en las otras hojas.
+     · Bordes: el marco es "medium", todo lo de dentro "thin".
+     · Gris del marco: theme 0 con tint -5 % = #F2F2F2. Título: theme 1 con
+       tint 50 % = #808080, letra blanca.
+     · Fuente: Calibri 8 en los puntos, 11 negrita azul (#0070C0) en las
+       casillas, 10 negrita en el encabezado y en el pie.
+     · El logo de fondo es la imagen del Excel con alphaModFix 16 %.
+   ========================================================================= */
+
+.ccHoja {
+  width: 210mm;
+  margin: 0 auto;
+  /* Centrado: (210 - 153.44) / 2 = 28.28mm a cada lado. */
+  padding: 19.05mm 28.28mm;
+  background: #fff;
+  color: #000;
+  font-family: Calibri, Carlito, "Segoe UI", sans-serif;
+  line-height: 1;
+  box-shadow: 0 6px 24px rgba(0,0,0,.35);
+}
+.ccHoja * { box-sizing: border-box; }
+
+.ccMarco { position: relative; width: 153.44mm; }
+
+/* Anclado como en el Excel: desde la columna E (+0.92cm) y la fila 6
+   (+0.35cm), 11.43 × 3.07cm, todo × 0.79. */
+.ccLogo {
+  position: absolute;
+  left: 39.4mm;
+  top: 12.25mm;
+  width: 90.3mm;
+  height: 24.3mm;
+  opacity: .16;
+  pointer-events: none;
+}
+
+.ccTabla {
+  width: 153.44mm;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.ccTabla td {
+  height: 2.885mm;                 /* 10.35pt × 0.79 */
+  padding: 0 0.4mm;
+  font-size: 6.32pt;               /* Calibri 8 × 0.79 */
+  white-space: pre;                /* los espacios del Excel separan V7 / V5 V3 */
+  overflow: hidden;
+  vertical-align: bottom;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+
+.ccTabla tr.h108 td { height: 3.01mm; }   /* 10.8pt */
+.ccTabla tr.h9   td { height: 2.51mm; }   /* 9pt */
+.ccTabla tr.ccR2 td { height: 1.55mm; }   /* fila 2: 5.55pt */
+.ccTabla tr.ccR3 td { height: 4.18mm; }   /* fila 3: 15pt */
+.ccTabla tr.ccR4 td { height: 3.22mm; }   /* fila 4: 11.55pt */
+.ccTabla tr.ccR5 td { height: 0.5mm; font-size: 0; }   /* fila 5: 1.8pt */
+.ccTabla tr.ccR90 td { height: 1.34mm; }  /* fila 90: 4.8pt */
+
+/* ---- El marco gris ---- */
+.ccGris { background: #f2f2f2; }
+.ccIzq  { background: #f2f2f2; border-left: 2px solid #000; }
+.ccDer  { background: #f2f2f2; border-right: 2px solid #000; }
+.ccArriba { border-top: 2px solid #000; }
+.ccAbajo  { border-bottom: 2px solid #000; }
+
+/* El "OK" de cada bloque: Calibri 10 negrita, sin borde. El del bloque
+   58-64 es "ok" en 11 — así viene en el Excel. */
+.ccTabla td.ccOkBloque { font-size: 7.9pt; font-weight: 700; text-align: left; }
+.ccTabla td.ccOkBloque.is-grande { font-size: 8.69pt; }
+
+/* ---- Encabezado ---- */
+.ccTabla td.ccTitulo {
+  background: #808080;
+  color: #fff;
+  font-size: 11.06pt;              /* 14 × 0.79 */
+  font-weight: 700;
+  text-align: center;
+  vertical-align: middle;
+}
+.ccTabla td.ccCab {
+  border: 1px solid #000;
+  font-size: 7.9pt;                /* 10 × 0.79 */
+  font-weight: 700;
+  text-align: left;
+}
+.ccTabla td.ccSinArriba { border-top: 0; }
+.ccModelo { margin-left: 9mm; }
+.ccDato { color: #0070c0; font-weight: 700; }
+
+/* ---- Puntos ---- */
+.ccTxt { border: 1px solid #000; }
+.ccTabla td.ccSinDer { border-right: 0; }
+/* La nota de la bujía se sale de su celda hasta la casilla, como en el Excel. */
+.ccTabla td.ccSinIzq { border-left: 0; vertical-align: middle; overflow: visible; }
+.ccCaja { background: #fff; }
+.ccTabla td.ccOk {
+  border: 1px solid #000;
+  color: #0070c0;
+  font-size: 8.69pt;               /* 11 × 0.79 */
+  font-weight: 700;
+  text-align: center;
+  vertical-align: middle;
+}
+.ccTabla td.ccOkParam { font-size: 9.48pt; }  /* 12 × 0.79 */
+
+/* Una letra de 11 no cabe en una fila de 10.35pt. Excel la deja asomar;
+   aquí, si la línea mide lo que la letra, la fila crece y la hoja ya no
+   entra en un papel. Con la línea más baja que la fila, la letra asoma
+   igual y la fila conserva su alto. */
+.ccTabla td.ccOk, .ccTabla td.ccPie { line-height: 2mm; }
+
+/* ---- Pie ---- */
+.ccTabla td.ccPie {
+  border: 1px solid #000;
+  font-size: 7.9pt;
+  font-weight: 700;
+  text-align: left;
+  vertical-align: middle;
+}
+.ccPie .ccDato { font-size: 9.48pt; }                   /* 12 × 0.79 */
+.ccPie .ccTecnico { font-size: 10.27pt; margin-left: 12mm; }  /* 13 × 0.79 */
+
+/* ---- Papel ----
+   Una hoja por página. Los márgenes los pone @page y la tabla se centra
+   sola, se aplique o no la @page (ver la nota de informe-taller.css).
+   Arriba y abajo van 15mm y no los 19 del Excel: la hoja mide 257mm y con
+   19 quedaban 2mm de holgura, poco para que un redondeo no la parta. */
+@media print {
+  @page { size: A4 portrait; margin: 15mm 12mm; }
+  html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
+  .ccHoja {
+    width: auto;
+    margin: 0;
+    padding: 0;
+    box-shadow: none;
+    break-after: page;
+  }
+  .ccHoja:last-child { break-after: auto; }
+  .ccMarco { margin: 0 auto; break-inside: avoid; }
+}

@@ -118,6 +118,9 @@ export function renderActivas_() {
                   data-vin="${escapeHtml(it.vin || "")}"
                   style="margin-top:6px; margin-bottom:6px;">
                   🔩 Ver fotos de soldadura
+                </button>
+                <button class="btnRF" type="button" data-go="HOJA_CC" style="margin-bottom:6px;">
+                  🖨 Pedir hoja de control final
                 </button>`
               : ""}
 
@@ -215,7 +218,8 @@ export function renderFinalizados_(avgTopHTML = "") {
           CORE.state.currentModule === "TECNICO"
             ? `<button class="btnRF" type="button" data-go="RF">📸 Registrar fotos / fallas</button>`
             : CORE.state.currentModule === "CALIDAD"
-              ? `<button class="btnRF" type="button" data-go="RF">📸 Registrar calidad / fallas</button>`
+              ? `<button class="btnRF" type="button" data-go="RF">📸 Registrar calidad / fallas</button>
+                 <button class="btnRF" type="button" data-go="HOJA_CC">🖨 Pedir hoja de control final</button>`
               : ""
         }
       </div>

@@ -16,6 +16,7 @@
 import { getJSON, postJSON } from "../../core/api.js";
 import { CORE } from "../../core/state.js";
 import { escapeHtml } from "../../core/format.js";
+import { renderColaCc } from "./cola-cc.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -144,7 +145,13 @@ async function anular_(id) {
  */
 export async function renderColaImpresion(el) {
   if (!el) return;
-  host_ = el;
+  // Dos colas en la misma pestaña: los informes del taller arriba y las
+  // hojas de control de calidad debajo. Cada una pinta solo su caja.
+  if (!el.querySelector(":scope > .ciInformes")) {
+    el.innerHTML = `<div class="ciInformes"></div><div class="ciCalidad"></div>`;
+  }
+  renderColaCc(el.querySelector(":scope > .ciCalidad"));
+  host_ = el.querySelector(":scope > .ciInformes");
   host_.classList.add("ciWrap");
 
   if (!host_.dataset.ciBound) {

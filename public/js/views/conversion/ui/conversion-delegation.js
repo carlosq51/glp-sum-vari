@@ -230,6 +230,12 @@ function attachWorkDelegationOnce_(mod) {
         return;
       }
 
+      if (go === "HOJA_CC") {
+        e.stopPropagation();
+        await pedirHojaCc_(goBtn, it.vin);
+        return;
+      }
+
       if (go === "SOLD") {
         e.stopPropagation();
         const vin = String(goBtn.dataset.vin || it.vin || "").trim().toUpperCase();
@@ -281,6 +287,31 @@ function attachWorkDelegationOnce_(mod) {
     });
   } finally {
     CORE.state.currentModule = prev;
+  }
+}
+
+/**
+ * El inspector pide a la oficina la hoja CONTROL FINAL de su carro. Las
+ * marcas salen del modelo; lo suyo es el VIN, la fecha y su nombre.
+ * Pedirla dos veces no imprime dos (el servidor devuelve la pendiente).
+ */
+async function pedirHojaCc_(btn, vinRaw) {
+  const vin = String(vinRaw || "").trim().toUpperCase();
+  if (!vin || btn.disabled) return;
+  let email;
+  try { email = requireEmailOrStop(); } catch { return; }
+
+  const texto = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Pidiendo…";
+  try {
+    const r = await postJSON("/api/hojas-calidad", { email, vin });
+    if (!r?.ok) throw new Error(r?.error || "No se pudo pedir la hoja.");
+    btn.textContent = r.yaEstaba ? "✓ Ya estaba pedida" : "✓ Hoja pedida a la oficina";
+  } catch (err) {
+    btn.textContent = texto;
+    btn.disabled = false;
+    alert(String(err?.message || err));
   }
 }
 
@@ -337,6 +368,12 @@ function attachFinalizadosDelegationOnce_(mod) {
         e.stopPropagation();
         if (!k) return;
         await openIncidenciaModalForKey_(k);
+        return;
+      }
+
+      if (go === "HOJA_CC") {
+        e.stopPropagation();
+        await pedirHojaCc_(btn, it?.vin);
         return;
       }
 
