@@ -165,7 +165,13 @@ function gpsHtml_(vin, { desde = "" } = {}) {
 function gpsInner_(vin, desde) {
   const e = _gps.get(vin);
   const registrar = `<button type="button" class="movGpsReg" data-gps-open="${escapeHtml(vin)}">${icon("target", 14)} Registrar GPS</button>`;
-  if (!e) return _gpsCaido ? "" : `<span class="movGps movGps--cargando">${icon("target", 14)}GPS…</span>`;
+  // Sin dato todavía: el servidor lo tiene en cola (la API va de a una). Nunca
+  // se deja la tarjeta vacía: un hueco en blanco parecía "esto no funciona".
+  if (!e) {
+    return _gpsCaido
+      ? `<span class="movGps movGps--none">${icon("target", 14)}GPS no responde</span>`
+      : `<span class="movGps movGps--cargando">${icon("target", 14)}GPS…</span>`;
+  }
   const p = e.pos;
   if (!p) {
     return desde
@@ -191,9 +197,17 @@ function pintarGps_() {
 }
 
 let _gpsEnVuelo = false;
+let _gpsRepoll = null;
+/** Cada cuánto se vuelve a preguntar por los VINs que el servidor tiene en cola. */
+const GPS_REPOLL_MS = 4_000;
+
 /**
  * Pide al servidor la posición de los VINs que no se tienen o están vencidos.
- * `fresh` (pocos VINs) salta también el cache del servidor.
+ *
+ * El servidor responde al instante con lo que ya sabe y deja el resto en cola
+ * (`pendientes`), porque la API GPS atiende de a una consulta. Mientras quede
+ * algo pendiente se vuelve a preguntar cada GPS_REPOLL_MS y la lista se va
+ * llenando sola. `fresh` (pocos VINs) espera la respuesta real.
  */
 async function cargarGps_(vins, { fresh = false } = {}) {
   const ahora = Date.now();
@@ -201,6 +215,7 @@ async function cargarGps_(vins, { fresh = false } = {}) {
     .filter(v => fresh || !_gps.has(v) || ahora - _gps.get(v).at > GPS_REFRESCO_MS);
   if (!faltan.length || (_gpsEnVuelo && !fresh)) return;
   if (!fresh) _gpsEnVuelo = true;
+  let quedan = 0;
   try {
     for (let i = 0; i < faltan.length; i += 100) {
       const lote = faltan.slice(i, i + 100);
@@ -209,6 +224,7 @@ async function cargarGps_(vins, { fresh = false } = {}) {
       _gpsCaido = !!j.caido;
       const at = Date.now();
       for (const [vin, pos] of Object.entries(j.gps || {})) _gps.set(vin, { pos, at });
+      quedan += (j.pendientes || j.sin_dato || []).length;
       pintarGps_();
     }
   } catch { /* sin GPS no se rompe nada: la lista se ve igual */ }
@@ -217,6 +233,12 @@ async function cargarGps_(vins, { fresh = false } = {}) {
     pintarGps_();
     // Salidas de hoy se agrupan por "tiene GPS o no": hay que reagrupar.
     renderSalidasHoy_(_salidasHoy);
+    if (quedan && !fresh && !_gpsRepoll) {
+      _gpsRepoll = setTimeout(() => {
+        _gpsRepoll = null;
+        if (document.visibilityState === "visible") cargarGpsPantalla_().catch(() => {});
+      }, GPS_REPOLL_MS);
+    }
   }
 }
 
