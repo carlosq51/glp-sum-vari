@@ -6,7 +6,7 @@ import { getConfig_ } from "../lib/config.js";
 import { cachedByTopics_ } from "../lib/poll-cache.js";
 import { ttlConRealtime_ } from "../lib/realtime.js";
 import { usuariosPorIds_ } from "../lib/authz.js";
-import { gpsDeVins_, normVin_ } from "../lib/gps.js";
+import { gpsDeVins_, normVin_, registrarGps_, zonasApp_ } from "../lib/gps.js";
 
 const router = Router();
 
@@ -824,6 +824,43 @@ router.get("/api/movilizador/gps", async (req, res) => {
   } catch (e) {
     console.error("[MOV_GPS]", e);
     return res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
+// POST /api/movilizador/gps-registrar
+//
+// Guarda la posición física de un VIN en la app de escaneos (ver lib/gps.js).
+// El celular captura el GPS y lo manda aquí; el servidor reenvía a la app para
+// no toparse con CORS y para que el `usuario` sea el nombre real de quien
+// registra en GLP, no uno escrito a mano en la otra app.
+//
+// body: { vin, lat, lng, acc, usuario }           (por GPS)
+//    o: { vin, zonaManual, usuario }               (manual, bajo techo)
+router.post("/api/movilizador/gps-registrar", async (req, res) => {
+  try {
+    const vin = normVin_(req.body?.vin);
+    if (!vin) return res.status(400).json({ ok: false, error: "Falta VIN" });
+    const { lat, lng, acc, zonaManual, usuario } = req.body || {};
+    const manual = zonaManual != null && String(zonaManual).trim() !== "";
+    if (!manual && (lat == null || lng == null)) {
+      return res.status(400).json({ ok: false, error: "Falta la posición (lat/lng) o una zona manual" });
+    }
+    const r = await registrarGps_(vin, { lat, lng, acc, zonaManual, usuario: String(usuario || "").trim() });
+    // Que la lista de salidas-hoy reagrupe (el carro pasa a "GPS registrado").
+    emitEvent_("movilizador", { accion: "GPS_REGISTRADO", vin });
+    return res.json({ ok: true, vin, zona: r.zona });
+  } catch (e) {
+    console.error("[MOV_GPS_REGISTRAR]", e.message);
+    return res.status(502).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
+// GET /api/movilizador/gps-zonas — lista de zonas de la app, para el modo manual.
+router.get("/api/movilizador/gps-zonas", async (_req, res) => {
+  try {
+    return res.json({ ok: true, zonas: await zonasApp_() });
+  } catch (e) {
+    return res.json({ ok: true, zonas: [] });
   }
 });
 

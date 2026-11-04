@@ -18,12 +18,12 @@ function screenHead_(iconName, tone, title, sub) {
     </div>`;
 }
 
-/** Sí / No de la app GPS (Entrada y Salida comparten la preferencia). */
+/** Sí / No: registrar el GPS automáticamente al registrar (Entrada y Salida comparten la preferencia). */
 function redirRow_() {
   return `
     <div class="movRedirRow">
-      <span class="movRedirLabel">${icon("mapPin", 14)} Abrir app GPS al registrar</span>
-      <div class="movRedirSeg" role="group" aria-label="Abrir la app GPS al registrar">
+      <span class="movRedirLabel">${icon("target", 14)} Pedir GPS al registrar</span>
+      <div class="movRedirSeg" role="group" aria-label="Pedir el GPS al registrar">
         <button type="button" class="movRedirOpt" data-val="1" aria-pressed="true">Sí</button>
         <button type="button" class="movRedirOpt" data-val="0" aria-pressed="false">No</button>
       </div>

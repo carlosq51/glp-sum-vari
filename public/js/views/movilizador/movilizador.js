@@ -18,11 +18,11 @@ import { requestNotifPermission } from "../../core/push-client.js";
 
 // VINs del panel salida que aún no tienen OT según el último render
 let _vinsSinOT_ = new Set();
-const GPS_URL = "https://gps-ubicaciones-app.vercel.app/";
 const OFFLINE_KEY = "glp_mov_offline_q";
 const LISTA_CACHE_KEY = "glp_mov_lista_cache";
-// ¿Abrir la app GPS al registrar? Una sola preferencia para Entrada y Salida:
-// los dos segmentados escriben y leen esta clave, así que mover uno mueve el otro.
+// ¿Pedir el GPS al registrar (entrada/salida)? Una sola preferencia para
+// Entrada y Salida: los dos segmentados escriben y leen esta clave, así que
+// mover uno mueve el otro.
 const REDIR_KEY = "glp_mov_redir";
 
 let _pendientesRows = [];
@@ -139,8 +139,6 @@ const GPS_REFRESCO_MS = 3 * 60_000;
  * antes de marcar el ingreso o la salida en GLP, y eso también vale.
  */
 const GPS_MARGEN_MS = 15 * 60_000;
-/** VIN que se acaba de mandar a la app GPS: al volver se relee sin cache. */
-let _gpsRecienAbierto = null;
 
 /** "hace 5 min", "hace 2 h", "hace 3 d". */
 function haceRel_(iso) {
@@ -234,14 +232,6 @@ function vinsGpsPantalla_() {
 
 function cargarGpsPantalla_() {
   return cargarGps_(vinsGpsPantalla_());
-}
-
-/** Abre la app GPS para un VIN y deja anotado que al volver hay que releerlo. */
-function abrirGpsRegistro_(vin) {
-  _gpsRecienAbierto = vin;
-  openGpsWithVin_(vin);
-  const s = document.getElementById("movStatus");
-  if (s) s.textContent = `${vin} copiado — regístralo en la app GPS.`;
 }
 
 /** "YYYY-MM-DD" del día en Lima. Acepta un ISO o una fecha "YYYY-MM-DD" tal cual. */
@@ -1564,73 +1554,217 @@ async function closeMovQr_() {
   modal.style.display = "none";
 }
 
-// ─── GPS + Registro ────────────────────────────────────────────────────
+// ─── GPS + Registro (dentro de GLP, sin la app externa) ──────────────────
+//
+// Antes esto abría la app de escaneos en otra pestaña y el movilizador pegaba
+// el VIN a mano. Ahora GLP captura la posición del celular y la manda al
+// servidor, que la reenvía a la misma API de la app (POST /api/scans/save vía
+// /api/movilizador/gps-registrar). El movilizador no sale de GLP.
 
-function getGpsUrl_(vin) {
-  return `${GPS_URL}?vin=${encodeURIComponent(vin)}`;
+/** vin actualmente en captura, para no lanzar dos a la vez. */
+let _gpsRegEnCurso = null;
+
+/**
+ * capturarPosicion_ — promedia varias lecturas de alta precisión, como hacía
+ * la app original. Más lecturas = más preciso pero más lento; bajo techo el
+ * GPS casi no mejora, así que si la primera sale muy mala igual se usa.
+ */
+function capturarPosicion_(onProgreso, lecturas = 4) {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) return reject(new Error("Este celular no da ubicación"));
+    const puntos = [];
+    const paso = () => {
+      onProgreso?.(`📍 Ubicando… (${puntos.length + 1}/${lecturas})`);
+      navigator.geolocation.getCurrentPosition(
+        p => {
+          puntos.push(p.coords);
+          if (puntos.length >= lecturas) {
+            const lat = puntos.reduce((s, c) => s + c.latitude, 0) / puntos.length;
+            const lng = puntos.reduce((s, c) => s + c.longitude, 0) / puntos.length;
+            const acc = Math.min(...puntos.map(c => c.accuracy));
+            resolve({ lat, lng, acc });
+          } else {
+            setTimeout(paso, 300);
+          }
+        },
+        err => {
+          // Si ya hay al menos una lectura, se usa esa en vez de fallar.
+          if (puntos.length) {
+            const c = puntos[puntos.length - 1];
+            resolve({ lat: c.latitude, lng: c.longitude, acc: c.accuracy });
+          } else {
+            reject(err);
+          }
+        },
+        { enableHighAccuracy: true, timeout: 10_000, maximumAge: 0 }
+      );
+    };
+    paso();
+  });
 }
 
-function copyVinToClipboard_(vin) {
+/** Manda al servidor y, si sale bien, deja el ✓ en la tarjeta al instante. */
+async function enviarGps_(vin, datos) {
+  const j = await postJSON("/api/movilizador/gps-registrar", {
+    vin, usuario: getMovNombre_(), ...datos,
+  });
+  if (!j?.ok) throw new Error(j?.error || "No se pudo registrar");
+  _gps.set(vin, {
+    at: Date.now(),
+    pos: {
+      zona: j.zona || (datos.zonaManual || null),
+      fila: null,
+      lat: datos.lat ?? null,
+      lng: datos.lng ?? null,
+      maps_url: datos.lat != null ? `https://maps.google.com/?q=${datos.lat},${datos.lng}` : null,
+      scanned_at: new Date().toISOString(),
+    },
+  });
+  pintarGps_();
+  renderSalidasHoy_(_salidasHoy);
+  // Relectura real a los 20 s: corrige zona/fila con lo que ve la API.
+  setTimeout(() => cargarGps_([vin], { fresh: true }).catch(() => {}), 20_000);
+  return j;
+}
+
+/**
+ * registrarGpsEnApp_ — flujo completo de registro desde una tarjeta o botón.
+ * Captura GPS; si el celular lo niega o no agarra, ofrece el modo manual
+ * (elegir zona + fila), igual que la app original para bajo techo.
+ */
+async function registrarGpsEnApp_(vin) {
+  const vinClean = String(vin || "").trim().toUpperCase();
+  if (!vinClean || _gpsRegEnCurso) return;
+  _gpsRegEnCurso = vinClean;
+  abrirGpsModal_(vinClean);
+  setGpsModalEstado_("📍 Ubicando…", "trabajando");
   try {
-    navigator.clipboard.writeText(vin).catch(() => {});
-  } catch {}
-}
-
-// Siempre la MISMA pestaña para la app GPS, no una nueva por registro. La app
-// GPS no es nuestra y prende la cámara (lector QR) al cargar y cada vez que su
-// pestaña vuelve a verse; con `_blank` el celular acababa el turno con decenas
-// de pestañas así, cada una reactivando la cámara al cruzarse con ella. Con un
-// nombre fijo el navegador reutiliza la que ya existe.
-const GPS_TAB = "glpGpsTab";
-
-function prepareGpsWindow_(vin) {
-  copyVinToClipboard_(vin);
-  const popup = window.open("about:blank", GPS_TAB);
-  if (!popup) return null;
-
-  try {
-    popup.opener = null;
-    popup.document.title = "Registrando salida...";
-    popup.document.body.innerHTML = "<p style=\"font-family:system-ui,sans-serif;padding:16px;\">Guardando salida...</p>";
-  } catch {}
-
-  return popup;
-}
-
-function openGpsWithVin_(vin, popup) {
-  _gpsRecienAbierto = vin;
-  const url = getGpsUrl_(vin);
-  copyVinToClipboard_(vin);
-
-  if (popup && !popup.closed) {
-    try {
-      popup.location.replace(url);
-      return;
-    } catch {}
+    const pos = await capturarPosicion_(txt => setGpsModalEstado_(txt, "trabajando"));
+    setGpsModalEstado_("☁️ Guardando…", "trabajando");
+    const j = await enviarGps_(vinClean, { lat: pos.lat, lng: pos.lng, acc: pos.acc });
+    setGpsModalEstado_(`✓ ${vinClean.slice(-8)} → ${j.zona || "registrado"} (±${pos.acc.toFixed(0)} m)`, "ok");
+    setTimeout(cerrarGpsModal_, 1400);
+  } catch (e) {
+    // GPS no disponible → modo manual. Para "bajo techo" es lo normal.
+    mostrarGpsManual_(vinClean, e?.message || "No se pudo ubicar por GPS");
+  } finally {
+    _gpsRegEnCurso = null;
   }
+}
 
-  // Sin "noopener": con él el navegador ignora el nombre y abre otra pestaña.
-  // El opener se corta a mano, que es lo que "noopener" protegía.
-  const opened = window.open(url, GPS_TAB);
-  if (opened) { try { opened.opener = null; } catch {} }
-  else window.location.href = url;
+// ─── Modal de registro de GPS ────────────────────────────────────────────
+
+function gpsModal_() {
+  let m = document.getElementById("movGpsRegModal");
+  if (m) return m;
+  m = document.createElement("div");
+  m.id = "movGpsRegModal";
+  m.className = "movGpsRegModal";
+  m.style.display = "none";
+  m.innerHTML = `
+    <div class="movGpsRegCard" role="dialog" aria-modal="true">
+      <div class="movGpsRegHdr">
+        <span class="movGpsRegTitle">Registrar ubicación GPS</span>
+        <button type="button" class="movGpsRegClose" id="btnMovGpsRegClose" title="Cerrar">${icon("x", 18)}</button>
+      </div>
+      <div class="movGpsRegVin" id="movGpsRegVin"></div>
+      <div class="movGpsRegEstado" id="movGpsRegEstado" aria-live="polite"></div>
+      <div class="movGpsRegManual" id="movGpsRegManual" style="display:none;">
+        <label class="movGpsRegLbl">Zona</label>
+        <select class="movGpsRegSelect" id="movGpsRegZona"></select>
+        <label class="movGpsRegLbl">Fila / detalle (opcional)</label>
+        <input class="movGpsRegInput" id="movGpsRegFila" type="text" placeholder="Ej. 3, BAJO TECHO" autocomplete="off" />
+        <div class="movBtnPair">
+          <button type="button" class="movBtnPrimary" id="btnMovGpsRegManualSave">Guardar manual</button>
+          <button type="button" class="movBtnGhost" id="btnMovGpsRegReintentar">Reintentar GPS</button>
+        </div>
+      </div>
+    </div>`;
+  (document.getElementById("viewMOVILIZADOR") || document.body).appendChild(m);
+
+  m.addEventListener("click", e => { if (e.target === m) cerrarGpsModal_(); });
+  m.querySelector("#btnMovGpsRegClose")?.addEventListener("click", cerrarGpsModal_);
+  m.querySelector("#btnMovGpsRegReintentar")?.addEventListener("click", () => {
+    const vin = m.dataset.vin;
+    cerrarGpsModal_();
+    if (vin) registrarGpsEnApp_(vin).catch(() => {});
+  });
+  m.querySelector("#btnMovGpsRegManualSave")?.addEventListener("click", () => guardarGpsManual_().catch(() => {}));
+  return m;
+}
+
+function abrirGpsModal_(vin) {
+  const m = gpsModal_();
+  m.dataset.vin = vin;
+  m.querySelector("#movGpsRegVin").textContent = vin;
+  m.querySelector("#movGpsRegManual").style.display = "none";
+  m.style.display = "flex";
+}
+
+function cerrarGpsModal_() {
+  const m = document.getElementById("movGpsRegModal");
+  if (m) m.style.display = "none";
+}
+
+function setGpsModalEstado_(txt, tono = "") {
+  const el = document.getElementById("movGpsRegEstado");
+  if (el) { el.textContent = txt; el.dataset.tono = tono; }
+}
+
+/** Muestra el bloque manual con la lista de zonas de la app. */
+async function mostrarGpsManual_(vin, motivo) {
+  const m = gpsModal_();
+  m.dataset.vin = vin;
+  setGpsModalEstado_(`${motivo}. Elige la zona a mano:`, "warn");
+  const box = m.querySelector("#movGpsRegManual");
+  box.style.display = "";
+  const sel = m.querySelector("#movGpsRegZona");
+  if (sel && !sel.dataset.cargado) {
+    sel.innerHTML = `<option value="">Cargando zonas…</option>`;
+    try {
+      const j = await getJSON("/api/movilizador/gps-zonas");
+      const zonas = j?.zonas || [];
+      sel.innerHTML = zonas.length
+        ? zonas.map(z => `<option value="${escapeHtml(z)}">${escapeHtml(z)}</option>`).join("")
+        : `<option value="">(sin lista — escríbela en el detalle)</option>`;
+      sel.dataset.cargado = "1";
+    } catch {
+      sel.innerHTML = `<option value="">(no se pudo cargar — usa el detalle)</option>`;
+    }
+  }
+}
+
+async function guardarGpsManual_() {
+  const m = gpsModal_();
+  const vin = m.dataset.vin;
+  if (!vin) return;
+  const zona = m.querySelector("#movGpsRegZona")?.value || "";
+  const fila = (m.querySelector("#movGpsRegFila")?.value || "").trim();
+  const zonaManual = [zona, fila].filter(Boolean).join(" - ");
+  if (!zonaManual) { setGpsModalEstado_("Elige una zona o escribe el detalle.", "warn"); return; }
+  const btn = m.querySelector("#btnMovGpsRegManualSave");
+  if (btn) { btn.disabled = true; btn.textContent = "Guardando…"; }
+  try {
+    const j = await enviarGps_(vin, { zonaManual });
+    setGpsModalEstado_(`✓ ${vin.slice(-8)} → ${j.zona || zonaManual} (manual)`, "ok");
+    setTimeout(cerrarGpsModal_, 1400);
+  } catch (e) {
+    setGpsModalEstado_(e?.message || "No se pudo guardar", "err");
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "Guardar manual"; }
+  }
 }
 
 async function handleConfirmarSalida_(vin, btn) {
   const vinClean = String(vin || "").trim().toUpperCase();
   if (!vinClean) return;
 
-  // El popup se abre ANTES del await a propósito (ver prepareGpsWindow_). Si
-  // el movilizador apagó la redirección no se abre nada: ni ventana en blanco.
-  const redir = getRedir_();
-  const popup = redir ? prepareGpsWindow_(vinClean) : null;
-  const ok = await handleAction_(vinClean, "ENTREGAR_FINAL", btn, () => {
-    if (redir) openGpsWithVin_(vinClean, popup);
+  // Confirma la salida y, si la preferencia está encendida, arranca el registro
+  // de GPS dentro de GLP sin que el movilizador tenga que tocar nada más.
+  const autoGps = getRedir_();
+  await handleAction_(vinClean, "ENTREGAR_FINAL", btn, () => {
+    if (autoGps) registrarGpsEnApp_(vinClean).catch(() => {});
   });
-
-  if (!ok && popup && !popup.closed) {
-    try { popup.close(); } catch {}
-  }
 }
 
 async function handleRegistro_(vin, accion, btnId) {
@@ -1653,16 +1787,8 @@ async function handleRegistro_(vin, accion, btnId) {
     });
     if (!j?.ok) throw new Error(j?.error || "Error al guardar");
 
-    // La app GPS solo si esta pantalla la tiene encendida. El aviso cambia con
-    // ella: prometer "VIN copiado" sin haber copiado nada manda al movilizador
-    // a pegar en una app que ni llegó a abrirse.
-    const redir = getRedir_();
-    if (redir) openGpsWithVin_(vinClean);
-
     const statusEl = document.getElementById("movStatus");
-    if (statusEl) statusEl.textContent = redir
-      ? `✓ ${vinClean} registrado. VIN copiado — pégalo en la app GPS.`
-      : `✓ ${vinClean} registrado.`;
+    if (statusEl) statusEl.textContent = `✓ ${vinClean} registrado.`;
 
     // Clear input and disable button
     const inputEl = document.getElementById(inputId);
@@ -1676,6 +1802,8 @@ async function handleRegistro_(vin, accion, btnId) {
         if (_zonasMapa) await _zonasMapa.refresh();
       });
     }
+    // Registro de GPS dentro de GLP (si la preferencia está encendida).
+    if (getRedir_()) registrarGpsEnApp_(vinClean).catch(() => {});
   } catch (e) {
     btn.disabled = false;
     btn.innerHTML = original;
@@ -1829,13 +1957,11 @@ export function init() {
     handleConfirmarSalida_(vin, this).catch(() => {});
   });
 
-  // VIN ya entregado: abrir la app GPS para registrar dónde quedó
+  // VIN ya entregado: registrar dónde quedó, dentro de GLP
   document.getElementById("btnMovGpsSalidaQr")?.addEventListener("click", function () {
     const vin = this.dataset.vin;
     if (!vin) return;
-    openGpsWithVin_(vin);
-    const s = document.getElementById("movStatus");
-    if (s) s.textContent = `${vin} copiado — pégalo en la app GPS.`;
+    registrarGpsEnApp_(vin).catch(() => {});
   });
 
   // Pendientes: QR confirm + cancel
@@ -1857,18 +1983,7 @@ export function init() {
   // "Registrar GPS" de las tarjetas a las que les falta (Ingreso, Salidas de hoy).
   document.getElementById("viewMOVILIZADOR")?.addEventListener("click", e => {
     const b = e.target.closest("[data-gps-open]");
-    if (b) { e.preventDefault(); abrirGpsRegistro_(b.dataset.gpsOpen); }
-  });
-
-  // Al volver de la app GPS se relee ese VIN sin cache: es la confirmación de
-  // que el escaneo llegó. La API puede tardar unos segundos en tenerlo, así
-  // que se mira otra vez a los 20 s.
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState !== "visible" || !_gpsRecienAbierto) return;
-    const vin = _gpsRecienAbierto;
-    _gpsRecienAbierto = null;
-    cargarGps_([vin], { fresh: true }).catch(() => {});
-    setTimeout(() => cargarGps_([vin], { fresh: true }).catch(() => {}), 20_000);
+    if (b) { e.preventDefault(); registrarGpsEnApp_(b.dataset.gpsOpen).catch(() => {}); }
   });
 
   // Auto-sync cuando recupera conexión
@@ -1906,7 +2021,7 @@ export function init() {
     const vin = btn.dataset.vin;
     if (!vin) return;
     if (btn.classList.contains("btnConfirmarSalida")) {
-      // Confirmar salida: registra ENTREGAR_FINAL + abre app GPS de registro
+      // Confirmar salida: registra ENTREGAR_FINAL + pide el GPS en GLP
       handleConfirmarSalida_(vin, btn).catch(() => {});
     }
   });

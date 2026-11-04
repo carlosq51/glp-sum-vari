@@ -654,6 +654,60 @@
 }
 .movGpsReg:hover { filter: brightness(1.07); }
 
+/* Modal de registro de GPS dentro de GLP (captura o manual) */
+.movGpsRegModal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: color-mix(in srgb, #000 55%, transparent);
+}
+.movGpsRegCard {
+  width: 100%;
+  max-width: 420px;
+  background: var(--surface);
+  border: 1px solid var(--border, color-mix(in srgb, var(--text) 14%, transparent));
+  border-radius: 16px;
+  padding: 18px;
+  box-shadow: 0 18px 50px color-mix(in srgb, #000 35%, transparent);
+}
+.movGpsRegHdr { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.movGpsRegTitle { font-size: var(--fs-md); font-weight: var(--fw-black); color: var(--text); }
+.movGpsRegClose {
+  border: 0; background: transparent; cursor: pointer; color: var(--muted);
+  padding: 4px; border-radius: 8px; display: inline-flex;
+}
+.movGpsRegClose:hover { background: color-mix(in srgb, var(--text) 8%, transparent); }
+.movGpsRegVin {
+  margin: 10px 0 4px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-lg, 1.1rem);
+  font-weight: var(--fw-black);
+  letter-spacing: .5px;
+  color: var(--text);
+}
+.movGpsRegEstado { font-size: var(--fs-md); font-weight: var(--fw-bold); color: var(--text); min-height: 1.4em; }
+.movGpsRegEstado[data-tono="ok"]   { color: var(--ok); }
+.movGpsRegEstado[data-tono="warn"] { color: var(--warn); }
+.movGpsRegEstado[data-tono="err"]  { color: var(--danger); }
+.movGpsRegManual { margin-top: 14px; display: flex; flex-direction: column; gap: 6px; }
+.movGpsRegLbl { font-size: var(--fs-sm); font-weight: var(--fw-extrabold); color: var(--muted); }
+.movGpsRegSelect,
+.movGpsRegInput {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--text) 20%, transparent);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-md);
+}
+.movGpsRegManual .movBtnPair { margin-top: 10px; }
+
 .movCardMeta {
   display: flex;
   align-items: center;
