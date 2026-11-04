@@ -6,6 +6,7 @@ import { getConfig_ } from "../lib/config.js";
 import { cachedByTopics_ } from "../lib/poll-cache.js";
 import { ttlConRealtime_ } from "../lib/realtime.js";
 import { usuariosPorIds_ } from "../lib/authz.js";
+import { gpsDeVins_, normVin_ } from "../lib/gps.js";
 
 const router = Router();
 
@@ -799,6 +800,69 @@ router.get("/api/movilizador/vin-salida", async (req, res) => {
     });
   } catch (e) {
     console.error("[MOV_VIN_SALIDA]", e);
+    return res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
+// ─── GPS (ubicación física) ───────────────────────────────────────────
+//
+// GET /api/movilizador/gps?vins=A,B,C[&fresh=1]
+//
+// Última posición escaneada de cada VIN (ver lib/gps.js). Es la ubicación
+// FÍSICA, la que registra el movilizador; no confundir con ESUM
+// (`ubicacion`/`destino` de las otras rutas), que es la administrativa.
+// `fresh` salta el cache, pero solo para pocos VINs: es para "acabo de
+// registrar este carro en la app GPS", no para recargar listas enteras.
+const GPS_MAX_VINS = 120;
+router.get("/api/movilizador/gps", async (req, res) => {
+  try {
+    const vins = String(req.query.vins || "").split(",").map(normVin_).filter(Boolean).slice(0, GPS_MAX_VINS);
+    if (!vins.length) return res.json({ ok: true, gps: {}, sin_dato: [], caido: false });
+    const fresh = req.query.fresh === "1" && vins.length <= 5;
+    const out = await gpsDeVins_(vins, { fresh });
+    return res.json({ ok: true, ...out });
+  } catch (e) {
+    console.error("[MOV_GPS]", e);
+    return res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
+// GET /api/movilizador/salidas-hoy
+//
+// Carros con salida confirmada hoy (hora de Lima), con su destino ESUM. Con el
+// GPS de cada uno la vista dice si el movilizador ya registró dónde lo dejó:
+// a dónde va lo manda la oficina (ESUM); dónde quedó lo dice el GPS.
+router.get("/api/movilizador/salidas-hoy", async (req, res) => {
+  try {
+    const cfg = await getConfig_();
+    const hoy = fechaPeruMenosDias_(0);
+    const payload = await cachedByTopics_(
+      `movilizador:salidas-hoy:${hoy}`, TOPICS_MOV, cfg.SRV_CACHE_PESADO_MS, async () => {
+        const SUPABASE_URL = process.env.SUPABASE_URL;
+        const headers = supabaseHeaders_();
+        // 00:00 de Lima = 05:00 UTC (Perú no tiene horario de verano).
+        const desde = `${hoy}T05:00:00Z`;
+        const tResp = await fetch(
+          `${SUPABASE_URL}/rest/v1/movilizador_traslados?estado=eq.ENTREGADO_FINAL&entregado_at=gte.${desde}&select=vin,entregado_at,entregado_por&order=entregado_at.desc&limit=200`,
+          { method: "GET", headers }
+        );
+        const rows = tResp.ok ? await tResp.json() : [];
+        if (!rows.length) return { ok: true, salidas: [] };
+        const inList = rows.map(r => `"${r.vin}"`).join(",");
+        const vResp = await fetch(`${SUPABASE_URL}/rest/v1/vins?vin=in.(${inList})&select=vin,ultima_ubicacion`, { method: "GET", headers });
+        const vRows = vResp.ok ? await vResp.json() : [];
+        const esum = new Map((vRows || []).map(v => [v.vin, v.ultima_ubicacion || ""]));
+        return {
+          ok: true,
+          salidas: rows.map(r => ({
+            vin: r.vin, entregado_at: r.entregado_at, entregado_por: r.entregado_por || "",
+            destino: esum.get(r.vin) || "",
+          })),
+        };
+      }, { bypass: req.query.fresh === "1" });
+    return res.json(payload);
+  } catch (e) {
+    console.error("[MOV_SALIDAS_HOY]", e);
     return res.status(500).json({ ok: false, error: String(e.message || e) });
   }
 });

@@ -593,6 +593,67 @@
 }
 .movUbic .icn { flex-shrink: 0; color: var(--tone-violet); }
 
+/* Etiqueta de origen dentro del chip: ESUM (administrativo) / GPS (físico).
+   Las dos ubicaciones conviven en la misma tarjeta y no se deben confundir. */
+.movUbicSrc,
+.movGpsSrc {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-extrabold);
+  letter-spacing: .4px;
+}
+.movUbicSrc { color: var(--muted); background: color-mix(in srgb, var(--text) 10%, transparent); }
+
+/* GPS: dónde está físicamente el carro. Toca → Google Maps. */
+.movGps {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 5px 11px 5px 8px;
+  border-radius: 999px;
+  font-size: var(--fs-md);
+  color: var(--text);
+  text-decoration: none;
+  background: color-mix(in srgb, var(--tone-cyan) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tone-cyan) 40%, transparent);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.movGps b { font-weight: var(--fw-black); overflow: hidden; text-overflow: ellipsis; }
+.movGps .icn { flex-shrink: 0; color: var(--tone-cyan); }
+.movGps .movGpsSrc { color: var(--tone-cyan); background: color-mix(in srgb, var(--tone-cyan) 16%, transparent); }
+.movGpsAt { flex-shrink: 0; color: var(--muted); font-size: var(--fs-sm); font-weight: var(--fw-bold); }
+.movGps--ok { border-color: color-mix(in srgb, var(--ok) 55%, transparent); }
+.movGps--viejo { opacity: .65; border-style: dashed; }
+.movGps--cargando,
+.movGps--none {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  color: var(--muted);
+  background: transparent;
+  border-style: dashed;
+}
+.movGpsSlot { display: contents; }
+.movGpsReg {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 999px;
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-extrabold);
+  color: var(--surface);
+  background: var(--note);
+  cursor: pointer;
+}
+.movGpsReg:hover { filter: brightness(1.07); }
+
 .movCardMeta {
   display: flex;
   align-items: center;

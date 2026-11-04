@@ -103,6 +103,7 @@ export function movilizadorView() {
             <span id="movPendientesQrVin" class="movVin"></span>
             <span id="movPendientesQrUbic" class="movUbic"></span>
           </div>
+          <div class="movCardMeta" id="movPendientesQrGps"></div>
           <div class="movPendientesQrMsg" id="movPendientesQrMsg"></div>
           <div class="movPendientesConfirmBtns" id="movPendientesQrConfirmBtns" style="display:none;">
             <button id="btnMovPendientesConfirmarQr" class="movBtnPrimary" type="button" data-vin="">${icon("check", 16)} Confirmar ingreso</button>
@@ -209,6 +210,7 @@ export function movilizadorView() {
               <div class="movSalidaQrResultVin" id="movSalidaQrResultVin"></div>
               <div class="movSalidaQrResultDestino" id="movSalidaQrResultDestino"></div>
               <div class="movSalidaQrResultMeta" id="movSalidaQrResultMeta"></div>
+              <div class="movCardMeta" id="movSalidaQrResultGps"></div>
             </div>
             <button id="btnMovCloseSalidaQr" type="button" class="movQrResultClose" title="Cerrar">${icon("x", 16)}</button>
           </div>
@@ -224,6 +226,12 @@ export function movilizadorView() {
         <div class="movPanel open" id="movPanel3">
           ${panelHead_("shieldCheck", "Revisión técnica terminada", "Primero los que les falta el #OT")}
           <div id="movPanel3Body" class="movPanelBody"></div>
+        </div>
+
+        <!-- Salidas de hoy: ESUM dice a dónde iba, el GPS si ya se registró dónde quedó -->
+        <div class="movPanel open" id="movPanelSalidasHoy" style="display:none;">
+          ${panelHead_("target", "Salidas de hoy · GPS", "", "movSalidasHoyHint")}
+          <div id="movSalidasHoyBody" class="movPanelBody"></div>
         </div>
       </div>
 

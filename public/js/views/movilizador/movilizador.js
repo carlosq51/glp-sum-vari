@@ -107,10 +107,141 @@ function ubicCorta_(u) {
     .trim();
 }
 
-/** Chip de ubicación en negrita; vacío si no hay ubicación. */
+/**
+ * Chip de ubicación ESUM; vacío si no hay.
+ *
+ * ESUM es la ubicación ADMINISTRATIVA (a qué área o proceso está asignado el
+ * carro, la controla la oficina), no dónde está parado. Lleva la etiqueta
+ * "ESUM" para que nadie la confunda con el GPS, que es la física (gpsHtml_).
+ */
 function ubicHtml_(u) {
   const c = ubicCorta_(u);
-  return c ? `<span class="movUbic" title="${escapeHtml(u)}">${icon("mapPin", 14)}${escapeHtml(c)}</span>` : "";
+  return c
+    ? `<span class="movUbic" title="ESUM (administrativo): ${escapeHtml(u)}"><span class="movUbicSrc">ESUM</span>${escapeHtml(c)}</span>`
+    : "";
+}
+
+// ─── GPS (ubicación física) ───────────────────────────────────────────
+//
+// La posición del último escaneo con la app GPS: dónde está el carro de
+// verdad, lo que el movilizador usa para encontrarlo. Llega aparte de las
+// listas (GET /api/movilizador/gps, que consulta la API del patio con cache):
+// las tarjetas se pintan con un hueco [data-gps-vin] y se rellenan cuando
+// responde, sin esperar a la API para mostrar la lista.
+
+/** vin → { pos: {zona, fila, maps_url, scanned_at} | null, at } */
+const _gps = new Map();
+let _gpsCaido = false;
+/** Cada cuánto se vuelve a preguntar un VIN mientras su pantalla está abierta. */
+const GPS_REFRESCO_MS = 3 * 60_000;
+/**
+ * Margen para "ya registró el GPS": a veces escanean en la app GPS un momento
+ * antes de marcar el ingreso o la salida en GLP, y eso también vale.
+ */
+const GPS_MARGEN_MS = 15 * 60_000;
+/** VIN que se acaba de mandar a la app GPS: al volver se relee sin cache. */
+let _gpsRecienAbierto = null;
+
+/** "hace 5 min", "hace 2 h", "hace 3 d". */
+function haceRel_(iso) {
+  const ms = Date.now() - Date.parse(iso || "");
+  if (!isFinite(ms)) return "";
+  const min = Math.max(0, Math.round(ms / 60000));
+  if (min < 60) return `hace ${min} min`;
+  const h = Math.round(min / 60);
+  if (h < 48) return `hace ${h} h`;
+  return `hace ${Math.round(h / 24)} d`;
+}
+
+/** "ISLA 20 · F3" / "LAVADO DESPACHO - NV 2 · BAJO TECHO". */
+function gpsTexto_(p) {
+  const fila = p.fila ? (/^\d+$/.test(p.fila) ? `F${p.fila}` : p.fila) : "";
+  return [p.zona || "Sin zona", fila].filter(Boolean).join(" · ");
+}
+
+/** Hueco de GPS de una tarjeta. `desde`: ISO del ingreso/salida que el GPS debería ser posterior. */
+function gpsHtml_(vin, { desde = "" } = {}) {
+  return `<span class="movGpsSlot" data-gps-vin="${escapeHtml(vin)}" data-gps-desde="${escapeHtml(desde || "")}">${gpsInner_(vin, desde)}</span>`;
+}
+
+function gpsInner_(vin, desde) {
+  const e = _gps.get(vin);
+  const registrar = `<button type="button" class="movGpsReg" data-gps-open="${escapeHtml(vin)}">${icon("target", 14)} Registrar GPS</button>`;
+  if (!e) return _gpsCaido ? "" : `<span class="movGps movGps--cargando">${icon("target", 14)}GPS…</span>`;
+  const p = e.pos;
+  if (!p) {
+    return desde
+      ? `<span class="movChip movChip--warn">Falta GPS</span>${registrar}`
+      : `<span class="movGps movGps--none">${icon("target", 14)}Sin GPS</span>`;
+  }
+  const viejo = desde && Date.parse(p.scanned_at || "") < Date.parse(desde) - GPS_MARGEN_MS;
+  const cuando = haceRel_(p.scanned_at);
+  const titulo = `GPS (físico) · escaneado ${p.scanned_at ? new Date(p.scanned_at).toLocaleString("es-PE", { timeZone: "America/Lima" }) : "—"}`;
+  const inner = `${icon("target", 14)}<span class="movGpsSrc">GPS</span><b>${escapeHtml(gpsTexto_(p))}</b>${cuando ? `<span class="movGpsAt">${cuando}</span>` : ""}${desde && !viejo ? " ✓" : ""}`;
+  const cls = `movGps${viejo ? " movGps--viejo" : desde ? " movGps--ok" : ""}`;
+  const chip = p.maps_url
+    ? `<a class="${cls}" href="${escapeHtml(p.maps_url)}" target="_blank" rel="noopener" title="${escapeHtml(titulo)} — abrir en Maps">${inner}</a>`
+    : `<span class="${cls}" title="${escapeHtml(titulo)}">${inner}</span>`;
+  return viejo ? `${chip}<span class="movChip movChip--warn">Falta GPS</span>${registrar}` : chip;
+}
+
+/** Repinta todos los huecos de GPS a la vista con lo que hay en _gps. */
+function pintarGps_() {
+  document.querySelectorAll("#viewMOVILIZADOR [data-gps-vin]").forEach(el => {
+    el.innerHTML = gpsInner_(el.dataset.gpsVin, el.dataset.gpsDesde);
+  });
+}
+
+let _gpsEnVuelo = false;
+/**
+ * Pide al servidor la posición de los VINs que no se tienen o están vencidos.
+ * `fresh` (pocos VINs) salta también el cache del servidor.
+ */
+async function cargarGps_(vins, { fresh = false } = {}) {
+  const ahora = Date.now();
+  const faltan = [...new Set(vins.filter(Boolean))]
+    .filter(v => fresh || !_gps.has(v) || ahora - _gps.get(v).at > GPS_REFRESCO_MS);
+  if (!faltan.length || (_gpsEnVuelo && !fresh)) return;
+  if (!fresh) _gpsEnVuelo = true;
+  try {
+    for (let i = 0; i < faltan.length; i += 100) {
+      const lote = faltan.slice(i, i + 100);
+      const j = await getJSON(`/api/movilizador/gps?vins=${encodeURIComponent(lote.join(","))}${fresh ? "&fresh=1" : ""}`);
+      if (!j?.ok) break;
+      _gpsCaido = !!j.caido;
+      const at = Date.now();
+      for (const [vin, pos] of Object.entries(j.gps || {})) _gps.set(vin, { pos, at });
+      pintarGps_();
+    }
+  } catch { /* sin GPS no se rompe nada: la lista se ve igual */ }
+  finally {
+    if (!fresh) _gpsEnVuelo = false;
+    pintarGps_();
+    // Salidas de hoy se agrupan por "tiene GPS o no": hay que reagrupar.
+    renderSalidasHoy_(_salidasHoy);
+  }
+}
+
+/** VINs con GPS de la pantalla abierta: solo se consulta lo que se está mirando. */
+function vinsGpsPantalla_() {
+  const abierta = [...document.querySelectorAll("#viewMOVILIZADOR .movScreen")]
+    .find(s => s.style.display !== "none")?.id;
+  if (abierta === "movScreenLista")   return _pendientesRows.map(r => r.vin);
+  if (abierta === "movScreenIngreso") return _list0Rows.filter(r => !r.en_conversion).map(r => r.vin);
+  if (abierta === "movScreenSalida")  return [..._list3Rows.map(r => r.vin), ..._salidasHoy.map(r => r.vin)];
+  return [];
+}
+
+function cargarGpsPantalla_() {
+  return cargarGps_(vinsGpsPantalla_());
+}
+
+/** Abre la app GPS para un VIN y deja anotado que al volver hay que releerlo. */
+function abrirGpsRegistro_(vin) {
+  _gpsRecienAbierto = vin;
+  openGpsWithVin_(vin);
+  const s = document.getElementById("movStatus");
+  if (s) s.textContent = `${vin} copiado — regístralo en la app GPS.`;
 }
 
 /** "YYYY-MM-DD" del día en Lima. Acepta un ISO o una fecha "YYYY-MM-DD" tal cual. */
@@ -205,7 +336,11 @@ function setBadge_(id, count) {
 
 // ─── Render ───────────────────────────────────────────────────────────
 
+let _list0Rows = [];
+let _salidasHoy = [];
+
 function renderList0_(rows) {
+  _list0Rows = rows || [];
   const box = document.getElementById("movPanel0Body");
   if (!box) return;
 
@@ -293,7 +428,9 @@ function renderList0_(rows) {
   };
 
   // Sin zona: agrupado por día de ingreso, la fecha va en la cabecera del
-  // grupo y la tarjeta solo dice hora, quién y dónde lo vio el GPS.
+  // grupo y la tarjeta dice hora, quién, la ubicación ESUM y la del GPS. El
+  // GPS se compara con la hora del ingreso: si el último escaneo es anterior,
+  // el movilizador trajo el carro pero no registró dónde lo dejó.
   const sinZonaCard = (r) => {
     const dias = diasDesde_(r.fecha_entrada);
     return `
@@ -308,6 +445,7 @@ function renderList0_(rows) {
           ? `<span class="movHora">${horaLima_(r.fecha_entrada)}</span>${r.registrado_por ? `<span class="movPor">${escapeHtml(r.registrado_por)}</span>` : ""}`
           : `<span class="movCardNoReg">Sin registro de entrada</span>`}
       </div>
+      <div class="movCardMeta">${gpsHtml_(r.vin, { desde: r.fecha_entrada })}</div>
     </div>`;
   };
 
@@ -324,7 +462,7 @@ function renderList0_(rows) {
         ${zonaRowHtml(r.zona)}
         ${ingresoRowHtml(r)}
       </div>
-      ${r.ubicacion ? `<div class="movCardMeta"><span class="movTimelineLabel">GPS</span>${ubicHtml_(r.ubicacion)}</div>` : ""}
+      <div class="movCardMeta">${ubicHtml_(r.ubicacion)}${gpsHtml_(r.vin, { desde: r.fecha_entrada })}</div>
     </div>`;
 
   const convCard = (r) => `
@@ -586,6 +724,7 @@ function pendienteCardHtml_(r) {
         <span class="movVin">${vin}</span>
         ${ubicHtml_(r.ubicacion)}
       </div>
+      <div class="movCardMeta">${gpsHtml_(r.vin)}</div>
       <div class="movObsSlot" id="movObsSlot_${vin}">${obsHtml_(r)}</div>
       <div class="movPendienteConfirmRow" id="movPConfirm_${vin}" style="display:none;">
         <span class="movConfirmQ">¿Confirmar ingreso a GLP?</span>
@@ -625,6 +764,7 @@ function applyPendientesFiltro_(q) {
     ? _pendientesRows.filter(r =>
         r.vin.includes(_pendientesFiltro) ||
         (r.ubicacion || "").toUpperCase().includes(_pendientesFiltro) ||
+        (_gps.get(r.vin)?.pos?.zona || "").toUpperCase().includes(_pendientesFiltro) ||
         (r.observacion?.texto || "").toUpperCase().includes(_pendientesFiltro)
       )
     : _pendientesRows;
@@ -728,8 +868,11 @@ function downloadListaPendientes_() {
   }
   exportCsv_({
     filename: `pendientes_glp_${new Date().toISOString().slice(0, 10)}.csv`,
-    headers: ["VIN", "FECHA", "UBICACION"],
-    rows: _pendientesRows.map(r => [r.vin, r.fecha || "", r.ubicacion || ""]),
+    headers: ["VIN", "FECHA", "UBICACION_ESUM", "GPS_ZONA", "GPS_FILA", "GPS_ESCANEO"],
+    rows: _pendientesRows.map(r => {
+      const p = _gps.get(r.vin)?.pos;
+      return [r.vin, r.fecha || "", r.ubicacion || "", p?.zona || "", p?.fila || "", p?.scanned_at || ""];
+    }),
   });
 }
 
@@ -808,7 +951,11 @@ function showPendientesQrCard_(vin) {
   const found = _pendientesRows.find(r => r.vin === vinClean);
 
   if (vinEl) vinEl.textContent = vinClean;
-  if (ubicEl) ubicEl.textContent = ubicCorta_(found?.ubicacion);
+  if (ubicEl) ubicEl.innerHTML = ubicCorta_(found?.ubicacion)
+    ? `<span class="movUbicSrc">ESUM</span>${escapeHtml(ubicCorta_(found.ubicacion))}` : "";
+  const gpsEl = document.getElementById("movPendientesQrGps");
+  if (gpsEl) gpsEl.innerHTML = gpsHtml_(vinClean);
+  cargarGps_([vinClean]).catch(() => {});
   if (msgEl) msgEl.textContent = found
     ? (found.observacion?.texto ? `Nota: ${found.observacion.texto}` : "")
     : "Este VIN no está en la lista de pendientes.";
@@ -972,6 +1119,7 @@ function renderList3_(rows) {
         <span class="movTimelineLabel">Calidad</span>
         <span class="movFecha">${fmtDate_(r.fecha_calidad)}</span>
       </div>
+      <div class="movCardMeta">${gpsHtml_(r.vin)}</div>
       ${!r.tiene_ot
         ? `<div class="movOtWarn">${icon("alertTriangle", 15)} Falta #OT — regístrelo en ASIGNACIONES (col E) antes de confirmar</div>`
         : ""}
@@ -1004,6 +1152,67 @@ function renderList3_(rows) {
   box.innerHTML = html;
 }
 
+/**
+ * renderSalidasHoy_ — salidas confirmadas hoy y si ya tienen GPS.
+ *
+ * La salida la ordena la oficina con ESUM ("a Pintura"); el movilizador lleva
+ * el carro y registra en la app GPS dónde lo dejó. Este bloque es el control
+ * de lo segundo: un carro cuyo último escaneo es anterior a su salida está en
+ * algún lugar que el GPS todavía no conoce. Los que faltan van primero.
+ */
+function renderSalidasHoy_(rows) {
+  _salidasHoy = rows || [];
+  const box = document.getElementById("movSalidasHoyBody");
+  const hint = document.getElementById("movSalidasHoyHint");
+  const panel = document.getElementById("movPanelSalidasHoy");
+  if (!box) return;
+  if (panel) panel.style.display = _salidasHoy.length ? "" : "none";
+  if (!_salidasHoy.length) { box.innerHTML = ""; return; }
+
+  const conGps = (r) => {
+    const p = _gps.get(r.vin)?.pos;
+    return !!p && Date.parse(p.scanned_at || "") >= Date.parse(r.entregado_at) - GPS_MARGEN_MS;
+  };
+  const faltan = _salidasHoy.filter(r => _gps.has(r.vin) && !conGps(r));
+  const ok = _salidasHoy.filter(conGps);
+  const sinDato = _salidasHoy.filter(r => !_gps.has(r.vin));
+  if (hint) {
+    hint.textContent = _gps.size
+      ? `${ok.length} de ${_salidasHoy.length} con GPS registrado${faltan.length ? ` · faltan ${faltan.length}` : ""}`
+      : `${_salidasHoy.length} salida${_salidasHoy.length !== 1 ? "s" : ""} hoy`;
+  }
+
+  const card = (r) => `
+    <div class="movCard">
+      <div class="movCardTop">
+        <span class="movVin">${escapeHtml(r.vin)}</span>
+        ${ubicHtml_(r.destino)}
+      </div>
+      <div class="movCardMeta">
+        <span class="movTimelineLabel">Salida</span>
+        <span class="movHora">${horaLima_(r.entregado_at)}</span>
+        ${r.entregado_por ? `<span class="movPor">${escapeHtml(r.entregado_por)}</span>` : ""}
+      </div>
+      <div class="movCardMeta">${gpsHtml_(r.vin, { desde: r.entregado_at })}</div>
+    </div>`;
+
+  let html = "";
+  if (faltan.length) {
+    html += bloque_("sinot", "alertTriangle", "Falta registrar el GPS",
+      "Salieron pero el GPS no sabe dónde quedaron", faltan.length,
+      `<div class="movCardList">${faltan.map(card).join("")}</div>`);
+  }
+  if (sinDato.length) {
+    html += `<div class="movCardList">${sinDato.map(card).join("")}</div>`;
+  }
+  if (ok.length) {
+    html += bloque_("listo", "target", "GPS registrado",
+      "Se sabe dónde quedó cada uno", ok.length,
+      `<div class="movCardList">${ok.map(card).join("")}</div>`);
+  }
+  box.innerHTML = html;
+}
+
 // ─── Fetch ────────────────────────────────────────────────────────────
 
 /**
@@ -1026,9 +1235,10 @@ async function refreshAll_({ fresh = false } = {}) {
     await drainOfflineQueue_();
 
     const q = fresh ? "?fresh=1" : "";
-    const [j, jPend] = await Promise.all([
+    const [j, jPend, jSal] = await Promise.all([
       getJSON(`/api/movilizador/status${q}`),
       getJSON(`/api/movilizador/pendientes${q}`),
+      getJSON(`/api/movilizador/salidas-hoy${q}`).catch(() => null),
     ]);
     if (!j?.ok) throw new Error(j?.error || "Error cargando estado");
 
@@ -1040,6 +1250,9 @@ async function refreshAll_({ fresh = false } = {}) {
     renderList2_(j.list2 || []);
     renderList3_(j.list3 || []);
     renderOlvidados_(j.olvidados || []);
+    if (jSal?.ok) renderSalidasHoy_(jSal.salidas || []);
+    // El GPS no frena la lista: se pide después y rellena los huecos.
+    cargarGpsPantalla_().catch(() => {});
 
     if (statusEl) {
       const t = new Date();
@@ -1097,6 +1310,7 @@ function showMovPanel_(screenId) {
   document.querySelectorAll("#viewMOVILIZADOR .movScreen").forEach(s => {
     s.style.display = s.id === screenId ? "" : "none";
   });
+  cargarGpsPantalla_().catch(() => {});
 }
 
 function initMovCards_() {
@@ -1247,7 +1461,7 @@ async function openMovQr_(target) {
 let _salidaQrSeq = 0;
 
 /** Pinta el resultado. `tono`: ok | wait | err | done. */
-function paintSalidaQr_({ vin, destino, tono, meta = "", confirmar = false, gps = false }) {
+function paintSalidaQr_({ vin, destino, tono, meta = "", confirmar = false, gps = false, gpsDesde = "" }) {
   const panel = document.getElementById("movSalidaQrResult");
   if (!panel) return;
   panel.dataset.tono = tono;
@@ -1261,6 +1475,13 @@ function paintSalidaQr_({ vin, destino, tono, meta = "", confirmar = false, gps 
   }
   const metaEl = document.getElementById("movSalidaQrResultMeta");
   if (metaEl) metaEl.textContent = meta;
+  // Dónde está el carro según el GPS. Con `gpsDesde` (ya entregado) dice
+  // además si la ubicación se registró después de la salida.
+  const gpsEl = document.getElementById("movSalidaQrResultGps");
+  if (gpsEl) {
+    gpsEl.innerHTML = tono === "wait" && !confirmar ? "" : gpsHtml_(vin, { desde: gpsDesde });
+    if (gpsEl.innerHTML) cargarGps_([vin], { fresh: !!gpsDesde }).catch(() => {});
+  }
 
   const confirmBtn = document.getElementById("btnMovConfirmarSalidaQr");
   if (confirmBtn) {
@@ -1289,7 +1510,7 @@ function showSalidaQrResult_(vin) {
     if (!row.tiene_ot) {
       paintSalidaQr_({ vin: vinClean, tono: "err", destino: "Falta #OT", meta: "Regístrelo en ASIGNACIONES (col E) antes de confirmar" });
     } else if (row.destino) {
-      paintSalidaQr_({ vin: vinClean, tono: "ok", destino: `Sale a ${ubicCorta_(row.destino)}`, confirmar: true });
+      paintSalidaQr_({ vin: vinClean, tono: "ok", destino: `Sale a ${ubicCorta_(row.destino)} (ESUM)`, confirmar: true });
     } else {
       paintSalidaQr_({ vin: vinClean, tono: "wait", destino: "Destino pendiente", confirmar: true });
     }
@@ -1310,8 +1531,8 @@ function showSalidaQrResult_(vin) {
           j.entregado_at ? fmtDate_(j.entregado_at) : "",
         ].filter(Boolean).join(" · ");
         paintSalidaQr_({
-          vin: vinClean, tono: "done", gps: true, meta,
-          destino: ubic ? `Vehículo entregado a ${ubic}` : "Vehículo entregado",
+          vin: vinClean, tono: "done", gps: true, meta, gpsDesde: j.entregado_at || "",
+          destino: ubic ? `Vehículo entregado a ${ubic} (ESUM)` : "Vehículo entregado",
         });
       } else {
         paintSalidaQr_({
@@ -1377,6 +1598,7 @@ function prepareGpsWindow_(vin) {
 }
 
 function openGpsWithVin_(vin, popup) {
+  _gpsRecienAbierto = vin;
   const url = getGpsUrl_(vin);
   copyVinToClipboard_(vin);
 
@@ -1630,6 +1852,23 @@ export function init() {
     if (conf) { confirmarIngresoPendiente_(conf.dataset.vin).catch(() => {}); return; }
     const canc = e.target.closest(".movBtnCancelarIngreso");
     if (canc) { hidePendienteConfirmRow_(canc.dataset.vin); return; }
+  });
+
+  // "Registrar GPS" de las tarjetas a las que les falta (Ingreso, Salidas de hoy).
+  document.getElementById("viewMOVILIZADOR")?.addEventListener("click", e => {
+    const b = e.target.closest("[data-gps-open]");
+    if (b) { e.preventDefault(); abrirGpsRegistro_(b.dataset.gpsOpen); }
+  });
+
+  // Al volver de la app GPS se relee ese VIN sin cache: es la confirmación de
+  // que el escaneo llegó. La API puede tardar unos segundos en tenerlo, así
+  // que se mira otra vez a los 20 s.
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible" || !_gpsRecienAbierto) return;
+    const vin = _gpsRecienAbierto;
+    _gpsRecienAbierto = null;
+    cargarGps_([vin], { fresh: true }).catch(() => {});
+    setTimeout(() => cargarGps_([vin], { fresh: true }).catch(() => {}), 20_000);
   });
 
   // Auto-sync cuando recupera conexión
