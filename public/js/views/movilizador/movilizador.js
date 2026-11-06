@@ -165,7 +165,7 @@ function gpsHtml_(vin, { desde = "" } = {}) {
 function gpsInner_(vin, desde) {
   const e = _gps.get(vin);
   const registrar = `<button type="button" class="movGpsReg" data-gps-open="${escapeHtml(vin)}">${icon("target", 14)} Registrar GPS</button>`;
-  // Sin dato todavía: el servidor lo tiene en cola (la API va de a una). Nunca
+  // Sin dato todavía: el servidor lo tiene en cola (va en el próximo bloque). Nunca
   // se deja la tarjeta vacía: un hueco en blanco parecía "esto no funciona".
   if (!e) {
     return _gpsCaido
@@ -204,10 +204,11 @@ const GPS_REPOLL_MS = 4_000;
 /**
  * Pide al servidor la posición de los VINs que no se tienen o están vencidos.
  *
- * El servidor responde al instante con lo que ya sabe y deja el resto en cola
- * (`pendientes`), porque la API GPS atiende de a una consulta. Mientras quede
- * algo pendiente se vuelve a preguntar cada GPS_REPOLL_MS y la lista se va
- * llenando sola. `fresh` (pocos VINs) espera la respuesta real.
+ * El servidor consulta la API GPS en bloques de 50 VINs (~4 s cada uno) y
+ * espera unos segundos antes de responder; lo que no alcanzó llega como
+ * `pendientes`. Mientras quede algo pendiente se vuelve a preguntar cada
+ * GPS_REPOLL_MS y la lista se termina de llenar sola. `fresh` (pocos VINs)
+ * salta el cache y espera la respuesta real.
  */
 async function cargarGps_(vins, { fresh = false } = {}) {
   const ahora = Date.now();

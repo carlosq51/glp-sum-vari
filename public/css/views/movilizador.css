@@ -573,20 +573,21 @@
   white-space: nowrap;
 }
 
-/* Ubicación: chip en negrita, alto contraste — "¿dónde está el carro?" */
+/* ESUM (administrativo): chico y apagado a propósito. El carro se busca por el
+   GPS, que es el chip grande; ESUM queda como referencia de a qué área va. */
 .movUbic {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   max-width: 100%;
-  padding: 5px 11px 5px 9px;
+  padding: 2px 8px 2px 3px;
   border-radius: 999px;
-  font-size: var(--fs-md);
-  font-weight: var(--fw-black);
-  letter-spacing: .3px;
-  color: var(--text);
-  background: color-mix(in srgb, var(--text) 9%, transparent);
-  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-bold);
+  letter-spacing: .2px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -605,6 +606,7 @@
   letter-spacing: .4px;
 }
 .movUbicSrc { color: var(--muted); background: color-mix(in srgb, var(--text) 10%, transparent); }
+.movUbic .movUbicSrc { padding: 0 5px; font-size: 10px; letter-spacing: .3px; }
 
 /* GPS: dónde está físicamente el carro. Toca → Google Maps. */
 .movGps {
