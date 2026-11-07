@@ -369,6 +369,26 @@
   transition: background var(--dur-base), color var(--dur-base);
 }
 .movRedirOpt:hover { color: var(--text); }
+
+/* Orden de la Lista: mismo segmentado, otra clase (su propio handler). */
+.movOrdenOpt {
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-extrabold);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--dur-base), color var(--dur-base);
+}
+.movOrdenOpt:hover { color: var(--text); }
+.movOrdenOpt.movRedirOptOn { background: var(--btnBg); color: var(--btnText); }
+
+/* Fecha de pedido en la tarjeta, cuando la Lista va por GPS y no hay cabecera de día. */
+.movPedido { font-size: var(--fs-xs); font-weight: var(--fw-bold); color: var(--muted); white-space: nowrap; }
+.movPedido--atraso { color: var(--danger); }
 .movRedirOptOn { background: var(--btnBg); color: var(--btnText); }
 
 /* ─── Panel plegable ─── */
@@ -573,40 +593,31 @@
   white-space: nowrap;
 }
 
-/* ESUM (administrativo): chico y apagado a propósito. El carro se busca por el
-   GPS, que es el chip grande; ESUM queda como referencia de a qué área va. */
+/* ESUM (administrativo): una nota al margen, sin chip. El carro se busca por
+   el GPS, que es el chip grande cian; ESUM solo dice a qué área va. Mantiene
+   su etiqueta "ESUM" porque el GPS ya no lleva la suya: así no se confunden. */
 .movUbic {
   display: inline-flex;
-  align-items: center;
-  gap: 4px;
+  align-items: baseline;
+  gap: 3px;
   max-width: 100%;
-  padding: 2px 8px 2px 3px;
-  border-radius: 999px;
-  font-size: var(--fs-2xs);
+  font-size: 10px;
   font-weight: var(--fw-bold);
   letter-spacing: .2px;
   color: var(--muted);
-  background: color-mix(in srgb, var(--text) 5%, transparent);
-  border: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
+  opacity: .8;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .movUbic .icn { flex-shrink: 0; color: var(--tone-violet); }
-
-/* Etiqueta de origen dentro del chip: ESUM (administrativo) / GPS (físico).
-   Las dos ubicaciones conviven en la misma tarjeta y no se deben confundir. */
-.movUbicSrc,
-.movGpsSrc {
+.movUbicSrc {
   flex-shrink: 0;
-  padding: 1px 6px;
-  border-radius: 999px;
-  font-size: var(--fs-xs);
+  font-size: 9px;
   font-weight: var(--fw-extrabold);
   letter-spacing: .4px;
+  opacity: .7;
 }
-.movUbicSrc { color: var(--muted); background: color-mix(in srgb, var(--text) 10%, transparent); }
-.movUbic .movUbicSrc { padding: 0 5px; font-size: 10px; letter-spacing: .3px; }
 
 /* GPS: dónde está físicamente el carro. Toca → Google Maps. */
 .movGps {
@@ -627,7 +638,6 @@
 }
 .movGps b { font-weight: var(--fw-black); overflow: hidden; text-overflow: ellipsis; }
 .movGps .icn { flex-shrink: 0; color: var(--tone-cyan); }
-.movGps .movGpsSrc { color: var(--tone-cyan); background: color-mix(in srgb, var(--tone-cyan) 16%, transparent); }
 .movGpsAt { flex-shrink: 0; color: var(--muted); font-size: var(--fs-sm); font-weight: var(--fw-bold); }
 .movGps--ok { border-color: color-mix(in srgb, var(--ok) 55%, transparent); }
 .movGps--viejo { opacity: .65; border-style: dashed; }

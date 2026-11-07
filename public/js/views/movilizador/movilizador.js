@@ -24,9 +24,15 @@ const LISTA_CACHE_KEY = "glp_mov_lista_cache";
 // Entrada y Salida: los dos segmentados escriben y leen esta clave, así que
 // mover uno mueve el otro.
 const REDIR_KEY = "glp_mov_redir";
+// Orden de la Lista del día: "pedido" (por día de pedido, el más antiguo
+// primero) o "gps" (el escaneo GPS más reciente primero: el que se escaneó
+// hace poco es el más fácil de encontrar). Es del celular, como REDIR_KEY.
+const ORDEN_LISTA_KEY = "glp_mov_lista_orden";
 
 let _pendientesRows = [];
 let _pendientesFiltro = "";
+/** Orden de VINs que se pintó por última vez en modo "gps": para no repintar si no cambió. */
+let _listaFirma = "";
 
 // Mapa de zonas
 let _zonasMapa = null;
@@ -181,7 +187,9 @@ function gpsInner_(vin, desde) {
   const viejo = desde && Date.parse(p.scanned_at || "") < Date.parse(desde) - GPS_MARGEN_MS;
   const cuando = haceRel_(p.scanned_at);
   const titulo = `GPS (físico) · escaneado ${p.scanned_at ? new Date(p.scanned_at).toLocaleString("es-PE", { timeZone: "America/Lima" }) : "—"}`;
-  const inner = `${icon("target", 14)}<span class="movGpsSrc">GPS</span><b>${escapeHtml(gpsTexto_(p))}</b>${cuando ? `<span class="movGpsAt">${cuando}</span>` : ""}${desde && !viejo ? " ✓" : ""}`;
+  // Sin etiqueta "GPS": la zona va de frente. Lo distinguen de ESUM el ícono,
+  // el color cian y el tamaño (ESUM es el texto chico con su etiqueta).
+  const inner = `${icon("target", 14)}<b>${escapeHtml(gpsTexto_(p))}</b>${cuando ? `<span class="movGpsAt">${cuando}</span>` : ""}${desde && !viejo ? " ✓" : ""}`;
   const cls = `movGps${viejo ? " movGps--viejo" : desde ? " movGps--ok" : ""}`;
   const chip = p.maps_url
     ? `<a class="${cls}" href="${escapeHtml(p.maps_url)}" target="_blank" rel="noopener" title="${escapeHtml(titulo)} — abrir en Maps">${inner}</a>`
@@ -234,6 +242,8 @@ async function cargarGps_(vins, { fresh = false } = {}) {
     pintarGps_();
     // Salidas de hoy se agrupan por "tiene GPS o no": hay que reagrupar.
     renderSalidasHoy_(_salidasHoy);
+    // La Lista ordenada por GPS cambia de orden cuando llegan los escaneos.
+    reordenarListaPorGps_();
     if (quedan && !fresh && !_gpsRepoll) {
       _gpsRepoll = setTimeout(() => {
         _gpsRepoll = null;
@@ -714,6 +724,22 @@ function renderPendientesBody_(filtered) {
     return;
   }
 
+  if (getOrdenLista_() === "gps") {
+    // Por GPS: el escaneo más reciente primero, porque es el carro que más
+    // fácil se encuentra. Sin día de cabecera, así que cada tarjeta dice de
+    // qué día es el pedido. Los que no tienen GPS (o aún cargan) van al final
+    // en el orden de pedido.
+    const g = ordenPorGps_(filtered);
+    _listaFirma = firmaGps_(g);
+    const lista = filas => `<div class="movCardList">${filas.map(r => pendienteCardHtml_(r, { conPedido: true })).join("")}</div>`;
+    box.innerHTML =
+      (g.con.length ? bloque_("listo", "target", "Por GPS reciente", "Escaneados hace poco: más fáciles de encontrar", g.con.length, lista(g.con)) : "") +
+      (g.cargando.length ? bloque_("dia", "target", "GPS cargando…", "Se acomodan solos cuando llega el GPS", g.cargando.length, lista(g.cargando)) : "") +
+      (g.sin.length ? bloque_("dia", "target", "Sin GPS", "Nunca escaneados: hay que buscarlos", g.sin.length, lista(g.sin)) : "");
+    return;
+  }
+  _listaFirma = "";
+
   // Un bloque por día de lista. El día es el grupo que importa acá: la fecha
   // es el título de la caja y la bajada dice cuánto lleva esperando. Los de
   // días anteriores van en rojo — cualquier carro que no se trajo el día que
@@ -729,7 +755,44 @@ function renderPendientesBody_(filtered) {
   }).join("");
 }
 
-function pendienteCardHtml_(r) {
+/**
+ * Lista por GPS: { con: más reciente primero, cargando: aún sin respuesta,
+ * sin: la API dice que nunca se escanearon }. `cargando` y `sin` conservan el
+ * orden de pedido.
+ */
+function ordenPorGps_(rows) {
+  const ms = r => Date.parse(_gps.get(r.vin)?.pos?.scanned_at || "");
+  const con = rows.filter(r => isFinite(ms(r))).sort((a, b) => ms(b) - ms(a));
+  const cargando = rows.filter(r => !_gps.has(r.vin));
+  const sin = rows.filter(r => _gps.has(r.vin) && !isFinite(ms(r)));
+  return { con, cargando, sin };
+}
+
+function firmaGps_({ con, cargando, sin }) {
+  return [con, cargando, sin].map(g => g.map(r => r.vin).join(",")).join("|");
+}
+
+/**
+ * Tras llegar GPS nuevo: repinta la Lista solo si está ordenada por GPS y el
+ * orden cambió. No repinta con un "¿Confirmar ingreso?" abierto, para no
+ * cerrárselo al movilizador en la mano; el próximo GPS o poll lo acomoda.
+ */
+function reordenarListaPorGps_() {
+  if (getOrdenLista_() !== "gps" || _obsEditVin) return;
+  if ([...document.querySelectorAll("#movPendientesBody .movPendienteConfirmRow")].some(el => el.style.display !== "none")) return;
+  if (firmaGps_(ordenPorGps_(filtrarPendientes_())) !== _listaFirma) applyPendientesFiltro_(_pendientesFiltro);
+}
+
+/** "Pedido vie 06 nov" / "Pedido mié 04 nov · hace 2 días" (en rojo si no es de hoy). */
+function pedidoHtml_(ymdRaw) {
+  const ymd = diaLima_(ymdRaw);
+  if (!ymd) return "";
+  const { fecha, rel, dias } = diaInfo_(ymd);
+  const atraso = dias > 0;
+  return `<span class="movPedido${atraso ? " movPedido--atraso" : ""}">Pedido ${escapeHtml(fecha)}${atraso && rel ? ` · ${escapeHtml(rel)}` : ""}</span>`;
+}
+
+function pendienteCardHtml_(r, { conPedido = false } = {}) {
   const vin = escapeHtml(r.vin);
   return `
     <div class="movCard movPendienteCard${r.observacion ? " movCard--obs" : ""}" id="movPCard_${vin}">
@@ -737,7 +800,7 @@ function pendienteCardHtml_(r) {
         <span class="movVin">${vin}</span>
         ${ubicHtml_(r.ubicacion)}
       </div>
-      <div class="movCardMeta">${gpsHtml_(r.vin)}</div>
+      <div class="movCardMeta">${gpsHtml_(r.vin)}${conPedido ? pedidoHtml_(r.fecha) : ""}</div>
       <div class="movObsSlot" id="movObsSlot_${vin}">${obsHtml_(r)}</div>
       <div class="movPendienteConfirmRow" id="movPConfirm_${vin}" style="display:none;">
         <span class="movConfirmQ">¿Confirmar ingreso a GLP?</span>
@@ -771,17 +834,42 @@ function obsHtml_(r) {
     </button>`;
 }
 
-function applyPendientesFiltro_(q) {
-  _pendientesFiltro = String(q || "").toUpperCase().trim();
-  const filtered = _pendientesFiltro
+function filtrarPendientes_() {
+  const q = _pendientesFiltro;
+  return q
     ? _pendientesRows.filter(r =>
-        r.vin.includes(_pendientesFiltro) ||
-        (r.ubicacion || "").toUpperCase().includes(_pendientesFiltro) ||
-        (_gps.get(r.vin)?.pos?.zona || "").toUpperCase().includes(_pendientesFiltro) ||
-        (r.observacion?.texto || "").toUpperCase().includes(_pendientesFiltro)
+        r.vin.includes(q) ||
+        (r.ubicacion || "").toUpperCase().includes(q) ||
+        (_gps.get(r.vin)?.pos?.zona || "").toUpperCase().includes(q) ||
+        (r.observacion?.texto || "").toUpperCase().includes(q)
       )
     : _pendientesRows;
-  renderPendientesBody_(filtered);
+}
+
+function applyPendientesFiltro_(q) {
+  _pendientesFiltro = String(q || "").toUpperCase().trim();
+  renderPendientesBody_(filtrarPendientes_());
+}
+
+// ─── Orden de la Lista (preferencia del celular) ──────────────────────
+
+function getOrdenLista_() {
+  try { return localStorage.getItem(ORDEN_LISTA_KEY) === "gps" ? "gps" : "pedido"; } catch { return "pedido"; }
+}
+
+function setOrdenLista_(orden) {
+  try { localStorage.setItem(ORDEN_LISTA_KEY, orden === "gps" ? "gps" : "pedido"); } catch {}
+  paintOrdenLista_();
+  applyPendientesFiltro_(_pendientesFiltro);
+}
+
+function paintOrdenLista_() {
+  const orden = getOrdenLista_();
+  document.querySelectorAll(".movOrdenOpt").forEach(b => {
+    const activo = b.dataset.orden === orden;
+    b.classList.toggle("movRedirOptOn", activo);
+    b.setAttribute("aria-pressed", activo ? "true" : "false");
+  });
 }
 
 // ─── Observaciones (por qué un carro de la lista no se ha traído) ──────
@@ -1919,6 +2007,8 @@ export function init() {
   document.addEventListener("click", e => {
     const opt = e.target.closest?.(".movRedirOpt");
     if (opt) setRedir_(opt.dataset.val === "1");
+    const orden = e.target.closest?.(".movOrdenOpt");
+    if (orden) setOrdenLista_(orden.dataset.orden);
   });
 
   // QR scanner buttons
@@ -2060,6 +2150,7 @@ export function enter() {
   // Al entrar y no en init(): init() corre en el bootstrap, cuando la pantalla
   // del movilizador todavía puede no estar en el DOM.
   paintRedir_();
+  paintOrdenLista_();
   refreshAll_().catch(() => {});
   startPoll_();
   // Inicializar (o re-inicializar) el mapa de zonas con el nombre actualizado del usuario

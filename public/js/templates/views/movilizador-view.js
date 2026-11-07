@@ -98,6 +98,14 @@ export function movilizadorView() {
           <button id="btnMovGuardarLista" type="button" class="movDownloadBtn" title="Guardar lista en el celular">${icon("download", 18)}</button>
         </div>
 
+        <div class="movRedirRow">
+          <span class="movRedirLabel">Ordenar por</span>
+          <div class="movRedirSeg" role="group" aria-label="Orden de la lista">
+            <button type="button" class="movOrdenOpt" data-orden="pedido" aria-pressed="true">Fecha de pedido</button>
+            <button type="button" class="movOrdenOpt" data-orden="gps" aria-pressed="false">GPS reciente</button>
+          </div>
+        </div>
+
         <div id="movPendientesQrCard" class="movPendientesQrCard" style="display:none;">
           <div class="movPendientesQrTop">
             <span id="movPendientesQrVin" class="movVin"></span>
