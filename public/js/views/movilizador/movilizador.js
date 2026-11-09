@@ -1950,6 +1950,57 @@ function stopPoll_() {
   stopPoll("POLL_OT_RECHECK_MS");
 }
 
+// ─── Alerta en pantalla: sonido + vibración cuando hay un verde nuevo ──
+// El push (lib/aviso-listos.js) llega con el tono del celular; esto es para
+// cuando el movilizador tiene la vista abierta y el aviso podría pasar
+// desapercibido. Solo suena si el número SUBE respecto del conteo anterior:
+// al entrar a la vista (primer conteo) no suena.
+let _listosPrev_ = null;
+let _audioCtxMov_ = null;
+
+// El navegador solo deja sonar audio después de un toque en la página: el
+// primer toque en cualquier parte deja el AudioContext listo.
+function desbloquearAudioMov_() {
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (AC && !_audioCtxMov_) _audioCtxMov_ = new AC();
+    _audioCtxMov_?.resume?.();
+  } catch {}
+}
+document.addEventListener("pointerdown", desbloquearAudioMov_, { passive: true });
+
+function tonoMov_(ctx, freq, t0, dur) {
+  const osc = ctx.createOscillator();
+  const gan = ctx.createGain();
+  osc.type = "sine";
+  osc.frequency.value = freq;
+  gan.gain.setValueAtTime(0.0001, t0);
+  gan.gain.exponentialRampToValueAtTime(0.9, t0 + 0.02);
+  gan.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  osc.connect(gan).connect(ctx.destination);
+  osc.start(t0);
+  osc.stop(t0 + dur + 0.05);
+}
+
+function alertarSiSubenListos_(n) {
+  const prev = _listosPrev_;
+  _listosPrev_ = n;
+  if (prev === null || !(n > prev)) return;
+  if (document.visibilityState !== "visible") return;   // en segundo plano avisa el push
+  try { navigator.vibrate?.([500, 200, 500, 200, 800]); } catch {}
+  const ctx = _audioCtxMov_;
+  if (!ctx) return;
+  try {
+    ctx.resume?.();
+    const t = ctx.currentTime + 0.05;
+    // ding-dong dos veces, como el llamado de calidad
+    tonoMov_(ctx, 880, t, 0.6);
+    tonoMov_(ctx, 660, t + 0.45, 0.8);
+    tonoMov_(ctx, 880, t + 1.4, 0.6);
+    tonoMov_(ctx, 660, t + 1.85, 0.8);
+  } catch {}
+}
+
 // ─── Public API ───────────────────────────────────────────────────────
 
 export function init() {
@@ -2161,7 +2212,10 @@ export function enter() {
       // Los carros en verde de las 15 zonas en la cartilla del hub: es el
       // número que el movilizador busca para saber si hay algo que sacar sin
       // abrir el mapa. La zona libre no cuenta (llega como enZonaLibre).
-      onCounts: ({ finalizados }) => setBadge_("movBadgeMapa", finalizados),
+      onCounts: ({ finalizados }) => {
+        setBadge_("movBadgeMapa", finalizados);
+        alertarSiSubenListos_(finalizados);
+      },
     });
   }
 }
@@ -2171,4 +2225,5 @@ export function exit() {
   closeMovQr_().catch(() => {});
   _zonasMapa?.destroy();
   _zonasMapa = null;
+  _listosPrev_ = null;   // al volver a entrar, el primer conteo no suena
 }

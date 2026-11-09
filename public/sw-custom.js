@@ -46,7 +46,11 @@ self.addEventListener('push', event => {
     tag:       payload.tag  || 'ramal-push',
     renotify:  true,
     vibrate:   Array.isArray(payload.vibrate) && payload.vibrate.length ? payload.vibrate : [200, 100, 200],
-    data:      { url: payload.url || '/' },
+    // silent:false explícito: suena con el tono de notificación del celular
+    silent:    false,
+    requireInteraction: !!payload.requireInteraction,
+    // lib/push.js manda la url dentro de data
+    data:      { url: payload.url || payload.data?.url || '/' },
   };
 
   event.waitUntil(self.registration.showNotification(title, options));
