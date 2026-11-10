@@ -6,6 +6,7 @@ import { initRFTecModalUI_ } from "./modals/rf-tecnico-modal.js";
 import { initConfirmFinishUI_, askConfirmFinish_ } from "./modals/confirm-finish.js";
 import { initInformeOt_ } from "./modals/informe-ot.js";
 import { initHojaCc_ } from "./modals/hoja-cc.js";
+import { initCalibracion_ } from "./modals/calibracion.js";
 import { initErrorModal } from "./modals/error-modal.js";
 import {
   initConformidadUI_,
@@ -1361,6 +1362,7 @@ export function init() {
   initConfirmFinishUI_();
   initInformeOt_();
   initHojaCc_();
+  initCalibracion_();
   initErrorModal();
 
   setConformidadAfterSaveRefresh_(async () => {

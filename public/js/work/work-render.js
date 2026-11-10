@@ -121,6 +121,9 @@ export function renderActivas_() {
                 </button>
                 <button class="btnRF" type="button" data-go="HOJA_CC" style="margin-bottom:6px;">
                   🖨 Hoja de control final
+                </button>
+                <button class="btnRF" type="button" data-go="CALIB" style="margin-bottom:6px;">
+                  🔧 Calibrar STAG en la laptop
                 </button>`
               : ""}
 

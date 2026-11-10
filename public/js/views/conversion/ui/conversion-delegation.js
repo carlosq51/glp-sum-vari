@@ -20,6 +20,7 @@ import { openRFModalForVin_, openRFSoldaduraForVin_ } from "../modals/rf-modal.j
 import { openRFTecModalForVin_ } from "../modals/rf-tecnico-modal.js";
 import { abrirInformeOt_ } from "../modals/informe-ot.js";
 import { abrirHojaCc_ } from "../modals/hoja-cc.js";
+import { abrirCalibracion_ } from "../modals/calibracion.js";
 import { openConformidadModalForKey_ } from "../modals/conformidad.js";
 import { askConfirmFinish_ } from "../modals/confirm-finish.js";
 
@@ -234,6 +235,12 @@ function attachWorkDelegationOnce_(mod) {
       if (go === "HOJA_CC") {
         e.stopPropagation();
         abrirHojaCc_(it.vin);
+        return;
+      }
+
+      if (go === "CALIB") {
+        e.stopPropagation();
+        abrirCalibracion_(it?.vin);
         return;
       }
 

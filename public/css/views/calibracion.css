@@ -1,0 +1,77 @@
+/* =========================================================================
+   public/css/views/calibracion.css
+   Modal de calibración STAG (views/conversion/modals/calibracion.js).
+   Reusa .iotGrid / .iotCampo / .iotMsg / .btnInicio del informe.
+   ========================================================================= */
+
+.calCab { margin-bottom: 12px; }
+.calVin { font-family: var(--font-mono); font-size: var(--fs-2xl); font-weight: var(--fw-black); letter-spacing: .02em; }
+.calCabFila { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 4px; }
+
+.calChip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 10px; border-radius: 999px;
+  font-size: var(--fs-xs); font-weight: var(--fw-bold);
+  background: var(--pillBg); border: 1px solid var(--pillLine); color: var(--muted);
+}
+.calChip.is-ok     { color: var(--ok);     background: var(--okBg);     border-color: transparent; }
+.calChip.is-danger { color: var(--danger); background: var(--dangerBg); border-color: transparent; }
+.calChip.is-warn   { color: var(--warn);   background: var(--warnBg);   border-color: transparent; }
+.calChip.is-note   { color: var(--note);   background: var(--noteBg);   border-color: transparent; }
+
+.calNota { margin: 8px 0 0; }
+
+.calBanner {
+  padding: 12px 14px; border-radius: var(--radiusSm);
+  font-weight: var(--fw-extrabold); font-size: var(--fs-lg); line-height: 1.35;
+  white-space: pre-line;
+  background: var(--noteBg); color: var(--text); border-left: 4px solid var(--note);
+}
+.calBanner[data-tono="ok"]     { background: var(--okBg);     border-left-color: var(--ok); }
+.calBanner[data-tono="danger"] { background: var(--dangerBg); border-left-color: var(--danger); }
+.calBanner[data-tono="warn"]   { background: var(--warnBg);   border-left-color: var(--warn); }
+.calBanner[data-tono="muted"]  { background: var(--pillBg);   border-left-color: var(--muted); }
+.calReloj { float: right; font-family: var(--font-mono); font-size: var(--fs-md); margin-left: 8px; }
+
+.calPregunta {
+  margin-top: 10px; padding: 12px 14px; border-radius: var(--radiusSm);
+  background: var(--dangerBg); border: 2px solid var(--danger);
+  animation: calLatido 1.2s ease-in-out infinite;
+}
+.calPregTexto { font-weight: var(--fw-bold); line-height: 1.4; }
+.calPregOps { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.calPregOps .btn { flex: 1 1 140px; min-height: var(--h-btn); font-weight: var(--fw-extrabold); }
+@keyframes calLatido { 50% { box-shadow: 0 0 0 4px var(--dangerBg); } }
+@media (prefers-reduced-motion: reduce) { .calPregunta { animation: none; } }
+
+.calValores {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 10px;
+}
+.calValor {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 6px 4px; border-radius: var(--radiusSm); background: var(--surface2);
+}
+.calValor span { font-size: var(--fs-2xs); color: var(--muted); }
+.calValor b { font-family: var(--font-mono); font-size: var(--fs-lg); color: var(--muted); }
+.calValor.is-ok b { color: var(--ok); }
+.calValor.is-danger b { color: var(--danger); }
+.calEstadoStag { grid-column: 1 / -1; text-align: center; }
+
+.calAvisos { margin-top: 8px; color: var(--warn); font-weight: var(--fw-bold); font-size: var(--fs-sm); }
+.calAvisos:empty { display: none; }
+
+.calPasos { list-style: none; margin: 10px 0 0; padding: 0; font-size: var(--fs-sm); }
+.calPaso {
+  display: grid; grid-template-columns: 18px 1fr auto 52px; gap: 6px; align-items: center;
+  padding: 3px 0; color: var(--muted);
+}
+.calPaso.is-run { color: var(--text); font-weight: var(--fw-extrabold); }
+.calPaso.is-ok, .calPaso.is-manual { color: var(--text); }
+.calPasoT, .calPasoD { font-family: var(--font-mono); text-align: right; }
+.calPasoD.is-ok { color: var(--ok); }
+.calPasoD.is-danger { color: var(--danger); }
+
+.calLog { margin-top: 8px; font-family: var(--font-mono); font-size: var(--fs-2xs); }
+.calAcciones { display: flex; gap: 8px; margin-top: 12px; }
+.calAcciones .btn { flex: 1; min-height: var(--h-btn); }
+.calBtnPeligro { background: var(--dangerBg) !important; color: var(--danger) !important; }
