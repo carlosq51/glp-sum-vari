@@ -28,3 +28,8 @@ vin-model.json
 omisiones.json
 impresora/agente.log
 *.lnk
+
+# Agente de WhatsApp: la sesion es la llave del numero, NUNCA al repo
+whatsapp/sesion/
+whatsapp/agente.log
+whatsapp/qr.png

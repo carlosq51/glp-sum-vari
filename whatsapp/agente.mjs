@@ -1,0 +1,270 @@
+// =========================
+// whatsapp/agente.mjs
+// Corre en la laptop de la oficina (la misma de la impresora).
+//
+// Manda al grupo de WhatsApp las fallas que registra Calidad: la foto y el
+// comentario. El servidor (Render) no tiene WhatsApp; esta laptop sí, con la
+// sesión del número alternativo, igual que WhatsApp Web.
+//
+//   1. el inspector registra la falla → el servidor la deja en la cola
+//      (routes/whatsapp.js) y avisa por /api/events (topic "whatsapp")
+//   2. este agente pide GET /api/whatsapp/cola
+//   3. descarga las fotos y las manda al grupo: la primera con el texto
+//   4. POST /api/whatsapp/enviado → sale de la cola
+//
+// Si la laptop está apagada, la cola espera: al prenderla sale todo.
+//
+// LA PRIMERA VEZ (o si WhatsApp cerró la sesión)
+// Abrir iniciar.cmd (con ventana): sale un QR en la ventana y también se
+// abre qr.png. En el celular del número alternativo: WhatsApp → Dispositivos
+// vinculados → Vincular dispositivo → escanear. La sesión queda en sesion/
+// (no se sube al repo). Después ya corre sin ventana con iniciar-oculto.vbs.
+//
+// Uso: node agente.mjs --email x@y.com --grupo "Nombre exacto del grupo"
+//   --prueba : se conecta y busca el grupo, pero no manda nada.
+// =========================
+
+import * as B from "@whiskeysockets/baileys";
+import P from "pino";
+import QRCode from "qrcode";
+import { createServer } from "node:net";
+import { existsSync, statSync, rmSync, appendFileSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
+
+const makeWASocket = B.makeWASocket || B.default?.default || B.default;
+const { useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, Browsers } = B;
+
+// ── Configuración ────────────────────────────────────────────────────────
+function arg_(nombre) {
+  const i = process.argv.indexOf(`--${nombre}`);
+  return i > 0 ? process.argv[i + 1] : undefined;
+}
+
+const APP = (arg_("app") || process.env.GLP_APP || "https://glp-control.onrender.com").replace(/\/+$/, "");
+// Un ADMIN o SUPERVISOR activo: la cola solo se les da a ellos.
+const EMAIL = arg_("email") || process.env.GLP_EMAIL || "";
+const GRUPO = arg_("grupo") || process.env.GLP_WSP_GRUPO || "";
+const PRUEBA = process.argv.includes("--prueba");
+
+const VUELTA_MS = 3 * 60_000;
+const ENTRE_MENSAJES_MS = 1_500;   // no ráfagas: WhatsApp castiga lo que parece bot
+const SESION = fileURLToPath(new URL("./sesion", import.meta.url));
+const QR_PNG = fileURLToPath(new URL("./qr.png", import.meta.url));
+
+if (!EMAIL || !GRUPO) {
+  console.error([
+    !EMAIL && "Falta --email (un ADMIN o SUPERVISOR).",
+    !GRUPO && 'Falta --grupo "Nombre del grupo" (tal cual sale en WhatsApp).',
+  ].filter(Boolean).join("\n"));
+  process.exit(1);
+}
+
+const LOG = new URL("./agente.log", import.meta.url);
+try { if (existsSync(LOG) && statSync(LOG).size > 1_000_000) rmSync(LOG); } catch { /* sigue */ }
+const hora_ = () => new Date().toLocaleString("es-PE", { hour12: false });
+const log = (...xs) => {
+  const linea = `[${hora_()}] ${xs.join(" ")}`;
+  console.log(linea);
+  try { appendFileSync(LOG, linea + "\n"); } catch { /* sin log */ }
+};
+const espera_ = (ms) => new Promise(r => setTimeout(r, ms));
+
+// ── Una sola copia corriendo ─────────────────────────────────────────────
+// Dos agentes con la misma sesión se patean entre ellos y mandarían doble.
+await new Promise((resolve) => {
+  const srv = createServer().once("error", () => {
+    log("Ya hay otro agente de WhatsApp corriendo en esta laptop. Este se cierra.");
+    process.exit(3);
+  });
+  srv.listen(47322, "127.0.0.1", resolve);
+});
+
+// ── WhatsApp ─────────────────────────────────────────────────────────────
+let sock = null;
+let listo = false;       // conectado y con el grupo encontrado
+let grupoId = "";
+
+const normal_ = (t) => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLowerCase();
+
+async function buscarGrupo_() {
+  const grupos = Object.values(await sock.groupFetchAllParticipating());
+  const g = grupos.find(x => normal_(x.subject) === normal_(GRUPO));
+  if (!g) {
+    log(`No encuentro el grupo "${GRUPO}". Este número está en: ${grupos.map(x => `"${x.subject}"`).join(", ") || "(ninguno)"}`);
+    log("Agrega el número alternativo al grupo o corrige --grupo en iniciar.cmd.");
+    return "";
+  }
+  return g.id;
+}
+
+async function conectar_() {
+  const { state, saveCreds } = await useMultiFileAuthState(SESION);
+  let version;
+  try { ({ version } = await fetchLatestBaileysVersion()); } catch { /* usa la de la librería */ }
+
+  sock = makeWASocket({
+    auth: state,
+    version,
+    logger: P({ level: "silent" }),
+    browser: Browsers.windows("GLP Calidad"),
+    markOnlineOnConnect: false,     // que el celular siga recibiendo notificaciones
+    syncFullHistory: false,
+  });
+  sock.ev.on("creds.update", saveCreds);
+
+  sock.ev.on("connection.update", async ({ connection, lastDisconnect, qr }) => {
+    if (qr) {
+      log("Escanea el QR: WhatsApp del número alternativo → Dispositivos vinculados → Vincular dispositivo.");
+      try {
+        console.log(await QRCode.toString(qr, { type: "terminal", small: true }));
+        await QRCode.toFile(QR_PNG, qr, { width: 420 });
+        if (!process.argv.includes("--no-abrir")) {
+          spawn("cmd", ["/c", "start", "", QR_PNG], { detached: true, stdio: "ignore", windowsHide: true }).unref();
+        }
+      } catch (err) { log("No pude dibujar el QR:", err.message); }
+    }
+
+    if (connection === "open") {
+      try { rmSync(QR_PNG, { force: true }); } catch { /* ya no está */ }
+      grupoId = await buscarGrupo_().catch((err) => { log("Error leyendo grupos:", err.message); return ""; });
+      listo = !!grupoId;
+      log(listo ? `WhatsApp conectado. Grupo: "${GRUPO}".${PRUEBA ? " · MODO PRUEBA (no manda)" : ""}` : "WhatsApp conectado, pero sin grupo.");
+      if (listo) revisar_();
+    }
+
+    if (connection === "close") {
+      listo = false;
+      const codigo = lastDisconnect?.error?.output?.statusCode;
+      if (codigo === DisconnectReason.loggedOut) {
+        // Desvincularon la laptop desde el celular: hay que escanear de nuevo.
+        log("WhatsApp cerró la sesión. Borro sesion/ y pido QR nuevo (abre iniciar.cmd para verlo).");
+        rmSync(SESION, { recursive: true, force: true });
+      } else {
+        log(`WhatsApp desconectado (${codigo || lastDisconnect?.error?.message || "?"}). Reconecto…`);
+      }
+      await espera_(5_000);
+      conectar_().catch(err => log("No pude reconectar:", err.message));
+    }
+  });
+}
+
+// ── La cola ──────────────────────────────────────────────────────────────
+const q_ = `email=${encodeURIComponent(EMAIL)}`;
+// Lo que ya salió al grupo pero el servidor no supo (falló el aviso): no se
+// manda dos veces, solo se reintenta sacarlo de la cola.
+const yaEnviados = new Set();
+
+async function cola_() {
+  const r = await fetch(`${APP}/api/whatsapp/cola?${q_}`);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j.ok) throw new Error(j.error || `la cola respondió ${r.status}`);
+  return j.items || [];
+}
+
+async function marcarEnviado_(id) {
+  const r = await fetch(`${APP}/api/whatsapp/enviado`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: EMAIL, id }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j.ok) throw new Error(j.error || `respondió ${r.status}`);
+}
+
+async function bajarFoto_(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`foto ${r.status}`);
+  return Buffer.from(await r.arrayBuffer());
+}
+
+async function mandar_(it) {
+  if (!yaEnviados.has(it.id)) {
+    const fotos = [];
+    for (const url of it.fotos || []) {
+      try { fotos.push(await bajarFoto_(url)); }
+      catch (err) { log(`${it.vin}: no pude bajar una foto (${err.message}), sigue sin ella.`); }
+    }
+    if (PRUEBA) {
+      log(`PRUEBA · ${it.vin}: ${fotos.length} foto(s) · ${String(it.texto).replace(/\n/g, " | ")}`);
+      yaEnviados.add(it.id);
+      return;
+    }
+    if (!fotos.length) {
+      await sock.sendMessage(grupoId, { text: it.texto });
+    } else {
+      for (let i = 0; i < fotos.length; i++) {
+        await sock.sendMessage(grupoId, i === 0 ? { image: fotos[i], caption: it.texto } : { image: fotos[i] });
+        if (i < fotos.length - 1) await espera_(800);
+      }
+    }
+    yaEnviados.add(it.id);
+    log(`Enviado · ${it.vin} · ${fotos.length} foto(s) · de ${it.autor}`);
+  }
+  if (PRUEBA) return;
+  try { await marcarEnviado_(it.id); }
+  catch (err) { log(`${it.vin}: salió al grupo pero no pude sacarlo de la cola (${err.message}). Reintento luego.`); }
+}
+
+let corriendo = false;
+let otraVez = false;
+
+async function revisar_() {
+  if (!listo) return;
+  if (corriendo) { otraVez = true; return; }
+  corriendo = true;
+  try {
+    do {
+      otraVez = false;
+      let items = [];
+      try { items = await cola_(); }
+      catch (err) { log("No pude leer la cola:", err.message); break; }
+      for (const it of items) {
+        if (!listo) break;
+        try { await mandar_(it); }
+        catch (err) { log(`${it.vin}: no se pudo mandar — ${err.message}`); }
+        await espera_(ENTRE_MENSAJES_MS);
+      }
+    } while (otraVez && listo);
+  } finally {
+    corriendo = false;
+  }
+}
+
+// ── Avisos del servidor (SSE) ────────────────────────────────────────────
+async function escuchar_() {
+  for (;;) {
+    try {
+      const r = await fetch(`${APP}/api/events`, { headers: { Accept: "text/event-stream" } });
+      if (!r.ok || !r.body) throw new Error(`respondió ${r.status}`);
+      log("Conectado al servidor. Esperando fallas de Calidad…");
+      revisar_();
+      const lector = r.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "";
+      for (;;) {
+        const { value, done } = await lector.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        let corte;
+        while ((corte = buf.indexOf("\n\n")) >= 0) {
+          const bloque = buf.slice(0, corte);
+          buf = buf.slice(corte + 2);
+          const data = bloque.split("\n").filter(l => l.startsWith("data:")).map(l => l.slice(5)).join("\n");
+          if (!data) continue;
+          try { if (JSON.parse(data).topic === "whatsapp") revisar_(); } catch { /* no es JSON */ }
+        }
+      }
+      log("El servidor cerró la conexión. Reconectando…");
+    } catch (err) {
+      log("Sin conexión con el servidor:", err.message);
+    }
+    await espera_(5_000);
+  }
+}
+
+log(`Grupo:    ${GRUPO}`);
+log(`Servidor: ${APP}  (como ${EMAIL})${PRUEBA ? "  · MODO PRUEBA" : ""}`);
+setInterval(revisar_, VUELTA_MS);
+await conectar_();
+escuchar_();

@@ -91,6 +91,7 @@
 
     const ctrl = initUploaderUI(mount, {
       apsUrl: options.apsUrl,
+      origen: options.origen || "",
       onBackControl: options.onBackControl || (() => {
         try { ctrl.showScreen("menu"); } catch {}
       }),
@@ -109,6 +110,8 @@
    * @param {boolean} inModal - si true, NO toca viewApp/viewHub/hideAllModulesUI
    * @param {function} onBackControl - callback para botón volver (solo embed)
    * @param {string} apsUrl - opcional override
+   * @param {string} origen - "CALIDAD" cuando lo abre el inspector: su falla
+   *                          además sale al grupo de WhatsApp (routes/whatsapp.js)
    */
   export function showUploaderView({
     vin = "",
@@ -118,11 +121,12 @@
     inModal = false,
     onBackControl = null,
     apsUrl = null,
+    origen = "",
   } = {}) {
 
     // ✅ MODO EMBEBIDO (MODAL)
     if (mountId) {
-      const ctrl = initUploaderOnMount_(mountId, { apsUrl, onBackControl });
+      const ctrl = initUploaderOnMount_(mountId, { apsUrl, onBackControl, origen });
       if (ctrl) ctrl.show({ vin, screen, dateStr });
       return;
     }

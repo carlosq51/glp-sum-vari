@@ -11,7 +11,7 @@
 //   R2_PUBLIC_URL=https://pub-c7d6e000a03d4913b0694c761ea901d2.r2.dev
 // =========================
 
-import { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectCommand, HeadObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { normalizeImage, isHeicBuffer_, huellaImagen } from "./lib/image-optimize.js";
 import { registrarHuella_, fotosRepetidas_, olvidarCopias_, marcarCopia_, borrarHuella_, fotosDelVin_ } from "./lib/fotos-huella.js";
 import { supabaseGet_ } from "./lib/supabase.js";
@@ -623,4 +623,38 @@ export async function r2UploadAvatar({ email, b64, mimeType = "image/jpeg" }) {
     url,
     avatarUrl: url,
   };
+}
+
+// ─── JSON pequeños (colas) ──────────────────────────────────────────────────
+// La cola de avisos a WhatsApp (routes/whatsapp.js) vive en R2 y no en
+// Supabase: son pocos archivos, se borran al enviarse y no gastan la cuota
+// de logs de la base. Un archivo = un aviso pendiente.
+
+export async function r2GuardarJson_(key, obj) {
+  await getClient().send(new PutObjectCommand({
+    Bucket: R2_BUCKET(), Key: key,
+    Body: JSON.stringify(obj),
+    ContentType: "application/json; charset=utf-8",
+  }));
+}
+
+/** Los JSON bajo el prefijo, del más viejo al más nuevo (por nombre). Máx 50. */
+export async function r2ListarJson_(prefix, max = 50) {
+  const client = getClient();
+  const r = await client.send(new ListObjectsV2Command({ Bucket: R2_BUCKET(), Prefix: prefix, MaxKeys: 1000 }));
+  const keys = (r.Contents || []).map(o => o.Key).filter(k => k.endsWith(".json")).sort().slice(0, max);
+  const out = [];
+  for (const key of keys) {
+    try {
+      const o = await client.send(new GetObjectCommand({ Bucket: R2_BUCKET(), Key: key }));
+      out.push({ key, data: JSON.parse(await o.Body.transformToString()) });
+    } catch (e) {
+      console.warn("[R2] JSON ilegible", key, e.message);
+    }
+  }
+  return out;
+}
+
+export async function r2BorrarKey_(key) {
+  await getClient().send(new DeleteObjectCommand({ Bucket: R2_BUCKET(), Key: key }));
 }

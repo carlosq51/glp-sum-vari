@@ -43,7 +43,9 @@ function rfOpenStage_(screen) {
 
   stage.querySelector("#btnRfBack")?.addEventListener("click", rfShowMenu_);
 
-  showUploaderView({ vin: RF.vin, screen, mountId: "rfUploaderMount" });
+  // origen CALIDAD: la falla que registre el inspector sale también al grupo
+  // de WhatsApp (ver routes/whatsapp.js).
+  showUploaderView({ vin: RF.vin, screen, mountId: "rfUploaderMount", origen: "CALIDAD" });
 }
 
 /**

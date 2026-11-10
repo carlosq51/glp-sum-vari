@@ -9,6 +9,7 @@ import {
   r2UploadAvatar,
 } from "../r2-uploads.js";
 import { fotosCopiadas_ } from "../lib/fotos-huella.js";
+import { encolarFallaCalidad_ } from "./whatsapp.js";
 
 const router = Router();
 
@@ -40,6 +41,12 @@ router.post("/api/uploader/proxy", async (req, res) => {
         break;
       case "uploadFalla":
         result = await r2UploadFalla(payload);
+        // La que registra Calidad sale también al grupo de WhatsApp.
+        if (result?.ok && String(payload.origen || "").toUpperCase() === "CALIDAD") {
+          result.whatsapp = await encolarFallaCalidad_({
+            vin: payload.vin, nota: payload.note, fotoUrls: result.fotoUrls, email: payload.email,
+          });
+        }
         break;
       case "uploadCalidad":
         result = await r2UploadCalidad(payload);

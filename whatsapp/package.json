@@ -1,0 +1,15 @@
+{
+  "name": "glp-whatsapp",
+  "private": true,
+  "type": "module",
+  "description": "Corre en la laptop de la oficina: manda al grupo de WhatsApp las fallas que registra Calidad.",
+  "scripts": {
+    "start": "node agente.mjs",
+    "postinstall": "node arreglar-node.mjs"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "6.7.24",
+    "pino": "^9.6.0",
+    "qrcode": "1.5.4"
+  }
+}

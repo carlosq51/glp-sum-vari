@@ -1145,6 +1145,7 @@ export function initUploaderUI(root, options = {}) {
             dateStr,
             note,
             files: fallaFiles,
+            origen: options.origen || "",
             apsUrl: options.apsUrl,
             onProgress: (p) => {
               if (p.phase === "prepare") {
@@ -1162,7 +1163,8 @@ export function initUploaderUI(root, options = {}) {
 
           setText(
             "outFalla",
-            `✅ Falla registrada.\nCarpeta: ${j.carFolderName}/FALLAS\nBatch: ${j.batchId}\nGuardados: ${j.savedCount}`
+            `✅ Falla registrada.\nCarpeta: ${j.carFolderName}/FALLAS\nBatch: ${j.batchId}\nGuardados: ${j.savedCount}` +
+              (j.whatsapp ? "\n📲 Va al grupo de WhatsApp." : "")
           );
 
           fallaFiles = [];

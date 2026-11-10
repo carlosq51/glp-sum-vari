@@ -78,6 +78,7 @@ export async function uploadFalla({
   dateStr,
   note,
   files = [],
+  origen = "",
   onProgress,
   apsUrl = APS_URL,
 }) {
@@ -96,7 +97,9 @@ export async function uploadFalla({
   onProgress?.({ phase: "upload", total: payloadFiles.length, bytes });
 
   const j = await callAPS(
-    { action: "uploadFalla", vin, dateStr, note, files: payloadFiles },
+    // email + origen: si la registra Calidad, el servidor la manda también
+    // al grupo de WhatsApp con el nombre de quien la vio.
+    { action: "uploadFalla", vin, dateStr, note, files: payloadFiles, email: getEmail(), origen },
     apsUrl
   );
   return { ...j, fotos };
