@@ -71,16 +71,18 @@ export function encolarFallaCalidad_({ vin, nota, fotoUrls = [], email }) {
 const ICONO_GRAVEDAD = { LEVE: "🟡", MODERADA: "🟠", CRITICA: "🔴" };
 
 /** Incidencia de Calidad contra un técnico (routes/incidencias.js). */
-export function encolarIncidencia_({ vin, gravedad, nota, tecnico, fotoUrl, email }) {
+export function encolarIncidencia_({ vin, gravedad, nota, tecnico, tecnicoEmail, fotoUrl, email }) {
   const g = s_(gravedad).toUpperCase() || "LEVE";
   return encolar_({
     tipo: "INCIDENCIA", vin, nota, email, tecnico: s_(tecnico),
+    // El agente lo busca en telefonos.json para etiquetarlo (@) en el grupo.
+    tecnicoEmail: s_(tecnicoEmail).toLowerCase(),
     fotoUrls: fotoUrl ? [fotoUrl] : [],
     titulo: `${ICONO_GRAVEDAD[g] || "🟡"} *Incidencia ${g === "CRITICA" ? "CRÍTICA" : g}*`,
   });
 }
 
-async function encolar_({ tipo, vin, nota, fotoUrls = [], email, titulo, tecnico = "" }) {
+async function encolar_({ tipo, vin, nota, fotoUrls = [], email, titulo, tecnico = "", tecnicoEmail = "" }) {
   try {
     const v = s_(vin).toUpperCase();
     if (!v) return false;
@@ -94,7 +96,7 @@ async function encolar_({ tipo, vin, nota, fotoUrls = [], email, titulo, tecnico
     const ahora = new Date();
     const id = `${ahora.toISOString().replace(/[-:.TZ]/g, "")}_${v.slice(-8)}_${Math.random().toString(36).slice(2, 6)}`;
     const aviso = {
-      id, tipo, vin: v, modelo, tecnico,
+      id, tipo, vin: v, modelo, tecnico, tecnicoEmail,
       nota: s_(nota).slice(0, MAX_NOTA),
       autor: u?.nombre || s_(email),
       fotos: fotoUrls.filter(Boolean).slice(0, MAX_FOTOS),

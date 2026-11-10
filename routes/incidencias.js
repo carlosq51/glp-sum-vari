@@ -33,6 +33,7 @@ router.post("/api/incidencia", async (req, res) => {
         work_order_id: body.conversionId || null,
         vin: body.vin || null,
         tecnico: body.tecnicoNombre || body.tecnicoEmail || "",
+      tecnicoEmail: body.tecnicoEmail || "",
         tipo: body.tipo || "LEVE",
         registrado_por: body.email || body.registrado_por || "",
         nota: body.nota || "",

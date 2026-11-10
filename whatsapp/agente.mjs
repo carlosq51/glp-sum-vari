@@ -52,6 +52,9 @@ const ENTRE_MENSAJES_MS = 1_500;   // no ráfagas: WhatsApp castiga lo que parec
 const SESION = fileURLToPath(new URL("./sesion", import.meta.url));
 const QR_PNG = fileURLToPath(new URL("./qr.png", import.meta.url));
 const MIEMBROS = fileURLToPath(new URL("./miembros.json", import.meta.url));
+// email del técnico en la app → su número de WhatsApp. Lo arma Carlos a mano
+// (NO va al repo). Ver etiquetar_().
+const TELEFONOS = fileURLToPath(new URL("./telefonos.json", import.meta.url));
 
 if (!EMAIL || !GRUPO) {
   console.error([
@@ -129,6 +132,7 @@ function anotar_({ id, lid, jid, notify, name, phoneNumber }) {
 
 async function leerMiembros_() {
   const meta = await sock.groupMetadata(grupoId);
+  lidDe.clear();   // alguien entró o salió: se vuelven a resolver
   for (const m of miembros.values()) m.enGrupo = false;
   for (const p of meta.participants || []) {
     const id = p.id;
@@ -147,6 +151,64 @@ async function leerMiembros_() {
   guardarMiembros_();
   const conNombre = [...miembros.values()].filter(m => m.enGrupo && (m.apodo || m.agendado)).length;
   log(`Miembros del grupo: ${meta.participants?.length || 0} (${conNombre} con nombre). Lista en miembros.json`);
+  revisarEtiquetas_().catch(err => log("No pude revisar telefonos.json:", err.message));
+}
+
+/** Al arrancar: a quién de telefonos.json se podrá etiquetar y a quién no. */
+async function revisarEtiquetas_() {
+  const tel = telefonos_();
+  const sin = [];
+  let ok = 0;
+  for (const [email, t] of Object.entries(tel)) {
+    if (await lidDeEmail_(email)) ok++;
+    else sin.push(t.nombre || email);
+  }
+  if (Object.keys(tel).length) log(`Etiquetas: ${ok} técnicos listos.${sin.length ? ` Sin etiqueta: ${sin.join(", ")}.` : ""}`);
+}
+
+// ── Etiquetar (@) al técnico ─────────────────────────────────────────────
+// telefonos.json: { "correo@app": { "nombre": "...", "numero": "51999..." } }
+// o, para los que esconden su número, { "lid": "1234...@lid" } sacado de
+// miembros.json. En el grupo cada miembro se nombra por su lid: el número se
+// traduce a lid con onWhatsApp (una vez, y queda en memoria).
+const lidDe = new Map();   // email → lid del grupo ("" si no está)
+
+function telefonos_() {
+  try { return JSON.parse(readFileSync(TELEFONOS, "utf8")); } catch { return {}; }
+}
+
+async function lidDeEmail_(email) {
+  const e = String(email || "").trim().toLowerCase();
+  if (!e) return "";
+  if (lidDe.has(e)) return lidDe.get(e);
+  const t = telefonos_()[e];
+  if (!t) return "";
+  let lid = t.lid || "";
+  const numero = String(t.numero || "").replace(/\D/g, "");
+  if (!lid && numero) {
+    const m = [...miembros.values()].find(x => x.numero === numero && x.enGrupo);
+    lid = m?.lid || m?.id || "";
+    if (!lid) {
+      try {
+        const [r] = (await sock.onWhatsApp(`${numero}@s.whatsapp.net`)) || [];
+        lid = r?.lid ? String(r.lid) : "";
+        if (lid && !lid.includes("@")) lid += "@lid";
+      } catch (err) { log(`No pude buscar el número de ${t.nombre || e}: ${err.message}`); }
+    }
+  }
+  const enGrupo = lid && [...miembros.values()].some(x => x.enGrupo && (x.id === lid || x.lid === lid));
+  if (lid && !enGrupo) log(`${t.nombre || e} no está en el grupo: va sin etiqueta.`);
+  lidDe.set(e, enGrupo ? lid : "");
+  return enGrupo ? lid : "";
+}
+
+/** Cambia "🔧 Técnico: NOMBRE" por "🔧 Técnico: @…" y devuelve las menciones. */
+async function etiquetar_(it) {
+  const lid = await lidDeEmail_(it.tecnicoEmail).catch(() => "");
+  if (!lid || !it.tecnico) return { texto: it.texto, mentions: [] };
+  const linea = `🔧 Técnico: ${it.tecnico}`;
+  if (!String(it.texto).includes(linea)) return { texto: it.texto, mentions: [] };
+  return { texto: it.texto.replace(linea, `🔧 Técnico: @${lid.split("@")[0]}`), mentions: [lid] };
 }
 
 async function buscarGrupo_() {
@@ -271,21 +333,22 @@ async function mandar_(it) {
       try { fotos.push(await bajarFoto_(url)); }
       catch (err) { log(`${it.vin}: no pude bajar una foto (${err.message}), sigue sin ella.`); }
     }
+    const { texto, mentions } = await etiquetar_(it);
     if (PRUEBA) {
-      log(`PRUEBA · ${it.vin}: ${fotos.length} foto(s) · ${String(it.texto).replace(/\n/g, " | ")}`);
+      log(`PRUEBA · ${it.vin}: ${fotos.length} foto(s) · ${String(texto).replace(/\n/g, " | ")}${mentions.length ? ` · etiqueta ${mentions}` : ""}`);
       yaEnviados.add(it.id);
       return;
     }
     if (!fotos.length) {
-      await sock.sendMessage(grupoId, { text: it.texto });
+      await sock.sendMessage(grupoId, { text: texto, mentions });
     } else {
       for (let i = 0; i < fotos.length; i++) {
-        await sock.sendMessage(grupoId, i === 0 ? { image: fotos[i], caption: it.texto } : { image: fotos[i] });
+        await sock.sendMessage(grupoId, i === 0 ? { image: fotos[i], caption: texto, mentions } : { image: fotos[i] });
         if (i < fotos.length - 1) await espera_(800);
       }
     }
     yaEnviados.add(it.id);
-    log(`Enviado · ${it.vin} · ${fotos.length} foto(s) · de ${it.autor}`);
+    log(`Enviado · ${it.vin} · ${fotos.length} foto(s) · de ${it.autor}${mentions.length ? ` · etiquetado ${it.tecnico}` : ""}`);
   }
   if (PRUEBA) return;
   try { await marcarEnviado_(it.id); }

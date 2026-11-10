@@ -298,24 +298,50 @@ async function fetchTechSuggest_(q) {
   }));
 }
 
+/**
+ * Los dos técnicos encargados del carro (MOTOR y TANQUERO de la tarjeta),
+ * como fichas del padrón. Van primero en la lista: casi siempre la incidencia
+ * es de uno de ellos y así no hay que escribir el nombre.
+ */
+function encargados_() {
+  const it = INC.item || {};
+  const out = [];
+  for (const [rol, nombre] of [["MOTOR", it.motorNombre], ["TANQUERO", it.tanqueroNombre]]) {
+    const n = norm_(nombre || "");
+    if (!n) continue;
+    const u = INC.cache.items.find((x) => norm_(x.name) === n);
+    if (u && !out.some((o) => (o.email || o.userId) === (u.email || u.userId))) out.push({ ...u, encargado: rol });
+  }
+  return out;
+}
+
 function createTechSuggest_() {
   return createSuggest_({
     input: "incTechInput",
     box: "incTechSuggest",
     guard: () => INC.open,
-    min: 1,
+    // min 0 + abrir en foco: al abrir el modal ya se ven los dos encargados.
+    min: 0,
+    abrirEnFoco: true,
     debounce: 180,
     limit: 12,
     async fetchFn(q) {
-      const items = await fetchTechSuggest_(q);
-      if (items.length || !INC.cache.items.length) return items;
+      const enc = encargados_();
       const qn = norm_(q);
-      return INC.cache.items.filter((u) => hay_(u).includes(qn)).slice(0, 12);
+      if (!qn) return enc;
+      let items = await fetchTechSuggest_(q);
+      if (!items.length && INC.cache.items.length) items = INC.cache.items.filter((u) => hay_(u).includes(qn));
+      const clave = (u) => u.email || u.userId;
+      const primero = enc.filter((u) => hay_(u).includes(qn));
+      return [...primero, ...items.filter((u) => !primero.some((p) => clave(p) === clave(u)))].slice(0, 12);
     },
     renderItem(u, i, active) {
+      const tag = u.encargado
+        ? ` <span class="small" style="opacity:.75; font-weight:700;">· ${u.encargado === "MOTOR" ? "🔧 MOTOR" : "🛢️ TANQUERO"} de este carro</span>`
+        : "";
       return `
         <div class="nsItem${active ? " active" : ""}" data-sug-idx="${i}" role="option" aria-selected="${active}">
-          <div class="nsTitle">${escapeHtml(String(u.name || "").trim())}</div>
+          <div class="nsTitle">${escapeHtml(String(u.name || "").trim())}${tag}</div>
         </div>
       `;
     },
