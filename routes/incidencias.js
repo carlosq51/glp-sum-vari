@@ -33,7 +33,6 @@ router.post("/api/incidencia", async (req, res) => {
         work_order_id: body.conversionId || null,
         vin: body.vin || null,
         tecnico: body.tecnicoNombre || body.tecnicoEmail || "",
-      tecnicoEmail: body.tecnicoEmail || "",
         tipo: body.tipo || "LEVE",
         registrado_por: body.email || body.registrado_por || "",
         nota: body.nota || "",
@@ -81,6 +80,10 @@ router.post("/api/incidencia", async (req, res) => {
     const aWhatsapp_ = (fotoUrl = "") => encolarIncidencia_({
       vin: body.vin, gravedad: body.tipo, nota: body.nota, fotoUrl,
       tecnico: body.tecnicoNombre || body.tecnicoEmail || "",
+      // Solo para etiquetarlo en WhatsApp. NO va en incidenciaData: la tabla
+      // incidencias no tiene esa columna (se coló ahí el 2026-11-10 y el POST
+      // a Supabase daba 400 PGRST204: no se guardaba ninguna incidencia).
+      tecnicoEmail: body.tecnicoEmail || "",
       email: body.email || body.registrado_por || "",
     });
     if (!hasFoto) aWhatsapp_();
