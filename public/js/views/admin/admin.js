@@ -146,7 +146,7 @@ const SEVERIDAD_TONO   = {
 
 const TABLE_DEF = {
   usuarios: {
-    cols: ["Nombre","Email","Rol","Especialidad","Activo"],
+    cols: ["Nombre","Email","Celular","Rol","Especialidad","Activo"],
     // Un bloque por rol: para dar permisos o desactivar a alguien lo primero
     // que se busca es "¿dónde están los técnicos?", no un apellido.
     grupos: rows => agrupar_(rows, r => r.rol, ROLES).map(([rol, filas]) => {
@@ -163,6 +163,7 @@ const TABLE_DEF = {
     row: r => [
       escHtml(r.nombre),
       escHtml(r.email),
+      r.telefono ? escHtml(celularLegible_(r.telefono)) : `<span class="adminBadgeMuted">Falta</span>`,
       `<span class="adminBadge">${escHtml(r.rol)}</span>`,
       escHtml(r.especialidad),
       r.activo ? `<span class="adminBadgeOk">✔ Activo</span>` : `<span class="adminBadgeMuted">Inactivo</span>`,
@@ -1687,6 +1688,21 @@ async function pausaMasiva_(accion) {
 }
 
 // ─── Form definitions ────────────────────────────────────────────────
+// ─── Celular ─────────────────────────────────────────────────────────
+// Se guarda solo con dígitos y el código de país (51987654321): así lo
+// necesitan el 📞 (tel:+51…), el 🟢 (wa.me/51…) y las etiquetas del grupo.
+// Un celular peruano escrito como "987 654 321" se completa con el 51.
+export function normalizarCelular_(txt) {
+  const d = String(txt || "").replace(/\D/g, "");
+  if (/^9\d{8}$/.test(d)) return "51" + d;
+  return d;
+}
+export function celularLegible_(d) {
+  const s = String(d || "");
+  const m = s.match(/^51(9\d{2})(\d{3})(\d{3})$/);
+  return m ? `+51 ${m[1]} ${m[2]} ${m[3]}` : (s ? `+${s}` : "");
+}
+
 function formUsuario(r = {}) {
   const checksHtml = MODULES.map(m =>
     `<label class="adminCheckLabel"><input type="checkbox" class="fModulo" value="${m}"> ${m}</label>`
@@ -1694,6 +1710,8 @@ function formUsuario(r = {}) {
   return `
     <label class="adminLabel">Nombre<input id="fNombre" type="text" value="${escHtml(r.nombre || "")}" placeholder="Nombre completo"></label>
     <label class="adminLabel">Email<input id="fEmail" type="email" value="${escHtml(r.email || "")}" placeholder="correo@empresa.com"></label>
+    <label class="adminLabel">Celular <span class="adminLabelHint">(obligatorio: para llamarlo y etiquetarlo en WhatsApp)</span>
+      <input id="fTelefono" type="tel" inputmode="tel" value="${escHtml(r.telefono ? celularLegible_(r.telefono) : "")}" placeholder="987 654 321"></label>
     <label class="adminLabel">Rol<select id="fRol">${opts(ROLES, r.rol || "TECNICO")}</select></label>
     <label class="adminLabel">Especialidad<select id="fEsp">${opts(ESPECIALIDADES, r.especialidad || "AMBOS")}</select></label>
     <label class="adminLabel adminLabelRow"><input id="fActivo" type="checkbox"${r.activo !== false ? " checked" : ""}> Activo</label>
@@ -1800,6 +1818,7 @@ function collectForm() {
     return {
       nombre: v("fNombre"),
       email: v("fEmail"),
+      telefono: normalizarCelular_(v("fTelefono")),
       rol: v("fRol"),
       especialidad: v("fEsp"),
       activo: b("fActivo"),
@@ -1835,6 +1854,8 @@ function validate(data) {
   if (S.tab === "usuarios") {
     if (!data.nombre) return "El nombre es requerido.";
     if (!data.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) return "Email inválido.";
+    if (!data.telefono) return "El celular es obligatorio.";
+    if (!/^\d{8,15}$/.test(data.telefono)) return "Celular inválido: escribe los 9 dígitos (987 654 321) o el número con código de país.";
   }
   if (S.tab === "vins") {
     if (!data.vin || data.vin.length !== 17) return "El VIN debe tener exactamente 17 caracteres.";
@@ -1959,7 +1980,10 @@ async function save() {
     closeModal();
     await loadTab();
   } catch (e) {
-    msg(e.message, true);
+    const m = String(e.message || "");
+    msg(/telefono/i.test(m) && /column|columna|schema/i.test(m)
+      ? "Falta correr supabase/migrations/014_usuarios-telefono.sql en Supabase para guardar el celular."
+      : m, true);
   } finally {
     saveBtn.disabled = false;
   }

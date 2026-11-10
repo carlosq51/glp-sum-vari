@@ -159,6 +159,50 @@
   animation: llamadoLatido 1.2s ease-in-out infinite;
 }
 
+/* 📞 / 🟢 junto al 📢 (public/js/work/telefonos.js). Son enlaces: tel: y
+   wa.me. Mismo alto que el 📢 para que el dedo no falle entre ellos. */
+.js-tel:empty { display: none; }
+.js-tel { display: inline-flex; gap: var(--gap-xs); }
+.btnTel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  min-height: 34px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: var(--border-w, 1px) solid var(--btnLine);
+  background: var(--pillBg);
+  font-size: var(--fs-md, 16px);
+  line-height: 1;
+  text-decoration: none;
+}
+
+/* "Ver más" de la tarjeta de CALIDAD (work-render.js): lo de uso diario a
+   la vista, lo ocasional (soldadura, hoja CC, STAG, informe, nota) dentro. */
+.jobMas { margin: 6px 0 4px; }
+.jobMas > summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  border-radius: var(--radius-md, 12px);
+  border: var(--border-w, 1px) dashed var(--btnLine);
+  color: var(--muted, var(--text));
+  font-weight: var(--fw-extrabold);
+  user-select: none;
+}
+.jobMas > summary::-webkit-details-marker { display: none; }
+.jobMas > summary::after { content: "▾"; transition: transform .15s; }
+.jobMas[open] > summary::after { transform: rotate(180deg); }
+.jobMas[open] > summary { margin-bottom: 8px; }
+.jobMas .jobMas__lbl-cerrar { display: none; }
+.jobMas[open] .jobMas__lbl-abrir { display: none; }
+.jobMas[open] .jobMas__lbl-cerrar { display: inline; }
+
 @keyframes llamadoLatido {
   0%, 100% { box-shadow: 0 0 0 0 var(--dangerBg); }
   50%      { box-shadow: 0 0 0 8px var(--dangerBg); }

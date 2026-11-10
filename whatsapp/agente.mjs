@@ -156,7 +156,7 @@ async function leerMiembros_() {
 
 /** Al arrancar: a quién de telefonos.json se podrá etiquetar y a quién no. */
 async function revisarEtiquetas_() {
-  const tel = telefonos_();
+  const tel = await telefonos_();
   const sin = [];
   let ok = 0;
   for (const [email, t] of Object.entries(tel)) {
@@ -167,21 +167,51 @@ async function revisarEtiquetas_() {
 }
 
 // ── Etiquetar (@) al técnico ─────────────────────────────────────────────
-// telefonos.json: { "correo@app": { "nombre": "...", "numero": "51999..." } }
-// o, para los que esconden su número, { "lid": "1234...@lid" } sacado de
-// miembros.json. En el grupo cada miembro se nombra por su lid: el número se
-// traduce a lid con onWhatsApp (una vez, y queda en memoria).
+// Los celulares salen de la app (Admin → Usuarios → Celular; GET
+// /api/telefonos). telefonos.json, junto a este archivo, sirve para lo que
+// la app no sabe: { "correo@app": { "lid": "1234...@lid" } } para quien
+// esconde su número en el grupo (el lid se saca de miembros.json), o un
+// número distinto al de la app. Lo del archivo manda sobre lo de la app.
+// En el grupo cada miembro se nombra por su lid: el número se traduce a lid
+// con onWhatsApp (una vez, y queda en memoria).
 const lidDe = new Map();   // email → lid del grupo ("" si no está)
+let _telApp = { ts: 0, porEmail: {} };
 
-function telefonos_() {
-  try { return JSON.parse(readFileSync(TELEFONOS, "utf8")); } catch { return {}; }
+async function telefonosApp_() {
+  if (Date.now() - _telApp.ts < 10 * 60_000) return _telApp.porEmail;
+  try {
+    const r = await fetch(`${APP}/api/telefonos?${q_}`);
+    const j = await r.json();
+    if (!r.ok || !j.ok) throw new Error(j.error || `respondió ${r.status}`);
+    const porEmail = {};
+    for (const u of j.items || []) if (u.email) porEmail[String(u.email).toLowerCase()] = { nombre: u.nombre, numero: u.telefono };
+    if (JSON.stringify(porEmail) !== JSON.stringify(_telApp.porEmail)) lidDe.clear();   // cambió un celular
+    _telApp = { ts: Date.now(), porEmail };
+  } catch (err) {
+    log("No pude leer los celulares de la app:", err.message);
+    _telApp.ts = Date.now() - 9 * 60_000;   // reintenta en 1 min
+  }
+  return _telApp.porEmail;
+}
+
+async function telefonos_() {
+  let local = {};
+  try { local = JSON.parse(readFileSync(TELEFONOS, "utf8")); } catch { /* sin archivo */ }
+  const app = await telefonosApp_();
+  const out = { ...app };
+  for (const [e, t] of Object.entries(local)) {
+    const k = e.toLowerCase();
+    const propio = Object.fromEntries(Object.entries(t || {}).filter(([, v]) => v));
+    out[k] = { ...(app[k] || {}), ...propio };
+  }
+  return out;
 }
 
 async function lidDeEmail_(email) {
   const e = String(email || "").trim().toLowerCase();
   if (!e) return "";
   if (lidDe.has(e)) return lidDe.get(e);
-  const t = telefonos_()[e];
+  const t = (await telefonos_())[e];
   if (!t) return "";
   let lid = t.lid || "";
   const numero = String(t.numero || "").replace(/\D/g, "");

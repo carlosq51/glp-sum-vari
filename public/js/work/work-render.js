@@ -19,6 +19,55 @@ function informeDe_(it) {
   return informeEstadoHTML_(it.conversionId, rol);
 }
 
+// "Ver más" de CALIDAD: qué tarjetas lo tienen abierto. Las tarjetas se
+// repintan con cada sync; sin esto se cerraría solo bajo el dedo.
+const _masAbiertos = new Set();
+let _masEscuchando = false;
+
+function escucharVerMas_(box) {
+  if (_masEscuchando) return;
+  _masEscuchando = true;
+  // "toggle" no burbujea: se escucha en captura desde la caja.
+  box.addEventListener("toggle", (e) => {
+    const d = e.target;
+    if (!d?.matches?.("details.jobMas")) return;
+    const k = d.dataset.masKey || "";
+    if (d.open) _masAbiertos.add(k); else _masAbiertos.delete(k);
+  }, true);
+}
+
+/**
+ * Lo ocasional de la tarjeta de CALIDAD, plegado. A la vista queda lo de cada
+ * carro (estado, incidencias, 📸 calidad/fallas); esto se usa a veces.
+ */
+function verMasCalidadHTML_(it, k) {
+  const abierto = _masAbiertos.has(k) ? " open" : "";
+  return `
+    <details class="jobMas" data-mas-key="${escapeHtml(k)}"${abierto}>
+      <summary><span class="jobMas__lbl-abrir">Ver más</span><span class="jobMas__lbl-cerrar">Ver menos</span></summary>
+      <button class="btnRF" type="button" data-go="SOLD"
+        data-vin="${escapeHtml(it.vin || "")}" style="margin-top:0; margin-bottom:6px;">
+        🔩 Ver fotos de soldadura
+      </button>
+      <button class="btnRF" type="button" data-go="HOJA_CC" style="margin-bottom:6px;">
+        🖨 Hoja de control final
+      </button>
+      <button class="btnRF" type="button" data-go="CALIB" style="margin-bottom:6px;">
+        🔧 Calibrar STAG en la laptop
+      </button>
+      <button class="btnInforme" data-act="INFORME">
+        Informe de esta OT
+      </button>
+      <div class="jobNoteBlock">
+        <textarea class="notaCard" rows="2" placeholder="Escribe una nota..."></textarea>
+        <button class="btnNota" data-act="NOTA" style="margin-top:10px; width:100%; height:66px; font-weight:900; display:none;">
+          Guardar nota
+        </button>
+      </div>
+    </details>
+  `;
+}
+
 export function renderActivas_() {
   const c = ctx_();
   const box = el_("activasBox");
@@ -113,20 +162,6 @@ export function renderActivas_() {
 
           ${buildIncidenciasBtnHTML_(it, k)}
 
-          ${CORE.state.currentModule === "CALIDAD"
-              ? `<button class="btnRF" type="button" data-go="SOLD"
-                  data-vin="${escapeHtml(it.vin || "")}"
-                  style="margin-top:6px; margin-bottom:6px;">
-                  🔩 Ver fotos de soldadura
-                </button>
-                <button class="btnRF" type="button" data-go="HOJA_CC" style="margin-bottom:6px;">
-                  🖨 Hoja de control final
-                </button>
-                <button class="btnRF" type="button" data-go="CALIB" style="margin-bottom:6px;">
-                  🔧 Calibrar STAG en la laptop
-                </button>`
-              : ""}
-
           <div class="jobActionsSlot">${buildBotonesByEstado_(estado, { ajena: it.ajena, titularNombre: it.titularNombre })}</div>
 
           ${estado === "PAUSADO" ? `<div class="js-pausa-countdown small" style="text-align:center; opacity:.85; margin-top:4px; color:#f59e0b;">⏳ Calculando...</div>` : ""}
@@ -139,6 +174,7 @@ export function renderActivas_() {
                 : ""
           }
 
+          ${CORE.state.currentModule === "CALIDAD" ? verMasCalidadHTML_(it, k) : `
           <button class="btnInforme" data-act="INFORME">
             Informe de esta OT
           </button>
@@ -148,13 +184,14 @@ export function renderActivas_() {
             <button class="btnNota" data-act="NOTA" style="margin-top:10px; width:100%; height:66px; font-weight:900; display:none;">
               Guardar nota
             </button>
-          </div>
+          </div>`}
         </div>
       </div>
     `;
   }
 
   box.innerHTML = out;
+  if (CORE.state.currentModule === "CALIDAD") escucharVerMas_(box);
   pintarInformes_();
   pintarFotosCopiadas_();
 }

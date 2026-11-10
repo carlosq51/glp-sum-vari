@@ -16,7 +16,7 @@
 import express from "express";
 import { supabaseServiceHeaders_ } from "../lib/supabase.js";
 import { getUsuarioByEmail_, invalidarUsuarios_ } from "../lib/authz.js";
-import { autorizarDb_ } from "../lib/db-permisos.js";
+import { autorizarDb_, veTelefonos_, sinTelefonos_ } from "../lib/db-permisos.js";
 
 const router = express.Router();
 
@@ -70,7 +70,12 @@ router.all("/api/db/:tabla", async (req, res) => {
       invalidarUsuarios_();
       _modulos = null;
     }
-    res.status(r.status).type(r.headers.get("content-type") || "application/json").send(await r.text());
+    let cuerpo = await r.text();
+    // El celular solo lo ven CALIDAD/SUPERVISOR/ADMIN (ver sinTelefonos_).
+    if (cuerpo.includes("\"telefono\"") && !veTelefonos_(usuario)) {
+      try { cuerpo = JSON.stringify(sinTelefonos_(JSON.parse(cuerpo))); } catch { /* no era JSON */ }
+    }
+    res.status(r.status).type(r.headers.get("content-type") || "application/json").send(cuerpo);
   } catch (e) {
     console.error(`[db] ${metodo} ${tabla}:`, e.message);
     res.status(502).json({ ok: false, error: "No se pudo consultar la base. Intenta de nuevo." });

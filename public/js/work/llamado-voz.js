@@ -28,6 +28,7 @@
 // barra flotante permite apagar algo aunque su botón ya no exista.
 
 import { escapeHtml } from "../core/format.js";
+import { huecoTelefono_, pintarTelefonos_ } from "./telefonos.js";
 
 // 6 s entre rondas: con menos se oye como alarma y estresa; con más, quien
 // llegó tarde al primer aviso se queda esperando a que lo repitan.
@@ -325,12 +326,16 @@ function botonLlamar_(vin, rol, nombre) {
     data-llamar-nombre="${escapeHtml(nombre)}">${on ? "🔊 Detener" : "📢 Llamar"}</button>`;
 }
 
-/** "🔧 MOTOR: Juan [📢 Llamar]  🛢️ TANQUERO: Pedro [📢 Llamar]" */
+/**
+ * "🔧 MOTOR: Juan [📢 Llamar] [📞][🟢]  🛢️ TANQUERO: Pedro [📢 Llamar] [📞][🟢]"
+ * 📞/🟢 llegan después (work/telefonos.js): aquí solo va su hueco.
+ */
 export function personalCalidadHTML_(it) {
   const m = String(it?.motorNombre || "");
   const t = String(it?.tanqueroNombre || "");
+  if (m || t) pintarTelefonos_();
   return [
-    m ? `<span class="llamadoPer">🔧 MOTOR: <b>${escapeHtml(m)}</b> ${botonLlamar_(it.vin, "MOTOR", m)}</span>` : "",
-    t ? `<span class="llamadoPer">🛢️ TANQUERO: <b>${escapeHtml(t)}</b> ${botonLlamar_(it.vin, "TANQUE", t)}</span>` : "",
+    m ? `<span class="llamadoPer">🔧 MOTOR: <b>${escapeHtml(m)}</b> ${botonLlamar_(it.vin, "MOTOR", m)}${huecoTelefono_(m)}</span>` : "",
+    t ? `<span class="llamadoPer">🛢️ TANQUERO: <b>${escapeHtml(t)}</b> ${botonLlamar_(it.vin, "TANQUE", t)}${huecoTelefono_(t)}</span>` : "",
   ].join("");
 }
