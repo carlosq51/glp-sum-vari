@@ -28,7 +28,7 @@ import * as B from "@whiskeysockets/baileys";
 import P from "pino";
 import QRCode from "qrcode";
 import { createServer } from "node:net";
-import { existsSync, statSync, rmSync, appendFileSync } from "node:fs";
+import { existsSync, statSync, rmSync, appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
@@ -51,6 +51,7 @@ const VUELTA_MS = 3 * 60_000;
 const ENTRE_MENSAJES_MS = 1_500;   // no ráfagas: WhatsApp castiga lo que parece bot
 const SESION = fileURLToPath(new URL("./sesion", import.meta.url));
 const QR_PNG = fileURLToPath(new URL("./qr.png", import.meta.url));
+const MIEMBROS = fileURLToPath(new URL("./miembros.json", import.meta.url));
 
 if (!EMAIL || !GRUPO) {
   console.error([
@@ -90,6 +91,64 @@ let grupoId = "";
 // con un espacio, una tilde o un paréntesis de más se dan por el mismo grupo.
 const normal_ = (t) => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
+// ── Miembros del grupo ───────────────────────────────────────────────────
+// Para etiquetar (@) al técnico hay que saber qué número es de quién.
+// WhatsApp da los números del grupo pero no los nombres; los nombres se van
+// juntando solos: el apodo que cada uno se puso (cuando escribe en el grupo)
+// y el nombre con que está guardado en los contactos del celular
+// alternativo. Todo queda en miembros.json (NO va al repo: son teléfonos).
+const miembros = new Map();   // id (lid o jid) → { id, numero, apodo, agendado, enGrupo }
+try {
+  for (const m of JSON.parse(readFileSync(MIEMBROS, "utf8")).miembros || []) miembros.set(m.id, { ...m, enGrupo: false });
+} catch { /* primera vez */ }
+
+const numeroDe_ = (jid) => (String(jid || "").endsWith("@s.whatsapp.net") ? String(jid).split("@")[0].split(":")[0] : "");
+let guardarReloj = null;
+function guardarMiembros_() {
+  clearTimeout(guardarReloj);
+  guardarReloj = setTimeout(() => {
+    const lista = [...miembros.values()].sort((a, b) => Number(b.enGrupo) - Number(a.enGrupo) || String(a.apodo || a.agendado || "~").localeCompare(String(b.apodo || b.agendado || "~")));
+    try { writeFileSync(MIEMBROS, JSON.stringify({ grupo: GRUPO, actualizado: new Date().toISOString(), miembros: lista }, null, 2)); }
+    catch (err) { log("No pude guardar miembros.json:", err.message); }
+  }, 2_000);
+}
+
+/** Junta lo que se sepa de un contacto en su ficha (por lid o por número). */
+function anotar_({ id, lid, jid, notify, name, phoneNumber }) {
+  const claves = [id, lid, jid, phoneNumber].filter(Boolean);
+  let m = claves.map(k => miembros.get(k)).find(Boolean)
+    || [...miembros.values()].find(x => claves.some(k => k === x.lid || k === x.jid));
+  if (!m) return;          // solo interesan los del grupo
+  let cambio = false;
+  const numero = numeroDe_(jid) || numeroDe_(phoneNumber) || numeroDe_(id);
+  if (numero && m.numero !== numero) { m.numero = numero; cambio = true; }
+  if (notify && m.apodo !== notify) { m.apodo = notify; cambio = true; }
+  if (name && m.agendado !== name) { m.agendado = name; cambio = true; }
+  if (cambio) guardarMiembros_();
+}
+
+async function leerMiembros_() {
+  const meta = await sock.groupMetadata(grupoId);
+  for (const m of miembros.values()) m.enGrupo = false;
+  for (const p of meta.participants || []) {
+    const id = p.id;
+    const previo = miembros.get(id) || {};
+    miembros.set(id, {
+      ...previo, id,
+      lid: p.lid || (String(id).endsWith("@lid") ? id : previo.lid || ""),
+      jid: p.jid || p.phoneNumber || (String(id).endsWith("@s.whatsapp.net") ? id : previo.jid || ""),
+      numero: numeroDe_(p.jid) || numeroDe_(p.phoneNumber) || numeroDe_(id) || previo.numero || "",
+      apodo: p.notify || previo.apodo || "",
+      agendado: p.name || previo.agendado || "",
+      admin: p.admin || "",
+      enGrupo: true,
+    });
+  }
+  guardarMiembros_();
+  const conNombre = [...miembros.values()].filter(m => m.enGrupo && (m.apodo || m.agendado)).length;
+  log(`Miembros del grupo: ${meta.participants?.length || 0} (${conNombre} con nombre). Lista en miembros.json`);
+}
+
 async function buscarGrupo_() {
   const grupos = Object.values(await sock.groupFetchAllParticipating());
   const g = grupos.find(x => normal_(x.subject) === normal_(GRUPO));
@@ -116,6 +175,27 @@ async function conectar_() {
   });
   sock.ev.on("creds.update", saveCreds);
 
+  // Nombres de los miembros (ver anotar_): de los contactos del celular y de
+  // los mensajes que escriben en el grupo.
+  sock.ev.on("contacts.upsert", (cs) => cs.forEach(anotar_));
+  sock.ev.on("contacts.update", (cs) => cs.forEach(anotar_));
+  sock.ev.on("messaging-history.set", ({ contacts = [], messages = [] }) => {
+    contacts.forEach(anotar_);
+    for (const msg of messages) {
+      if (msg.key?.remoteJid === grupoId && msg.pushName) anotar_({ id: msg.key.participant, jid: msg.key.participantPn || msg.key.participantAlt, notify: msg.pushName });
+    }
+  });
+  sock.ev.on("messages.upsert", ({ messages = [] }) => {
+    for (const msg of messages) {
+      if (grupoId && msg.key?.remoteJid === grupoId && !msg.key.fromMe && msg.pushName) {
+        anotar_({ id: msg.key.participant, jid: msg.key.participantPn || msg.key.participantAlt, notify: msg.pushName });
+      }
+    }
+  });
+  sock.ev.on("group-participants.update", ({ id }) => {
+    if (id === grupoId) leerMiembros_().catch(err => log("No pude releer miembros:", err.message));
+  });
+
   sock.ev.on("connection.update", async ({ connection, lastDisconnect, qr }) => {
     if (qr) {
       log("Escanea el QR: WhatsApp del número alternativo → Dispositivos vinculados → Vincular dispositivo.");
@@ -133,6 +213,7 @@ async function conectar_() {
       try { rmSync(QR_PNG, { force: true }); } catch { /* ya no está */ }
       grupoId = await buscarGrupo_().catch((err) => { log("Error leyendo grupos:", err.message); return ""; });
       listo = !!grupoId;
+      if (listo) leerMiembros_().catch(err => log("No pude leer miembros:", err.message));
       log(listo ? `WhatsApp conectado. Grupo: "${GRUPO}".${PRUEBA ? " · MODO PRUEBA (no manda)" : ""}` : "WhatsApp conectado, pero sin grupo.");
       if (listo) revisar_();
     }
@@ -220,7 +301,7 @@ async function revisar_() {
   if (conectado && !listo) {
     grupoId = await buscarGrupo_().catch(() => "");
     listo = !!grupoId;
-    if (listo) log(`Grupo encontrado: "${GRUPO}".`);
+    if (listo) { log(`Grupo encontrado: "${GRUPO}".`); leerMiembros_().catch(() => {}); }
   }
   if (!listo) return;
   if (corriendo) { otraVez = true; return; }
