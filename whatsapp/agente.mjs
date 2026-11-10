@@ -85,7 +85,9 @@ let sock = null;
 let listo = false;       // conectado y con el grupo encontrado
 let grupoId = "";
 
-const normal_ = (t) => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLowerCase();
+// Solo letras y números: "SUM 2026 NOVIEMBRE FALLAS / ERRORES" y el mismo
+// con un espacio, una tilde o un paréntesis de más se dan por el mismo grupo.
+const normal_ = (t) => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
 async function buscarGrupo_() {
   const grupos = Object.values(await sock.groupFetchAllParticipating());
