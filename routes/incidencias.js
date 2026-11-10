@@ -6,6 +6,7 @@ import { getConfig_ } from "../lib/config.js";
 import { r2UploadIncidencia, photoUrls } from "../r2-uploads.js";
 import { emitEvent_ } from "../lib/events.js";
 import { sendPushToEmails_, getTecnicoEmailsByVin_ } from "../lib/push.js";
+import { encolarIncidencia_ } from "./whatsapp.js";
 
 const router = Router();
 
@@ -74,6 +75,15 @@ router.post("/api/incidencia", async (req, res) => {
       }
     })();
 
+    // Al grupo de WhatsApp (routes/whatsapp.js). Con foto, espera a que la
+    // foto esté en R2 para mandarla junto al texto.
+    const aWhatsapp_ = (fotoUrl = "") => encolarIncidencia_({
+      vin: body.vin, gravedad: body.tipo, nota: body.nota, fotoUrl,
+      tecnico: body.tecnicoNombre || body.tecnicoEmail || "",
+      email: body.email || body.registrado_por || "",
+    });
+    if (!hasFoto) aWhatsapp_();
+
     // 2) Si hay foto, subir a R2 en BACKGROUND y actualizar Supabase
     if (hasFoto && supabaseResult) {
       const incId = Array.isArray(supabaseResult) ? supabaseResult[0]?.id : supabaseResult?.id;
@@ -96,8 +106,10 @@ router.post("/api/incidencia", async (req, res) => {
             });
             console.log(`[INCIDENCIA] Foto subida a R2 y actualizada: ${incId}`);
           }
+          await aWhatsapp_(up?.url || "");
         } catch (err) {
           console.error("[INCIDENCIA] R2 upload error:", err.message);
+          await aWhatsapp_();   // sin foto, pero que el grupo se entere
         }
       })();
     }

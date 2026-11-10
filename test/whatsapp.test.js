@@ -74,3 +74,30 @@ describe("encolarFallaCalidad_", () => {
     expect(guardados.size).toBe(0);
   });
 });
+
+describe("encolarIncidencia_", () => {
+  it("lleva gravedad, técnico, nota y la foto", async () => {
+    const { encolarIncidencia_ } = await import("../routes/whatsapp.js");
+    expect(await encolarIncidencia_({
+      vin: "LVTDB21B5PD123456", gravedad: "critica", nota: "Manguera suelta",
+      tecnico: "Juan P.", fotoUrl: "https://r2/inc.jpg", email: "wilmer@x.com",
+    })).toBe(true);
+    const [aviso] = guardados.values();
+    expect(aviso.tipo).toBe("INCIDENCIA");
+    expect(aviso.fotos).toEqual(["https://r2/inc.jpg"]);
+    expect(aviso.texto.split("\n").slice(0, 4)).toEqual([
+      "🔴 *Incidencia CRÍTICA*",
+      "🚗 JETOUR X70 · VIN LVTDB21B5PD123456",
+      "🔧 Técnico: Juan P.",
+      "📝 Manguera suelta",
+    ]);
+  });
+
+  it("sin foto sale solo el texto", async () => {
+    const { encolarIncidencia_ } = await import("../routes/whatsapp.js");
+    await encolarIncidencia_({ vin: "X1", gravedad: "LEVE", email: "wilmer@x.com" });
+    const [aviso] = guardados.values();
+    expect(aviso.fotos).toEqual([]);
+    expect(aviso.texto).toMatch(/^🟡 \*Incidencia LEVE\*/);
+  });
+});

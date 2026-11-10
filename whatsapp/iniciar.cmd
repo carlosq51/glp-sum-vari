@@ -5,11 +5,11 @@ rem Este .cmd es la version con ventana: la PRIMERA VEZ hay que abrir este
 rem para escanear el QR con el WhatsApp del numero alternativo.
 rem
 rem --grupo: el nombre del grupo como sale en WhatsApp (espacios, tildes y
-rem signos no importan). Si cada mes hay grupo nuevo, cambiarlo aqui.
+rem signos no importan). Si se cambia el nombre del grupo, cambiarlo aqui.
 cd /d "%~dp0"
 if not exist node_modules call npm install --no-audit --no-fund
 :otra
-node --no-warnings agente.mjs --email colonioc2@gmail.com --grupo "SUM 2026 NOVIEMBRE FALLAS / ERRORES"
+node --no-warnings agente.mjs --email colonioc2@gmail.com --grupo "SUM GLP FALLAS / ERRORES"
 rem 3 = ya hay otro agente corriendo: no se reintenta.
 if %errorlevel%==3 goto fin
 echo El agente se detuvo. Reinicia en 10 s...

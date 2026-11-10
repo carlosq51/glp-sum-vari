@@ -83,9 +83,10 @@ await new Promise((resolve) => {
 // ── WhatsApp ─────────────────────────────────────────────────────────────
 let sock = null;
 let listo = false;       // conectado y con el grupo encontrado
+let conectado = false;   // WhatsApp abierto (con o sin grupo)
 let grupoId = "";
 
-// Solo letras y números: "SUM 2026 NOVIEMBRE FALLAS / ERRORES" y el mismo
+// Solo letras y números: "SUM GLP FALLAS / ERRORES" y el mismo
 // con un espacio, una tilde o un paréntesis de más se dan por el mismo grupo.
 const normal_ = (t) => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
@@ -128,6 +129,7 @@ async function conectar_() {
     }
 
     if (connection === "open") {
+      conectado = true;
       try { rmSync(QR_PNG, { force: true }); } catch { /* ya no está */ }
       grupoId = await buscarGrupo_().catch((err) => { log("Error leyendo grupos:", err.message); return ""; });
       listo = !!grupoId;
@@ -137,6 +139,7 @@ async function conectar_() {
 
     if (connection === "close") {
       listo = false;
+      conectado = false;
       const codigo = lastDisconnect?.error?.output?.statusCode;
       if (codigo === DisconnectReason.loggedOut) {
         // Desvincularon la laptop desde el celular: hay que escanear de nuevo.
@@ -212,6 +215,13 @@ let corriendo = false;
 let otraVez = false;
 
 async function revisar_() {
+  // Conectado pero sin grupo (el número aún no estaba, o le cambiaron el
+  // nombre): se vuelve a buscar en cada vuelta en vez de quedarse mudo.
+  if (conectado && !listo) {
+    grupoId = await buscarGrupo_().catch(() => "");
+    listo = !!grupoId;
+    if (listo) log(`Grupo encontrado: "${GRUPO}".`);
+  }
   if (!listo) return;
   if (corriendo) { otraVez = true; return; }
   corriendo = true;

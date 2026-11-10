@@ -2,9 +2,11 @@
 // routes/whatsapp.js
 // Fallas de Calidad → grupo de WhatsApp.
 //
-// Cuando el inspector registra una falla desde su tarjeta (📸 Registrar
-// calidad / fallas → Enviar falla), la foto y el comentario salen también a
-// un grupo de WhatsApp.
+// Lo que Calidad registra sobre un carro sale también a un grupo de WhatsApp,
+// con la foto y el comentario:
+//   · la FALLA     (📸 Registrar calidad / fallas → Enviar falla)
+//   · la INCIDENCIA (LEVE / MODERADA / CRÍTICA contra un técnico,
+//                    routes/incidencias.js)
 //
 // QUIÉN LA MANDA
 // El servidor está en Render y no tiene WhatsApp. Lo tiene la laptop de la
@@ -13,6 +15,7 @@
 // y, por si se perdió el aviso, revisa la cola cada 3 min.
 //
 //   · encolarFallaCalidad_()          lo llama routes/uploader.js tras subir
+//   · encolarIncidencia_()            lo llama routes/incidencias.js
 //   · GET  /api/whatsapp/cola         agente: lo pendiente, del más viejo al
 //                                      más nuevo
 //   · POST /api/whatsapp/enviado      agente: ya salió → se borra de la cola
@@ -45,11 +48,12 @@ function horaLima_(d = new Date()) {
 }
 
 /** El texto que sale en el grupo (pie de la primera foto). */
-export function textoFalla_({ vin, modelo, nota, autor, hora }) {
+export function textoFalla_({ vin, modelo, nota, autor, hora, titulo = "❌ *Falla de Calidad*", tecnico = "" }) {
   const lineas = [
-    "❌ *Falla de Calidad*",
+    titulo,
     `🚗 ${modelo ? `${modelo} · ` : ""}VIN ${vin}`,
   ];
+  if (tecnico) lineas.push(`🔧 Técnico: ${tecnico}`);
   if (nota) lineas.push(`📝 ${nota}`);
   lineas.push(`👤 ${autor || "Calidad"} · ${hora}`);
   return lineas.join("\n");
@@ -60,7 +64,23 @@ export function textoFalla_({ vin, modelo, nota, autor, hora }) {
  * guardada en R2 y eso es lo importante; solo no sale al grupo.
  * Devuelve true si quedó en cola.
  */
-export async function encolarFallaCalidad_({ vin, nota, fotoUrls = [], email }) {
+export function encolarFallaCalidad_({ vin, nota, fotoUrls = [], email }) {
+  return encolar_({ tipo: "FALLA_CALIDAD", vin, nota, fotoUrls, email });
+}
+
+const ICONO_GRAVEDAD = { LEVE: "🟡", MODERADA: "🟠", CRITICA: "🔴" };
+
+/** Incidencia de Calidad contra un técnico (routes/incidencias.js). */
+export function encolarIncidencia_({ vin, gravedad, nota, tecnico, fotoUrl, email }) {
+  const g = s_(gravedad).toUpperCase() || "LEVE";
+  return encolar_({
+    tipo: "INCIDENCIA", vin, nota, email, tecnico: s_(tecnico),
+    fotoUrls: fotoUrl ? [fotoUrl] : [],
+    titulo: `${ICONO_GRAVEDAD[g] || "🟡"} *Incidencia ${g === "CRITICA" ? "CRÍTICA" : g}*`,
+  });
+}
+
+async function encolar_({ tipo, vin, nota, fotoUrls = [], email, titulo, tecnico = "" }) {
   try {
     const v = s_(vin).toUpperCase();
     if (!v) return false;
@@ -74,13 +94,13 @@ export async function encolarFallaCalidad_({ vin, nota, fotoUrls = [], email }) 
     const ahora = new Date();
     const id = `${ahora.toISOString().replace(/[-:.TZ]/g, "")}_${v.slice(-8)}_${Math.random().toString(36).slice(2, 6)}`;
     const aviso = {
-      id, tipo: "FALLA_CALIDAD", vin: v, modelo,
+      id, tipo, vin: v, modelo, tecnico,
       nota: s_(nota).slice(0, MAX_NOTA),
       autor: u?.nombre || s_(email),
       fotos: fotoUrls.filter(Boolean).slice(0, MAX_FOTOS),
       creado: ahora.toISOString(),
     };
-    aviso.texto = textoFalla_({ ...aviso, hora: horaLima_(ahora) });
+    aviso.texto = textoFalla_({ ...aviso, hora: horaLima_(ahora), ...(titulo ? { titulo } : {}) });
     await r2GuardarJson_(`${PREFIJO}${id}.json`, aviso);
     emitEvent_("whatsapp", { id });
     return true;
