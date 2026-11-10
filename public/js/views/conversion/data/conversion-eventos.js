@@ -3,6 +3,7 @@
 import {
   CORE,
   $,
+  el_,
   ctx_,
   getVin,
   getRolTrabajoCurrent_,
@@ -275,6 +276,30 @@ export async function enviarEvento(accionOverride, opts = {}) {
 // AUTO START “suave” (simple)
 // --------------------------
 
+/**
+ * CALIDAD: la tarjeta del VIN escaneado sube al primer lugar, se marca un
+ * momento y la pantalla va hacia ella. Sirve igual si la OT ya estaba abierta
+ * (antes no pasaba nada y había que buscarla entre todas). Queda primera
+ * hasta que se escanee otro VIN.
+ */
+function destacarVin_(v) {
+  if (CORE.state.currentModule !== "CALIDAD" || !v) return;
+  const c = ctx_();
+  c.vinPrimero = v;
+  rebuildListsFromStore_();
+  const snap = snapshotNotasActivas_();
+  renderActivas_();
+  restoreNotasActivas_(snap);
+  const card = [...(el_("activasBox")?.querySelectorAll(".jobCard[data-key]") || [])]
+    .find((x) => String(c.itemsByKey.get(x.dataset.key)?.vin || "").toUpperCase() === v);
+  if (!card) return;
+  card.classList.remove("jobDestacada");
+  void card.offsetWidth;   // reinicia la animación si se escanea dos veces
+  card.classList.add("jobDestacada");
+  card.scrollIntoView({ behavior: "smooth", block: "start" });
+  setTimeout(() => card.classList.remove("jobDestacada"), 2600);
+}
+
 export async function autoStartFromScan_(vin, rolTrabajo) {
   const v = String(vin || "").trim().toUpperCase();
   const rol = String(rolTrabajo || "").trim().toUpperCase();
@@ -288,6 +313,7 @@ export async function autoStartFromScan_(vin, rolTrabajo) {
   const lastTs = recentAutoStarts_.get(k);
   if (lastTs && now - lastTs < ANTI_LOOP_MS) {
     console.log(`[AUTO_START] ⏸️ Ignorando: ${k} (último intento hace ${now - lastTs}ms)`);
+    destacarVin_(v);   // no se reinicia, pero sí se le lleva a su tarjeta
     return;
   }
   
@@ -406,6 +432,8 @@ export async function autoStartFromScan_(vin, rolTrabajo) {
   } else {
     console.log(`[AUTO_START] ⚠️ OT ya en estado ${estado}, no se reinicia`);
   }
+
+  destacarVin_(v);
   
   const totalDuration = Date.now() - startTime;
   console.log(`[AUTO_START] ⏱️ TOTAL autoStartFromScan_: ${totalDuration}ms`);

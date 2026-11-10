@@ -244,3 +244,14 @@
   border-color: var(--danger);
   color: #fff;
 }
+
+/* Tarjeta del VIN recién escaneado en CALIDAD (destacarVin_ en
+   conversion-eventos.js): sube al primer lugar y se marca un momento. */
+.jobCard.jobDestacada { animation: jobDestacada 2.4s ease-out; }
+@keyframes jobDestacada {
+  0%, 35% { box-shadow: 0 0 0 3px var(--accent, #2563eb), 0 0 18px 2px var(--accent, #2563eb); }
+  100%    { box-shadow: 0 0 0 0 transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .jobCard.jobDestacada { animation: none; outline: 3px solid var(--accent, #2563eb); }
+}

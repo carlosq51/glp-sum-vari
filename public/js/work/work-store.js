@@ -26,6 +26,14 @@ export function rebuildListsFromStore_() {
     else activos.push(k);
   }
 
+  // El VIN que se acaba de escanear va primero (ver destacarVin_ en
+  // conversion-eventos.js): el inspector no lo busca entre todas las OTs.
+  const primero = String(c.vinPrimero || "").toUpperCase();
+  if (primero) {
+    const esPrimero = (k) => String(c.itemsByKey.get(k)?.vin || "").toUpperCase() === primero;
+    activos.sort((a, b) => Number(esPrimero(b)) - Number(esPrimero(a)));
+  }
+
   c.activeKeys = activos;
   c.finalKeys = fins;
 }
