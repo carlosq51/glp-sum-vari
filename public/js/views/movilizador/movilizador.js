@@ -11,7 +11,7 @@ import { CORE, escapeHtml, fmtShort_, getJSON, getJSON_user, postJSON, createVin
 import { updateHubModuleBadge } from "../../core/ui-shell.js";
 import { createScanner } from "../../core/qr-scanner.js";
 import { icon } from "../../core/icons.js";
-import { initZonasMapa, promptZonaForVin } from "../zonas/zonas-mapa.js";
+import { initZonasMapa } from "../zonas/zonas-mapa.js";
 import { startPoll, stopPoll } from "../../core/poll.js";
 import { exportCsv_ } from "../../core/csv.js";
 import { requestNotifPermission } from "../../core/push-client.js";
@@ -1020,10 +1020,11 @@ async function confirmarIngresoPendiente_(vin) {
     removeFromOfflineQueue_(vinClean);
     if (statusEl) statusEl.textContent = `✓ ${vinClean} registrado en GLP.`;
     await refreshAll_();
-    // Preguntar zona al movilizador (dismissible)
-    promptZonaForVin(vinClean, async () => {
-      if (_zonasMapa) await _zonasMapa.refresh();
-    });
+    // Ya no se pregunta la zona al registrar la entrada (2026-11-12). El
+    // selector que salía aquí asignaba con un toque, sin confirmar, y casi
+    // siempre caía en una plaza ocupada (31 de 37 en dos semanas, sobre todo
+    // Z7/Z8): desplazaba al carro que estaba y lo dejaba fantasma. El carro se
+    // ubica desde el mapa, tocando la plaza.
   } catch (e) {
     // Network failure → save offline
     if (!navigator.onLine || /fetch|network|failed/i.test(e.message)) {
@@ -1908,11 +1909,7 @@ async function handleRegistro_(vin, accion, btnId) {
     btn.innerHTML = original;
 
     await refreshAll_();
-    if (accion === "REGISTRAR_ENTRADA") {
-      promptZonaForVin(vinClean, async () => {
-        if (_zonasMapa) await _zonasMapa.refresh();
-      });
-    }
+    // Sin selector de zona tras REGISTRAR_ENTRADA: ver la nota de arriba.
     // Registro de GPS dentro de GLP (si la preferencia está encendida).
     if (getRedir_()) registrarGpsEnApp_(vinClean).catch(() => {});
   } catch (e) {
