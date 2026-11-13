@@ -1753,7 +1753,9 @@ async function registrarGpsEnApp_(vin) {
   try {
     const pos = await capturarPosicion_(txt => setGpsModalEstado_(txt, "trabajando"));
     setGpsModalEstado_("☁️ Guardando…", "trabajando");
-    const j = await enviarGps_(vinClean, { lat: pos.lat, lng: pos.lng, acc: pos.acc });
+    // La app de GPS a veces tarda: que se vea que sigue trabajando y no se reintente.
+    const aviso = setTimeout(() => setGpsModalEstado_("☁️ Guardando… la app de GPS está lenta, no cierres ni reintentes", "trabajando"), 8_000);
+    const j = await enviarGps_(vinClean, { lat: pos.lat, lng: pos.lng, acc: pos.acc }).finally(() => clearTimeout(aviso));
     setGpsModalEstado_(`✓ ${vinClean.slice(-8)} → ${j.zona || "registrado"} (±${pos.acc.toFixed(0)} m)`, "ok");
     setTimeout(cerrarGpsModal_, 1400);
   } catch (e) {
