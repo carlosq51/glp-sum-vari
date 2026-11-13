@@ -649,6 +649,15 @@
   background: transparent;
   border-style: dashed;
 }
+/* En la cola de guardado: ya se tomó la posición, falta que la app de GPS la acepte. */
+.movGps--pend {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  color: var(--warn);
+  background: var(--warnBg);
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--warn) 45%, transparent);
+}
 .movGpsSlot { display: contents; }
 .movGpsReg {
   display: inline-flex;

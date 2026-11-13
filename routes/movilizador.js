@@ -840,12 +840,12 @@ router.post("/api/movilizador/gps-registrar", async (req, res) => {
   try {
     const vin = normVin_(req.body?.vin);
     if (!vin) return res.status(400).json({ ok: false, error: "Falta VIN" });
-    const { lat, lng, acc, zonaManual, usuario } = req.body || {};
+    const { lat, lng, acc, zonaManual, usuario, desde } = req.body || {};
     const manual = zonaManual != null && String(zonaManual).trim() !== "";
     if (!manual && (lat == null || lng == null)) {
       return res.status(400).json({ ok: false, error: "Falta la posición (lat/lng) o una zona manual" });
     }
-    const r = await registrarGps_(vin, { lat, lng, acc, zonaManual, usuario: String(usuario || "").trim() });
+    const r = await registrarGps_(vin, { lat, lng, acc, zonaManual, usuario: String(usuario || "").trim(), desde });
     // Que la lista de salidas-hoy reagrupe (el carro pasa a "GPS registrado").
     emitEvent_("movilizador", { accion: "GPS_REGISTRADO", vin });
     return res.json({ ok: true, vin, zona: r.zona });
@@ -853,6 +853,13 @@ router.post("/api/movilizador/gps-registrar", async (req, res) => {
     console.error("[MOV_GPS_REGISTRAR]", e.message);
     return res.status(502).json({ ok: false, error: String(e.message || e) });
   }
+});
+
+// GET /api/movilizador/ping — la cola de GPS del celular pregunta si hay
+// internet antes de gastar un intento.
+router.get("/api/movilizador/ping", (_req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json({ ok: true, t: Date.now() });
 });
 
 // GET /api/movilizador/gps-zonas — lista de zonas de la app, para el modo manual.

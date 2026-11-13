@@ -171,6 +171,16 @@ function gpsHtml_(vin, { desde = "" } = {}) {
 function gpsInner_(vin, desde) {
   const e = _gps.get(vin);
   const registrar = `<button type="button" class="movGpsReg" data-gps-open="${escapeHtml(vin)}">${icon("target", 14)} Registrar GPS</button>`;
+  // Lo que está en la cola de guardado manda sobre lo leído.
+  const pend = _gpsPend.get(vin);
+  if (pend) {
+    const dest = pend.datos?.zonaManual || "posición";
+    if (pend.estado === "fallo") {
+      return `<span class="movChip movChip--danger" title="${escapeHtml(pend.error || "")}">GPS no guardado (${pend.intentos} intentos)</span>${registrar}`;
+    }
+    const rei = pend.intentos ? ` · intento ${pend.intentos + 1}/${GPS_INTENTOS_MAX}` : "";
+    return `<span class="movGps movGps--pend" title="Guardando en la app de GPS${escapeHtml(pend.error ? ` — último error: ${pend.error}` : "")}">⏳ GPS pendiente · ${escapeHtml(dest)}${rei}</span>`;
+  }
   // Sin dato todavía: el servidor lo tiene en cola (va en el próximo bloque). Nunca
   // se deja la tarjeta vacía: un hueco en blanco parecía "esto no funciona".
   if (!e) {
@@ -1715,12 +1725,136 @@ function capturarPosicion_(onProgreso, lecturas = 4) {
   });
 }
 
-/** Manda al servidor y, si sale bien, deja el ✓ en la tarjeta al instante. */
-async function enviarGps_(vin, datos) {
-  const j = await postJSON("/api/movilizador/gps-registrar", {
-    vin, usuario: getMovNombre_(), ...datos,
+// ─── Cola de guardado de GPS ────────────────────────────────────────────
+//
+// La app de GPS (ajena) a veces tarda más de 20 s en guardar. El movilizador
+// no la espera: la posición entra a esta cola, la tarjeta muestra
+// "⏳ GPS pendiente" y se guarda por detrás. Vive en localStorage, así que
+// sobrevive a cerrar la app o recargar.
+//
+// Reglas (Carlos, 2026-11-13):
+//   · Hasta GPS_INTENTOS_MAX intentos.
+//   · Antes de cada intento se confirma que hay internet; sin internet el
+//     intento NO cuenta: se espera a que vuelva.
+//   · Los reintentos mandan `desde` y el servidor mira primero si un intento
+//     anterior ya quedó, para no duplicar el escaneo.
+
+const GPS_COLA_KEY = "glp_mov_gps_pend";
+const GPS_INTENTOS_MAX = 5;
+/** Espera antes del intento n+1 (tras fallar el n). */
+const GPS_ESPERAS_MS = [5_000, 15_000, 30_000, 60_000];
+/** Sin internet: cada cuánto se vuelve a mirar (además del evento "online"). */
+const GPS_SIN_RED_MS = 10_000;
+
+/** vin → { datos, usuario, desde, intentos, estado: "pendiente"|"fallo", error, proximo } */
+const _gpsPend = new Map();
+let _gpsColaTimer = null;
+let _gpsColaCorriendo = false;
+
+function gpsColaGuardar_() {
+  try { localStorage.setItem(GPS_COLA_KEY, JSON.stringify([..._gpsPend])); } catch { /* sin storage: queda en memoria */ }
+}
+
+function gpsColaCargar_() {
+  try {
+    const arr = JSON.parse(localStorage.getItem(GPS_COLA_KEY) || "[]");
+    for (const [vin, it] of arr) if (vin && it && !_gpsPend.has(vin)) _gpsPend.set(vin, it);
+  } catch { /* storage vacío o bloqueado */ }
+}
+
+/** Hay internet = el servidor de GLP contesta. navigator.onLine solo sirve para el "no". */
+async function hayInternet_() {
+  if (navigator.onLine === false) return false;
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 6_000);
+  try {
+    const r = await fetch(`/api/movilizador/ping?t=${Date.now()}`, { cache: "no-store", signal: ctrl.signal });
+    return r.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+function programarColaGps_(ms) {
+  clearTimeout(_gpsColaTimer);
+  _gpsColaTimer = setTimeout(() => { _gpsColaTimer = null; procesarColaGps_(); }, Math.max(0, ms));
+}
+
+/** Mete una posición a la cola y la empieza a mandar. */
+function encolarGps_(vin, datos) {
+  _gpsPend.set(vin, {
+    datos, usuario: getMovNombre_(), desde: Date.now(),
+    intentos: 0, estado: "pendiente", error: "", proximo: 0,
   });
-  if (!j?.ok) throw new Error(j?.error || "No se pudo registrar");
+  gpsColaGuardar_();
+  pintarGps_();
+  renderSalidasHoy_(_salidasHoy);
+  procesarColaGps_();
+}
+
+/** Manda lo pendiente, uno por uno. */
+async function procesarColaGps_() {
+  if (_gpsColaCorriendo) return;
+  _gpsColaCorriendo = true;
+  try {
+    for (;;) {
+      const ahora = Date.now();
+      const listos = [..._gpsPend].filter(([, it]) => it.estado === "pendiente");
+      if (!listos.length) return;
+      const toca = listos.find(([, it]) => (it.proximo || 0) <= ahora);
+      if (!toca) {
+        programarColaGps_(Math.min(...listos.map(([, it]) => it.proximo)) - ahora);
+        return;
+      }
+      if (!(await hayInternet_())) {
+        // No cuenta como intento: se espera a que vuelva la señal.
+        programarColaGps_(GPS_SIN_RED_MS);
+        return;
+      }
+      const [vin, it] = toca;
+      let j;
+      try {
+        j = await postJSON("/api/movilizador/gps-registrar", {
+          vin, usuario: it.usuario, ...it.datos,
+          // En el primer intento no hace falta revisar; en los siguientes sí.
+          desde: it.intentos > 0 ? it.desde : undefined,
+        });
+      } catch {
+        // Se cortó la conexión a mitad: tampoco cuenta.
+        programarColaGps_(GPS_SIN_RED_MS);
+        return;
+      }
+      if (j?.ok) {
+        _gpsPend.delete(vin);
+        gpsColaGuardar_();
+        marcarGpsGuardado_(vin, it.datos, j);
+        continue;
+      }
+      it.intentos++;
+      it.error = j?.error || "No se pudo registrar";
+      if (it.intentos >= GPS_INTENTOS_MAX) {
+        it.estado = "fallo";
+        console.warn(`[GPS] ${vin}: ${it.intentos} intentos fallidos, se deja de intentar`, it.error);
+      } else {
+        it.proximo = Date.now() + GPS_ESPERAS_MS[Math.min(it.intentos - 1, GPS_ESPERAS_MS.length - 1)];
+      }
+      gpsColaGuardar_();
+      pintarGps_();
+      renderSalidasHoy_(_salidasHoy);
+    }
+  } finally {
+    _gpsColaCorriendo = false;
+  }
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("online", () => procesarColaGps_());
+}
+
+/** Deja el ✓ en la tarjeta con lo que se acaba de guardar. */
+function marcarGpsGuardado_(vin, datos, j) {
   _gps.set(vin, {
     at: Date.now(),
     pos: {
@@ -1752,11 +1886,9 @@ async function registrarGpsEnApp_(vin) {
   setGpsModalEstado_("📍 Ubicando…", "trabajando");
   try {
     const pos = await capturarPosicion_(txt => setGpsModalEstado_(txt, "trabajando"));
-    setGpsModalEstado_("☁️ Guardando…", "trabajando");
-    // La app de GPS a veces tarda: que se vea que sigue trabajando y no se reintente.
-    const aviso = setTimeout(() => setGpsModalEstado_("☁️ Guardando… la app de GPS está lenta, no cierres ni reintentes", "trabajando"), 8_000);
-    const j = await enviarGps_(vinClean, { lat: pos.lat, lng: pos.lng, acc: pos.acc }).finally(() => clearTimeout(aviso));
-    setGpsModalEstado_(`✓ ${vinClean.slice(-8)} → ${j.zona || "registrado"} (±${pos.acc.toFixed(0)} m)`, "ok");
+    // No se espera a la app de GPS: entra a la cola y se guarda por detrás.
+    encolarGps_(vinClean, { lat: pos.lat, lng: pos.lng, acc: pos.acc });
+    setGpsModalEstado_(`✓ ${vinClean.slice(-8)} ubicado (±${pos.acc.toFixed(0)} m). Se guarda solo; puedes seguir.`, "ok");
     setTimeout(cerrarGpsModal_, 1400);
   } catch (e) {
     // GPS no disponible → modo manual. Para "bajo techo" es lo normal.
@@ -1856,17 +1988,9 @@ async function guardarGpsManual_() {
   const fila = (m.querySelector("#movGpsRegFila")?.value || "").trim();
   const zonaManual = [zona, fila].filter(Boolean).join(" - ");
   if (!zonaManual) { setGpsModalEstado_("Elige una zona o escribe el detalle.", "warn"); return; }
-  const btn = m.querySelector("#btnMovGpsRegManualSave");
-  if (btn) { btn.disabled = true; btn.textContent = "Guardando…"; }
-  try {
-    const j = await enviarGps_(vin, { zonaManual });
-    setGpsModalEstado_(`✓ ${vin.slice(-8)} → ${j.zona || zonaManual} (manual)`, "ok");
-    setTimeout(cerrarGpsModal_, 1400);
-  } catch (e) {
-    setGpsModalEstado_(e?.message || "No se pudo guardar", "err");
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = "Guardar manual"; }
-  }
+  encolarGps_(vin, { zonaManual });
+  setGpsModalEstado_(`✓ ${vin.slice(-8)} → ${zonaManual} (manual). Se guarda solo; puedes seguir.`, "ok");
+  setTimeout(cerrarGpsModal_, 1400);
 }
 
 async function handleConfirmarSalida_(vin, btn) {
@@ -2201,6 +2325,9 @@ export function enter() {
   // del movilizador todavía puede no estar en el DOM.
   paintRedir_();
   paintOrdenLista_();
+  // GPS que quedaron por guardar (app cerrada, sin señal): se retoman.
+  gpsColaCargar_();
+  procesarColaGps_();
   refreshAll_().catch(() => {});
   startPoll_();
   // Inicializar (o re-inicializar) el mapa de zonas con el nombre actualizado del usuario
