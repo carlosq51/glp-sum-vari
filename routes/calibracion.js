@@ -308,10 +308,10 @@ router.post("/api/calibracion/:id/comando", async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────
 //  Laptop (stag-auto/glp_puente.py). Con el correo de un ADMIN o
-//  SUPERVISOR, como el agente de la impresora.
+//  SUPERVISOR o CALIDAD (son los de Calidad quienes la usan).
 // ─────────────────────────────────────────────────────────────────────────
 
-router.post("/api/calibracion/agente/latido", requireRol_("ADMIN", "SUPERVISOR"), async (req, res) => {
+router.post("/api/calibracion/agente/latido", requireRol_("ADMIN", "SUPERVISOR", "CALIDAD"), async (req, res) => {
   try {
     await cargar_();
     const b = req.body || {};
@@ -356,7 +356,7 @@ router.post("/api/calibracion/agente/latido", requireRol_("ADMIN", "SUPERVISOR")
  * DETENIDA o ERROR al final (con `resumen`). `rechazada` = no la pudo
  * empezar (AC STAG en otra cosa, mapa que ya no está…).
  */
-router.post("/api/calibracion/:id/progreso", requireRol_("ADMIN", "SUPERVISOR"), async (req, res) => {
+router.post("/api/calibracion/:id/progreso", requireRol_("ADMIN", "SUPERVISOR", "CALIDAD"), async (req, res) => {
   try {
     const t = await trabajo_(s_(req.params.id));
     if (!t) return res.status(404).json({ ok: false, error: "No encuentro esa calibración." });
