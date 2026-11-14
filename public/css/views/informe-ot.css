@@ -213,3 +213,12 @@
 }
 .hccBuscarTit { font-size: 13px; font-weight: 800; margin-bottom: 8px; }
 .hccBuscar input { width: 100%; text-transform: uppercase; }
+
+/* Registro de OT de Calidad (ot-calidad.js, dentro del modal Registro).
+   Sin marcar queda en rojo como en el informe del técnico: el equipo
+   todavía no está verificado. */
+.otcEquipo { font-size: 14px; }
+.otcEquipo strong { font-size: 15px; font-weight: 900; }
+.otcEquipo small { color: var(--muted); }
+.otcEquipo .otcDifiere { color: var(--danger); font-weight: 700; }
+.otcEquipo.is-sinVirtual { opacity: .75; cursor: not-allowed; }

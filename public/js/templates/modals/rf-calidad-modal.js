@@ -20,6 +20,18 @@ export function rfModal() {
 
           <!-- ✅ MENU (lo que ya tienes) -->
           <div id="rfMenu">
+            <!-- Primero: es lo que cierra el carro para la oficina. La OT,
+                 la fecha y los técnicos suben a ASIGNACIONES al aprobar. -->
+            <div class="card" style="border:1px solid rgba(255,255,255,.16); margin-bottom:12px;">
+              <div style="font-weight:900; margin-bottom:8px;">📋 Registro de OT</div>
+              <div class="small" style="opacity:.9;">N.º de OT y verificación del tanque y reductor. Al aprobar sube a ASIGNACIONES.</div>
+
+              <button id="btnRfOt" class="btnInicio"
+                style="margin-top:12px; width:100%; height:64px; font-weight:1000;">
+                Entrar
+              </button>
+            </div>
+
             <div class="card" style="border:1px solid rgba(255,255,255,.16); margin-bottom:12px;">
               <div style="font-weight:900; margin-bottom:8px;">Control de Calidad</div>
               <div class="small" style="opacity:.9;">Pantalla de control de calidad.</div>

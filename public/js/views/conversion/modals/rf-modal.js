@@ -3,6 +3,7 @@ import { CORE, setOut, postJSON } from "../../../core/core.js";
 import { showUploaderView } from "../../uploader/uploader.js";
 import { hideUploaderView } from "../../uploader/uploader.js";
 import { cargarFotosVin_, htmlFotosVin_, asegurarEstilosFotos_ } from "../../../core/fotos-vin.js";
+import { abrirOtCalidad_ } from "./ot-calidad.js";
 
 const RF = { open: false, vin: "" };
 
@@ -188,6 +189,16 @@ export function initRFModalUI_() {
   rfEl("btnRfSoldadura")?.addEventListener("click", () => {
     if (!RF.vin) return;
     rfOpenFotos_();
+  });
+
+  rfEl("btnRfOt")?.addEventListener("click", () => {
+    if (!RF.vin) return;
+    const menu = rfEl("rfMenu");
+    const stage = rfEl("rfStage");
+    if (!stage) return;
+    if (menu) menu.style.display = "none";
+    stage.style.display = "block";
+    abrirOtCalidad_(stage, RF.vin, rfShowMenu_);
   });
 
   document.addEventListener("keydown", (e) => {
