@@ -8,21 +8,26 @@
 // ────────
 //   · GET  /api/ot-calidad?vin=   lo que el modal necesita: el equipo virtual
 //                                 (tanque/reductor asignados), lo que el
-//                                 técnico registró, la OT que ya tenga y
-//                                 quiénes lo convirtieron.
-//   · POST /api/ot-calidad        el inspector pone la OT, confirma que el
-//                                 tanque y el reductor coinciden y aprueba.
+//                                 técnico registró y la OT que ya tenga.
+//   · POST /api/ot-calidad        el inspector pone la OT y dice, por cada
+//                                 equipo, si coincide o no con el virtual.
 //
-// Al aprobar se guarda la fila en ot_calidad y el #OT en la OT de
-// CONVERSION (work_orders.numero_ot): Salida deja de pedirlo a la hoja. La
-// hoja ASIGNACIONES la escribe Apps Script (subirOtsCalidadAsignaciones_ en
-// REPORTE_PRINCIPAL): toma las filas con hoja_at vacío y pone la OT, la
-// fecha y los técnicos en la fila del VIN.
+// Las dos coinciden → APROBADA: el #OT va a la OT de CONVERSION
+// (work_orders.numero_ot) y Apps Script (subirOtsCalidadAsignaciones en
+// REPORTE_PRINCIPAL) lo escribe en la columna E de ASIGNACIONES. Solo la
+// OT: fecha, técnicos y estado de la hoja siguen como estaban.
+//
+// Alguno no coincide → queda guardado así y la OT de CALIDAD del carro no
+// se puede cerrar (bloqueoCierreCalidad_, que usa /api/evento) hasta que se
+// corrija y se apruebe.
+//
+// OT repetida (ya la tiene otro carro) → se avisa y solo se guarda si el
+// inspector lo confirma (confirmar_repetida).
 // =========================
 
 import { Router } from "express";
 import { supabaseServiceHeaders_ } from "../lib/supabase.js";
-import { getUsuarioByEmail_, padron_ } from "../lib/authz.js";
+import { getUsuarioByEmail_ } from "../lib/authz.js";
 import { emitEvent_ } from "../lib/events.js";
 
 const router = Router();
@@ -46,9 +51,6 @@ async function sb_(path, { method = "GET", body, prefer } = {}) {
   return r.status === 204 ? null : r.json().catch(() => null);
 }
 
-const fmtFecha_ = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Lima", year: "numeric", month: "2-digit", day: "2-digit" });
-const hoyLima_ = () => fmtFecha_.format(Date.now());
-
 /**
  * La OT como se escribe en ASIGNACIONES: solo dígitos, con o sin "#".
  * Es la regla de isValidOT_GAS_ (la de Apps Script), más estricta que la de
@@ -59,48 +61,40 @@ export function limpiarOt_(raw) {
   return /^#?\d{1,10}$/.test(s) ? s : "";
 }
 
-
-/** Primer nombre, como va en la columna TECNICOS de ASIGNACIONES. */
-const primerNombre_ = (n) => s_(n).split(/\s+/)[0] || "";
+/** "9801" y "#9801" son la misma OT. */
+const variantesOt_ = (ot) => {
+  const n = s_(ot).replace(/^#/, "");
+  return [n, `#${n}`];
+};
 
 /**
- * Todo lo del carro que el modal enseña. La OT de CONVERSION más reciente
- * del VIN y, de sus asignaciones, la última de cada rol (puede haber
- * reasignaciones: firma quien la cerró, que es la más reciente).
+ * Por qué no se puede cerrar la calidad de este carro, o "" si se puede.
+ * Solo bloquea un registro guardado con un equipo que no coincide: sin
+ * registro, el cierre sigue como siempre. Si la tabla no existe o Supabase
+ * falla, no bloquea (una caída no debe dejar a Calidad sin cerrar nada).
  */
+export async function bloqueoCierreCalidad_(vin) {
+  try {
+    const filas = await sb_(`${TABLA}?select=tanque_ok,reductor_ok,tanque_virtual,reductor_virtual&vin=eq.${encodeURIComponent(s_(vin).toUpperCase())}&limit=1`);
+    const f = filas?.[0];
+    if (!f || (f.tanque_ok && f.reductor_ok)) return "";
+    const malos = [!f.tanque_ok && `el TANQUE (${f.tanque_virtual})`, !f.reductor_ok && `el REDUCTOR (${f.reductor_virtual})`].filter(Boolean);
+    return `No puedes cerrar: en el Registro de OT ${malos.join(" y ")} no coincide con el equipo virtual. Soluciónalo y vuelve a aprobar el registro (Registro → Registro de OT).`;
+  } catch (e) {
+    console.warn("[ot-calidad] bloqueoCierre:", e.message);
+    return "";
+  }
+}
+
 async function datosCarro_(vin) {
   const v = encodeURIComponent(vin);
   const [vins, wos, previas] = await Promise.all([
     sb_(`vins?select=vin,modelo,tanque_asignado,reductor_asignado&vin=eq.${v}&limit=1`),
-    sb_(`work_orders?select=id,numero_ot,estado_general,tanque_registrado,reductor_registrado`
+    sb_(`work_orders?select=id,numero_ot,tanque_registrado,reductor_registrado`
       + `&tipo_ot=eq.CONVERSION&vin=eq.${v}&order=fecha_creacion.desc&limit=1`),
     sb_(`${TABLA}?select=*&vin=eq.${v}&limit=1`),
   ]);
-  const wo = wos?.[0] || null;
-
-  let delantero = "", tanquero = "";
-  if (wo) {
-    const [asgs, p] = await Promise.all([
-      sb_(`asignaciones?select=rol_trabajo,user_id,updated_at&work_order_id=eq.${wo.id}&order=updated_at.desc`),
-      padron_(),
-    ]);
-    for (const a of asgs || []) {
-      const rol = s_(a.rol_trabajo).toUpperCase();
-      const nombre = p.porId.get(a.user_id)?.nombre || "";
-      if (!nombre) continue;
-      if (rol === "MOTOR" && !delantero) delantero = nombre;
-      if ((rol === "TANQUE" || rol === "TANQUERO") && !tanquero) tanquero = nombre;
-    }
-  }
-
-  return {
-    vehiculo: vins?.[0] || null,
-    wo,
-    delantero,
-    tanquero,
-    tecnicos: [primerNombre_(delantero), primerNombre_(tanquero)].filter(Boolean).join(" - "),
-    previa: previas?.[0] || null,
-  };
+  return { vehiculo: vins?.[0] || null, wo: wos?.[0] || null, previa: previas?.[0] || null };
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -121,12 +115,7 @@ router.get("/api/ot-calidad", async (req, res) => {
       tanqueRegistrado: s_(d.wo?.tanque_registrado),
       reductorRegistrado: s_(d.wo?.reductor_registrado),
       otActual: s_(d.previa?.numero_ot || d.wo?.numero_ot),
-      estadoConversion: s_(d.wo?.estado_general),
-      delantero: d.delantero,
-      tanquero: d.tanquero,
-      tecnicos: d.tecnicos,
-      hoy: hoyLima_(),
-      aprobada: d.previa,
+      registro: d.previa,
     });
   } catch (err) {
     console.error("[ot-calidad] GET:", err.message);
@@ -135,7 +124,8 @@ router.get("/api/ot-calidad", async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-//  POST /api/ot-calidad — { email, vin, numero_ot, tanque_ok, reductor_ok }
+//  POST /api/ot-calidad
+//  { email, vin, numero_ot, tanque_ok, reductor_ok, confirmar_repetida }
 // ─────────────────────────────────────────────────────────────────────────
 router.post("/api/ot-calidad", async (req, res) => {
   try {
@@ -152,6 +142,12 @@ router.post("/api/ot-calidad", async (req, res) => {
     const ot = limpiarOt_(req.body?.numero_ot);
     if (!ot) return res.status(400).json({ ok: false, error: "El N.º de OT tiene que ser solo números (ej. 9801 o #9801)." });
 
+    const tanqueOk = req.body?.tanque_ok;
+    const reductorOk = req.body?.reductor_ok;
+    if (typeof tanqueOk !== "boolean" || typeof reductorOk !== "boolean") {
+      return res.status(400).json({ ok: false, error: "Marca, para el tanque y el reductor, si coinciden o no." });
+    }
+
     const d = await datosCarro_(vin);
     if (!d.vehiculo) return res.status(404).json({ ok: false, error: `El VIN ${vin} no está en el padrón de carros.` });
     if (!d.wo) return res.status(422).json({ ok: false, error: "Este carro no tiene OT de conversión en el sistema." });
@@ -162,31 +158,37 @@ router.post("/api/ot-calidad", async (req, res) => {
     const reductorV = s_(d.vehiculo.reductor_asignado);
     const faltan = [!tanqueV && "tanque", !reductorV && "reductor"].filter(Boolean);
     if (faltan.length) {
-      return res.status(422).json({ ok: false, error: `El carro no tiene ${faltan.join(" ni ")} virtual asignado en ASIGNACIONES. Que la oficina lo asigne antes de aprobar.` });
-    }
-    if (req.body?.tanque_ok !== true || req.body?.reductor_ok !== true) {
-      return res.status(422).json({ ok: false, error: "Para aprobar tienes que confirmar que el tanque y el reductor coinciden. Si no coinciden, registra la falla." });
+      return res.status(422).json({ ok: false, error: `El carro no tiene ${faltan.join(" ni ")} virtual asignado en ASIGNACIONES. Que la oficina lo asigne antes de registrar.` });
     }
 
-    // La misma OT en dos carros es un error de tipeo casi seguro.
-    const otra = await sb_(`${TABLA}?select=vin&numero_ot=in.(${encodeURIComponent(ot.replace(/^#/, ""))},${encodeURIComponent("#" + ot.replace(/^#/, ""))})&vin=neq.${encodeURIComponent(vin)}&limit=1`);
-    if (otra?.[0]) {
-      return res.status(409).json({ ok: false, error: `La OT ${ot} ya está registrada en el carro ${otra[0].vin}. Revisa el número.` });
+    // La misma OT en otro carro: casi siempre es un error de tipeo, pero
+    // puede ser real. Se avisa y se guarda solo si el inspector lo confirma.
+    const enLista = variantesOt_(ot).map(encodeURIComponent).join(",");
+    const [enOts, enRegistros] = await Promise.all([
+      sb_(`work_orders?select=vin&tipo_ot=eq.CONVERSION&numero_ot=in.(${enLista})&vin=neq.${encodeURIComponent(vin)}&limit=3`),
+      sb_(`${TABLA}?select=vin&numero_ot=in.(${enLista})&vin=neq.${encodeURIComponent(vin)}&limit=3`),
+    ]);
+    const otrosVins = [...new Set([...(enOts || []), ...(enRegistros || [])].map(r => r.vin).filter(Boolean))];
+    if (otrosVins.length && req.body?.confirmar_repetida !== true) {
+      return res.status(409).json({
+        ok: false, repetida: true, otrosVins,
+        error: `La OT ${ot} ya está registrada en ${otrosVins.length === 1 ? "el carro" : "los carros"} ${otrosVins.join(", ")}.`,
+      });
     }
 
+    const aprobada = tanqueOk && reductorOk;
     const fila = {
       vin,
       work_order_id: d.wo.id,
       numero_ot: ot,
       tanque_virtual: tanqueV,
       reductor_virtual: reductorV,
-      tanque_ok: true,
-      reductor_ok: true,
-      tecnicos: d.tecnicos,
-      fecha_aprobacion: hoyLima_(),
+      tanque_ok: tanqueOk,
+      reductor_ok: reductorOk,
+      ot_repetida_confirmada: otrosVins.length > 0,
       aprobado_por: u.email,
       aprobado_por_user_id: u.id || null,
-      // Corregirla la vuelve a poner en la cola de Apps Script.
+      // Toda corrección vuelve a la cola de Apps Script (si está aprobada).
       hoja_at: null,
       hoja_error: null,
     };
@@ -194,15 +196,15 @@ router.post("/api/ot-calidad", async (req, res) => {
       method: "POST", body: fila, prefer: "resolution=merge-duplicates,return=representation",
     });
 
-    // El #OT en la OT de conversión: Salida (movilizador) lo exige y ya no
-    // tiene que esperar a que alguien lo escriba en la hoja.
-    await sb_(`work_orders?tipo_ot=eq.CONVERSION&vin=eq.${encodeURIComponent(vin)}`, {
-      method: "PATCH", body: { numero_ot: ot }, prefer: "return=minimal",
-    });
-
-    emitEvent_("ot-calidad", { accion: d.previa ? "corregida" : "aprobada", vin });
-    emitEvent_("work_orders", { accion: "OT_CALIDAD", id: d.wo.id, vin });
-    res.json({ ok: true, yaEstaba: !!d.previa, fila: Array.isArray(guardadas) ? guardadas[0] : guardadas });
+    // Solo aprobada pasa el #OT a la OT de conversión (Salida lo exige).
+    if (aprobada) {
+      await sb_(`work_orders?tipo_ot=eq.CONVERSION&vin=eq.${encodeURIComponent(vin)}`, {
+        method: "PATCH", body: { numero_ot: ot }, prefer: "return=minimal",
+      });
+      emitEvent_("work_orders", { accion: "OT_CALIDAD", id: d.wo.id, vin });
+    }
+    emitEvent_("ot-calidad", { accion: aprobada ? "aprobada" : "no-coincide", vin });
+    res.json({ ok: true, aprobada, yaEstaba: !!d.previa, fila: Array.isArray(guardadas) ? guardadas[0] : guardadas });
   } catch (err) {
     console.error("[ot-calidad] POST:", err.message);
     res.status(500).json({ ok: false, error: mensajeUtil_(err) });

@@ -221,6 +221,16 @@ export async function enviarEvento(accionOverride, opts = {}) {
   // 🔄 Retornar resultado para que autoStartFromScan_ pueda analizarlo
   if (!j?.ok) {
     console.warn(`[EVENTO] ❌ Falla en acción ${accion}:`, j?.error);
+    // Calidad con tanque/reductor que no coincide (routes/ot-calidad.js):
+    // un aviso en la barra se pierde; esto tiene que verse.
+    if (j?.errorType === "OT_CALIDAD_NO_COINCIDE") {
+      showErrorModal({
+        title: "⛔ No puedes cerrar la calidad",
+        message: j.error,
+        details: "Cuando el equipo esté corregido, vuelve a Registro de OT y marca que coincide.",
+        type: "warning",
+      });
+    }
     return j;
   }
 

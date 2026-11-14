@@ -11,6 +11,7 @@ import {
 import { addServerTiming_ } from "../lib/timing.js";
 import { r2GetStatus } from "../r2-uploads.js";
 import { bloqueosDeFotos } from "../lib/fin-prerequisites.js";
+import { bloqueoCierreCalidad_ } from "./ot-calidad.js";
 import { pendingSuggestions_ } from "../lib/ml-state.js";
 import { emitEvent_ } from "../lib/events.js";
 import { avisarCarroListo_ } from "../lib/aviso-listos.js";
@@ -612,6 +613,15 @@ router.post("/api/evento", async (req, res) => {
       workOrderId = workOrders[0].id;
       tipoOt = workOrders[0].tipo_ot;
       console.log(`[EVENTO] Work Order existente encontrado: ${workOrderId} (tipo_ot=${tipoOt})`);
+    }
+
+    // Calidad no se cierra si el Registro de OT dice que el tanque o el
+    // reductor no coinciden con el equipo virtual (routes/ot-calidad.js).
+    if (accion === "FIN" && String(tipoOt || "").toUpperCase() === "CALIDAD") {
+      const bloqueo = await bloqueoCierreCalidad_(vin);
+      if (bloqueo) {
+        return res.status(409).json({ ok: false, error: bloqueo, errorType: "OT_CALIDAD_NO_COINCIDE", vin });
+      }
     }
 
     // 3?? Buscar asignación ACTIVA por (work_order_id, rol_trabajo) - SIN filtrar user_id

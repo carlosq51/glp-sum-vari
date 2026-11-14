@@ -11,13 +11,14 @@
 --  que el tanque y el reductor que lleva el carro son los del equipo virtual
 --  (vins.tanque_asignado / reductor_asignado).
 --
---  Una fila por carro (vin único). Al aprobar:
---    · routes/ot-calidad.js escribe la fila y work_orders.numero_ot
---      (la OT de CONVERSION), así Salida ya no pide el #OT a la hoja.
---    · Apps Script (REPORTE_PRINCIPAL, subirOtsCalidadAsignaciones_) toma
---      las que tienen hoja_at vacío y escribe en la hoja mensual de
---      ASIGNACIONES: E = OT, F = fecha, AC = técnicos, AE = FINALIZADO.
---      Luego marca hoja_at (o hoja_error si no encontró el VIN).
+--  Una fila por carro (vin único). tanque_ok / reductor_ok = coincide con
+--  el virtual. Con los dos en true está APROBADA:
+--    · routes/ot-calidad.js pone work_orders.numero_ot (la OT de CONVERSION).
+--    · Apps Script (REPORTE_PRINCIPAL, subirOtsCalidadAsignaciones) escribe
+--      SOLO la columna E (#OT) de la hoja mensual de ASIGNACIONES y marca
+--      hoja_at (o hoja_error si no encontró el VIN). Fecha, técnicos y
+--      estado de la hoja no se tocan.
+--  Con alguno en false, la OT de CALIDAD del carro no se puede cerrar.
 -- ============================================================
 
 BEGIN;
@@ -31,8 +32,7 @@ CREATE TABLE IF NOT EXISTS ot_calidad (
   reductor_virtual       text NOT NULL DEFAULT '',
   tanque_ok              boolean NOT NULL DEFAULT false,
   reductor_ok            boolean NOT NULL DEFAULT false,
-  tecnicos               text NOT NULL DEFAULT '',
-  fecha_aprobacion       date NOT NULL,
+  ot_repetida_confirmada boolean NOT NULL DEFAULT false,
   aprobado_por           text NOT NULL,
   aprobado_por_user_id   uuid REFERENCES usuarios(id) ON DELETE SET NULL,
   hoja_at                timestamptz,
@@ -43,14 +43,13 @@ CREATE TABLE IF NOT EXISTS ot_calidad (
 
 -- Lo que Apps Script pregunta cada 5 min: lo aprobado que falta en la hoja.
 CREATE INDEX IF NOT EXISTS ot_calidad_sin_hoja_idx ON ot_calidad (created_at)
-  WHERE hoja_at IS NULL;
+  WHERE hoja_at IS NULL AND tanque_ok AND reductor_ok;
 
 ALTER TABLE ot_calidad ENABLE ROW LEVEL SECURITY;
 
 COMMENT ON TABLE ot_calidad IS
   'OT registrada y aprobada por Calidad (modal Registro). La escribe routes/ot-calidad.js; Apps Script la sube a ASIGNACIONES y marca hoja_at.';
-COMMENT ON COLUMN ot_calidad.tecnicos IS '"1er nombre DELANTERO - 1er nombre TANQUERO", tal como va en ASIGNACIONES col AC.';
-COMMENT ON COLUMN ot_calidad.fecha_aprobacion IS 'Día de la aprobación en Lima: va a ASIGNACIONES col F (FECHA DE CONVERSION).';
+COMMENT ON COLUMN ot_calidad.ot_repetida_confirmada IS 'La OT ya estaba en otro carro y el inspector confirmó que es correcta.';
 COMMENT ON COLUMN ot_calidad.hoja_at IS 'Cuándo Apps Script la escribió en ASIGNACIONES. NULL = pendiente. Se vuelve NULL si Calidad corrige la OT.';
 COMMENT ON COLUMN ot_calidad.hoja_error IS 'Por qué Apps Script no pudo escribirla (p. ej. el VIN no está en ninguna hoja mensual).';
 

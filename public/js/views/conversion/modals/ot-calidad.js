@@ -2,13 +2,13 @@
 // public/js/views/conversion/modals/ot-calidad.js
 // "Registro de OT" dentro del modal Registro de Calidad (rf-modal.js).
 //
-// El inspector escribe el N.º de OT del papel y confirma, mirando el carro,
-// que el tanque y el reductor que lleva son los del equipo virtual
-// (los asignados en ASIGNACIONES). Con las dos casillas marcadas se aprueba:
-// el servidor (routes/ot-calidad.js) guarda la OT y Apps Script la sube a
-// la hoja con la fecha y los técnicos.
-//
-// Si un equipo no coincide no se aprueba: lo que toca es registrar la falla.
+// El inspector escribe el N.º de OT del papel y, mirando el carro, dice
+// por el tanque y por el reductor si coinciden con el equipo virtual (los
+// asignados en ASIGNACIONES). El servidor (routes/ot-calidad.js):
+//   · los dos coinciden → aprobada: la OT sube a ASIGNACIONES (col E).
+//   · alguno no         → queda guardado y la calidad no se puede cerrar
+//                         hasta corregirlo y volver aquí a aprobar.
+//   · OT repetida       → avisa; se guarda solo con el doble check.
 // =========================
 
 import { CORE } from "../../../core/state.js";
@@ -17,28 +17,41 @@ import { escapeHtml } from "../../../core/format.js";
 
 const email_ = () => CORE.state.currentProfile?.email || CORE.state.email || "";
 const norm_ = (v) => String(v || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+const otValida_ = (v) => /^#?\d{1,10}$/.test(String(v || "").replace(/\s+/g, ""));
 
 /**
- * Una fila del checklist: el equipo virtual en grande, lo que registró el
- * técnico debajo (si lo registró) y si coinciden. La casilla la marca el
- * inspector: el registro del técnico es una pista, no la verificación.
+ * Un equipo: el virtual en grande, lo que registró el técnico como pista
+ * y dos botones, Coincide / No coincide. La pista no decide: decide el
+ * inspector mirando el carro.
  */
-function filaEquipo_(id, nombre, virtual, registrado) {
-  const hay = !!virtual;
-  const difiere = hay && registrado && norm_(registrado) !== norm_(virtual);
+function filaEquipo_(clave, nombre, virtual, registrado, previo) {
+  const difiere = registrado && norm_(registrado) !== norm_(virtual);
   const pista = !registrado
-    ? `<small>El técnico no lo registró.</small>`
+    ? `El técnico no lo registró.`
     : difiere
-      ? `<small class="otcDifiere">⚠ El técnico registró <b>${escapeHtml(registrado)}</b>: no coincide.</small>`
-      : `<small>El técnico registró ${escapeHtml(registrado)} ✓</small>`;
+      ? `<span class="otcDifiere">⚠ El técnico registró <b>${escapeHtml(registrado)}</b>: distinto al virtual.</span>`
+      : `El técnico registró ${escapeHtml(registrado)} ✓`;
+  const marca = (v) => (previo === v ? " checked" : "");
   return `
-    <label class="iotCk otcEquipo${hay ? "" : " is-sinVirtual"}">
-      <input type="checkbox" id="${id}"${hay ? "" : " disabled"}>
-      <span>
-        <b>${nombre}</b> virtual: <strong>${hay ? escapeHtml(virtual) : "NO ASIGNADO"}</strong><br>
-        ${hay ? `El del carro coincide con el virtual.<br>${pista}` : `<small>Sin equipo virtual no se puede verificar: que la oficina lo asigne.</small>`}
-      </span>
-    </label>`;
+    <div class="otcEquipo">
+      <div><b>${nombre}</b> virtual: <strong>${escapeHtml(virtual)}</strong></div>
+      <small>${pista}</small>
+      <div class="otcOpciones" role="radiogroup" aria-label="${nombre}">
+        <label class="otcOp is-si"><input type="radio" name="otc_${clave}" value="si"${marca(true)}> Coincide</label>
+        <label class="otcOp is-no"><input type="radio" name="otc_${clave}" value="no"${marca(false)}> No coincide</label>
+      </div>
+    </div>`;
+}
+
+function estadoRegistro_(reg) {
+  if (!reg) return "";
+  if (!reg.tanque_ok || !reg.reductor_ok) {
+    const malos = [!reg.tanque_ok && "el tanque", !reg.reductor_ok && "el reductor"].filter(Boolean).join(" y ");
+    return `<div class="otcAviso is-no">⛔ Guardado con ${malos} que NO coincide. La calidad no se puede cerrar hasta corregirlo y aprobar aquí.</div>`;
+  }
+  if (reg.hoja_at) return `<div class="otcAviso">✅ OT ${escapeHtml(reg.numero_ot)} ya está en ASIGNACIONES. Si la corriges, se vuelve a subir.</div>`;
+  if (reg.hoja_error) return `<div class="otcAviso is-no">⚠ Aprobada, pero no se pudo subir a la hoja: ${escapeHtml(reg.hoja_error)}</div>`;
+  return `<div class="otcAviso">⏳ OT ${escapeHtml(reg.numero_ot)} aprobada; sube a ASIGNACIONES en unos minutos.</div>`;
 }
 
 /**
@@ -56,8 +69,9 @@ export async function abrirOtCalidad_(stage, vin, volver) {
     <div class="iotMsg" id="otcMsg"></div>`;
   stage.querySelector("#btnOtcBack")?.addEventListener("click", volver);
 
+  const $ = (id) => stage.querySelector(`#${id}`);
   const msg = (t, err = false) => {
-    const el = stage.querySelector("#otcMsg");
+    const el = $("otcMsg");
     if (!el) return;
     el.textContent = t || "";
     el.classList.toggle("is-error", !!err);
@@ -69,29 +83,23 @@ export async function abrirOtCalidad_(stage, vin, volver) {
     r = await getJSON(`/api/ot-calidad?vin=${encodeURIComponent(vin)}&email=${encodeURIComponent(email_())}`);
     if (!r?.ok) throw new Error(r?.error || "No se pudo cargar el carro.");
   } catch (err) {
-    stage.querySelector("#otcBody").innerHTML = "";
+    $("otcBody").innerHTML = "";
     msg(String(err?.message || err), true);
     return;
   }
 
-  const ap = r.aprobada;
-  const estadoHoja = !ap ? ""
-    : ap.hoja_at ? `✅ Ya está en ASIGNACIONES (OT ${escapeHtml(ap.numero_ot)}). Si la corriges, se vuelve a subir.`
-    : ap.hoja_error ? `⚠ Aprobada, pero no se pudo subir a la hoja: ${escapeHtml(ap.hoja_error)}`
-    : `⏳ Aprobada (OT ${escapeHtml(ap.numero_ot)}); sube a ASIGNACIONES en unos minutos.`;
+  // Sin equipo virtual no hay contra qué comparar.
+  const faltan = [!r.tanqueVirtual && "tanque", !r.reductorVirtual && "reductor"].filter(Boolean);
+  const reg = r.registro;
 
-  stage.querySelector("#otcBody").innerHTML = `
+  $("otcBody").innerHTML = `
     <div class="iotCabecera">
-      <div class="iotCabTop">
+      <div class="iotCabTop" style="margin-bottom:0;">
         <div><span>VIN</span><b>${escapeHtml(r.vin)}</b></div>
         <div><span>Modelo</span><b>${escapeHtml(r.modelo || "—")}</b></div>
       </div>
-      <div class="iotCabTop" style="margin-bottom:0;">
-        <div><span>Delantero</span><b>${escapeHtml(r.delantero || "—")}</b></div>
-        <div><span>Tanquero</span><b>${escapeHtml(r.tanquero || "—")}</b></div>
-      </div>
-      ${estadoHoja ? `<div class="small" style="margin-top:8px;">${estadoHoja}</div>` : ""}
     </div>
+    ${estadoRegistro_(reg)}
 
     <div class="iotSec">Orden de trabajo</div>
     <label class="iotCampo">
@@ -101,52 +109,82 @@ export async function abrirOtCalidad_(stage, vin, volver) {
     </label>
 
     <div class="iotSec">Verificación del equipo</div>
-    <div class="iotCks" style="padding:0;">
-      ${filaEquipo_("otcTanque", "Tanque", r.tanqueVirtual, r.tanqueRegistrado)}
-      ${filaEquipo_("otcReductor", "Reductor", r.reductorVirtual, r.reductorRegistrado)}
-    </div>
+    ${faltan.length
+      ? `<div class="otcAviso is-no">El carro no tiene ${faltan.join(" ni ")} virtual asignado en ASIGNACIONES. Que la oficina lo asigne para poder verificar.</div>`
+      : `${filaEquipo_("tanque", "Tanque", r.tanqueVirtual, r.tanqueRegistrado, reg ? reg.tanque_ok : undefined)}
+         ${filaEquipo_("reductor", "Reductor", r.reductorVirtual, r.reductorRegistrado, reg ? reg.reductor_ok : undefined)}`}
 
-    <div class="small muted" style="margin-top:10px;">
-      Se sube con fecha <b>${escapeHtml(r.hoy.split("-").reverse().join("-"))}</b> y técnicos <b>${escapeHtml(r.tecnicos || "—")}</b>.
-    </div>
+    <!-- OT repetida: aparece cuando el servidor avisa. -->
+    <div id="otcRepetida" class="otcAviso is-no" style="display:none;"></div>
 
     <div class="iotEnvios" style="grid-template-columns:1fr;">
-      <button id="otcAprobar" type="button" class="btnInicio iotEnviar" disabled>
-        ${ap ? "Corregir y aprobar" : "Aprobar"}
-        <small>marca el número de OT y las dos casillas</small>
-      </button>
+      <button id="otcGuardar" type="button" class="btnInicio iotEnviar" disabled>Aprobar</button>
     </div>`;
 
-  const $ = (id) => stage.querySelector(`#${id}`);
-  const listo = () => /^#?\d{1,10}$/.test(String($("otcNumero").value).replace(/\s+/g, ""))
-    && $("otcTanque").checked && $("otcReductor").checked;
-  const refrescar = () => { $("otcAprobar").disabled = !listo(); };
-  ["otcNumero", "otcTanque", "otcReductor"].forEach(id => $(id).addEventListener("input", refrescar));
-  ["otcTanque", "otcReductor"].forEach(id => $(id).addEventListener("change", refrescar));
+  if (faltan.length) return;
+
+  const valor = (clave) => {
+    const el = stage.querySelector(`input[name="otc_${clave}"]:checked`);
+    return el ? el.value === "si" : null;
+  };
+  let repetida = null;   // { ot, otrosVins } cuando el servidor avisó
+  const confirmoRepetida = () => !!$("otcConfirmaRep")?.checked;
+
+  const refrescar = () => {
+    const t = valor("tanque"), rd = valor("reductor");
+    const ot = String($("otcNumero").value).replace(/\s+/g, "");
+    // Si cambian la OT, el aviso de repetida ya no vale.
+    if (repetida && repetida.ot !== ot) { repetida = null; $("otcRepetida").style.display = "none"; }
+    const aprobar = t === true && rd === true;
+    const btn = $("otcGuardar");
+    btn.innerHTML = aprobar
+      ? `${reg ? "Corregir y aprobar" : "Aprobar"}<small>la OT sube a ASIGNACIONES</small>`
+      : `Guardar: no coincide<small>la calidad no se podrá cerrar hasta corregirlo</small>`;
+    btn.classList.toggle("is-noCoincide", !aprobar && t !== null && rd !== null);
+    btn.disabled = !otValida_(ot) || t === null || rd === null || (repetida && !confirmoRepetida());
+  };
+  stage.querySelectorAll('input[name^="otc_"]').forEach(el => el.addEventListener("change", refrescar));
+  $("otcNumero").addEventListener("input", refrescar);
+  refrescar();
 
   let enviando = false;
-  $("otcAprobar").addEventListener("click", async () => {
-    if (enviando || !listo()) return;
+  $("otcGuardar").addEventListener("click", async () => {
+    if (enviando || $("otcGuardar").disabled) return;
     enviando = true;
-    $("otcAprobar").disabled = true;
+    $("otcGuardar").disabled = true;
     msg("Guardando…");
     try {
+      const ot = String($("otcNumero").value).replace(/\s+/g, "");
       const res = await postJSON("/api/ot-calidad", {
         email: email_(), vin: r.vin,
-        numero_ot: $("otcNumero").value,
-        tanque_ok: $("otcTanque").checked,
-        reductor_ok: $("otcReductor").checked,
+        numero_ot: ot,
+        tanque_ok: valor("tanque"),
+        reductor_ok: valor("reductor"),
+        confirmar_repetida: !!repetida && confirmoRepetida(),
       });
-      if (!res?.ok) throw new Error(res?.error || "No se pudo aprobar.");
-      msg(res.yaEstaba
-        ? "Listo: OT corregida. Se vuelve a subir a ASIGNACIONES en unos minutos."
-        : "Listo: OT aprobada. Sube a ASIGNACIONES en unos minutos.");
-      setTimeout(volver, 1600);
+      if (res?.repetida) {
+        // Doble check: se muestra en qué carro está y se pide confirmar.
+        repetida = { ot, otrosVins: res.otrosVins || [] };
+        const box = $("otcRepetida");
+        box.innerHTML = `
+          ⚠ ${escapeHtml(res.error)}<br>
+          <label class="otcConfirma"><input type="checkbox" id="otcConfirmaRep">
+            Revisé el papel: la OT ${escapeHtml(ot)} es correcta para este carro. Subirla igual.</label>`;
+        box.style.display = "block";
+        $("otcConfirmaRep").addEventListener("change", refrescar);
+        msg("");
+        return;
+      }
+      if (!res?.ok) throw new Error(res?.error || "No se pudo guardar.");
+      msg(res.aprobada
+        ? (res.yaEstaba ? "Listo: OT corregida. Se vuelve a subir a ASIGNACIONES en unos minutos." : "Listo: OT aprobada. Sube a ASIGNACIONES en unos minutos.")
+        : "Guardado: no coincide. La calidad de este carro no se podrá cerrar hasta corregirlo y aprobar aquí.", !res.aprobada);
+      setTimeout(volver, res.aprobada ? 1600 : 3000);
     } catch (err) {
       msg(String(err?.message || err), true);
-      refrescar();
     } finally {
       enviando = false;
+      refrescar();
     }
   });
 }

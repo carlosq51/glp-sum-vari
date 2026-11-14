@@ -215,10 +215,38 @@
 .hccBuscar input { width: 100%; text-transform: uppercase; }
 
 /* Registro de OT de Calidad (ot-calidad.js, dentro del modal Registro).
-   Sin marcar queda en rojo como en el informe del técnico: el equipo
-   todavía no está verificado. */
-.otcEquipo { font-size: 14px; }
+   Cada equipo se marca Coincide / No coincide: elegir es obligatorio, y
+   "No coincide" bloquea el cierre de la calidad. */
+.otcEquipo {
+  display: grid; gap: 6px;
+  padding: 10px 12px; margin-bottom: 8px;
+  background: var(--surface2);
+  border: 1px solid var(--surfaceLine);
+  border-radius: var(--radiusSm);
+  font-size: 14px;
+}
 .otcEquipo strong { font-size: 15px; font-weight: 900; }
 .otcEquipo small { color: var(--muted); }
-.otcEquipo .otcDifiere { color: var(--danger); font-weight: 700; }
-.otcEquipo.is-sinVirtual { opacity: .75; cursor: not-allowed; }
+.otcDifiere { color: var(--danger); font-weight: 700; }
+.otcOpciones { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.otcOp {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 44px;
+  background: var(--surface);
+  border: 1px solid var(--surfaceLine);
+  border-radius: var(--radiusSm);
+  font-weight: 800; cursor: pointer;
+}
+.otcOp input { width: 18px; height: 18px; }
+.otcOp.is-si:has(input:checked) { border-color: var(--ok); background: var(--okBg); }
+.otcOp.is-no:has(input:checked) { border-color: var(--danger); background: var(--dangerBg); color: var(--danger); }
+.otcAviso {
+  margin-top: 10px; padding: 10px 12px;
+  border-radius: var(--radiusSm);
+  font-size: 13px; font-weight: 700; line-height: 1.4;
+  background: var(--okBg); border: 1px solid var(--ok);
+}
+.otcAviso.is-no { background: var(--dangerBg); border-color: var(--danger); }
+.otcConfirma { display: flex; gap: 8px; align-items: flex-start; margin-top: 8px; font-weight: 700; cursor: pointer; }
+.otcConfirma input { width: 19px; height: 19px; flex: none; margin-top: 1px; }
+.iotEnviar.is-noCoincide { background: var(--danger); border-color: var(--danger); color: #fff; }
