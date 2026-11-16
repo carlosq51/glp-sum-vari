@@ -14,6 +14,9 @@
 //
 // Si la laptop está apagada, la cola espera: al prenderla sale todo.
 //
+// También manda al grupo ALMACEN REPUESTOS las entregas de repuestos que
+// registra Almacén en la app de Repuestos (ver repuestos.mjs y repuestos.json).
+//
 // LA PRIMERA VEZ (o si WhatsApp cerró la sesión)
 // Abrir iniciar.cmd (con ventana): sale un QR en la ventana y también se
 // abre qr.png. En el celular del número alternativo: WhatsApp → Dispositivos
@@ -31,6 +34,7 @@ import { createServer } from "node:net";
 import { existsSync, statSync, rmSync, appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { canalRepuestos } from "./repuestos.mjs";
 
 const makeWASocket = B.makeWASocket || B.default?.default || B.default;
 const { useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, Browsers } = B;
@@ -241,11 +245,11 @@ async function etiquetar_(it) {
   return { texto: it.texto.replace(linea, `🔧 Técnico: @${lid.split("@")[0]}`), mentions: [lid] };
 }
 
-async function buscarGrupo_() {
+async function buscarGrupo_(nombre = GRUPO) {
   const grupos = Object.values(await sock.groupFetchAllParticipating());
-  const g = grupos.find(x => normal_(x.subject) === normal_(GRUPO));
+  const g = grupos.find(x => normal_(x.subject) === normal_(nombre));
   if (!g) {
-    log(`No encuentro el grupo "${GRUPO}". Este número está en: ${grupos.map(x => `"${x.subject}"`).join(", ") || "(ninguno)"}`);
+    log(`No encuentro el grupo "${nombre}". Este número está en: ${grupos.map(x => `"${x.subject}"`).join(", ") || "(ninguno)"}`);
     log("Agrega el número alternativo al grupo o corrige --grupo en iniciar.cmd.");
     return "";
   }
@@ -308,11 +312,13 @@ async function conectar_() {
       if (listo) leerMiembros_().catch(err => log("No pude leer miembros:", err.message));
       log(listo ? `WhatsApp conectado. Grupo: "${GRUPO}".${PRUEBA ? " · MODO PRUEBA (no manda)" : ""}` : "WhatsApp conectado, pero sin grupo.");
       if (listo) revisar_();
+      repuestos.alConectar().catch(err => log("Repuestos:", err.message));
     }
 
     if (connection === "close") {
       listo = false;
       conectado = false;
+      repuestos.alDesconectar();
       const codigo = lastDisconnect?.error?.output?.statusCode;
       if (codigo === DisconnectReason.loggedOut) {
         // Desvincularon la laptop desde el celular: hay que escanear de nuevo.
@@ -448,6 +454,11 @@ async function escuchar_() {
     await espera_(5_000);
   }
 }
+
+// Entregas de Almacén de la app de Repuestos al grupo ALMACEN REPUESTOS (ver repuestos.mjs).
+const repuestos = canalRepuestos({
+  sock: () => sock, log, telefonos: telefonos_, buscarGrupo: buscarGrupo_, normal: normal_, espera: espera_, prueba: PRUEBA,
+});
 
 log(`Grupo:    ${GRUPO}`);
 log(`Servidor: ${APP}  (como ${EMAIL})${PRUEBA ? "  · MODO PRUEBA" : ""}`);
