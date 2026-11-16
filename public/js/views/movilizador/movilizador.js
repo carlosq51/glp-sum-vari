@@ -679,7 +679,10 @@ async function drainOfflineQueue_() {
   for (const item of q) {
     try {
       const j = await postJSON("/api/movilizador/traslado", { vin: item.vin, accion: item.accion, usuario: item.usuario });
-      if (j?.ok) synced.push(item.vin);
+      if (j?.ok) {
+        synced.push(item.vin);
+        if (item.accion === "REGISTRAR_ENTRADA") marcarGpsGlp_(item.vin);
+      }
     } catch { /* keep for next retry */ }
   }
   if (synced.length) {
@@ -1028,6 +1031,7 @@ async function confirmarIngresoPendiente_(vin) {
     });
     if (!j?.ok) throw new Error(j?.error || "Error al guardar");
     removeFromOfflineQueue_(vinClean);
+    marcarGpsGlp_(vinClean);
     if (statusEl) statusEl.textContent = `✓ ${vinClean} registrado en GLP.`;
     await refreshAll_();
     // Ya no se pregunta la zona al registrar la entrada (2026-11-12). El
@@ -1741,6 +1745,17 @@ function capturarPosicion_(onProgreso, lecturas = 4) {
 
 const GPS_COLA_KEY = "glp_mov_gps_pend";
 const GPS_INTENTOS_MAX = 5;
+
+// Zona de la app de GPS donde quedan los carros que entran a GLP. Va manual,
+// sin posición: el polígono "Glp" es chico y está pegado a "Isla 3", y con la
+// precisión del celular (±10 m) los ingresos caían en Isla 3 (2026-11-16).
+const GPS_ZONA_GLP = "Glp";
+
+/** Marca el carro en la zona GLP de la app de GPS (ingreso). No abre modal. */
+function marcarGpsGlp_(vin) {
+  const v = String(vin || "").trim().toUpperCase();
+  if (v) encolarGps_(v, { zonaManual: GPS_ZONA_GLP });
+}
 /** Espera antes del intento n+1 (tras fallar el n). */
 const GPS_ESPERAS_MS = [5_000, 15_000, 30_000, 60_000];
 /** Sin internet: cada cuánto se vuelve a mirar (además del evento "online"). */
@@ -2036,8 +2051,10 @@ async function handleRegistro_(vin, accion, btnId) {
 
     await refreshAll_();
     // Sin selector de zona tras REGISTRAR_ENTRADA: ver la nota de arriba.
-    // Registro de GPS dentro de GLP (si la preferencia está encendida).
-    if (getRedir_()) registrarGpsEnApp_(vinClean).catch(() => {});
+    // Ingreso: el carro queda en la zona GLP de la app de GPS, siempre.
+    // Salida: registro por posición (si la preferencia está encendida).
+    if (accion === "REGISTRAR_ENTRADA") marcarGpsGlp_(vinClean);
+    else if (getRedir_()) registrarGpsEnApp_(vinClean).catch(() => {});
   } catch (e) {
     btn.disabled = false;
     btn.innerHTML = original;
@@ -2270,7 +2287,16 @@ export function init() {
   // "Registrar GPS" de las tarjetas a las que les falta (Ingreso, Salidas de hoy).
   document.getElementById("viewMOVILIZADOR")?.addEventListener("click", e => {
     const b = e.target.closest("[data-gps-open]");
-    if (b) { e.preventDefault(); registrarGpsEnApp_(b.dataset.gpsOpen).catch(() => {}); }
+    if (!b) return;
+    e.preventDefault();
+    // En la pantalla Ingreso el carro está en GLP: se marca "Glp" sin GPS.
+    if (b.closest("#movScreenIngreso")) {
+      marcarGpsGlp_(b.dataset.gpsOpen);
+      const st = document.getElementById("movStatus");
+      if (st) st.textContent = `✓ ${b.dataset.gpsOpen.slice(-8)} → ${GPS_ZONA_GLP}. Se guarda solo.`;
+      return;
+    }
+    registrarGpsEnApp_(b.dataset.gpsOpen).catch(() => {});
   });
 
   // Auto-sync cuando recupera conexión
