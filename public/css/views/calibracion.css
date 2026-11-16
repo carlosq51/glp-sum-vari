@@ -1,17 +1,24 @@
 /* =========================================================================
    public/css/views/calibracion.css
    Modal de calibración STAG (views/conversion/modals/calibracion.js).
-   Reusa .iotGrid / .iotCampo / .iotMsg / .btnInicio del informe.
+   Reusa .iotMsg del informe. Todo va bajo #calModal para ganarle a las
+   reglas globales de <button>, <select> e <input>.
    ========================================================================= */
 
+/* ── Cabecera: VIN con los últimos 8 resaltados (lo que se lee en el carro) ── */
 .calCab { margin-bottom: 12px; }
-.calVin { font-family: var(--font-mono); font-size: var(--fs-2xl); font-weight: var(--fw-black); letter-spacing: .02em; }
-.calCabFila { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 4px; }
+.calVin {
+  font-family: var(--font-mono); font-size: var(--fs-2xl); font-weight: var(--fw-black);
+  letter-spacing: .03em; line-height: 1.1; word-break: break-all;
+}
+.calVin span { color: var(--muted); font-weight: var(--fw-bold); }
+.calCabFila { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 6px; }
+.calModelo { font-size: var(--fs-sm); font-weight: var(--fw-bold); color: var(--muted); }
 
 .calChip {
   display: inline-flex; align-items: center; gap: 4px;
-  padding: 2px 10px; border-radius: 999px;
-  font-size: var(--fs-xs); font-weight: var(--fw-bold);
+  padding: 3px 10px; border-radius: 999px;
+  font-size: var(--fs-xs); font-weight: var(--fw-extrabold);
   background: var(--pillBg); border: 1px solid var(--pillLine); color: var(--muted);
 }
 .calChip.is-ok     { color: var(--ok);     background: var(--okBg);     border-color: transparent; }
@@ -19,22 +26,117 @@
 .calChip.is-warn   { color: var(--warn);   background: var(--warnBg);   border-color: transparent; }
 .calChip.is-note   { color: var(--note);   background: var(--noteBg);   border-color: transparent; }
 
-.calNota { margin: 8px 0 0; }
+/* ── Estado de la laptop: dice la causa, no solo "sin conexión" ── */
+.calLaptop {
+  display: grid; grid-template-columns: 14px 1fr; gap: 10px; align-items: start;
+  padding: 12px 14px; margin-bottom: 14px;
+  border-radius: var(--radiusSm);
+  background: var(--surface2); border: 1px solid var(--surfaceLine);
+}
+.calLaptop[hidden] { display: none; }
+.calLaptopPunto {
+  width: 12px; height: 12px; margin-top: 4px; border-radius: 50%;
+  background: var(--muted);
+}
+.calLaptop[data-tono="ok"]     { background: var(--okBg);     border-color: transparent; }
+.calLaptop[data-tono="warn"]   { background: var(--warnBg);   border-color: transparent; }
+.calLaptop[data-tono="danger"] { background: var(--dangerBg); border-color: transparent; }
+.calLaptop[data-tono="ok"] .calLaptopPunto     { background: var(--ok); box-shadow: 0 0 0 4px var(--okBg); animation: calPulso 2s ease-in-out infinite; }
+.calLaptop[data-tono="warn"] .calLaptopPunto   { background: var(--warn); }
+.calLaptop[data-tono="danger"] .calLaptopPunto { background: var(--danger); }
+.calLaptopTit { font-weight: var(--fw-extrabold); line-height: 1.3; }
+.calLaptop[data-tono="ok"] .calLaptopTit     { color: var(--ok); }
+.calLaptop[data-tono="danger"] .calLaptopTit { color: var(--danger); }
+.calLaptopDet { margin-top: 3px; font-size: var(--fs-sm); line-height: 1.45; color: var(--text); }
+.calLaptopDet small { color: var(--muted); }
+.calLaptopDet code {
+  font-family: var(--font-mono); font-size: .92em;
+  padding: 0 4px; border-radius: 4px; background: var(--codeBg);
+}
+@keyframes calPulso { 50% { box-shadow: 0 0 0 7px transparent; } }
 
+/* ── Formulario ── */
+.calCampos { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 10px; }
+.calCampo { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.calCampo > span {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; font-weight: var(--fw-bold); letter-spacing: .05em;
+  text-transform: uppercase; color: var(--muted);
+}
+.calSugerido {
+  padding: 1px 6px; border-radius: 999px; letter-spacing: 0; text-transform: none;
+  font-size: 10px; color: var(--ok); background: var(--okBg);
+}
+.calSugerido[hidden] { display: none; }
+
+.calKmWrap { position: relative; }
+#calModal .calKmWrap input,
+#calModal .calCampo select {
+  width: 100%; min-height: 50px; margin: 0;
+  padding: 0 12px;
+  background: var(--inputBg); color: var(--text);
+  border: 1px solid var(--inputLine); border-radius: var(--radiusSm);
+  font-size: var(--fs-lg); font-weight: var(--fw-bold);
+}
+#calModal .calKmWrap input { padding-right: 40px; font-family: var(--font-mono); font-size: var(--fs-xl); }
+#calModal .calCampo select { font-size: var(--fs-md); text-overflow: ellipsis; }
+#calModal .calCampo select:disabled { opacity: .55; }
+#calModal .calKmWrap input:focus,
+#calModal .calCampo select:focus { outline: none; border-color: var(--inputFocus); box-shadow: var(--focusRing); }
+.calKmWrap em {
+  position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+  font-style: normal; font-size: var(--fs-sm); font-weight: var(--fw-bold); color: var(--muted);
+  pointer-events: none;
+}
+
+.calGuia {
+  list-style: none; margin: 14px 0 0; padding: 0;
+  display: grid; gap: 8px;
+}
+.calGuia li { display: flex; align-items: center; gap: 10px; font-size: var(--fs-sm); line-height: 1.35; }
+.calGuia b {
+  flex: none; display: grid; place-items: center;
+  width: 24px; height: 24px; border-radius: 50%;
+  font-size: var(--fs-xs); font-weight: var(--fw-black);
+  background: var(--noteBg); color: var(--note);
+}
+.calGuia strong { font-weight: var(--fw-extrabold); }
+
+#calModal .calIniciar {
+  width: 100%; min-height: 64px; margin-top: 16px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  border: 0; border-radius: var(--radiusSm);
+  background: var(--ok); color: #fff;
+  font-size: var(--fs-lg); font-weight: var(--fw-black); line-height: 1.1;
+  box-shadow: var(--shadowSm);
+  cursor: pointer;
+  transition: transform var(--dur-fast) var(--ease-out), opacity var(--dur-fast);
+}
+#calModal .calIniciar small { font-size: var(--fs-xs); font-weight: var(--fw-bold); opacity: .85; }
+#calModal .calIniciar:active:not(:disabled) { transform: scale(.98); }
+#calModal .calIniciar:disabled {
+  background: var(--surface2); color: var(--muted);
+  border: 1px dashed var(--surfaceLine); box-shadow: none; cursor: not-allowed;
+}
+
+/* ── Avance ── */
 .calBanner {
-  padding: 12px 14px; border-radius: var(--radiusSm);
+  padding: 14px 16px; border-radius: var(--radiusSm);
   font-weight: var(--fw-extrabold); font-size: var(--fs-lg); line-height: 1.35;
   white-space: pre-line;
-  background: var(--noteBg); color: var(--text); border-left: 4px solid var(--note);
+  background: var(--noteBg); color: var(--text); border-left: 5px solid var(--note);
 }
 .calBanner[data-tono="ok"]     { background: var(--okBg);     border-left-color: var(--ok); }
 .calBanner[data-tono="danger"] { background: var(--dangerBg); border-left-color: var(--danger); }
 .calBanner[data-tono="warn"]   { background: var(--warnBg);   border-left-color: var(--warn); }
 .calBanner[data-tono="muted"]  { background: var(--pillBg);   border-left-color: var(--muted); }
-.calReloj { float: right; font-family: var(--font-mono); font-size: var(--fs-md); margin-left: 8px; }
+.calReloj {
+  float: right; margin-left: 10px; padding: 2px 8px; border-radius: 999px;
+  font-family: var(--font-mono); font-size: var(--fs-md); background: var(--surface);
+}
 
 .calPregunta {
-  margin-top: 10px; padding: 12px 14px; border-radius: var(--radiusSm);
+  margin-top: 10px; padding: 14px; border-radius: var(--radiusSm);
   background: var(--dangerBg); border: 2px solid var(--danger);
   animation: calLatido 1.2s ease-in-out infinite;
 }
@@ -42,36 +144,61 @@
 .calPregOps { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .calPregOps .btn { flex: 1 1 140px; min-height: var(--h-btn); font-weight: var(--fw-extrabold); }
 @keyframes calLatido { 50% { box-shadow: 0 0 0 4px var(--dangerBg); } }
-@media (prefers-reduced-motion: reduce) { .calPregunta { animation: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .calPregunta, .calLaptop[data-tono="ok"] .calLaptopPunto { animation: none; }
+}
 
 .calValores {
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 10px;
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 12px;
 }
+.calValores:empty { display: none; }
 .calValor {
-  display: flex; flex-direction: column; align-items: center;
-  padding: 6px 4px; border-radius: var(--radiusSm); background: var(--surface2);
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 8px 4px; border-radius: var(--radiusSm);
+  background: var(--surface2); border: 1px solid var(--surfaceLine);
 }
-.calValor span { font-size: var(--fs-2xs); color: var(--muted); }
+.calValor span { font-size: var(--fs-2xs); font-weight: var(--fw-bold); color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
 .calValor b { font-family: var(--font-mono); font-size: var(--fs-lg); color: var(--muted); }
+.calValor.is-ok { border-color: transparent; background: var(--okBg); }
 .calValor.is-ok b { color: var(--ok); }
+.calValor.is-danger { border-color: transparent; background: var(--dangerBg); }
 .calValor.is-danger b { color: var(--danger); }
 .calEstadoStag { grid-column: 1 / -1; text-align: center; }
 
 .calAvisos { margin-top: 8px; color: var(--warn); font-weight: var(--fw-bold); font-size: var(--fs-sm); }
 .calAvisos:empty { display: none; }
 
-.calPasos { list-style: none; margin: 10px 0 0; padding: 0; font-size: var(--fs-sm); }
-.calPaso {
-  display: grid; grid-template-columns: 18px 1fr auto 52px; gap: 6px; align-items: center;
-  padding: 3px 0; color: var(--muted);
+.calProg { display: flex; align-items: center; gap: 10px; margin-top: 14px; font-size: var(--fs-xs); font-weight: var(--fw-bold); color: var(--muted); }
+.calProg:empty { display: none; }
+.calProgBar { flex: 1; height: 8px; border-radius: 999px; background: var(--surface2); overflow: hidden; }
+.calProgBar i { display: block; height: 100%; border-radius: inherit; background: var(--ok); transition: width var(--dur-slow) var(--ease-out); }
+
+.calPasos {
+  list-style: none; margin: 8px 0 0; padding: 4px 0;
+  font-size: var(--fs-sm);
+  border-radius: var(--radiusSm); background: var(--surface2);
 }
-.calPaso.is-run { color: var(--text); font-weight: var(--fw-extrabold); }
+.calPaso {
+  display: grid; grid-template-columns: 22px 1fr auto 52px; gap: 6px; align-items: center;
+  padding: 5px 10px; color: var(--muted);
+}
+.calPaso + .calPaso { border-top: 1px solid var(--surfaceLine); }
+.calPasoIco { text-align: center; }
+.calPaso.is-ok .calPasoIco, .calPaso.is-manual .calPasoIco { color: var(--ok); }
+.calPaso.is-run { color: var(--text); font-weight: var(--fw-extrabold); background: var(--noteBg); }
+.calPaso.is-run .calPasoIco { color: var(--note); }
 .calPaso.is-ok, .calPaso.is-manual { color: var(--text); }
 .calPasoT, .calPasoD { font-family: var(--font-mono); text-align: right; }
 .calPasoD.is-ok { color: var(--ok); }
 .calPasoD.is-danger { color: var(--danger); }
 
-.calLog { margin-top: 8px; font-family: var(--font-mono); font-size: var(--fs-2xs); }
-.calAcciones { display: flex; gap: 8px; margin-top: 12px; }
-.calAcciones .btn { flex: 1; min-height: var(--h-btn); }
+.calLog { margin-top: 8px; font-family: var(--font-mono); font-size: var(--fs-2xs); color: var(--muted); }
+.calLog:empty { display: none; }
+.calAcciones { display: flex; gap: 8px; margin-top: 14px; }
+.calAcciones .btn { flex: 1; min-height: var(--h-btn); font-weight: var(--fw-extrabold); }
 .calBtnPeligro { background: var(--dangerBg) !important; color: var(--danger) !important; }
+
+@media (max-width: 380px) {
+  .calCampos { grid-template-columns: 1fr; }
+  .calValores { grid-template-columns: repeat(2, 1fr); }
+}

@@ -28,6 +28,7 @@ const COLORES = { "#1a7f37": "ok", "#c62828": "danger", "#b26a00": "warn", "#666
 let vin_ = "";
 let calId_ = null;
 let timer_ = null;
+let timerPrep_ = null;
 let enviando_ = false;
 let ultimaPregunta_ = null;
 
@@ -43,29 +44,117 @@ function msg_(id, texto, esError = false) {
   el.classList.toggle("is-error", !!esError);
 }
 
+const ESTADOS = {
+  PENDIENTE: ["warn", "Esperando a la laptop"], EN_CURSO: ["note", "Calibrando"],
+  TERMINADA: ["ok", "Terminada"], DETENIDA: ["muted", "Detenida"],
+  CANCELADA: ["muted", "Cancelada"], ERROR: ["danger", "Error"],
+};
+
+const hace_ = (seg) => seg == null ? "" : seg < 60 ? `hace ${seg} s` : seg < 3600 ? `hace ${Math.round(seg / 60)} min` : `hace ${Math.round(seg / 3600)} h`;
+
 function cabecera_({ modelo, agente, estado } = {}) {
-  const chipLaptop = agente == null ? ""
-    : agente.enLinea
-      ? `<span class="calChip is-ok">● Laptop conectada${agente.equipo ? ` · ${escapeHtml(agente.equipo)}` : ""}</span>`
-      : `<span class="calChip is-danger">● Laptop sin conexión</span>`;
-  const chipEstado = estado ? `<span class="calChip is-${{
-    PENDIENTE: "warn", EN_CURSO: "note", TERMINADA: "ok", DETENIDA: "muted", CANCELADA: "muted", ERROR: "danger",
-  }[estado] || "muted"}">${escapeHtml({
-    PENDIENTE: "Esperando a la laptop", EN_CURSO: "Calibrando", TERMINADA: "Terminada",
-    DETENIDA: "Detenida", CANCELADA: "Cancelada", ERROR: "Error",
-  }[estado] || estado)}</span>` : "";
+  const corte = Math.max(0, vin_.length - 8);
+  const [tono, txt] = ESTADOS[estado] || [];
+  // Durante el avance la laptop va como chip; en el formulario tiene su bloque.
+  const chipLaptop = estado && agente && !agente.enLinea
+    ? `<span class="calChip is-danger">● Laptop sin señal</span>` : "";
   $("calCab").innerHTML = `
-    <div class="calVin">${escapeHtml(vin_)}</div>
-    <div class="calCabFila">${modelo ? `<span class="small muted">${escapeHtml(modelo)}</span>` : ""}${chipLaptop}${chipEstado}</div>`;
+    <div class="calVin"><span>${escapeHtml(vin_.slice(0, corte))}</span>${escapeHtml(vin_.slice(corte))}</div>
+    <div class="calCabFila">${modelo ? `<span class="calModelo">${escapeHtml(modelo)}</span>` : ""}${
+      txt ? `<span class="calChip is-${tono}">${txt}</span>` : ""}${chipLaptop}</div>`;
+}
+
+/**
+ * Estado de la laptop explicado: conectada, rechazada (correo de glp.json sin
+ * permiso), callada desde hace rato, o nunca vista desde que arrancó el servidor.
+ */
+function laptop_(agente) {
+  const el = $("calLaptop");
+  if (!el) return;
+  if (!agente) { el.hidden = true; return; }
+  let tono, titulo, detalle;
+  if (agente.enLinea) {
+    tono = agente.ocupado ? "warn" : "ok";
+    titulo = agente.ocupado ? "Laptop ocupada" : "Laptop lista";
+    detalle = agente.ocupadoCon
+      ? `Está con el ${escapeHtml(agente.ocupadoCon.vin.slice(-8))}. Espera a que termine.`
+      : agente.ocupado ? "Tiene una calibración que se empezó en la misma laptop. Cuando termine, podrás iniciar desde aquí."
+      : escapeHtml(agente.equipo || "Conectada");
+  } else if (agente.rechazo) {
+    tono = "danger";
+    titulo = "La laptop llega, pero el servidor la rechaza";
+    detalle = `${escapeHtml(agente.rechazo.error)}<br><small>Revisa el correo de <code>glp.json</code> en la laptop: tiene que ser una cuenta activa ADMIN, SUPERVISOR o CALIDAD. · ${hace_(agente.rechazo.haceS)}</small>`;
+  } else if (agente.vistoHaceS != null) {
+    tono = "danger";
+    titulo = "La laptop dejó de responder";
+    detalle = `Última señal ${hace_(agente.vistoHaceS)}${agente.equipo ? ` (${escapeHtml(agente.equipo)})` : ""}. Revisa que tenga internet y que stag-auto siga abierto.`;
+  } else {
+    tono = "danger";
+    titulo = "La laptop no se ha comunicado";
+    detalle = `No llegó ninguna señal${agente.servidorDesdeS != null ? ` desde que el servidor se reinició (${hace_(agente.servidorDesdeS)})` : ""}. ` +
+      `Tener stag-auto abierto no basta: en la laptop tiene que existir <code>glp.json</code> y la ventana debe decir <b>GLP: conectado</b>. Si no lo dice, mira <code>errores.log</code>.`;
+  }
+  el.dataset.tono = tono;
+  el.innerHTML = `<span class="calLaptopPunto"></span><div><div class="calLaptopTit">${titulo}</div><div class="calLaptopDet">${detalle}</div></div>`;
+  el.hidden = false;
 }
 
 function verForm_(on) {
   $("calForm").hidden = !on;
   $("calAvance").hidden = on;
+  if (!on) { $("calLaptop").hidden = true; clearTimeout(timerPrep_); }
+}
+
+/**
+ * Pinta el formulario con lo que devolvió /preparar. `pref`: mapa a dejar
+ * elegido (si no, se respeta lo que el inspector ya eligió, y si nada, el
+ * sugerido). Mientras la laptop no esté libre se vuelve a preguntar cada 4 s,
+ * así el botón se habilita solo cuando la laptop se conecta.
+ */
+function aplicarPreparar_(r, { pref = "" } = {}) {
+  cabecera_({ modelo: r.modelo });
+  laptop_(r.agente);
+  const sel = $("calMapa");
+  const elegido = pref || sel.value || r.mapaSugerido || "";
+  const mapas = r.agente?.mapas || [];
+  sel.innerHTML = `<option value="">${mapas.length ? "— elige el mapa —" : "— sin mapas (laptop desconectada) —"}</option>` +
+    mapas.map(mp => `<option value="${escapeHtml(mp)}"${mp === elegido ? " selected" : ""}>${escapeHtml(mp)}</option>`).join("");
+  sel.disabled = !mapas.length;
+  mapaSugerido_ = r.mapaSugerido || "";
+  marcarSugerido_();
+
+  const libre = r.agente?.enLinea && !r.agente.ocupado;
+  $("calIniciar").disabled = !libre;
+  $("calIniciarSub").textContent = libre ? "arranca en la laptop de calibración"
+    : !r.agente?.enLinea ? "esperando a que la laptop se conecte…" : "la laptop está ocupada";
+  msg_("calMsg", libre && !r.mapaSugerido && !sel.value ? "Elige el mapa: no hay uno usado antes con este modelo." : "");
+
+  clearTimeout(timerPrep_);
+  if (!libre) timerPrep_ = setTimeout(reprepar_, 4000);
+}
+
+async function reprepar_() {
+  const vin = vin_;
+  if (!vin || calId_ || $("calForm").hidden) return;
+  try {
+    const r = await getJSON(`/api/calibracion/preparar?vin=${encodeURIComponent(vin)}&${q_()}`);
+    if (vin_ !== vin || calId_ || !r?.ok) return;
+    aplicarPreparar_(r);
+  } catch {
+    clearTimeout(timerPrep_);
+    timerPrep_ = setTimeout(reprepar_, 4000);
+  }
+}
+
+let mapaSugerido_ = "";
+function marcarSugerido_() {
+  const b = $("calSugerido");
+  if (b) b.hidden = !mapaSugerido_ || $("calMapa").value !== mapaSugerido_;
 }
 
 function parar_() {
   clearTimeout(timer_);
+  clearTimeout(timerPrep_);
   timer_ = null;
 }
 
@@ -88,6 +177,7 @@ export async function abrirCalibracion_(vinRaw) {
   calId_ = null;
   ultimaPregunta_ = null;
   cabecera_();
+  laptop_(null);
   verForm_(true);
   msg_("calMsg", "Cargando…");
   $("calIniciar").disabled = true;
@@ -109,24 +199,10 @@ export async function abrirCalibracion_(vinRaw) {
       return;
     }
 
-    cabecera_({ modelo: r.modelo, agente: r.agente });
-    const sel = $("calMapa");
-    const mapas = r.agente?.mapas || [];
-    sel.innerHTML = `<option value="">— elige el mapa —</option>` +
-      mapas.map(mp => `<option value="${escapeHtml(mp)}"${mp === r.mapaSugerido ? " selected" : ""}>${escapeHtml(mp)}</option>`).join("");
     $("calKm").value = "";
-
-    if (!r.agente?.enLinea) {
-      msg_("calMsg", "La laptop de calibración no está conectada: prende la laptop y abre Calibrar.bat.", true);
-    } else if (r.agente.ocupado) {
-      msg_("calMsg", r.agente.ocupadoCon
-        ? `La laptop está ocupada con ${r.agente.ocupadoCon.vin.slice(-8)}. Espera a que termine.`
-        : "La laptop está ocupada con una calibración que se empezó allí.", true);
-    } else {
-      msg_("calMsg", r.mapaSugerido ? "" : "Elige el mapa: no hay uno usado antes con este modelo.");
-      $("calIniciar").disabled = false;
-      setTimeout(() => $("calKm")?.focus(), 50);
-    }
+    $("calMapa").value = "";
+    aplicarPreparar_(r, { pref: r.mapaSugerido });
+    if (!$("calIniciar").disabled) setTimeout(() => $("calKm")?.focus(), 50);
   } catch (err) {
     msg_("calMsg", String(err?.message || err), true);
   }
@@ -204,6 +280,13 @@ function pintarAvance_(c) {
   ban.dataset.tono = !abierta ? ({ TERMINADA: "ok", ERROR: "danger" }[c.estado] || "muted")
     : (v.pausado ? "warn" : COLORES[String(v.color || "").toLowerCase()] || "note");
   if (v.total && abierta) ban.insertAdjacentHTML("afterbegin", `<span class="calReloj">⏱ ${fmtT_(v.total)}</span>`);
+
+  // Barra de avance: pasos hechos / total.
+  const lista = v.pasos?.length ? v.pasos : (c.resumen?.splits || []);
+  const hechos = c.estado === "TERMINADA" ? lista.length : lista.filter(x => x.estado === "ok" || x.estado === "manual").length;
+  const pct = lista.length ? Math.round(100 * hechos / lista.length) : 0;
+  $("calProg").innerHTML = lista.length
+    ? `<div class="calProgBar"><i style="width:${pct}%"></i></div><span>${hechos}/${lista.length} pasos</span>` : "";
 
   // Pregunta de la laptop → botones aquí
   const pq = $("calPregunta");
@@ -289,6 +372,7 @@ export function initCalibracion_() {
   });
   $("calIniciar")?.addEventListener("click", iniciar_);
   $("calKm")?.addEventListener("keydown", (e) => { if (e.key === "Enter") iniciar_(); });
+  $("calMapa")?.addEventListener("change", marcarSugerido_);
 
   $("calPregunta")?.addEventListener("click", (e) => {
     const b = e.target.closest("[data-cal-op]");
@@ -327,15 +411,8 @@ async function abrirNueva_() {
   try {
     const r = await getJSON(`/api/calibracion/preparar?${q_()}&vin=${encodeURIComponent(vin)}`);
     if (!r?.ok) throw new Error(r?.error || "No se pudo preparar.");
-    cabecera_({ modelo: r.modelo, agente: r.agente });
-    const ultimaMapa = r.ultima?.mapa;
-    const pref = ultimaMapa || r.mapaSugerido;
-    $("calMapa").innerHTML = `<option value="">— elige el mapa —</option>` +
-      (r.agente?.mapas || []).map(mp => `<option value="${escapeHtml(mp)}"${mp === pref ? " selected" : ""}>${escapeHtml(mp)}</option>`).join("");
     $("calKm").value = r.ultima?.kilometraje ?? "";
-    const libre = r.agente?.enLinea && !r.agente.ocupado;
-    msg_("calMsg", !r.agente?.enLinea ? "La laptop de calibración no está conectada." : r.agente.ocupado ? "La laptop está ocupada." : "", !libre);
-    $("calIniciar").disabled = !libre;
+    aplicarPreparar_(r, { pref: r.ultima?.mapa || r.mapaSugerido });
   } catch (err) {
     msg_("calMsg", String(err?.message || err), true);
   }

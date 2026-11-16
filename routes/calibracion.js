@@ -82,6 +82,11 @@ function mensajeUtil_(err) {
 // ── Estado en memoria ────────────────────────────────────────────────────
 // agente: la laptop. Una sola: hay un solo equipo de calibración.
 const agente_ = { visto: 0, equipo: "", email: "", mapas: [], ocupado: false, version: "" };
+// Último latido RECHAZADO (403 de requireRol_, error interno). Sin esto el
+// celular solo decía "Laptop sin conexión" y no había forma de saber si la
+// laptop no llegaba o llegaba con un correo sin permiso (glp.json).
+const rechazo_ = { at: 0, email: "", error: "" };
+const ARRANQUE_AT = Date.now();
 // id → { fila (lo de la BD), vivo (lo último que mandó la laptop), comandos[] }
 const trabajos_ = new Map();
 let cargado_ = false;
@@ -136,7 +141,7 @@ function vista_(t) {
     created_at: f.created_at, iniciada_at: f.iniciada_at, terminada_at: f.terminada_at,
     resumen: f.resumen || {},
     vivo: t.vivo || null,
-    agente: { enLinea: agenteEnLinea_(), equipo: agente_.equipo },
+    agente: agenteDiag_(),
   };
 }
 
@@ -206,7 +211,7 @@ router.get("/api/calibracion/preparar", async (req, res) => {
     res.json({
       ok: true,
       agente: {
-        enLinea: agenteEnLinea_(), equipo: agente_.equipo, mapas: agente_.mapas,
+        ...agenteDiag_(), mapas: agente_.mapas,
         ocupado: agente_.ocupado || !!ab,
         ocupadoCon: ab ? { id: ab.fila.id, vin: ab.fila.vin, estado: ab.fila.estado } : null,
       },
@@ -311,7 +316,35 @@ router.post("/api/calibracion/:id/comando", async (req, res) => {
 //  SUPERVISOR o CALIDAD (son los de Calidad quienes la usan).
 // ─────────────────────────────────────────────────────────────────────────
 
-router.post("/api/calibracion/agente/latido", requireRol_("ADMIN", "SUPERVISOR", "CALIDAD"), async (req, res) => {
+/** Anota cómo terminó cada latido: si lo rechazan, el modal dice por qué. */
+function anotarLatido_(req, res, next) {
+  const json = res.json.bind(res);
+  res.json = (body) => {
+    if (res.statusCode >= 400) {
+      Object.assign(rechazo_, { at: Date.now(), email: emailDe_(req), error: s_(body?.error).slice(0, 200) || `HTTP ${res.statusCode}` });
+      console.warn(`[calibracion] latido rechazado (${res.statusCode}) de ${rechazo_.email || "sin correo"}: ${rechazo_.error}`);
+    }
+    return json(body);
+  };
+  next();
+}
+
+/** Lo que el modal necesita para explicar el estado de la laptop. */
+function agenteDiag_() {
+  const ahora = Date.now();
+  return {
+    enLinea: agenteEnLinea_(),
+    equipo: agente_.equipo,
+    vistoHaceS: agente_.visto ? Math.round((ahora - agente_.visto) / 1000) : null,
+    // Un rechazo cuenta solo si es posterior al último latido bueno.
+    rechazo: rechazo_.at > agente_.visto && ahora - rechazo_.at < 10 * 60_000
+      ? { haceS: Math.round((ahora - rechazo_.at) / 1000), email: rechazo_.email, error: rechazo_.error }
+      : null,
+    servidorDesdeS: Math.round((ahora - ARRANQUE_AT) / 1000),
+  };
+}
+
+router.post("/api/calibracion/agente/latido", anotarLatido_, requireRol_("ADMIN", "SUPERVISOR", "CALIDAD"), async (req, res) => {
   try {
     await cargar_();
     const b = req.body || {};

@@ -10,7 +10,7 @@
 
 export function calibracionModal() {
   return `
-    <div id="calModal" class="modal" aria-hidden="true">
+    <div id="calModal" class="modal calModal" aria-hidden="true">
       <div class="modalBox">
         <div class="modalHead">
           <div class="modalTitle">Calibración STAG</div>
@@ -19,27 +19,35 @@ export function calibracionModal() {
 
         <div class="modalBody">
           <div class="calCab" id="calCab"></div>
+          <div class="calLaptop" id="calLaptop" hidden></div>
 
           <!-- Formulario: el VIN ya lo sabe la app -->
           <div id="calForm" hidden>
-            <div class="iotGrid">
-              <label class="iotCampo">
+            <div class="calCampos">
+              <label class="calCampo">
                 <span>Kilometraje</span>
-                <input id="calKm" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="Ej. 12">
+                <div class="calKmWrap">
+                  <input id="calKm" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="0">
+                  <em>km</em>
+                </div>
               </label>
-              <label class="iotCampo">
-                <span>Mapa (.set)</span>
+              <label class="calCampo">
+                <span>Mapa (.set) <b class="calSugerido" id="calSugerido" hidden>sugerido</b></span>
                 <select id="calMapa"></select>
               </label>
             </div>
-            <p class="small muted calNota">La laptop hace los clics. Tú solo enciendes el carro cuando suene y regulas el reductor a 1.25 bar.</p>
+
+            <ol class="calGuia">
+              <li><b>1</b><span>La laptop carga el mapa y hace los clics.</span></li>
+              <li><b>2</b><span>Cuando suene, <strong>enciende el carro</strong>.</span></li>
+              <li><b>3</b><span>Regula el reductor a <strong>1.25 bar</strong>.</span></li>
+            </ol>
+
             <div class="iotMsg" id="calMsg"></div>
-            <div class="iotEnvios">
-              <button id="calIniciar" type="button" class="btnInicio iotEnviar">
-                ▶ Iniciar calibración
-                <small>arranca en la laptop de calibración</small>
-              </button>
-            </div>
+            <button id="calIniciar" type="button" class="calIniciar">
+              <span>▶ Iniciar calibración</span>
+              <small id="calIniciarSub">arranca en la laptop de calibración</small>
+            </button>
           </div>
 
           <!-- Avance en vivo -->
@@ -48,8 +56,9 @@ export function calibracionModal() {
             <div class="calPregunta" id="calPregunta" hidden></div>
             <div class="calValores" id="calValores"></div>
             <div class="calAvisos" id="calAvisos"></div>
+            <div class="calProg" id="calProg"></div>
             <ol class="calPasos" id="calPasos"></ol>
-            <div class="calLog small muted" id="calLog"></div>
+            <div class="calLog" id="calLog"></div>
             <div class="iotMsg" id="calMsg2"></div>
             <div class="calAcciones" id="calAcciones"></div>
           </div>
