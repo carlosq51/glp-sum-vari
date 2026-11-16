@@ -52,6 +52,7 @@ export function calibracionModal() {
 
           <!-- Avance en vivo -->
           <div id="calAvance" hidden>
+            <div class="calGrande" id="calGrande" hidden></div>
             <div class="calBanner" id="calBanner"></div>
             <div class="calPregunta" id="calPregunta" hidden></div>
             <div class="calValores" id="calValores"></div>

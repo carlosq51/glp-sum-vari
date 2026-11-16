@@ -49,6 +49,11 @@ const AGENTE_VIVO_MS = 15_000;
 const PENDIENTE_MAX_MS = 10 * 60_000;
 // Lo terminado se queda en memoria un rato para que el modal muestre el final.
 const TERMINADA_EN_MEMORIA_MS = 60 * 60_000;
+// EN_CURSO sin avance de la laptop en este tiempo = se cortó (apagada, sin red).
+const EN_CURSO_MUDA_MS = 3 * 60_000;
+// Si la laptop dice que corre otra cosa (o nada), lo EN_CURSO anterior se da
+// por interrumpido pasado este margen (el primer avance tarda ~1 s).
+const INTERRUMPIDA_MARGEN_MS = 8_000;
 
 const ABIERTAS = new Set(["PENDIENTE", "EN_CURSO"]);
 const FINALES = new Set(["TERMINADA", "DETENIDA", "CANCELADA", "ERROR"]);
@@ -113,11 +118,33 @@ async function limpiar_() {
     const est = t.fila.estado;
     if (est === "PENDIENTE" && ahora - Date.parse(t.fila.created_at) > PENDIENTE_MAX_MS) {
       await cambiarEstado_(t, "CANCELADA", { resumen: { motivo: "La laptop no la tomó en 10 min" } }).catch(() => {});
+    } else if (est === "EN_CURSO" && ahora - ultimoAvance_(t) > EN_CURSO_MUDA_MS) {
+      await interrumpir_(t, "La laptop dejó de mandar el avance (se apagó o perdió internet).");
     } else if (FINALES.has(est) && ahora - Date.parse(t.fila.updated_at || t.fila.created_at) > TERMINADA_EN_MEMORIA_MS) {
       trabajos_.delete(id);
     }
   }
 }
+
+/** Última vez que la laptop dijo algo de esta calibración. */
+function ultimoAvance_(t) {
+  return t.vivo?.at || Date.parse(t.fila.iniciada_at || t.fila.created_at) || 0;
+}
+
+/**
+ * Cierra una EN_CURSO que la laptop ya no está corriendo. Sin esto, si la
+ * laptop se reiniciaba a mitad, el celular seguía mostrando el último paso
+ * (p. ej. el 10) aunque la laptop estuviera empezando de nuevo en el 1.
+ */
+async function interrumpir_(t, motivo) {
+  if (t.fila.estado !== "EN_CURSO") return;
+  console.warn(`[calibracion] ${t.fila.vin.slice(-8)} interrumpida: ${motivo}`);
+  await cambiarEstado_(t, "ERROR", { resumen: { ...(t.fila.resumen || {}), error: motivo, interrumpida: true } }).catch(() => {});
+  avisarFin_(t).catch(() => {});
+}
+
+/** Las que empezó alguien en la misma laptop no mandan avisos a ningún celular. */
+const esLocal_ = (f) => f?.resumen?.origen === "laptop";
 
 async function cambiarEstado_(t, estado, extra = {}) {
   const patch = { estado, ...extra };
@@ -358,6 +385,18 @@ router.post("/api/calibracion/agente/latido", anotarLatido_, requireRol_("ADMIN"
     });
     await limpiar_();
 
+    // La laptop (puente v2+) dice qué calibración corre ahora. Lo EN_CURSO
+    // que no sea esa se cortó allá: se reinició el programa o se empezó otra.
+    if ("actual" in b) {
+      const actual = s_(b.actual);
+      for (const t of trabajos_.values()) {
+        if (t.fila.estado === "EN_CURSO" && t.fila.id !== actual
+            && Date.now() - ultimoAvance_(t) > INTERRUMPIDA_MARGEN_MS) {
+          await interrumpir_(t, actual ? "Se empezó otra calibración en la laptop." : "El programa de la laptop se cerró o se reinició a mitad.");
+        }
+      }
+    }
+
     // El trabajo que le toca: el pendiente más viejo, si la laptop está libre.
     let trabajo = null;
     if (!b.ocupado) {
@@ -380,6 +419,63 @@ router.post("/api/calibracion/agente/latido", anotarLatido_, requireRol_("ADMIN"
     res.json({ ok: true, trabajo, comandos });
   } catch (err) {
     console.error("[calibracion] latido:", err.message);
+    res.status(500).json({ ok: false, error: mensajeUtil_(err) });
+  }
+});
+
+/**
+ * Paso que empieza → aviso al celular de quien la pidió. "Pasar a gas…" es el
+ * paso anterior a encender: avisa con tiempo para que camine al carro.
+ */
+const AVISO_PASO = {
+  "Pasar a gas y borrar errores": { title: "🚶 Ve al carro", body: "En unos segundos hay que encenderlo.", vibrate: [200, 100, 200] },
+  "Encender el carro": { title: "🔑 Enciende el carro", body: "La laptop está esperando que arranque.", vibrate: [600, 200, 600, 200, 600], fuerte: true },
+  "Regular presión 1.25": { title: "🔧 Regula el reductor", body: "Lleva la presión a 1.25 bar. La ves en vivo en el celular.", vibrate: [600, 200, 600], fuerte: true },
+};
+
+/**
+ * Calibración empezada en la misma laptop (no desde la app). Se registra para
+ * que el celular la vea al abrir ese carro y no muestre una anterior.
+ * VIN: 17 caracteres o los últimos 8 (se busca en vins).
+ */
+router.post("/api/calibracion/agente/local", requireRol_("ADMIN", "SUPERVISOR", "CALIDAD"), async (req, res) => {
+  try {
+    await cargar_();
+    const b = req.body || {};
+    let vin = s_(b.vin).toUpperCase().replace(/\s/g, "");
+    const km = Number(s_(b.kilometraje).replace(/[.,\s]/g, ""));
+    if (!Number.isFinite(km) || km < 0) return res.status(400).json({ ok: false, error: "Kilometraje inválido." });
+    if (/^[A-Z0-9]{8}$/.test(vin)) {
+      const filas = await sb_(`vins?select=vin&vin=like.*${encodeURIComponent(vin)}&limit=2`);
+      if (filas?.length !== 1) {
+        return res.json({ ok: false, error: filas?.length ? "Hay más de un carro con esos 8 caracteres." : "No encuentro ese VIN en GLP." });
+      }
+      vin = filas[0].vin;
+    }
+    if (!/^[A-HJ-NPR-Z0-9]{17}$/.test(vin)) return res.status(400).json({ ok: false, error: "VIN inválido." });
+
+    // Lo que estuviera abierto queda atrás: la laptop ya está en otra.
+    for (const t of trabajos_.values()) {
+      if (t.fila.estado === "PENDIENTE") await cambiarEstado_(t, "CANCELADA", { resumen: { motivo: "Se empezó otra calibración en la laptop." } });
+      else if (t.fila.estado === "EN_CURSO") await interrumpir_(t, "Se empezó otra calibración en la laptop.");
+    }
+
+    const modelo = await modeloDe_(vin).catch(() => null);
+    const creadas = await sb_(TABLA, {
+      method: "POST",
+      body: {
+        vin, kilometraje: Math.round(km), mapa: s_(b.mapa).slice(0, 200), modelo,
+        solicitado_por: emailDe_(req), estado: "EN_CURSO", iniciada_at: new Date().toISOString(),
+        resumen: { origen: "laptop", equipo: s_(b.equipo).slice(0, 60) },
+      },
+    });
+    const fila = Array.isArray(creadas) ? creadas[0] : creadas;
+    const t = { fila, vivo: null, comandos: [] };
+    trabajos_.set(fila.id, t);
+    emitEvent_("calibracion", { id: fila.id, vin, estado: "EN_CURSO" });
+    res.json({ ok: true, id: fila.id, vin });
+  } catch (err) {
+    console.error("[calibracion] local:", err.message);
     res.status(500).json({ ok: false, error: mensajeUtil_(err) });
   }
 });
@@ -423,7 +519,9 @@ router.post("/api/calibracion/:id/progreso", requireRol_("ADMIN", "SUPERVISOR", 
 
     const extra = {};
     if (t.vivo.paso && t.vivo.paso !== t.fila.paso_actual) extra.paso_actual = t.vivo.paso;
-    if (FINALES.has(estado) && b.resumen && typeof b.resumen === "object") extra.resumen = b.resumen;
+    if (FINALES.has(estado) && b.resumen && typeof b.resumen === "object") {
+      extra.resumen = esLocal_(t.fila) ? { ...b.resumen, origen: "laptop" } : b.resumen;
+    }
 
     if (estado !== t.fila.estado || FINALES.has(estado)) {
       if (!FINALES.has(t.fila.estado)) {
@@ -435,9 +533,22 @@ router.post("/api/calibracion/:id/progreso", requireRol_("ADMIN", "SUPERVISOR", 
       sb_(`${TABLA}?id=eq.${t.fila.id}`, { method: "PATCH", body: extra }).catch(e => console.warn("[calibracion] paso:", e.message));
     }
 
+    // Pasos del técnico: el aviso le llega al celular apenas empiezan, para
+    // que no pierda tiempo esperando frente a la laptop.
+    if (extra.paso_actual && estado === "EN_CURSO" && !esLocal_(t.fila)) {
+      const aviso = AVISO_PASO[extra.paso_actual];
+      if (aviso) {
+        sendPushToEmails_([t.fila.solicitado_por], {
+          title: `${aviso.title} · ${t.fila.vin.slice(-8)}`, body: aviso.body,
+          tag: `calib-paso-${t.fila.id}`, vibrate: aviso.vibrate, requireInteraction: !!aviso.fuerte,
+          data: { url: "/" },
+        }).catch(() => {});
+      }
+    }
+
     // Pregunta nueva en la laptop (falta de gas, paso que falló): suena en
     // el celular de quien la pidió, que puede estar lejos de la pantalla.
-    if (pr && pr.n !== previa) {
+    if (pr && pr.n !== previa && !esLocal_(t.fila)) {
       sendPushToEmails_([t.fila.solicitado_por], {
         title: `⚠ Calibración ${t.fila.vin.slice(-8)}`,
         body: pr.texto.split("\n").filter(Boolean).slice(0, 2).join(" · "),
@@ -459,6 +570,7 @@ router.post("/api/calibracion/:id/progreso", requireRol_("ADMIN", "SUPERVISOR", 
 
 async function avisarFin_(t) {
   const f = t.fila;
+  if (esLocal_(f)) return;
   const r = f.resumen || {};
   const txt = {
     TERMINADA: `✔ Terminada${r.total_s ? ` en ${Math.round(r.total_s / 60)} min` : ""}${r.fotos != null ? ` · ${r.fotos}/5 fotos` : ""}`,

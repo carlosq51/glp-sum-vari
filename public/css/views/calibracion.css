@@ -120,6 +120,25 @@
 }
 
 /* ── Avance ── */
+/* Paso del técnico en grande (presión / encender) */
+.calGrande {
+  margin-bottom: 10px; padding: 14px 16px; border-radius: var(--radiusSm);
+  text-align: center; background: var(--pillBg); border: 2px solid var(--surfaceLine);
+}
+.calGrande[hidden] { display: none; }
+.calGrande[data-tono="ok"]     { background: var(--okBg);     border-color: var(--ok); }
+.calGrande[data-tono="danger"] { background: var(--dangerBg); border-color: var(--danger); }
+.calGrandeLbl { font-size: var(--fs-xs); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.calGrandeNum {
+  font-family: var(--font-mono); font-weight: var(--fw-black); line-height: 1;
+  font-size: clamp(56px, 18vw, 84px); margin: 4px 0;
+}
+.calGrandeNum small { font-size: var(--fs-lg); margin-left: 6px; color: var(--muted); }
+.calGrandeTxt { font-family: var(--font-body); font-size: clamp(28px, 8vw, 38px); }
+.calGrandeDir { font-size: var(--fs-xl); font-weight: var(--fw-black); }
+.calGrande[data-tono="ok"] .calGrandeNum, .calGrande[data-tono="ok"] .calGrandeDir { color: var(--ok); }
+.calGrande[data-tono="danger"] .calGrandeNum, .calGrande[data-tono="danger"] .calGrandeDir { color: var(--danger); }
+
 .calBanner {
   padding: 14px 16px; border-radius: var(--radiusSm);
   font-weight: var(--fw-extrabold); font-size: var(--fs-lg); line-height: 1.35;

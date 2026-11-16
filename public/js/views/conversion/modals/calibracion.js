@@ -21,6 +21,10 @@ const email_ = () => CORE.state.currentProfile?.email || CORE.state.email || "";
 const q_ = () => `email=${encodeURIComponent(email_())}`;
 
 const POLL_MS = 1500;
+// En los pasos del técnico el celular sirve de manómetro: refresco rápido.
+const POLL_RAPIDO_MS = 600;
+const PASOS_TECNICO = new Set(["Encender el carro", "Regular presión 1.25"]);
+let pasoVivo_ = "";
 const ABIERTAS = new Set(["PENDIENTE", "EN_CURSO"]);
 // Los colores del banner de stag-auto (VERDE, ROJO, AMBAR, GRIS, AZUL en automatico.py).
 const COLORES = { "#1a7f37": "ok", "#c62828": "danger", "#b26a00": "warn", "#666666": "muted", "#1f4e9e": "note" };
@@ -234,7 +238,7 @@ async function iniciar_() {
 
 function programar_() {
   parar_();
-  timer_ = setTimeout(refrescar_, POLL_MS);
+  timer_ = setTimeout(refrescar_, PASOS_TECNICO.has(pasoVivo_) ? POLL_RAPIDO_MS : POLL_MS);
 }
 
 async function refrescar_() {
@@ -256,11 +260,40 @@ function valor_(nombre, v, ok, fmt = (x) => x.toFixed(2)) {
   return `<div class="calValor ${v == null ? "" : ok ? "is-ok" : "is-danger"}"><span>${nombre}</span><b>${txt}</b></div>`;
 }
 
+/**
+ * Paso del técnico en grande: la presión con flecha mientras regula el
+ * reductor, o el aviso de encender. Se lee a un metro, con el celular en la mano.
+ */
+function grande_(v) {
+  const el = $("calGrande");
+  if (!el) return;
+  const paso = v?.paso || "";
+  if (paso === "Regular presión 1.25") {
+    const p = v.valores?.Gas;
+    const ok = p != null && Math.abs(p - 1.25) <= 0.011;
+    const dir = p == null ? "" : ok ? "✔ MANTÉN" : p < 1.25 ? "▲ SUBIR" : "▼ BAJAR";
+    el.dataset.tono = p == null ? "muted" : ok ? "ok" : "danger";
+    el.innerHTML = `<div class="calGrandeLbl">Presión del reductor</div>
+      <div class="calGrandeNum">${p == null ? "--" : Number(p).toFixed(2)}<small>bar</small></div>
+      <div class="calGrandeDir">${dir}${ok ? "" : " a 1.25"}</div>`;
+    el.hidden = false;
+  } else if (paso === "Encender el carro") {
+    el.dataset.tono = "danger";
+    el.innerHTML = `<div class="calGrandeNum calGrandeTxt">🔑 Enciende el carro</div><div class="calGrandeDir">debe arrancar en GAS</div>`;
+    el.hidden = false;
+  } else {
+    el.hidden = true;
+    el.innerHTML = "";
+  }
+}
+
 function pintarAvance_(c) {
   verForm_(false);
   cabecera_({ modelo: c.modelo, agente: c.agente, estado: c.estado });
   const v = c.vivo || {};
   const abierta = ABIERTAS.has(c.estado);
+  pasoVivo_ = abierta ? (v.paso || "") : "";
+  grande_(abierta ? v : null);
 
   // Banner: lo mismo que dice la ventanita de la laptop
   const ban = $("calBanner");
