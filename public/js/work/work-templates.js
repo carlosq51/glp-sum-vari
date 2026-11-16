@@ -1,9 +1,9 @@
 // =========================
 // public/js/work/work-templates.js
-// HTML templates para cards de trabajo (botones, asignado, incidencias)
+// HTML templates para cards de trabajo (botones, asignado)
+// Los botones de CALIDAD (incidencias, fotos, herramientas) están en work-render.js.
 // =========================
 
-import { CORE } from "../core/state.js";
 import { escapeHtml } from "../core/format.js";
 import { accionesDe_ } from "../../../lib/ot-estados.js";
 
@@ -81,33 +81,6 @@ export function buildAsignadoHTML_(it) {
     <div class="asignadoRow js-registrado" data-rol="${escapeHtml(rol)}" style="margin-top:6px;">
       <span class="asignadoLabel">${escapeHtml(labelReg)}</span>
       <span class="asignadoValue${naReg}">${safeRegVal}</span>
-    </div>
-  `;
-}
-
-export function buildIncidenciasBtnHTML_(it, key = "") {
-  if (CORE.state.currentModule !== "CALIDAD") return "";
-
-  const vin = String(it?.vin || "").trim().toUpperCase();
-  const cid = String(it?.conversionId || "").trim();
-  if (!vin && !cid) return "";
-
-  const l = Number(it?.inc_leve || 0);
-  const m = Number(it?.inc_moderada || 0);
-  const c = Number(it?.inc_critica || 0);
-  const total = l + m + c;
-
-  return `
-    <div class="jobActionsGrid" style="margin-bottom:10px;">
-      <button class="btnRF" type="button" data-go="INC" data-key="${escapeHtml(key)}"
-        style="margin-top:0;">
-        Registrar Inc.
-      </button>
-      <button class="btnRF" type="button" data-go="VER_INC"
-        data-vin="${escapeHtml(vin)}" data-cid="${escapeHtml(cid)}"
-        style="margin-top:0;">
-        📋 Ver incidencias${total > 0 ? ` (${total})` : ""}
-      </button>
     </div>
   `;
 }

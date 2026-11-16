@@ -7,7 +7,7 @@ import { CORE, ctx_ } from "../core/state.js";
 import { el_ } from "../core/dom.js";
 import { cssEsc_, escapeHtml, fmtFechaCreacion_, msToHMS_, diaPeru_ } from "../core/format.js";
 import { computeLiveMs_ } from "./work-time.js";
-import { buildAsignadoHTML_, buildBotonesByEstado_, buildIncidenciasBtnHTML_ } from "./work-templates.js";
+import { buildAsignadoHTML_, buildBotonesByEstado_ } from "./work-templates.js";
 import { personalCalidadHTML_ } from "./llamado-voz.js";
 import { informeEstadoHTML_, pintarInformes_ } from "./informe-estado.js";
 import { fotosAvisoHTML_, pintarFotosCopiadas_ } from "./fotos-aviso.js";
@@ -37,6 +37,36 @@ function escucharVerMas_(box) {
 }
 
 /**
+ * Botón-baldosa de CALIDAD: ícono arriba, texto corto abajo. Van de a varios
+ * por fila en vez de uno por fila a todo el ancho — con diez botones de 56 px
+ * apilados, cada tarjeta medía una pantalla y la lista no se podía recorrer.
+ * `attrs` lleva data-go / data-act y lo que el manejador necesite (vin, key…).
+ */
+function tile_(ico, lbl, attrs, badge = "") {
+  return `<button class="jobTile" type="button" ${attrs}>
+      <span class="jobTile__ico" aria-hidden="true">${ico}</span>
+      <span class="jobTile__lbl">${lbl}</span>
+      ${badge ? `<span class="jobTile__badge">${badge}</span>` : ""}
+    </button>`;
+}
+
+/** Lo de cada carro en CALIDAD: fotos de calidad, registrar y ver incidencias. */
+function tilesCalidadHTML_(it, k, extra = "") {
+  const vin = escapeHtml(String(it?.vin || "").trim().toUpperCase());
+  const cid = escapeHtml(String(it?.conversionId || "").trim());
+  const total = Number(it?.inc_leve || 0) + Number(it?.inc_moderada || 0) + Number(it?.inc_critica || 0);
+  const inc = vin || cid;
+  const n = 1 + (inc ? 2 : 0) + (extra ? 1 : 0);
+  return `
+    <div class="jobTiles${n === 4 ? " jobTiles--4" : ""}">
+      ${tile_("📸", "Calidad / fallas", `data-go="RF"`)}
+      ${inc ? tile_("⚠️", "Registrar inc.", `data-go="INC" data-key="${escapeHtml(k)}"`) : ""}
+      ${inc ? tile_("📋", "Incidencias", `data-go="VER_INC" data-vin="${vin}" data-cid="${cid}"`, total > 0 ? String(total) : "") : ""}
+      ${extra}
+    </div>`;
+}
+
+/**
  * Lo ocasional de la tarjeta de CALIDAD, plegado. A la vista queda lo de cada
  * carro (estado, incidencias, 📸 calidad/fallas); esto se usa a veces.
  */
@@ -44,23 +74,16 @@ function verMasCalidadHTML_(it, k) {
   const abierto = _masAbiertos.has(k) ? " open" : "";
   return `
     <details class="jobMas" data-mas-key="${escapeHtml(k)}"${abierto}>
-      <summary><span class="jobMas__lbl-abrir">Ver más</span><span class="jobMas__lbl-cerrar">Ver menos</span></summary>
-      <button class="btnRF" type="button" data-go="SOLD"
-        data-vin="${escapeHtml(it.vin || "")}" style="margin-top:0; margin-bottom:6px;">
-        🔩 Ver fotos de soldadura
-      </button>
-      <button class="btnRF" type="button" data-go="HOJA_CC" style="margin-bottom:6px;">
-        🖨 Hoja de control final
-      </button>
-      <button class="btnRF" type="button" data-go="CALIB" style="margin-bottom:6px;">
-        🔧 Calibrar STAG en la laptop
-      </button>
-      <button class="btnInforme" data-act="INFORME">
-        Informe de esta OT
-      </button>
+      <summary><span class="jobMas__lbl-abrir">Más herramientas</span><span class="jobMas__lbl-cerrar">Menos</span></summary>
+      <div class="jobTiles jobTiles--4">
+        ${tile_("🔩", "Soldadura", `data-go="SOLD" data-vin="${escapeHtml(it.vin || "")}"`)}
+        ${tile_("🖨", "Hoja CC", `data-go="HOJA_CC"`)}
+        ${tile_("🔧", "Calibrar STAG", `data-go="CALIB"`)}
+        ${tile_("📄", "Informe OT", `data-act="INFORME"`)}
+      </div>
       <div class="jobNoteBlock">
         <textarea class="notaCard" rows="2" placeholder="Escribe una nota..."></textarea>
-        <button class="btnNota" data-act="NOTA" style="margin-top:10px; width:100%; height:66px; font-weight:900; display:none;">
+        <button class="btnNota" data-act="NOTA" style="margin-top:8px; width:100%; height:52px; font-weight:900; display:none;">
           Guardar nota
         </button>
       </div>
@@ -160,7 +183,7 @@ export function renderActivas_() {
                 </button>`
               : ""}
 
-          ${buildIncidenciasBtnHTML_(it, k)}
+          ${CORE.state.currentModule === "CALIDAD" ? tilesCalidadHTML_(it, k) : ""}
 
           <div class="jobActionsSlot">${buildBotonesByEstado_(estado, { ajena: it.ajena, titularNombre: it.titularNombre })}</div>
 
@@ -169,9 +192,7 @@ export function renderActivas_() {
           ${
             CORE.state.currentModule === "TECNICO"
               ? `<button class="btnRF" type="button" data-go="RF">📸 Registrar fotos / fallas</button>`
-              : CORE.state.currentModule === "CALIDAD"
-                ? `<button class="btnRF" type="button" data-go="RF">📸 Registrar calidad / fallas</button>`
-                : ""
+              : ""
           }
 
           ${CORE.state.currentModule === "CALIDAD" ? verMasCalidadHTML_(it, k) : `
@@ -252,14 +273,11 @@ export function renderFinalizados_(avgTopHTML = "") {
         ${CORE.state.currentModule === "CALIDAD" && (motorNombre || tanqueroNombre) ? `
           <div class="small js-personal" style="margin-top:4px;">${personalCalidadHTML_(it)}</div>` : ""}
 
-        ${buildIncidenciasBtnHTML_(it, k)}
-
         ${
           CORE.state.currentModule === "TECNICO"
             ? `<button class="btnRF" type="button" data-go="RF">📸 Registrar fotos / fallas</button>`
             : CORE.state.currentModule === "CALIDAD"
-              ? `<button class="btnRF" type="button" data-go="RF">📸 Registrar calidad / fallas</button>
-                 <button class="btnRF" type="button" data-go="HOJA_CC">🖨 Hoja de control final</button>`
+              ? tilesCalidadHTML_(it, k, tile_("🖨", "Hoja CC", `data-go="HOJA_CC"`))
               : ""
         }
       </div>

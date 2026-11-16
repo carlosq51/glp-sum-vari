@@ -178,9 +178,80 @@
   text-decoration: none;
 }
 
-/* "Ver más" de la tarjeta de CALIDAD (work-render.js): lo de uso diario a
-   la vista, lo ocasional (soldadura, hoja CC, STAG, informe, nota) dentro. */
-.jobMas { margin: 6px 0 4px; }
+/* =====================================================================
+   Baldosas de la tarjeta de CALIDAD — "📸 Calidad / fallas  ⚠️ Registrar
+   inc.  📋 Incidencias"
+   ---------------------------------------------------------------------
+   Antes eran botones de 56 px a todo el ancho, uno por fila: con diez por
+   tarjeta, cada carro ocupaba una pantalla entera. En baldosas de a 3–4
+   por fila caben en una línea y el ícono se reconoce sin leer. Las
+   acciones que cambian el estado (INICIO/PAUSA/FIN) siguen grandes: son
+   las que importan y no se pueden confundir con una herramienta.
+===================================================================== */
+.jobTiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--gap-sm, 8px);
+  margin-top: var(--gap-sm, 8px);
+}
+.jobTiles--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+.jobTile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 64px;
+  height: auto;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 8px 4px;
+  border-radius: var(--radiusSm);
+  border: var(--border-w, 1px) solid var(--surfaceLine);
+  background: var(--pillBg);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  transition: transform var(--dur-fast, .12s) var(--ease-out, ease-out), border-color var(--dur-base, .2s);
+}
+.jobTile:hover  { border-color: var(--btnLine); }
+.jobTile:active { transform: scale(.96); }
+.jobTile__ico { font-size: 22px; line-height: 1; }
+.jobTile__lbl {
+  font-size: 12px;
+  font-weight: var(--fw-extrabold, 800);
+  line-height: 1.15;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+/* Cuántas incidencias tiene el carro: se ve sin abrir la lista. */
+.jobTile__badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 11px;
+  font-weight: var(--fw-black, 900);
+  line-height: 20px;
+  text-align: center;
+}
+
+/* En CALIDAD las acciones van debajo de las baldosas: menos aire arriba. */
+.jobTiles + .jobActionsSlot .jobActionsGrid { margin-top: var(--gap-sm, 8px); }
+
+/* "Más herramientas" de la tarjeta de CALIDAD (work-render.js): lo de uso
+   diario a la vista, lo ocasional (soldadura, hoja CC, STAG, informe, nota)
+   dentro. Es una línea discreta, no otro botón: si pesa igual que FIN, la
+   tarjeta vuelve a verse como una pila de botones. */
+.jobMas { margin: 8px 0 0; }
 .jobMas > summary {
   list-style: none;
   cursor: pointer;
@@ -188,17 +259,19 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  min-height: 44px;
-  border-radius: var(--radius-md, 12px);
-  border: var(--border-w, 1px) dashed var(--btnLine);
+  min-height: 40px;
+  border-top: var(--border-w, 1px) solid var(--surfaceLine);
   color: var(--muted, var(--text));
+  font-size: var(--fs-sm, 14px);
   font-weight: var(--fw-extrabold);
   user-select: none;
 }
 .jobMas > summary::-webkit-details-marker { display: none; }
 .jobMas > summary::after { content: "▾"; transition: transform .15s; }
 .jobMas[open] > summary::after { transform: rotate(180deg); }
-.jobMas[open] > summary { margin-bottom: 8px; }
+.jobMas > .jobTiles { margin-top: 0; }
+.jobMas .jobNoteBlock { margin-top: var(--gap-sm, 8px); }
+.jobMas .notaCard { width: 100%; min-height: 0; }
 .jobMas .jobMas__lbl-cerrar { display: none; }
 .jobMas[open] .jobMas__lbl-abrir { display: none; }
 .jobMas[open] .jobMas__lbl-cerrar { display: inline; }
