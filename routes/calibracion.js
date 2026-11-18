@@ -286,6 +286,13 @@ router.get("/api/calibracion/estadisticas", requireRol_("ADMIN", "SUPERVISOR"), 
         interrumpida: !!r.interrumpida,
       };
     });
+    // Nombre de quien la pidió: en la lista de huecos se lee "pidió Juan", no un correo.
+    const nombres = new Map();
+    for (const e of new Set(out.map(f => s_(f.solicitado_por).toLowerCase()).filter(Boolean))) {
+      const u = await getUsuarioByEmail_(e).catch(() => null);
+      if (u?.nombre) nombres.set(e, s_(u.nombre));
+    }
+    for (const f of out) f.solicitado_nombre = nombres.get(s_(f.solicitado_por).toLowerCase()) || null;
     res.json({ ok: true, desde, hasta, filas: out, agente: agenteDiag_(), limite: out.length >= 5000 });
   } catch (err) {
     console.error("[calibracion] estadisticas:", err.message);

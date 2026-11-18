@@ -77,3 +77,74 @@
   .calStDos { grid-template-columns: 1fr; }
   .calStSec { padding: 12px; }
 }
+
+/* ── Tiempo muerto entre carros ──────────────────────────────────────
+   Tonos del hueco: ok (≤3 min, lo normal para cambiar de carro), medio,
+   alto (>10 min: alguien se distrajo), pausa (>45 min, no se suma). */
+.calStMuerto { --hOk: var(--muted); --hMedio: var(--warn); --hAlto: var(--danger); --hPausa: var(--muted); }
+.calStTileAlto { border-color: var(--danger); }
+.calStTileAlto .statTile__value { color: var(--danger); }
+
+.calStMuertoRes { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+.calStMuertoRes > div {
+  display: flex; flex-direction: column; gap: 2px; padding: 8px 10px;
+  border-radius: var(--radiusSm); background: var(--pillBg); border: 1px solid var(--surfaceLine);
+}
+.calStMuertoRes span { font-size: 11px; font-weight: var(--fw-extrabold); text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.calStMuertoRes b { font-size: 22px; font-weight: var(--fw-black); font-variant-numeric: tabular-nums; line-height: 1.1; }
+.calStMuertoRes small { font-size: 12px; color: var(--muted); }
+.calStMuertoRes > div[data-tono="alto"] { border-color: var(--danger); background: var(--dangerBg); }
+.calStMuertoRes > div[data-tono="alto"] b { color: var(--danger); }
+
+.calStLeyenda { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 10px 0 4px; }
+.calStLeyenda span { display: inline-flex; align-items: center; gap: 5px; }
+.calStLeyenda i { width: 12px; height: 8px; border-radius: 2px; display: inline-block; }
+.calStLeyenda i[data-tono="ok"], .calStTlHueco[data-tono="ok"]       { background: var(--hOk); opacity: .45; }
+.calStLeyenda i[data-tono="medio"], .calStTlHueco[data-tono="medio"] { background: var(--hMedio); }
+.calStLeyenda i[data-tono="alto"], .calStTlHueco[data-tono="alto"]   { background: var(--hAlto); }
+.calStLeyenda i[data-tono="pausa"], .calStTlHueco[data-tono="pausa"] {
+  background: repeating-linear-gradient(45deg, var(--hPausa) 0 3px, transparent 3px 6px); opacity: .5;
+}
+
+.calStDia { border-top: 1px solid var(--surfaceLine); padding: 8px 0 4px; }
+.calStDia > summary {
+  list-style: none; cursor: pointer; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px;
+  padding: 6px 0; font-size: var(--fs-sm);
+}
+.calStDia > summary::-webkit-details-marker { display: none; }
+.calStDia > summary::before { content: "▸"; color: var(--muted); transition: transform .15s; }
+.calStDia[open] > summary::before { transform: rotate(90deg); }
+.calStDiaAlto {
+  padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: var(--fw-extrabold);
+  background: var(--dangerBg); color: var(--danger);
+}
+
+/* Línea de tiempo: calibraciones en verde, huecos con su tono */
+.calStTl { margin: 4px 0 8px; }
+.calStTlPista { position: relative; height: 22px; border-radius: 6px; background: var(--pillBg); overflow: hidden; }
+.calStTlPista > i { position: absolute; top: 0; bottom: 0; }
+.calStTlCal { background: var(--ok); top: 3px !important; bottom: 3px !important; border-radius: 3px; }
+.calStTlCal[data-estado="DETENIDA"] { background: var(--warn); }
+.calStTlCal[data-estado="ERROR"] { background: var(--danger); }
+.calStTlHoras { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: 2px; font-variant-numeric: tabular-nums; }
+
+.calStHuecos { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.calStHueco {
+  display: grid; grid-template-columns: 104px 78px 1fr; gap: 10px; align-items: center;
+  padding: 6px 10px; border-radius: var(--radiusSm); border-left: 4px solid var(--hOk);
+  background: var(--pillBg); font-size: var(--fs-sm);
+}
+.calStHueco[data-tono="medio"] { border-left-color: var(--hMedio); }
+.calStHueco[data-tono="alto"]  { border-left-color: var(--hAlto); background: var(--dangerBg); }
+.calStHueco[data-tono="pausa"] { border-left-color: var(--hPausa); opacity: .65; }
+.calStHuecoHoras { font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; }
+.calStHuecoDur { font-weight: var(--fw-black); font-variant-numeric: tabular-nums; font-size: var(--fs-md, 16px); }
+.calStHueco[data-tono="alto"] .calStHuecoDur { color: var(--danger); }
+.calStHuecoDur small { display: block; font-size: 11px; font-weight: var(--fw-bold); color: var(--muted); }
+.calStHuecoCarros { min-width: 0; font-family: var(--font-mono, monospace); font-size: 13px; }
+.calStHuecoCarros small { display: block; font-family: var(--font-body, inherit); color: var(--muted); font-size: 12px; }
+
+@media (max-width: 480px) {
+  .calStHueco { grid-template-columns: 1fr auto; }
+  .calStHuecoCarros { grid-column: 1 / -1; }
+}

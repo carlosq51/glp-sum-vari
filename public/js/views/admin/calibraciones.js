@@ -10,7 +10,7 @@
 
 import { getEmail } from "../../core/auth.js";
 import { escapeHtml } from "../../core/format.js";
-import { BOLSAS, calcularStats_, fmtSeg_, mapaCorto_, diaPe_, esCompleta_, duracion_ } from "../../../../lib/calibracion-stats.js";
+import { BOLSAS, calcularStats_, fmtSeg_, mapaCorto_, diaPe_, esCompleta_, duracion_, MUERTO_OK_MIN, MUERTO_ALTO_MIN } from "../../../../lib/calibracion-stats.js";
 
 const RANGOS = [
   { k: "hoy", label: "Hoy", dias: 1 },
@@ -50,6 +50,72 @@ function laptop_(a) {
   const txt = a.enLinea ? "Laptop en línea" : a.vistoHaceS != null ? `Laptop sin señal hace ${fmtSeg_(a.vistoHaceS)}` : "Laptop sin señal";
   const ver = a.commit ? ` · versión <code>${escapeHtml(a.commit)}</code>` : a.enLinea ? " · versión anterior (sin vigilante)" : "";
   return `<span class="calStLaptop" data-tono="${tono}"><i></i>${txt}${ver}</span>`;
+}
+
+// ── Tiempo muerto entre carros ─────────────────────────────────────────
+// Lo que más interesa: cuánto pasa desde que termina un carro hasta que
+// empieza el siguiente. Por día, una línea de tiempo (verde = calibrando,
+// el hueco en ámbar/rojo según lo largo) y la lista de huecos con los dos
+// carros y quién pidió el siguiente.
+
+const DIA_SEM = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+const diaLargo_ = (dia) => { const d = new Date(`${dia}T12:00:00-05:00`); return `${DIA_SEM[d.getUTCDay()]} ${fechaCorta_(dia)}`; };
+const quien_ = (email) => email ? String(email).split("@")[0] : "";
+
+function lineaTiempo_(d) {
+  const t0 = Date.parse(d.primera), t1 = Date.parse(d.ultima);
+  const span = Math.max(1, t1 - t0);
+  const x = (iso) => ((Date.parse(iso) - t0) / span) * 100;
+  const huecos = d.detalle.map(h => `<i class="calStTlHueco" data-tono="${h.tono}"
+      style="left:${x(h.desde)}%;width:${Math.max(0.3, x(h.hasta) - x(h.desde))}%"
+      title="${hora_(h.desde)} → ${hora_(h.hasta)} · ${fmtSeg_(h.seg)} parado"></i>`).join("");
+  const bloques = d.bloques.map(b => `<i class="calStTlCal" data-estado="${escapeHtml(b.estado)}"
+      style="left:${x(b.ini)}%;width:${Math.max(0.3, x(b.fin) - x(b.ini))}%"
+      title="${escapeHtml(String(b.vin || "").slice(-8))} · ${hora_(b.ini)}–${hora_(b.fin)}"></i>`).join("");
+  return `<div class="calStTl"><div class="calStTlPista">${huecos}${bloques}</div>
+    <div class="calStTlHoras"><span>${hora_(d.primera)}</span><span>${hora_(d.ultima)}</span></div></div>`;
+}
+
+function filaHueco_(h) {
+  const por = h.despues.por ? `pidió <b>${escapeHtml(h.despues.nombre || quien_(h.despues.por))}</b>` : h.despues.origen ? "empezada en la laptop" : "";
+  return `<li class="calStHueco" data-tono="${h.tono}">
+    <span class="calStHuecoHoras">${hora_(h.desde)} → ${hora_(h.hasta)}</span>
+    <span class="calStHuecoDur">${fmtSeg_(h.seg)}${h.larga ? "<small>pausa, no cuenta</small>" : ""}</span>
+    <span class="calStHuecoCarros"><b>${escapeHtml(String(h.antes.vin || "").slice(-8))}</b> → <b>${escapeHtml(String(h.despues.vin || "").slice(-8))}</b>
+      ${por ? `<small>${por}</small>` : ""}</span>
+  </li>`;
+}
+
+function muerto_(s) {
+  const m = s.muerto;
+  const dias = [...s.porDia].reverse().filter(d => d.bloques.length);
+  if (!m.n && !m.pausas) {
+    return `<div class="small muted">Hace falta más de una calibración en el mismo día para medir el tiempo entre carros.</div>`;
+  }
+  const resumen = `<div class="calStMuertoRes">
+      <div><span>Promedio</span><b>${fmtSeg_(m.prom)}</b></div>
+      <div><span>Mediana</span><b>${fmtSeg_(m.mediana)}</b></div>
+      <div><span>El más largo</span><b>${fmtSeg_(m.peor)}</b></div>
+      <div data-tono="${m.altos ? "alto" : "ok"}"><span>De más de ${MUERTO_ALTO_MIN} min</span><b>${m.altos}</b><small>${m.altos ? `${fmtSeg_(m.altosS)} en total` : "ninguno"}</small></div>
+      <div><span>Total parada</span><b>${fmtSeg_(m.total)}</b><small>en ${m.n} hueco${m.n === 1 ? "" : "s"}</small></div>
+    </div>
+    <div class="calStLeyenda small muted">
+      <span><i data-tono="ok"></i>hasta ${MUERTO_OK_MIN} min</span>
+      <span><i data-tono="medio"></i>${MUERTO_OK_MIN}–${MUERTO_ALTO_MIN} min</span>
+      <span><i data-tono="alto"></i>más de ${MUERTO_ALTO_MIN} min</span>
+      <span><i data-tono="pausa"></i>más de ${m.pausaLargaMin} min: pausa (almuerzo, no había carros), no se suma</span>
+    </div>`;
+  const porDia = dias.map((d, i) => `
+    <details class="calStDia"${i < 3 ? " open" : ""}>
+      <summary>
+        <b>${diaLargo_(d.dia)}</b>
+        <span class="muted">${d.n} carro${d.n === 1 ? "" : "s"} · parada ${d.huecos ? fmtSeg_(d.parada_s) : "—"}</span>
+        ${d.huecosAltos ? `<span class="calStDiaAlto">${d.huecosAltos} de más de ${MUERTO_ALTO_MIN} min</span>` : ""}
+      </summary>
+      ${lineaTiempo_(d)}
+      ${d.detalle.length ? `<ol class="calStHuecos">${d.detalle.map(filaHueco_).join("")}</ol>` : `<div class="small muted">Un solo carro ese día.</div>`}
+    </details>`).join("");
+  return resumen + porDia;
 }
 
 function bolsas_(s) {
@@ -145,10 +211,15 @@ function pintar_(host) {
     <div class="dashGrid calStKpis">
       ${tile_("Tiempo promedio", fmtSeg_(s.promedio), s.completas ? `mediana ${fmtSeg_(s.mediana)} · mejor ${fmtSeg_(s.mejor)}` : "sin calibraciones completas", "statTile--accent")}
       ${tile_("Calibraciones", `${s.completas}<span class="unit"> completas</span>`, fallidas ? `${s.porEstado.DETENIDA || 0} detenidas · ${s.porEstado.ERROR || 0} con error` : "ninguna detenida ni con error")}
-      ${tile_("Tiempo muerto entre carros", fmtSeg_(s.muerto.prom), s.muerto.n ? `promedio por hueco · total ${fmtSeg_(s.muerto.total)} en ${s.muerto.n}` : "sin carros seguidos")}
+      ${tile_("Tiempo muerto entre carros", fmtSeg_(s.muerto.prom), s.muerto.n ? `promedio por hueco · ${s.muerto.altos} de más de ${MUERTO_ALTO_MIN} min` : "sin carros seguidos", s.muerto.altos ? "calStTileAlto" : "")}
       ${tile_("Laptop ocupada", pct_(ocup), `del tiempo con carros (sin pausas de más de ${s.muerto.pausaLargaMin} min)`)}
       ${tile_("Del pedido al arranque", fmtSeg_(s.esperaInicio.prom), s.esperaInicio.n ? `pedidas desde el celular (${s.esperaInicio.n})` : "solo cuenta lo pedido desde la app")}
     </div>
+
+    <section class="calStSec calStMuerto">
+      <h4>Tiempo muerto entre carros <span class="muted small">de que termina una calibración a que empieza la siguiente</span></h4>
+      ${muerto_(s)}
+    </section>
 
     <section class="calStSec">
       <h4>En qué se va el tiempo <span class="muted small">promedio por calibración completa</span></h4>
