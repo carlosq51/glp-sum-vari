@@ -84,6 +84,7 @@
 /* Inventario: va DESPUÉS de admin.css porque el módulo vive dentro de ese
    panel y además en su página propia (/inventario), con su propio look. */
 @import url("./css/views/inventario.css");
+@import url("./css/views/calibraciones-admin.css");
 @import url("./css/views/zonas.css");
 @import url("./css/views/informe-taller.css");
 @import url("./css/views/hoja-chequeo.css");

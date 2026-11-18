@@ -35,7 +35,8 @@
 .adminDetailIcon[data-section="inventario"]  { --tone: var(--tone-blue); }
 .adminDetailIcon[data-section="vins"],
 .adminDetailIcon[data-section="ots"],
-.adminDetailIcon[data-section="reasignar"]   { --tone: var(--tone-green); }
+.adminDetailIcon[data-section="reasignar"],
+.adminDetailIcon[data-section="calibraciones"] { --tone: var(--tone-green); }
 .adminDetailIcon[data-section="impresiones"],
 .adminDetailIcon[data-section="incidencias"] { --tone: var(--tone-amber); }
 .adminDetailIcon[data-section="config"],

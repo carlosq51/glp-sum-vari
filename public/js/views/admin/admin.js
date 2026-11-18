@@ -14,6 +14,7 @@ import { createScanner } from "../../core/qr-scanner.js";
 import { icon } from "../../core/icons.js";
 import { escapeHtml as escHtml } from "../../core/format.js";
 import { renderInventarioTab } from "./inventario.js";
+import { renderCalibracionesTab } from "./calibraciones.js";
 import { renderColaImpresion } from "../informe/cola-impresion.js";
 
 // ─── Scanners para QR en Admin ────────────────────────────────────────
@@ -44,6 +45,7 @@ const SECTION_META = {
   inventario:  { icon: "box",           label: "Inventario",     desc: "Qué herramienta tiene cada técnico" },
   impresiones: { icon: "inbox"  ,       label: "Impresiones",    desc: "Informes que mandaron los técnicos" },
   reasignar:   { icon: "refresh",       label: "Reasignar",      desc: "Cambiar el técnico de una OT" },
+  calibraciones: { icon: "timer",       label: "Calibraciones",  desc: "Tiempos de la laptop STAG y tiempo muerto" },
   config:      { icon: "settings",      label: "Configuración",  desc: "Horarios, metas y parámetros" },
   notif:       { icon: "bell",          label: "Notificaciones", desc: "Probar el aviso en el celular" },
 };
@@ -67,7 +69,7 @@ const SECTION_GROUPS = [
     secciones: ["usuarios", "inventario"] },
   { id: "trabajo", icon: "wrench",        titulo: "Vehículos y trabajo",
     sub: "Los carros, sus órdenes y quién las atiende",
-    secciones: ["vins", "ots", "reasignar"] },
+    secciones: ["vins", "ots", "reasignar", "calibraciones"] },
   { id: "papeles", icon: "clipboardList", titulo: "Papeles e incidencias",
     sub: "Informes para imprimir y fallas reportadas",
     secciones: ["impresiones", "incidencias"] },
@@ -585,6 +587,13 @@ async function loadTab() {
   if (S.tab === "impresiones") {
     $id("adminToolbar") && ($id("adminToolbar").style.display = "none");
     await renderColaImpresion(wrap);
+    return;
+  }
+
+  // ─── Tab Calibraciones ────────────────────────────────────────────
+  if (S.tab === "calibraciones") {
+    $id("adminToolbar") && ($id("adminToolbar").style.display = "none");
+    await renderCalibracionesTab(wrap);
     return;
   }
 

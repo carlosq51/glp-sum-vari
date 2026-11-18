@@ -1,0 +1,79 @@
+/* =====================================================================
+   views/calibraciones-admin.css — Admin → Calibraciones
+   (public/js/views/admin/calibraciones.js). Usa las primitivas de
+   components/dashboard.css (statTile, meter, rankBar, dataTable); aquí
+   solo va lo propio de la pestaña.
+   ===================================================================== */
+
+.calSt, .calStCuerpo { display: flex; flex-direction: column; gap: 14px; }
+.calStCuerpo > * { margin: 0; }
+
+.calStBarra { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.calStRangos { display: inline-flex; padding: 3px; gap: 2px; border-radius: 999px; background: var(--pillBg); border: 1px solid var(--surfaceLine); }
+.calStRango {
+  width: auto; height: auto; min-height: 34px; margin: 0; padding: 4px 14px;
+  border: 0; border-radius: 999px; background: transparent; color: var(--muted);
+  font-size: var(--fs-sm); font-weight: var(--fw-extrabold); cursor: pointer;
+}
+.calStRango.is-on { background: var(--btnBg); color: var(--btnText); }
+.calStLaptopSlot { flex: 1; min-width: 0; }
+.calStCsv { margin-left: auto; }
+
+.calStLaptop { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-sm); color: var(--muted); }
+.calStLaptop i { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+.calStLaptop[data-tono="ok"] i { background: var(--ok); box-shadow: 0 0 0 3px var(--okBg); }
+.calStLaptop code { font-size: 12px; }
+
+.calStKpis { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+
+.calStSec {
+  background: var(--grad-surface, var(--surface));
+  border: 1px solid var(--surfaceLine);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  min-width: 0;
+}
+.calStSec h4 { margin: 0 0 10px; font-size: var(--fs-md, 16px); font-weight: var(--fw-extrabold); }
+.calStSec h4 .small { font-weight: var(--fw-bold); margin-left: 6px; }
+
+.calStDos { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
+
+/* En qué se va el tiempo */
+.calStSec .meter__track { height: 18px; }
+.calStBolsas { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px 18px; margin-top: 12px; }
+.calStBolsa { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: start; }
+.calStBolsa .meter__dot { margin-top: 5px; }
+.calStBolsa b { display: block; font-size: var(--fs-sm); }
+.calStBolsa small { display: block; font-size: 12px; color: var(--muted); line-height: 1.25; }
+.calStBolsaNum { font-variant-numeric: tabular-nums; font-weight: var(--fw-black); text-align: right; }
+.calStBolsaNum small { font-weight: var(--fw-bold); }
+
+/* Tablas */
+.calStTabla td, .calStTabla th { padding: 7px 8px; vertical-align: top; }
+.calStTabla .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.calStTabla .muted { color: var(--muted); }
+.calStTabla tr.is-alto td { color: var(--danger); }
+.calStTabla tr.is-alto .rankBar__fill { background: var(--danger); }
+.calStPaso { font-weight: var(--fw-bold); margin-bottom: 4px; }
+.calStTabla .rankBar { height: 5px; }
+.calStMapa { overflow-wrap: anywhere; }
+.calStVin { font-family: var(--font-mono, monospace); }
+.calStScroll { overflow-x: auto; max-height: 520px; overflow-y: auto; }
+.calStNota { margin: 8px 0 0; line-height: 1.35; }
+
+.calStEstado {
+  display: inline-block; padding: 2px 8px; border-radius: 999px;
+  font-size: 12px; font-weight: var(--fw-extrabold);
+  background: var(--pillBg); color: var(--muted);
+}
+.calStEstado[data-estado="TERMINADA"] { background: var(--okBg); color: var(--ok); }
+.calStEstado[data-estado="DETENIDA"]  { background: var(--warnBg); color: var(--warn); }
+.calStEstado[data-estado="ERROR"]     { background: var(--dangerBg); color: var(--danger); cursor: help; }
+
+.calStVacio { padding: 28px 16px; text-align: center; line-height: 1.5; }
+
+@media (max-width: 480px) {
+  .calStCsv { margin-left: 0; }
+  .calStDos { grid-template-columns: 1fr; }
+  .calStSec { padding: 12px; }
+}

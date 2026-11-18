@@ -86,7 +86,7 @@ function mensajeUtil_(err) {
 
 // ── Estado en memoria ────────────────────────────────────────────────────
 // agente: la laptop. Una sola: hay un solo equipo de calibración.
-const agente_ = { visto: 0, equipo: "", email: "", mapas: [], ocupado: false, version: "" };
+const agente_ = { visto: 0, equipo: "", email: "", mapas: [], ocupado: false, version: "", commit: "" };
 // Último latido RECHAZADO (403 de requireRol_, error interno). Sin esto el
 // celular solo decía "Laptop sin conexión" y no había forma de saber si la
 // laptop no llegaba o llegaba con un correo sin permiso (glp.json).
@@ -252,6 +252,47 @@ router.get("/api/calibracion/preparar", async (req, res) => {
   }
 });
 
+/**
+ * Admin → Calibraciones: las calibraciones cerradas de un rango de días, con
+ * solo lo que hace falta para los números (lib/calibracion-stats.js). Va
+ * ANTES de /api/calibracion/:id, que si no se queda con "estadisticas".
+ * ?desde=YYYY-MM-DD&hasta=YYYY-MM-DD (días de Perú, ambos incluidos).
+ */
+router.get("/api/calibracion/estadisticas", requireRol_("ADMIN", "SUPERVISOR"), async (req, res) => {
+  try {
+    const dia = (x) => /^\d{4}-\d{2}-\d{2}$/.test(s_(x)) ? s_(x) : "";
+    const desde = dia(req.query.desde) || "2020-01-01";
+    const hasta = dia(req.query.hasta) || new Date(Date.now() - 5 * 3600_000).toISOString().slice(0, 10);
+    // Día de Perú = UTC−5 todo el año (sin horario de verano).
+    const ini = new Date(`${desde}T00:00:00-05:00`).toISOString();
+    const fin = new Date(Date.parse(`${hasta}T00:00:00-05:00`) + 86400_000).toISOString();
+    const filas = await sb_(`${TABLA}?select=id,vin,modelo,mapa,kilometraje,estado,solicitado_por,created_at,iniciada_at,terminada_at,resumen` +
+      `&estado=in.(TERMINADA,DETENIDA,ERROR,CANCELADA)` +
+      `&created_at=gte.${encodeURIComponent(ini)}&created_at=lt.${encodeURIComponent(fin)}` +
+      `&order=created_at.asc&limit=5000`);
+    const num = (x) => Number.isFinite(+x) ? +x : null;
+    const out = (filas || []).map(f => {
+      const r = f.resumen || {};
+      return {
+        id: f.id, vin: f.vin, modelo: f.modelo, mapa: f.mapa, km: f.kilometraje, estado: f.estado,
+        solicitado_por: f.solicitado_por, created_at: f.created_at, iniciada_at: f.iniciada_at, terminada_at: f.terminada_at,
+        origen: r.origen || null,                     // null = pedida desde la app; "laptop"; "historial"
+        total_s: num(r.total_s), desde: num(r.desde),
+        esperas: r.esperas && typeof r.esperas === "object" ? r.esperas : null,
+        splits: Array.isArray(r.splits) ? r.splits.map(x => ({ i: num(x?.i), paso: s_(x?.paso), seg: num(x?.seg), estado: s_(x?.estado) })) : [],
+        fotos: num(r.fotos), presion: num(r.presion_final),
+        alertas: Array.isArray(r.alertas) ? r.alertas.length : 0,
+        error: s_(r.error || r.motivo).slice(0, 160) || null,
+        interrumpida: !!r.interrumpida,
+      };
+    });
+    res.json({ ok: true, desde, hasta, filas: out, agente: agenteDiag_(), limite: out.length >= 5000 });
+  } catch (err) {
+    console.error("[calibracion] estadisticas:", err.message);
+    res.status(500).json({ ok: false, error: mensajeUtil_(err) });
+  }
+});
+
 router.post("/api/calibracion", async (req, res) => {
   try {
     // Cualquiera con cuenta activa, como la hoja CC: el inspector no siempre
@@ -362,6 +403,8 @@ function agenteDiag_() {
   return {
     enLinea: agenteEnLinea_(),
     equipo: agente_.equipo,
+    version: agente_.version,
+    commit: agente_.commit,
     vistoHaceS: agente_.visto ? Math.round((ahora - agente_.visto) / 1000) : null,
     // Un rechazo cuenta solo si es posterior al último latido bueno.
     rechazo: rechazo_.at > agente_.visto && ahora - rechazo_.at < 10 * 60_000
@@ -382,6 +425,9 @@ router.post("/api/calibracion/agente/latido", anotarLatido_, requireRol_("ADMIN"
       mapas: Array.isArray(b.mapas) ? b.mapas.map(s_).filter(Boolean).slice(0, 500) : agente_.mapas,
       ocupado: !!b.ocupado,
       version: s_(b.version).slice(0, 20),
+      // Commit de stag-auto que corre en la laptop: así se ve desde aquí si ya
+      // le llegó la última versión (vigilante.pyw hace git pull solo).
+      commit: s_(b.commit).slice(0, 12),
     });
     await limpiar_();
 
@@ -476,6 +522,127 @@ router.post("/api/calibracion/agente/local", requireRol_("ADMIN", "SUPERVISOR", 
     res.json({ ok: true, id: fila.id, vin });
   } catch (err) {
     console.error("[calibracion] local:", err.message);
+    res.status(500).json({ ok: false, error: mensajeUtil_(err) });
+  }
+});
+
+// Una línea de ejecuciones.jsonl y una fila de la BD son la misma calibración
+// si el carro coincide y terminaron con esta diferencia como mucho.
+const HISTORIAL_MISMA_MS = 3 * 60_000;
+
+/**
+ * La laptop manda las líneas de su ejecuciones.jsonl (una por calibración
+ * terminada o detenida, con tiempos por paso y por bolsa). glp_puente.py las
+ * manda solas: las de antes de conectar la laptop con la app la primera vez,
+ * y luego cada calibración nueva al terminar, también las que se perdieron
+ * porque no había internet. Lo que ya está en la BD (mandado por el puente
+ * al terminar, o en un envío anterior) se reconoce y se salta: mandar dos
+ * veces lo mismo no duplica nada.
+ *
+ * body: { ejecuciones: [{fecha, vin8, km, mapa, desde, completo, total, esperas, splits, avisos, alertas}], tz: "-0500" }
+ */
+router.post("/api/calibracion/agente/historial", requireRol_("ADMIN", "SUPERVISOR", "CALIDAD"), async (req, res) => {
+  try {
+    const b = req.body || {};
+    const lista = Array.isArray(b.ejecuciones) ? b.ejecuciones.slice(0, 200) : [];
+    // La laptop escribe la hora local sin zona; manda su desfase ("-0500").
+    const tz = /^[+-]\d{4}$/.test(s_(b.tz)) ? `${s_(b.tz).slice(0, 3)}:${s_(b.tz).slice(3)}` : "-05:00";
+    const items = [];
+    let invalidas = 0;
+    for (const e of lista) {
+      const vin8 = s_(e?.vin8).toUpperCase();
+      const fin = Date.parse(/[zZ]|[+-]\d{2}:?\d{2}$/.test(s_(e?.fecha)) ? s_(e?.fecha) : `${s_(e?.fecha)}${tz}`);
+      const total = Number(e?.total);
+      if (!/^[A-Z0-9]{8}$/.test(vin8) || !Number.isFinite(fin) || !Number.isFinite(total) || total < 0) { invalidas++; continue; }
+      items.push({ e, vin8, fin, total });
+    }
+    if (!items.length) return res.json({ ok: true, nuevas: 0, repetidas: 0, invalidas });
+
+    // Lo que ya está en la BD alrededor de esas horas.
+    const tMin = new Date(Math.min(...items.map(x => x.fin)) - 86400_000).toISOString();
+    const tMax = new Date(Math.max(...items.map(x => x.fin)) + 86400_000).toISOString();
+    const existentes = await sb_(`${TABLA}?select=id,vin,estado,created_at,iniciada_at,terminada_at,resumen` +
+      `&or=(terminada_at.gte.${encodeURIComponent(tMin)},terminada_at.is.null)&created_at=lt.${encodeURIComponent(tMax)}` +
+      `&estado=neq.CANCELADA&order=created_at.desc&limit=5000`);
+    // El mismo carro calibrándose en horas que se cruzan es la misma calibración.
+    const igual_ = (x) => (existentes || []).find(f => {
+      if (!s_(f.vin).endsWith(x.vin8)) return false;
+      const a = Date.parse(f.iniciada_at || f.created_at);
+      const z = f.terminada_at ? Date.parse(f.terminada_at) : a + x.total * 1000;
+      return a - HISTORIAL_MISMA_MS <= x.fin && z + HISTORIAL_MISMA_MS >= x.fin - x.total * 1000;
+    });
+    // Y dentro del mismo envío, por si la laptop repite una línea.
+    const vistos = new Set();
+    const nuevas = [], completar = [];
+    for (const x of items) {
+      const k = `${x.vin8}|${Math.round(x.fin / 60_000)}`;
+      if (vistos.has(k)) continue;
+      vistos.add(k);
+      const f = igual_(x);
+      if (!f) nuevas.push(x);
+      // Está, pero sin tiempos (se cortó la red al final, o se dio por
+      // interrumpida): la laptop sí la midió completa.
+      else if (!(Number(f.resumen?.total_s) > 0)) completar.push({ f, x });
+    }
+
+    const num = (x) => Number.isFinite(+x) ? +x : null;
+    const resumenDe_ = ({ e, total }) => ({
+      equipo: s_(b.equipo).slice(0, 60),
+      total_s: Math.round(total), desde: num(e.desde) ?? 1,
+      esperas: e.esperas && typeof e.esperas === "object" ? e.esperas : {},
+      splits: Array.isArray(e.splits) ? e.splits.slice(0, 40) : [],
+      avisos: Array.isArray(e.avisos) ? e.avisos.slice(0, 20) : [],
+      alertas: Array.isArray(e.alertas) ? e.alertas.slice(0, 20) : [],
+    });
+
+    for (const { f, x } of completar) {
+      const patch = {
+        resumen: { ...(f.resumen || {}), ...resumenDe_(x), completada_desde_laptop: true },
+        terminada_at: new Date(x.fin).toISOString(),
+      };
+      if (x.e.completo) patch.estado = "TERMINADA";
+      await sb_(`${TABLA}?id=eq.${f.id}`, { method: "PATCH", body: patch }).catch(err => console.warn("[calibracion] historial completar:", err.message));
+      const t = trabajos_.get(f.id);
+      if (t) Object.assign(t.fila, patch);
+    }
+    if (!nuevas.length) {
+      return res.json({ ok: true, nuevas: 0, completadas: completar.length, repetidas: items.length - completar.length, invalidas });
+    }
+
+    // VIN completo y modelo desde vins (la laptop solo guarda los últimos 8).
+    const vin8s = [...new Set(nuevas.map(x => x.vin8))];
+    const porVin8 = new Map();
+    for (let i = 0; i < vin8s.length; i += 40) {
+      const or = vin8s.slice(i, i + 40).map(v => `vin.like.*${v}`).join(",");
+      const filas = await sb_(`vins?select=vin,modelo&or=(${encodeURIComponent(or)})&limit=500`).catch(() => []);
+      for (const f of filas || []) {
+        const k = s_(f.vin).slice(-8).toUpperCase();
+        // Dos carros con los mismos 8 últimos: no se adivina cuál.
+        porVin8.set(k, porVin8.has(k) ? null : f);
+      }
+    }
+
+    const filasNuevas = nuevas.map((x) => {
+      const { e, vin8, fin, total } = x;
+      const v = porVin8.get(vin8);
+      const ini = new Date(fin - total * 1000).toISOString();
+      return {
+        vin: v?.vin || vin8,
+        kilometraje: Math.max(0, Math.round(num(s_(e.km).replace(/[.,\s]/g, "")) || 0)),
+        mapa: s_(e.mapa).slice(0, 200) || "—",
+        modelo: normalizeModelo_(v?.modelo) || null,
+        estado: e.completo ? "TERMINADA" : "DETENIDA",
+        solicitado_por: emailDe_(req),
+        created_at: ini, iniciada_at: ini, terminada_at: new Date(fin).toISOString(),
+        resumen: { origen: "historial", ...resumenDe_(x) },
+      };
+    });
+    await sb_(TABLA, { method: "POST", body: filasNuevas });
+    const repetidas = items.length - filasNuevas.length - completar.length;
+    console.log(`[calibracion] historial: ${filasNuevas.length} nuevas, ${completar.length} completadas, ${repetidas} repetidas`);
+    res.json({ ok: true, nuevas: filasNuevas.length, completadas: completar.length, repetidas, invalidas });
+  } catch (err) {
+    console.error("[calibracion] historial:", err.message);
     res.status(500).json({ ok: false, error: mensajeUtil_(err) });
   }
 });
