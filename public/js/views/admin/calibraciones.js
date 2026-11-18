@@ -10,7 +10,7 @@
 
 import { getEmail } from "../../core/auth.js";
 import { escapeHtml } from "../../core/format.js";
-import { BOLSAS, calcularStats_, fmtSeg_, mapaCorto_, diaPe_, esCompleta_, duracion_, MUERTO_OK_MIN, MUERTO_ALTO_MIN } from "../../../../lib/calibracion-stats.js";
+import { BOLSAS, calcularStats_, fmtSeg_, mapaCorto_, diaPe_, esCompleta_, duracion_, MUERTO_OK_MIN, MUERTO_ALTO_MIN, CAL_LARGA_MIN, CAL_EXCESO_MIN } from "../../../../lib/calibracion-stats.js";
 
 const RANGOS = [
   { k: "hoy", label: "Hoy", dias: 1 },
@@ -69,9 +69,9 @@ function lineaTiempo_(d) {
   const huecos = d.detalle.map(h => `<i class="calStTlHueco" data-tono="${h.tono}"
       style="left:${x(h.desde)}%;width:${Math.max(0.3, x(h.hasta) - x(h.desde))}%"
       title="${hora_(h.desde)} → ${hora_(h.hasta)} · ${fmtSeg_(h.seg)} parado"></i>`).join("");
-  const bloques = d.bloques.map(b => `<i class="calStTlCal" data-estado="${escapeHtml(b.estado)}"
+  const bloques = d.bloques.map(b => `<i class="calStTlCal" data-estado="${escapeHtml(b.estado)}" data-tono="${b.tono}"
       style="left:${x(b.ini)}%;width:${Math.max(0.3, x(b.fin) - x(b.ini))}%"
-      title="${escapeHtml(String(b.vin || "").slice(-8))} · ${hora_(b.ini)}–${hora_(b.fin)}"></i>`).join("");
+      title="${escapeHtml(String(b.vin || "").slice(-8))} · ${hora_(b.ini)}–${hora_(b.fin)} · ${fmtSeg_((Date.parse(b.fin) - Date.parse(b.ini)) / 1000)}"></i>`).join("");
   return `<div class="calStTl"><div class="calStTlPista">${huecos}${bloques}</div>
     <div class="calStTlHoras"><span>${hora_(d.primera)}</span><span>${hora_(d.ultima)}</span></div></div>`;
 }
@@ -100,6 +100,8 @@ function muerto_(s) {
       <div><span>Total parada</span><b>${fmtSeg_(m.total)}</b><small>en ${m.n} hueco${m.n === 1 ? "" : "s"}</small></div>
     </div>
     <div class="calStLeyenda small muted">
+      <span><i data-tono="cal"></i>calibrando</span>
+      <span><i data-tono="cal-larga"></i>calibración larga</span>
       <span><i data-tono="ok"></i>hasta ${MUERTO_OK_MIN} min</span>
       <span><i data-tono="medio"></i>${MUERTO_OK_MIN}–${MUERTO_ALTO_MIN} min</span>
       <span><i data-tono="alto"></i>más de ${MUERTO_ALTO_MIN} min</span>
@@ -110,12 +112,49 @@ function muerto_(s) {
       <summary>
         <b>${diaLargo_(d.dia)}</b>
         <span class="muted">${d.n} carro${d.n === 1 ? "" : "s"} · parada ${d.huecos ? fmtSeg_(d.parada_s) : "—"}</span>
-        ${d.huecosAltos ? `<span class="calStDiaAlto">${d.huecosAltos} de más de ${MUERTO_ALTO_MIN} min</span>` : ""}
+        ${d.huecosAltos ? `<span class="calStDiaAlto">${d.huecosAltos} hueco${d.huecosAltos === 1 ? "" : "s"} de más de ${MUERTO_ALTO_MIN} min</span>` : ""}
+        ${d.largas ? `<span class="calStDiaAlto">${d.largas} calibración${d.largas === 1 ? "" : "es"} larga${d.largas === 1 ? "" : "s"}</span>` : ""}
       </summary>
       ${lineaTiempo_(d)}
       ${d.detalle.length ? `<ol class="calStHuecos">${d.detalle.map(filaHueco_).join("")}</ol>` : `<div class="small muted">Un solo carro ese día.</div>`}
     </details>`).join("");
   return resumen + porDia;
+}
+
+// ── Calibraciones demasiado largas ─────────────────────────────────────
+// El hueco entre carros puede ser corto y aun así perderse tiempo DENTRO de
+// la calibración. Cada larga dice cuánto se pasó y en qué pasos, comparado
+// con lo normal (mediana del rango): "Encender el carro +6:10" es el técnico;
+// "Autocalibración +4:00" es la máquina o el carro.
+
+function largas_(s) {
+  if (!s.completas) return `<div class="small muted">Sin calibraciones completas en este rango.</div>`;
+  const res = `<p class="calStLargasRes">
+      Lo normal en este rango: <b>${fmtSeg_(s.mediana)}</b> por carro (mediana).
+      ${s.largas.length
+        ? `<b class="calStRojo">${s.largasAltas}</b> pasaron de ${CAL_LARGA_MIN} min y <b>${s.largas.length - s.largasAltas}</b> más tardaron ${CAL_EXCESO_MIN} min o más sobre lo normal.`
+        : `Ninguna pasó de ${CAL_LARGA_MIN} min ni tardó ${CAL_EXCESO_MIN} min más que lo normal.`}
+    </p>`;
+  if (!s.largas.length) return res;
+  const filas = s.largas.slice(0, 40).map(l => {
+    const pasos = l.pasos.length
+      ? l.pasos.map(x => `<span class="calStLargaPaso">${escapeHtml(x.paso)} <b>+${fmtSeg_(x.exceso)}</b></span>`).join("")
+      : `<span class="muted">ningún paso se pasó mucho: un poco en todos</span>`;
+    const tec = l.tecnicoExceso != null && l.tecnicoExceso >= 60
+      ? `<span class="calStLargaTec">esperando al técnico: ${fmtSeg_(l.tecnico)} (+${fmtSeg_(l.tecnicoExceso)})</span>` : "";
+    const por = l.por ? `pidió <b>${escapeHtml(l.nombre || String(l.por).split("@")[0])}</b>` : "empezada en la laptop";
+    return `<li class="calStLarga" data-tono="${l.tono}">
+      <div class="calStLargaCab">
+        <span class="calStLargaTot">${fmtSeg_(l.total)}</span>
+        ${l.exceso != null ? `<span class="calStLargaExc">+${fmtSeg_(l.exceso)} sobre lo normal</span>` : ""}
+        <span class="calStLargaQue"><b class="calStVin">${escapeHtml(String(l.vin || "").slice(-8))}</b>
+          · ${diaLargo_(l.dia)} ${hora_(l.ini)}–${hora_(l.fin)} · ${por}</span>
+      </div>
+      <div class="calStLargaPasos">${pasos}${tec}</div>
+    </li>`;
+  }).join("");
+  return res + `<ol class="calStLargas">${filas}</ol>`
+    + (s.largas.length > 40 ? `<p class="small muted">Se muestran las 40 más largas de ${s.largas.length}.</p>` : "");
 }
 
 function bolsas_(s) {
@@ -213,12 +252,17 @@ function pintar_(host) {
       ${tile_("Calibraciones", `${s.completas}<span class="unit"> completas</span>`, fallidas ? `${s.porEstado.DETENIDA || 0} detenidas · ${s.porEstado.ERROR || 0} con error` : "ninguna detenida ni con error")}
       ${tile_("Tiempo muerto entre carros", fmtSeg_(s.muerto.prom), s.muerto.n ? `promedio por hueco · ${s.muerto.altos} de más de ${MUERTO_ALTO_MIN} min` : "sin carros seguidos", s.muerto.altos ? "calStTileAlto" : "")}
       ${tile_("Laptop ocupada", pct_(ocup), `del tiempo con carros (sin pausas de más de ${s.muerto.pausaLargaMin} min)`)}
-      ${tile_("Del pedido al arranque", fmtSeg_(s.esperaInicio.prom), s.esperaInicio.n ? `pedidas desde el celular (${s.esperaInicio.n})` : "solo cuenta lo pedido desde la app")}
+      ${tile_("Calibraciones largas", `${s.largas.length}`, s.completas ? `${s.largasAltas} de más de ${CAL_LARGA_MIN} min · del pedido al arranque ${fmtSeg_(s.esperaInicio.prom)}` : "sin calibraciones completas", s.largasAltas ? "calStTileAlto" : "")}
     </div>
 
     <section class="calStSec calStMuerto">
       <h4>Tiempo muerto entre carros <span class="muted small">de que termina una calibración a que empieza la siguiente</span></h4>
       ${muerto_(s)}
+    </section>
+
+    <section class="calStSec calStMuerto">
+      <h4>Calibraciones demasiado largas <span class="muted small">cuánto se pasaron y en qué paso se fue el tiempo</span></h4>
+      ${largas_(s)}
     </section>
 
     <section class="calStSec">
