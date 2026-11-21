@@ -7,6 +7,7 @@ import { cachedByTopics_ } from "../lib/poll-cache.js";
 import { ttlConRealtime_ } from "../lib/realtime.js";
 import { usuariosPorIds_ } from "../lib/authz.js";
 import { gpsDeVins_, normVin_, registrarGps_, zonasApp_ } from "../lib/gps.js";
+import { zonasActuales } from "../lib/esum.js";
 
 const router = Router();
 
@@ -801,6 +802,27 @@ router.get("/api/movilizador/vin-salida", async (req, res) => {
   } catch (e) {
     console.error("[MOV_VIN_SALIDA]", e);
     return res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
+// GET /api/movilizador/esum-actual?vins=A,B[&fresh=1]
+//
+// Zona de AHORA en eSUM, para los carros de Salida que no tienen destino
+// (trabajados de forma extraordinaria: entraron a GLP antes de su proceso
+// eSUM, así que Apps Script no guardó a dónde devolverlos). La vista muestra
+// la zona si es ZONA DE INGRESO y si no, "Consultar ubicación con
+// supervisor". Solo lectura; no toca vins.ultima_ubicacion (ver lib/esum.js).
+const ESUM_MAX_VINS = 120;
+router.get("/api/movilizador/esum-actual", async (req, res) => {
+  try {
+    const vins = [...new Set(String(req.query.vins || "").split(",").map(normVin_).filter(Boolean))];
+    if (!vins.length) return res.status(400).json({ ok: false, error: "Falta vins" });
+    if (vins.length > ESUM_MAX_VINS) return res.status(400).json({ ok: false, error: `Máximo ${ESUM_MAX_VINS} VINs` });
+    const r = await zonasActuales(vins, { fresh: req.query.fresh === "1" });
+    return res.json({ ok: true, ...r });
+  } catch (e) {
+    console.error("[MOV_ESUM_ACTUAL]", e);
+    return res.status(502).json({ ok: false, error: `No se pudo consultar eSUM: ${e.message || e}` });
   }
 });
 

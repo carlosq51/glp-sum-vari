@@ -127,6 +127,67 @@ function ubicHtml_(u) {
     : "";
 }
 
+// ─── ESUM de ahora (carros sin destino) ───────────────────────────────
+//
+// Un carro trabajado de forma extraordinaria (convertido antes de que
+// empezara su proceso en eSUM) llega a Salida sin destino: Apps Script no
+// alcanzó a guardar de qué zona venía. Para esos se pregunta a eSUM la zona
+// de AHORA (GET /api/movilizador/esum-actual):
+//   · ZONA DE INGRESO → se muestra: vuelve a quien lo trajo (VARI)
+//   · otra zona, o no está en eSUM → "Consultar ubicación con supervisor"
+// Es una consulta aparte del destino: no lo reemplaza ni se guarda.
+const ESUM_ACT_TTL_MS = 3 * 60_000;
+const ESUM_ACT_ERROR_TTL_MS = 30_000;
+const _esumAct = new Map();     // vin → { at, zona, ingreso, encontrado } | { at, error }
+let _esumActEnVuelo = null;   // Promise mientras hay una consulta
+
+function esumActualHtml_(vin) {
+  const d = _esumAct.get(vin);
+  if (!d) return `<span class="movChip">Consultando ESUM…</span>`;
+  if (d.error) return `<span class="movChip movChip--warn" title="${escapeHtml(d.error)}">ESUM no respondió · consultar ubicación con supervisor</span>`;
+  if (d.ingreso) {
+    return `<span class="movUbic" title="ESUM ahora: ${escapeHtml(d.zona)}"><span class="movUbicSrc">ESUM</span>${escapeHtml(ubicCorta_(d.zona))}</span>`;
+  }
+  const tip = d.encontrado ? `ESUM ahora: ${d.zona || "(sin zona)"}` : "No aparece en eSUM";
+  return `<span class="movChip movChip--warn" title="${escapeHtml(tip)}">Consultar ubicación con supervisor</span>`;
+}
+
+/** Texto para el resultado del escaneo QR de Salida. */
+function esumActualTexto_(vin) {
+  const d = _esumAct.get(vin);
+  if (!d) return null;
+  if (!d.error && d.ingreso) return { tono: "ok", destino: `ESUM: ${ubicCorta_(d.zona)}`, meta: "Sin destino guardado · eSUM lo tiene en ingreso" };
+  return { tono: "err", destino: "Consultar ubicación con supervisor", meta: d.error ? "eSUM no respondió" : (d.encontrado ? `Sin destino · eSUM ahora: ${ubicCorta_(d.zona) || "sin zona"}` : "Sin destino · no aparece en eSUM") };
+}
+
+/** Pide a eSUM los VINs sin dato (o con dato viejo) y repinta lo que dependa. */
+async function cargarEsumActual_(vins, { fresh = false } = {}) {
+  const ahora = Date.now();
+  const faltan = [...new Set(vins)].filter(v => {
+    const d = _esumAct.get(v);
+    return fresh || !d || ahora - d.at > (d.error ? ESUM_ACT_ERROR_TTL_MS : ESUM_ACT_TTL_MS);
+  });
+  if (_esumActEnVuelo) { await _esumActEnVuelo; if (faltan.every(v => _esumAct.has(v))) return; }
+  if (!faltan.length) return;
+  let listo;
+  _esumActEnVuelo = new Promise(r => { listo = r; });
+  try {
+    const j = await getJSON(`/api/movilizador/esum-actual?vins=${encodeURIComponent(faltan.join(","))}${fresh ? "&fresh=1" : ""}`);
+    const at = Date.now();
+    for (const v of faltan) {
+      const z = j?.zonas?.[v];
+      _esumAct.set(v, z ? { at, ...z } : { at, error: "Sin respuesta" });
+    }
+  } catch (e) {
+    const at = Date.now();
+    for (const v of faltan) _esumAct.set(v, { at, error: String(e?.message || e) });
+  } finally {
+    _esumActEnVuelo = null;
+    listo();
+  }
+  renderList3_(_list3Rows);
+}
+
 // ─── GPS (ubicación física) ───────────────────────────────────────────
 //
 // La posición del último escaneo con la app GPS: dónde está el carro de
@@ -1229,7 +1290,7 @@ function renderList3_(rows) {
     <div class="movCard${r.tiene_ot ? "" : " movCard--late"}">
       <div class="movCardTop">
         <span class="movVin">${escapeHtml(r.vin)}</span>
-        ${r.destino ? ubicHtml_(r.destino) : `<span class="movChip">Sin destino</span>`}
+        ${r.destino ? ubicHtml_(r.destino) : esumActualHtml_(r.vin)}
       </div>
       <div class="movCardMeta">
         <span class="movTimelineLabel">Calidad</span>
@@ -1266,6 +1327,9 @@ function renderList3_(rows) {
       `<div class="movCardList">${listos.map(salidaCard).join("")}</div>`);
   }
   box.innerHTML = html;
+
+  const sinDestino = rows.filter(r => !r.destino).map(r => r.vin);
+  if (sinDestino.length) cargarEsumActual_(sinDestino).catch(() => {});
 }
 
 /**
@@ -1628,7 +1692,16 @@ function showSalidaQrResult_(vin) {
     } else if (row.destino) {
       paintSalidaQr_({ vin: vinClean, tono: "ok", destino: `Sale a ${ubicCorta_(row.destino)} (ESUM)`, confirmar: true });
     } else {
-      paintSalidaQr_({ vin: vinClean, tono: "wait", destino: "Destino pendiente", confirmar: true });
+      // Sin destino: lo que diga eSUM ahora (ver cargarEsumActual_).
+      const pintarEsum_ = () => {
+        const t = esumActualTexto_(vinClean);
+        if (t) paintSalidaQr_({ vin: vinClean, ...t, confirmar: true });
+        else paintSalidaQr_({ vin: vinClean, tono: "wait", destino: "Consultando ESUM…", confirmar: true });
+      };
+      pintarEsum_();
+      if (!esumActualTexto_(vinClean)) {
+        cargarEsumActual_([vinClean]).finally(() => { if (seq === _salidaQrSeq) pintarEsum_(); });
+      }
     }
     return;
   }
