@@ -501,6 +501,29 @@ router.post("/api/evento", async (req, res) => {
 
     // RAMALERO no usa VIN: generar pseudo-VIN o buscar por conversionId
     const isRamalero = rolTrabajo === "RAMALERO";
+
+    // Un ramalero arma UN ramal a la vez. Con dos corriendo en paralelo el
+    // reloj de cada uno se superpone y los minutos por ramal dejan de ser
+    // ciertos (pedido de Carlos, 2026-11-24). Vale para todos los ramaleros.
+    // Se revisa antes de reservar el pseudo-VIN para no dejar códigos huérfanos.
+    if (isRamalero && (accion === "INICIO" || accion === "REANUDAR") && email) {
+      const uid = (await getUsuarioByEmail_(email))?.id;
+      if (uid) {
+        const rCorr = await fetch(
+          `${process.env.SUPABASE_URL}/rest/v1/asignaciones?user_id=eq.${uid}` +
+          `&rol_trabajo=eq.RAMALERO&activo=eq.true&estado_actual=eq.TRABAJANDO&select=id&limit=1`,
+          { method: "GET", headers: supabaseHeaders_() },
+        );
+        const corriendo = rCorr.ok ? await rCorr.json() : [];
+        if (Array.isArray(corriendo) && corriendo.length) {
+          return res.status(409).json({
+            ok: false,
+            error: "Ya tienes un ramal en curso. Finalízalo (o páusalo) antes de empezar otro.",
+            errorType: "RAMAL_EN_CURSO",
+          });
+        }
+      }
+    }
     // Para RAMALERO con WO existente, resolver VIN o generar uno
     if (isRamalero && !vin && conversionIdBody) {
       const woExist = await supabaseGet_("work_orders", { id: conversionIdBody });
