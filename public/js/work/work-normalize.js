@@ -71,9 +71,6 @@ export function normalizeItem_(raw) {
     inc_moderada: Number(pickFirst_(raw?.inc_moderada, raw?.INC_MODERADA, 0)) || 0,
     inc_critica: Number(pickFirst_(raw?.inc_critica, raw?.INC_CRITICA, 0)) || 0,
     zona: zonaDe_(raw),
-    // Cuánto tarda de normal este técnico en este carro (solo viaja en la
-    // lista, como la zona: undefined = "este payload no lo trae").
-    normal: raw?.normal && Number(raw.normal.ms) > 0 ? raw.normal : undefined,
     // OT de CALIDAD registrada por el OTRO inspector: se puede accionar, pero
     // el crédito es de quien la abrió y la tarjeta lo tiene que decir.
     ajena: raw?.ajena === true,

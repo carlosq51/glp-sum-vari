@@ -45,7 +45,6 @@ export function mergePrevAndCache_(it, prev) {
   // `undefined` es "este payload no habla de zonas"; `null` sí es una respuesta
   // —el carro no tiene plaza— y esa sí se respeta.
   if (it.zona === undefined) it.zona = prev?.zona ?? null;
-  if (it.normal === undefined && prev?.normal) it.normal = prev.normal;
 
   // Lo mismo con la marca de OT ajena: solo viaja en la lista, no en la
   // respuesta de un evento. Sin esto el "registró Wilmer" desaparecía de la
