@@ -8,6 +8,11 @@ import { fechaPeruMenosDias_, normalizeModelo_, jornadaPeru_ } from "../lib/util
 import { proyeccionDeJornada_ } from "./produccion.js";
 import { usuariosActivos_ } from "../lib/authz.js";
 import { copiasDelLive_ } from "../lib/fotos-huella.js";
+import { tiemposEstandarSiListo_ } from "../lib/tiempos-estandar.js";
+import { normalDe_, hhmm_ } from "../lib/tiempo-real.js";
+import { proyeccionEnVivoTecnico_ } from "../lib/proyeccion.js";
+import { minutosUtiles_ } from "../lib/eta-carro.js";
+import { minutosDelDia_ } from "../lib/despacho.js";
 
 const router = Router();
 
@@ -629,6 +634,50 @@ async function tiemposMediosConv_(SUPABASE_URL, headers, desde, hasta) {
   return { MOTOR: media(acc.MOTOR), TANQUE: media(acc.TANQUE), n: { MOTOR: acc.MOTOR.n, TANQUE: acc.TANQUE.n } };
 }
 
+/**
+ * Sustituye el reparto fijo de la proyección por la cuenta en vivo de cada
+ * persona (lib/proyeccion.js proyeccionEnVivoTecnico_). Muta `proyeccion`.
+ */
+function proyeccionEnVivo_(proyeccion, techs, cfg) {
+  const ini = hhmm_(cfg.PROYECCION_INICIO_TURNO) ?? 420;
+  const fin = hhmm_(cfg.PROYECCION_FIN_TURNO) ?? 990;
+  const comida = { comidaIniMin: hhmm_(cfg.HORARIO_COMIDA_INICIO), comidaFinMin: hhmm_(cfg.HORARIO_COMIDA_FIN) };
+  // Los minutos de madrugada (antes de las 06:00) son de esta misma jornada.
+  let ahora = minutosDelDia_();
+  if (ahora < 360) ahora += 24 * 60;
+  const turnoUtilMin = minutosUtiles_({ ahoraMin: ini, finTurnoMin: fin, ...comida });
+  const restaTurnoMin = minutosUtiles_({ ahoraMin: Math.max(ahora, ini), finTurnoMin: fin, ...comida });
+
+  const porClave = new Map(techs.map(t => [`${t.userId}__${t.rol}`, t]));
+  for (const pt of proyeccion.tecnicos) {
+    const t = porClave.get(`${pt.userId}__${pt.rol}`);
+    const asgs = t?.asignacionesHoy || [];
+    const cerradas = asgs.filter(a => a.estado === "FINALIZADO" && !a.cerradoDespues).length;
+    if (!pt.presente && !cerradas) continue;
+
+    const ab = asgs.find(a => a.estado !== "FINALIZADO" && a.tipo_ot === "CONVERSION" && a.normal?.ms);
+    const hechoMs = ab ? (Number(ab.tiempo_ms) || 0)
+      + (ab.estado === "TRABAJANDO" && ab.running_since ? Math.max(0, Date.now() - new Date(ab.running_since).getTime()) : 0) : 0;
+
+    let hasta = hhmm_(pt.hasta);
+    if (hasta != null && hasta < 360) hasta += 24 * 60;
+    const restaExtraMin = hasta != null ? Math.max(0, hasta - Math.max(ahora, fin)) : 0;
+
+    const v = proyeccionEnVivoTecnico_({
+      cerradas,
+      abierta: ab ? { hechoMs, normalMs: ab.normal.ms } : null,
+      ritmoTurno: pt.proy?.ritmo ?? 0,
+      turnoUtilMin, restaTurnoMin: pt.presente ? restaTurnoMin : 0, restaExtraMin,
+      extraHora: proyeccion.extraHora?.[pt.rol],
+    });
+    pt.proy = {
+      ...(pt.proy || {}), turno: v.turno, extra: v.extra, total: v.total, enVivo: true,
+      abierta: ab ? { vin: ab.vin, fraccion: v.abierta, faltaMs: v.faltaAbiertaMs, arrastre: !!ab.arrastre } : null,
+    };
+  }
+  proyeccion.porPersonaEnVivo = true;
+}
+
 async function asistenciaDeHoy_(SUPABASE_URL, headers, fecha = jornadaFecha_()) {
   try {
     const r = await fetch(
@@ -1051,12 +1100,21 @@ async function armarLiveSupervisor_(fechaPedida = null) {
       () => convMesPrevio_(SUPABASE_URL, headers, cfg, ym, hoy00),
     ).catch(() => ({ convDone: 0, truncado: false, ok: false }));
 
-    // El listón del punto de la tabla por técnico. Si falla, el punto se queda
-    // en verde/amarillo sin rojo: mejor eso que inventar un tiempo medio.
-    const tiemposMedios = await cachedByTopics_(
-      `supervisor:live:tiempos:${jornadaStr}`, [], cfg.LIVE_CACHE_MES_MS,
-      () => tiemposMediosConv_(SUPABASE_URL, headers, hace30d00, hoy00),
-    ).catch(() => null);
+    // El listón del punto de la tabla por técnico. Sale del estándar corregido
+    // (lib/tiempos-estandar.js: sin las noches de salidas olvidadas); mientras
+    // ese no esté calculado —recién arrancado el servidor— vale la media vieja.
+    // Si todo falla, el punto se queda en verde/amarillo sin rojo: mejor eso
+    // que inventar un tiempo medio.
+    const estandar = tiemposEstandarSiListo_();
+    const tiemposMedios = estandar?.porRol?.MOTOR || estandar?.porRol?.TANQUE
+      ? {
+          MOTOR: estandar.porRol.MOTOR || null, TANQUE: estandar.porRol.TANQUE || null,
+          n: estandar.nPorRol, dias: estandar.dias, corregido: true, correccion: estandar.correccion,
+        }
+      : await cachedByTopics_(
+          `supervisor:live:tiempos:${jornadaStr}`, [], cfg.LIVE_CACHE_MES_MS,
+          () => tiemposMediosConv_(SUPABASE_URL, headers, hace30d00, hoy00),
+        ).catch(() => null);
 
     const mes = {
       ym,
@@ -1253,6 +1311,28 @@ async function armarLiveSupervisor_(fechaPedida = null) {
       }
     }
 
+    // 4b'. Lo normal de CADA UNO en lo que tiene abierto: su ritmo × el normal
+    // del taller para ese modelo y puesto (lib/tiempo-real.js normalDe_). Así
+    // el punto rojo dice "va lento para lo que ÉL suele tardar en este carro",
+    // no "va más lento que la media de todos".
+    if (esHoy && estandar) {
+      const abiertas = techs.flatMap(t => (t.asignacionesHoy || [])
+        .filter(a => a.estado !== "FINALIZADO" && ROLES_CONV.includes(String(t.rol).toUpperCase())));
+      const modelosAb = await modelosDeVins_(SUPABASE_URL, headers, cfg,
+        new Set(abiertas.map(a => a.vin))).catch(() => ({}));
+      for (const t of techs) {
+        const rol = String(t.rol || "").toUpperCase();
+        if (!ROLES_CONV.includes(rol)) continue;
+        const general = normalDe_(estandar, { userId: t.userId, modelo: "", rol });
+        t.ritmo = general.propio ? { indice: general.indice, n: general.n } : null;
+        for (const a of t.asignacionesHoy || []) {
+          if (a.estado === "FINALIZADO") continue;
+          const nm = normalDe_(estandar, { userId: t.userId, modelo: modelosAb[a.vin] || "", rol });
+          if (nm.ms) a.normal = { ms: nm.ms, tallerMs: nm.tallerMs, propio: nm.propio };
+        }
+      }
+    }
+
     // 4c. Faltas: la plantilla de conversión cruzada con el QR del día.
     //
     // Solo conversión (MOTOR/TANQUE): es la única que marca el QR, así que
@@ -1277,6 +1357,13 @@ async function armarLiveSupervisor_(fechaPedida = null) {
         marcaron:  marcaron.length,
         faltaron:  sinMarca.filter(p => !conActividad.has(p.userId)),
         sinMarcar: sinMarca.filter(p => conActividad.has(p.userId)),
+        // Los que sí vinieron, con su estado (PRESENTE, PAUSA, FUERA = ya se
+        // fue) y la hora de ingreso: "¿quién está hoy?" se responde aquí.
+        presentes: marcaron.map(p => ({
+          ...p,
+          estado:  asistencia.get(p.userId)?.estado || null,
+          ingreso: asistencia.get(p.userId)?.ingreso_at || null,
+        })),
       };
     }
 
@@ -1322,6 +1409,15 @@ async function armarLiveSupervisor_(fechaPedida = null) {
     const proyeccion = await proyeccionDeJornada_({
       cfg, jornadaStr, asistencia, allUsers, metaDia,
     }).catch((e) => { console.error("[LIVE proyección]", e.message); return null; });
+
+    // 6b. Hoy, lo de cada persona se cuenta en vivo: lo que cerró, lo que le
+    // falta a su mitad abierta (con el avance que trae, aunque sea de ayer) y
+    // lo que su ritmo rinde en lo que le queda de turno y de hora extra.
+    // El total del día sigue siendo tasa × presentes (el modelo validado).
+    if (esHoy && proyeccion?.tecnicos?.length) {
+      try { proyeccionEnVivo_(proyeccion, techs, cfg); }
+      catch (e) { console.warn("[LIVE proyección en vivo]", e.message); }
+    }
 
     // 7. Fotos copiadas: % de carros con fotos que copian otra subida antes.
     const fotosCopias = await fotosCopiasP;

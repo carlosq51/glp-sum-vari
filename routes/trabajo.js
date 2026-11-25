@@ -27,6 +27,8 @@ import {
   ESTADOS_CALIDAD_COLABORATIVA,
 } from "../lib/colaboracion.js";
 import { accionesDe_ } from "../lib/ot-estados.js";
+import { tiemposEstandarSiListo_ } from "../lib/tiempos-estandar.js";
+import { normalDe_ } from "../lib/tiempo-real.js";
 
 const router = Router();
 
@@ -90,7 +92,7 @@ const ASG_SELECT = [
   "id,work_order_id,tipo_ot,rol_trabajo,estado_actual",
   "running_since,tiempo_trab_ms,updated_at,last_nota,user_id",
   "usuarios!inner(id,email,nombre)",
-  "work_orders(id,vin,tipo_ramal,fecha_creacion,vins(reductor_asignado,tanque_asignado))",
+  "work_orders(id,vin,tipo_ramal,fecha_creacion,vins(reductor_asignado,tanque_asignado,modelo_normalizado))",
 ].join(",");
 
 // Resuelve user_id desde email (con cache). Lanza { status, error } si no existe.
@@ -145,6 +147,7 @@ function mapAsignacion_(asg, tecnicoEmail) {
     estado:             asg.estado_actual,
     tiempo_ms:          asg.tiempo_trab_ms || 0,
     reductor_asignado:  vins.reductor_asignado || "",
+    modelo:             vins.modelo_normalizado || "",
     tanque_asignado:    vins.tanque_asignado   || "",
     tecnico_id:         asg.user_id,
     tecnico_email:      dueno.email  || tecnicoEmail || "",
@@ -256,6 +259,21 @@ async function activasDe_(finalUserId, tecnicoEmail) {
     for (const a of ajenas) if (!items.some(i => i.id === a.id)) items.push(a);
   } catch (e) {
     console.warn("[activas] calidad colaborativa:", e.message);
+  }
+
+  // Lo normal de ESTE técnico en ESTE carro (lib/tiempo-real.js): su ritmo ×
+  // lo que tarda el taller en ese modelo y puesto. Si el estándar aún no está
+  // calculado, la tarjeta sale sin la línea; no se espera por él.
+  try {
+    const est = tiemposEstandarSiListo_();
+    if (est) for (const it of items) {
+      const rol = String(it.rol_trabajo || "").toUpperCase();
+      if (rol !== "MOTOR" && rol !== "TANQUE") continue;
+      const n = normalDe_(est, { userId: it.tecnico_id || finalUserId, modelo: it.modelo, rol });
+      if (n.ms) it.normal = { ms: n.ms, tallerMs: n.tallerMs, propio: n.propio };
+    }
+  } catch (e) {
+    console.warn("[activas] tiempo normal:", e.message);
   }
 
   // En una OT cerrada la zona no se pide: ahí ya no dice dónde está el carro

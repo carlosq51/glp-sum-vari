@@ -7,6 +7,8 @@ import { fechaPeruMenosDias_ } from "../lib/utils.js";
 import { dispararMotor_, despachoReparteAhora_ } from "./despacho.js";
 import { getUsuarioByEmail_, mapaUsuarios_ } from "../lib/authz.js";
 import { medianasPorCelda_, medianasParaRed_ } from "../lib/eta-carro.js";
+import { tiemposEstandarSiListo_ } from "../lib/tiempos-estandar.js";
+import { MIN_N_TECNICO } from "../lib/tiempo-real.js";
 import { esPlaza_, codigoZona_, ZONAS_EMERGENCIA } from "../lib/zonas-nombre.js";
 
 const router = Router();
@@ -116,6 +118,13 @@ async function registrarHistorial_(filas) {
 let _medianas = { dia: "", valor: null };
 
 async function medianasDelTaller_(cfg) {
+  // Primero el estándar corregido (lib/tiempos-estandar.js): mismas medianas
+  // por modelo y puesto, pero sin las noches que el reloj corrió porque alguien
+  // no marcó la salida. Lo de abajo queda para cuando aún no está calculado.
+  const est = tiemposEstandarSiListo_();
+  if (est?.porRol && Object.keys(est.porRol).length) {
+    return { porCelda: est.porCelda || {}, porRol: est.porRol, corregido: true };
+  }
   const hoy = fechaPeruMenosDias_(0);
   if (_medianas.dia === hoy && _medianas.valor) return _medianas.valor;
 
@@ -297,10 +306,15 @@ async function armarMapaZonas_() {
               // calcula al pintar, igual que hace con el cronómetro.
               if (rol === "MOTOR" || rol === "TANQUE") {
                 entry.relojes = entry.relojes || {};
+                // indice: el ritmo de quien la trabaja (1,10 = suele tardar un
+                // 10% más que el taller). El listón de su mitad es el normal
+                // del modelo × su ritmo; sin carros suficientes, el del taller.
+                const ritmo = tiemposEstandarSiListo_()?.porTecnico?.[a.user_id]?.[rol];
                 entry.relojes[rol] = {
                   estado: String(a.estado_actual || "").toUpperCase(),
                   tiempoMs: Number(a.tiempo_trab_ms || 0),
                   runningSince: a.running_since || null,
+                  indice: ritmo && ritmo.n >= MIN_N_TECNICO ? ritmo.indice : null,
                 };
               }
             }

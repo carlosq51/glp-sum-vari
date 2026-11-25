@@ -32,6 +32,7 @@ import {
   motivoDuplaAuto_, motivoAyudaManual_, vinDeDuplaApoyo_, validarAyudante_,
 } from "../lib/despacho.js";
 import { construirPool_, generarPropuestas_, puntuar_, ESPERA_TOPE_MIN } from "../lib/despacho-motor.js";
+import { salidaEstimada_, enDia_, hhmm_ } from "../lib/tiempo-real.js";
 import { estadoGeneralDeConversion_, fechaPeruMenosDias_ } from "../lib/utils.js";
 
 // El modelo de emparejamiento vive donde lo deja routes/ml.js al entrenar.
@@ -100,7 +101,7 @@ async function proyectarJornada_(fecha, userId, marcas) {
 
 // La nota que deja la pausa por salida. reanudarTrabajoDe_ la busca para
 // levantar SOLO lo que la salida pausó, nada que haya pausado otra persona.
-const NOTA_PAUSA_SALIDA = "Pausado por salida del taller";
+export const NOTA_PAUSA_SALIDA = "Pausado por salida del taller";
 
 /**
  * Al marcar salida, deja sus carros en PAUSADO.
@@ -109,7 +110,7 @@ const NOTA_PAUSA_SALIDA = "Pausado por salida del taller";
  * sigue siendo suyo para retomarlo mañana. Acumula el tiempo corrido igual que
  * lo haría una pausa normal, para no regalar horas de reloj a nadie.
  */
-async function pausarTrabajoDe_(userId) {
+async function pausarTrabajoDe_(userId, { hastaMs = null } = {}) {
   try {
     const abiertas = await fetch(
       `${SB()}/rest/v1/asignaciones?user_id=eq.${userId}&activo=eq.true` +
@@ -118,10 +119,12 @@ async function pausarTrabajoDe_(userId) {
     ).then(r => r.ok ? r.json() : []).catch(() => []);
     if (!abiertas.length) return 0;
 
-    const ahora = Date.now();
+    // `hastaMs`: la hora a la que se fue de verdad, cuando no marcó la salida
+    // (cierre automático). Lo que el reloj corrió después no es trabajo.
+    const ahora = Number.isFinite(hastaMs) ? Math.min(Date.now(), hastaMs) : Date.now();
     for (const a of abiertas) {
       const corrido = a.estado_actual === "TRABAJANDO" && a.running_since
-        ? ahora - new Date(a.running_since).getTime()
+        ? Math.max(0, ahora - new Date(a.running_since).getTime())
         : 0;
       await fetch(`${SB()}/rest/v1/asignaciones?id=eq.${a.id}`, {
         method: "PATCH",
@@ -1020,19 +1023,44 @@ export async function cerrarJornadaPendiente_() {
     for (const [userId, ms] of porUser) {
       const j = reconstruirJornada_(ms);
       if (j.estado === "FUERA") continue;
+      // No marcó la salida: se le cuenta hasta su última actividad, nunca antes
+      // del fin de su turno. Sin esto, el que se iba a las 16:30 se llevaba
+      // 12 h de reloj de regalo hasta este cierre (lib/tiempo-real.js).
+      const desdeMs = new Date(j.ingresoAt || ms[0]?.ts || Date.now()).getTime();
+      const salida = await salidaEstimadaDe_(userId, fecha, cfg, desdeMs);
       await fetch(`${SB()}/rest/v1/asistencia_marcas`, {
         method:  "POST",
         headers: { ...supabaseHeaders_(), "Prefer": "return=minimal" },
         body:    JSON.stringify({
           user_id: userId, tipo: "CIERRE_AUTO", origen: "AUTO",
-          motivo: "Salida no registrada — cierre automático de jornada",
+          motivo: `Salida no registrada — cierre automático. Trabajo contado hasta las ${horaPeru_(new Date(salida))}`,
         }),
       });
       await proyectarJornada_(fecha, userId, [
         ...ms, { tipo: "CIERRE_AUTO", ts: new Date().toISOString() },
       ]);
-      await pausarTrabajoDe_(userId);   // mismo criterio que una salida normal
+      await pausarTrabajoDe_(userId, { hastaMs: salida });
       cerrados++;
+    }
+
+    // Quien no marcó NADA en el día no entraba en el bucle de arriba, y su
+    // carro seguía corriendo hasta que volvía y lo cerraba: el "15 h" de una
+    // mitad empezada a las 17:30. Se le pausa igual, contado hasta su salida
+    // estimada; al día siguiente lo reanuda él (o el QR de ingreso).
+    try {
+      const corriendo = await fetch(
+        `${SB()}/rest/v1/asignaciones?activo=eq.true&estado_actual=eq.TRABAJANDO&tipo_ot=eq.CONVERSION` +
+        `&select=user_id`, { headers: supabaseHeaders_() },
+      ).then(r => r.ok ? r.json() : []).catch(() => []);
+      const sinMarcas = [...new Set(corriendo.map(a => a.user_id))].filter(u => u && !porUser.has(u));
+      const { desde } = jornadaRango_(fecha);
+      for (const userId of sinMarcas) {
+        const salida = await salidaEstimadaDe_(userId, fecha, cfg, desde.getTime());
+        const n = await pausarTrabajoDe_(userId, { hastaMs: salida });
+        if (n) console.log(`[Despacho] Cierre: ${userId} sin marcas, carro pausado con trabajo hasta ${horaPeru_(new Date(salida))}`);
+      }
+    } catch (e) {
+      console.warn("[Despacho] Cierre de los sin marca falló:", e.message);
     }
     if (cerrados) {
       console.log(`[Despacho] Cierre automático: ${cerrados} técnico(s) sin salida.`);
@@ -1041,6 +1069,65 @@ export async function cerrarJornadaPendiente_() {
   } catch (e) {
     console.warn("[Despacho] Cierre automático falló:", e.message);
   }
+}
+
+/**
+ * A qué hora se fue alguien que no marcó la salida: su última actividad en la
+ * app esa jornada, con piso en el fin de su turno (16:30 o su hora extra).
+ */
+async function salidaEstimadaDe_(userId, fecha, cfg, desdeMs) {
+  const ahora = Date.now();
+  let actividad = [], extra = null;
+  try {
+    const desdeIso = new Date(desdeMs).toISOString();
+    const [ev, hx] = await Promise.all([
+      fetch(`${SB()}/rest/v1/eventos?user_id=eq.${userId}&timestamp=gte.${encodeURIComponent(desdeIso)}` +
+        `&select=timestamp&order=timestamp.desc&limit=20`, { headers: supabaseHeaders_() })
+        .then(r => r.ok ? r.json() : []).catch(() => []),
+      fetch(`${SB()}/rest/v1/produccion_horas_extra?jornada_fecha=eq.${fecha}&user_id=eq.${userId}&select=hasta`,
+        { headers: supabaseHeaders_() }).then(r => r.ok ? r.json() : []).catch(() => []),
+    ]);
+    actividad = ev.map(e => new Date(e.timestamp).getTime());
+    extra = hhmm_(hx[0]?.hasta);
+  } catch { /* sin datos: vale el fin de turno */ }
+  if (extra != null && extra < 6 * 60) extra += 24 * 60;   // "00:30" es de madrugada
+  const finTurno = hhmm_(cfg?.PROYECCION_FIN_TURNO) ?? 990;
+  const piso = enDia_(fecha, Math.max(finTurno, extra ?? 0));
+  return salidaEstimada_({ desdeMs, hastaMs: ahora, actividadMs: actividad, pisoMs: piso });
+}
+
+/**
+ * reanudarTraspasado_ — un carro pausado por la salida de su dueño anterior,
+ * pasado a alguien que ya está en el taller, vuelve a correr.
+ *
+ * Caso real (2026-11-25): el MOTOR de un técnico que no volvió quedó pausado
+ * por el cierre automático; a las 9:37 se le pasó a otro que había marcado
+ * ingreso a las 7:50. Su ingreso ya había pasado, así que nadie lo reanudaba.
+ */
+export async function reanudarTraspasado_(asignacionId, userId) {
+  try {
+    const fila = await fetch(`${SB()}/rest/v1/asistencia_jornada?jornada_fecha=eq.${jornadaFecha_()}` +
+      `&user_id=eq.${userId}&select=estado`, { headers: supabaseHeaders_() })
+      .then(r => r.ok ? r.json() : []).catch(() => []);
+    // PRESENTE: está en el taller y no en pausa. En PAUSA o FUERA no corre.
+    if (fila[0]?.estado !== "PRESENTE") return false;
+    const ahora = new Date().toISOString();
+    const r = await fetch(
+      `${SB()}/rest/v1/asignaciones?id=eq.${asignacionId}&estado_actual=eq.PAUSADO` +
+      `&last_nota=eq.${encodeURIComponent(NOTA_PAUSA_SALIDA)}&tiempo_trab_ms=gt.0`,
+      {
+        method: "PATCH",
+        headers: { ...supabaseHeaders_(), Prefer: "return=representation" },
+        body: JSON.stringify({
+          estado_actual: "TRABAJANDO", running_since: ahora, pausa_hasta: null,
+          updated_at: ahora, last_nota: "Reanudado al pasarse a quien está en el taller", last_nota_ts: ahora,
+        }),
+      },
+    );
+    const filas = r.ok ? await r.json().catch(() => []) : [];
+    if (filas.length) emitEvent_("asignaciones", { accion: "REANUDAR_TRASPASO", id: asignacionId });
+    return filas.length > 0;
+  } catch { return false; }
 }
 
 /** Revisa cada 15 min y cierra cuando pasó la hora de fin de jornada. */

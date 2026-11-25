@@ -5,7 +5,7 @@ import { getConfig_, invalidateConfigCache_ } from "../lib/config.js";
 import { emitEvent_ } from "../lib/events.js";
 import { requireRol_, usuariosPorIds_, usuariosActivos_ } from "../lib/authz.js";
 import { aplicarPausaMasiva_, estadoHorarios_ } from "../lib/pausa-masiva.js";
-import { repartirTrasEvento_ } from "./despacho.js";
+import { repartirTrasEvento_, reanudarTraspasado_ } from "./despacho.js";
 
 const router = Router();
 
@@ -365,7 +365,11 @@ router.patch("/api/admin/asignaciones/:id", requireRol_("ADMIN", "SUPERVISOR"), 
     // parado porque nadie le busca trabajo nuevo. Sin esto espera al intervalo.
     if (previo && previo !== user_id) repartirTrasEvento_(`reasignación de ${id}`);
 
-    return res.json({ ok: true });
+    // Si venía pausado por la salida del anterior y el nuevo ya está dentro,
+    // sigue corriendo: su ingreso ya pasó y nadie más lo va a reanudar.
+    const reanudado = previo !== user_id ? await reanudarTraspasado_(id, user_id) : false;
+
+    return res.json({ ok: true, reanudado });
   } catch (e) {
     return res.status(500).json({ ok: false, error: String(e.message || e) });
   }

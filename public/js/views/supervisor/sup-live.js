@@ -977,16 +977,20 @@ function presenciaHTML_(t) {
   if (!a) return "";
 
   const etq   = etiquetaTrabajo_(a.vin, a.tipo_ramal).texto || "su carro";
-  const media = tiemposMedios_?.[String(t.rol || "").toUpperCase()] || null;
+  // El listón es lo normal de ESTA persona en ESTE carro (su ritmo × el normal
+  // del taller para ese modelo) cuando el servidor lo manda; si no, la media
+  // del puesto.
+  const media = a.normal?.ms || tiemposMedios_?.[String(t.rol || "").toUpperCase()] || null;
+  const queMedia = a.normal?.propio ? "lo normal suyo" : a.normal ? "lo normal del taller" : "media del puesto";
   const ms    = (Number(a.tiempo_ms) || 0)
               + (a.estado === "TRABAJANDO" && a.running_since ? Math.max(0, Date.now() - new Date(a.running_since).getTime()) : 0);
-  const lleva = `lleva ${fmtTiempo_(ms)}${media ? ` · media del puesto ${fmtTiempo_(media)}` : ""}`;
+  const lleva = `lleva ${fmtTiempo_(ms)}${media ? ` · ${queMedia} ${fmtTiempo_(media)}` : ""}`;
 
   let cls, texto;
   if (a.estado === "TRABAJANDO") {
     const tarde = media && ms > media;
     cls   = tarde ? "is-tarde" : "";
-    texto = `${tarde ? "Pasó la media" : "En tiempo"} en ${etq} · ${lleva}`;
+    texto = `${tarde ? "Pasó lo normal" : "En tiempo"} en ${etq} · ${lleva}`;
   } else {
     cls   = "is-pausa";
     texto = `${a.estado === "PAUSADO" ? "En pausa" : "Sin iniciar"} en ${etq} · ${lleva}`;
@@ -1231,9 +1235,12 @@ function abrirProyeccionDetalle_(data) {
       const x = t.proy || { turno: 0, extra: 0, total: 0, ritmo: 0, diasHist: 0 };
       const r = realDe_(t);
       sum.turno += x.turno; sum.extra += x.extra; sum.real += r;
+      const ab = x.abierta
+        ? ` · le faltan ~${escapeHtml(fmtTiempo_(x.abierta.faltaMs || 0))} a su carro${x.abierta.arrastre ? " (de días previos)" : ""}`
+        : "";
       const nota = !t.presente ? `<em>sin marca de asistencia</em>`
-        : x.diasHist ? `<em>${f1(x.ritmo)} mitades/día · ${x.diasHist} día${x.diasHist === 1 ? "" : "s"}</em>`
-        : `<em>sin historial: media del puesto</em>`;
+        : x.diasHist ? `<em>${f1(x.ritmo)} mitades/día · ${x.diasHist} día${x.diasHist === 1 ? "" : "s"}${ab}</em>`
+        : `<em>sin historial: media del puesto${ab}</em>`;
       return `
         <tr>
           <th scope="row">${escapeHtml(t.nombre || "—")}${nota}</th>
@@ -1281,10 +1288,16 @@ function abrirProyeccionDetalle_(data) {
       </div>
       ${gm.html}${gt.html}
       <div class="lvDrill__note">
-        Un carro son dos mitades: un motor y un tanque. Por eso la suma de los
-        delanteros da los carros del turno, y la de los tanqueros también — no se
-        suman entre sí. Lo de cada persona reparte ese total según su ritmo de los
-        últimos ${p.diasCalibracion} días; quien tiene pocos días se acerca a la media de su puesto.
+        Un carro son dos mitades: un motor y un tanque — las dos columnas no se suman entre sí.
+        ${p.porPersonaEnVivo
+          ? `Lo de cada persona se cuenta <b>en vivo</b>: lo que ya cerró, más su mitad abierta si
+             le alcanza el tiempo (con el avance que trae, aunque la haya empezado otro día, y lo que
+             suele tardar <b>esa persona</b> en ese modelo), más lo que su ritmo de los últimos
+             ${p.diasCalibracion} días rinde en lo que le queda de turno. Por eso la suma por personas
+             puede no cuadrar con el total del día, que sale de tasa × presentes.`
+          : `Por eso la suma de los delanteros da los carros del turno, y la de los tanqueros también.
+             Lo de cada persona reparte ese total según su ritmo de los últimos ${p.diasCalibracion} días;
+             quien tiene pocos días se acerca a la media de su puesto.`}
       </div>`,
   });
 }
@@ -1451,12 +1464,14 @@ export function cortesTablasHTML_(modelo) {
       personas, por eso «Carros completos» es menor que «Mitades cerradas».
       Toca un <b>nombre</b> para abrir su reporte de la jornada y una <b>cabecera</b>
       para ordenar o quedarte con un corte.
-      ${esHoy_ ? `El punto dice cómo va lo que tiene abierto contra la media de su puesto en los 30 días previos${
+      ${esHoy_ ? `El punto dice cómo va lo que tiene abierto contra lo que <b>esa persona</b> suele tardar en ese modelo
+        (su ritmo de los ${escapeHtml(String(tiemposMedios_?.dias || 30))} días previos, sin las horas que el reloj corrió con la persona fuera del taller).
+        Normal del taller${
         tiemposMedios_?.MOTOR || tiemposMedios_?.TANQUE
           ? ` (${[["MOTOR", tiemposMedios_.MOTOR], ["TANQUE", tiemposMedios_.TANQUE]].filter(([, m]) => m)
               .map(([r, m]) => `${escapeHtml(rolMeta(r).label.toLowerCase())} ${escapeHtml(fmtTiempo_(m))}`).join(" · ")})` : ""}:
         <i class="lvVivo" aria-hidden="true"></i> en tiempo,
-        <i class="lvVivo is-tarde" aria-hidden="true"></i> pasó la media,
+        <i class="lvVivo is-tarde" aria-hidden="true"></i> pasó lo normal,
         <i class="lvVivo is-pausa" aria-hidden="true"></i> en pausa o sin iniciar; sin punto, no tiene nada abierto.` : ""}
     </div>
   </div>`;
@@ -2021,6 +2036,14 @@ function abrirFaltas_(data) {
       ${lista.length ? lista.map(persona).join("") : `<div class="lvDrill__empty">Nadie.</div>`}
     </div>`;
   const porNombre = (l) => [...(l || [])].sort((x, y) => String(x.nombre).localeCompare(String(y.nombre)));
+  const ESTADO_ASIS = { PRESENTE: "en el taller", PAUSA: "en pausa", FUERA: "ya salió" };
+  const presente = (p) => `
+    <div class="lvDrill__row">
+      <span>${rolMeta(p.rol).icon} ${escapeHtml(p.nombre || "—")}</span>
+      <span>${escapeHtml(ESTADO_ASIS[p.estado] || "")}${p.ingreso
+        ? ` · entró ${escapeHtml(new Date(p.ingreso).toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit", timeZone: "America/Lima" }))}`
+        : ""}</span>
+    </div>`;
 
   openDrilldown({
     title: "Asistencia de conversión",
@@ -2031,7 +2054,12 @@ function abrirFaltas_(data) {
                  porNombre(a.faltaron))
         + (a.sinMarcar.length ? bloque("⚠️ Trabajaron sin marcar el QR",
                  "están en el taller, pero el despacho no les reparte carro hasta que marquen",
-                 porNombre(a.sinMarcar)) : ""),
+                 porNombre(a.sinMarcar)) : "")
+        + (a.presentes?.length ? `
+          <div class="lvDrill__group">
+            <div class="lvDrill__groupHead"><span>✅ Marcaron el QR</span><span>${a.presentes.length}</span></div>
+            ${porNombre(a.presentes).map(presente).join("")}
+          </div>` : ""),
   });
 }
 

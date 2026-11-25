@@ -27,6 +27,7 @@ import calibracionRouter from "./routes/calibracion.js";
 import whatsappRouter from "./routes/whatsapp.js";
 import telefonosRouter from "./routes/telefonos.js";
 import despachoRouter, { scheduleCierreJornada_, scheduleMotor_ } from "./routes/despacho.js";
+import { tiemposEstandar_ } from "./lib/tiempos-estandar.js";
 import invitadoRouter from "./routes/invitado.js";
 import produccionRouter from "./routes/produccion.js";
 import dbRouter from "./routes/db.js";
@@ -169,4 +170,7 @@ app.listen(PORT, "0.0.0.0", async () => {
   scheduleCierreJornada_(); // no-op mientras DESPACHO_MODO=OFF
   scheduleMotor_();         // idem: el motor no corre con el módulo apagado
   iniciarRealtime_();       // cambios de Apps Script → caches y pantallas (lib/realtime.js)
+  // El tiempo normal de cada trabajo y técnico (lib/tiempos-estandar.js): se
+  // calienta un minuto después del arranque para no competir con él.
+  setTimeout(() => tiemposEstandar_().catch(() => {}), 60_000).unref?.();
 });

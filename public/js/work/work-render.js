@@ -7,6 +7,35 @@ import { CORE, ctx_ } from "../core/state.js";
 import { el_ } from "../core/dom.js";
 import { cssEsc_, escapeHtml, fmtFechaCreacion_, msToHMS_, diaPeru_ } from "../core/format.js";
 import { computeLiveMs_ } from "./work-time.js";
+
+/** 9 900 000 → "2 h 45" · 2 400 000 → "40 min" */
+function durCorta_(ms) {
+  const min = Math.max(0, Math.round(ms / 60_000));
+  const h = Math.floor(min / 60), m = min % 60;
+  return h ? `${h} h ${String(m).padStart(2, "0")}` : `${m} min`;
+}
+
+/**
+ * Debajo del cronómetro: lo normal para ESTA persona en ESTE carro (su ritmo
+ * × lo que tarda el taller en ese modelo), o cuánto lleva de más. Es la misma
+ * cuenta que usa el supervisor en el LIVE: el técnico ve lo mismo que le miden.
+ */
+function normalTexto_(it, ms) {
+  const n = it?.normal;
+  if (!n?.ms || String(it.estado || "").toUpperCase() === "FINALIZADO") return "";
+  if (ms > n.ms + 60_000) return `${durCorta_(ms - n.ms)} más de lo normal`;
+  return `${n.propio ? "Tu normal" : "Normal"} ~${durCorta_(n.ms)}`;
+}
+function normalHTML_(it, ms) {
+  const txt = normalTexto_(it, ms);
+  if (!txt) return "";
+  const n = it.normal;
+  const ayuda = n.propio
+    ? `Lo que sueles tardar tú en este modelo. El taller tarda ${durCorta_(n.tallerMs)}.`
+    : "Lo que tarda el taller en este modelo (aún no hay carros tuyos suficientes para medir tu ritmo).";
+  const pasado = computeLiveMs_(it) > n.ms + 60_000;
+  return `<div class="small js-normal" title="${escapeHtml(ayuda)}" style="text-align:right;margin-top:4px;${pasado ? "color:var(--danger,#f87171);font-weight:700;" : "opacity:.75;"}">${escapeHtml(txt)}</div>`;
+}
 import { buildAsignadoHTML_, buildBotonesByEstado_ } from "./work-templates.js";
 import { personalCalidadHTML_ } from "./llamado-voz.js";
 import { informeEstadoHTML_, pintarInformes_ } from "./informe-estado.js";
@@ -157,6 +186,7 @@ export function renderActivas_() {
           </div>
           <div class="jobRight">
             <div class="jobTimePill js-tiempo">⏱ ${live}</div>
+            ${normalHTML_(it, computeLiveMs_(it, nowMs))}
             <div class="jobChevron"></div>
           </div>
         </div>
@@ -317,6 +347,15 @@ export function patchVisibleCards_() {
 
     const timeEl = card.querySelector(".js-tiempo");
     if (timeEl) timeEl.textContent = `⏱ ${msToHMS_(computeLiveMs_(it, nowMs))}`;
+    const normalEl = card.querySelector(".js-normal");
+    if (normalEl) {
+      const ms = computeLiveMs_(it, nowMs);
+      normalEl.textContent = normalTexto_(it, ms);
+      const pasado = it.normal?.ms && ms > it.normal.ms + 60_000;
+      normalEl.style.color = pasado ? "var(--danger,#f87171)" : "";
+      normalEl.style.fontWeight = pasado ? "700" : "";
+      normalEl.style.opacity = pasado ? "1" : ".75";
+    }
 
     try {
       const rol = String(it.rolTrabajo || "").toUpperCase();
