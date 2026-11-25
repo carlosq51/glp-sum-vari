@@ -1498,6 +1498,78 @@ router.get("/api/supervisor/live", async (req, res) => {
   }
 });
 
+// ─── GET /api/publico/produccion-cc ──────────────────────────────────────────
+// Para un sistema de fuera: SOLO el número "Producción con control de calidad"
+// de la jornada de hoy (el 25 del LIVE). Nada de técnicos, VINs ni metas.
+//
+// Tres frenos, porque es la única ruta pensada para que la llame una máquina
+// ajena a voluntad:
+//   1. Llave obligatoria (PRODUCCION_API_KEY en el entorno, cabecera x-api-key).
+//      Sin la variable puesta, la ruta responde 503: apagada por defecto.
+//   2. Foto fija de PRODUCCION_API_TTL_MIN minutos (60 por defecto). Da igual
+//      cuántas veces pregunten: dentro de esa ventana se responde de memoria,
+//      sin tocar Supabase ni armar el LIVE. Y cuando toca refrescar, se lee
+//      del mismo cache del LIVE que ya mantienen los supervisores.
+//   3. Límite por IP (10 por minuto) para que un bucle no llene los logs.
+const PUB_RL_MAX = 10;
+const _pubHits = new Map();
+let _pubFoto = null;      // { body, hasta }
+let _pubEnCurso = null;   // promesa compartida si llegan varias a la vez
+
+function pubExcede_(ip) {
+  const ahora = Date.now();
+  const previas = (_pubHits.get(ip) || []).filter(t => ahora - t < 60_000);
+  previas.push(ahora);
+  _pubHits.set(ip, previas);
+  if (_pubHits.size > 1000) {
+    for (const [k, v] of _pubHits) if (ahora - v[v.length - 1] > 60_000) _pubHits.delete(k);
+  }
+  return previas.length > PUB_RL_MAX;
+}
+
+router.get("/api/publico/produccion-cc", async (req, res) => {
+  const llave = process.env.PRODUCCION_API_KEY;
+  if (!llave) return res.status(503).json({ ok: false, error: "No disponible." });
+  if (req.get("x-api-key") !== llave) return res.status(401).json({ ok: false, error: "Llave inválida." });
+
+  const ip = req.ip || req.socket?.remoteAddress || "?";
+  if (pubExcede_(ip)) return res.status(429).json({ ok: false, error: "Demasiadas consultas." });
+
+  try {
+    if (!_pubFoto || Date.now() >= _pubFoto.hasta) {
+      _pubEnCurso ||= (async () => {
+        const cfg = await getConfig_();
+        const hoyStr = jornadaPeru_(cfg.LIVE_JORNADA_INICIO || "05:00");
+        // Misma clave que /api/supervisor/live: si un supervisor tiene el
+        // panel abierto, esto no cuesta ni una consulta.
+        const live = await cachedByTopics_(
+          `supervisor:live:${hoyStr}`, TOPICS_LIVE, cfg.SRV_CACHE_PESADO_MS,
+          () => armarLiveSupervisor_(null),
+        );
+        const ttlMin = Math.max(5, Number(process.env.PRODUCCION_API_TTL_MIN) || 60);
+        const ahora = Date.now();
+        _pubFoto = {
+          hasta: ahora + ttlMin * 60_000,
+          body: {
+            fecha: live.fecha,
+            produccion_cc: Number(live.vinsSummary?.calDone) || 0,
+            actualizado: new Date(ahora).toISOString(),
+          },
+        };
+      })().finally(() => { _pubEnCurso = null; });
+      await _pubEnCurso;
+    }
+    const seg = Math.max(0, Math.round((_pubFoto.hasta - Date.now()) / 1000));
+    res.set("Cache-Control", `public, max-age=${seg}`);
+    return res.json(_pubFoto.body);
+  } catch (e) {
+    console.error("[GET /api/publico/produccion-cc]", e.message);
+    // Si falla el refresco pero hay una foto vieja, mejor eso que nada.
+    if (_pubFoto) return res.json(_pubFoto.body);
+    return res.status(500).json({ ok: false, error: "No se pudo consultar." });
+  }
+});
+
 // endpoint Node → Supabase (supervisor_conversion_detail) - LECTURA SOLO
 router.get("/api/supervisor/conversion-detail", async (req, res) => {
   try {
