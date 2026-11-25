@@ -146,6 +146,12 @@
   line-height: 1;
 }
 
+/* Zonas de emergencia E16-E18 (encima de la Z15): misma plaza, borde
+   punteado y número en rojo para que se lean como desborde, no como plaza
+   de siempre. El color del estado sigue mandando en el fondo. */
+.zonaCard--emergencia { border-style: dashed; }
+.zonaCard--emergencia .zonaNum { color: var(--danger); }
+
 /* Insignia de estado en la esquina superior derecha */
 .zonaCard--en_conversion::after,
 .zonaCard--finalizado::after,

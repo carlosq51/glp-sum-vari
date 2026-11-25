@@ -12,6 +12,7 @@ import { updateHubModuleBadge } from "../../core/ui-shell.js";
 import { createScanner } from "../../core/qr-scanner.js";
 import { icon } from "../../core/icons.js";
 import { initZonasMapa } from "../zonas/zonas-mapa.js";
+import { nombreZona_ } from "../../core/zona-nombre.js";
 import { startPoll, stopPoll } from "../../core/poll.js";
 import { exportCsv_ } from "../../core/csv.js";
 import { requestNotifPermission } from "../../core/push-client.js";
@@ -484,7 +485,7 @@ function renderList0_(rows) {
   /** Fila "Zona 11 · desde 15:20 · Carlos" del timeline de la tarjeta. */
   const zonaRowHtml = (z) => {
     if (!z) return "";
-    const nombre = z.id === "LIBRE" ? "Zona libre" : `Zona ${z.id}`;
+    const nombre = z.id === "LIBRE" ? "Zona libre" : nombreZona_(z.id);
     const dz = diasDesde_(z.desde);
     const cuando = !z.desde ? ""
       : esHoyPeru_(z.desde) ? `hoy ${horaLima_(z.desde)}`

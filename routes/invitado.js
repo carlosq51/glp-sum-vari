@@ -24,6 +24,7 @@ import { isValidOT_ } from "../lib/utils.js";
 import { getConfig_ } from "../lib/config.js";
 import { cachedByTopics_ } from "../lib/poll-cache.js";
 import { ttlConRealtime_ } from "../lib/realtime.js";
+import { nombreZona_ } from "../lib/zonas-nombre.js";
 
 const router = Router();
 
@@ -537,7 +538,7 @@ router.post("/api/vin/lote", async (req, res) => {
             lista_diaria: lista ? lista.has(r.vin) : null,
             zona: z && z.zona_id ? {
               id: z.zona_id,
-              nombre: z.zona_id === 16 ? "Zona Libre" : `Zona ${z.zona_id}`,
+              nombre: nombreZona_(z.zona_id),
               por: z.registrado_por || "",
               desde: z.registrado_at || null,
             } : null,
@@ -671,7 +672,7 @@ router.get("/api/vin/ficha/:vin", async (req, res) => {
           // zona_id 16 es "zona libre" (desborde), no una plaza del taller.
           zona: z && z.zona_id ? {
             id: z.zona_id,
-            nombre: z.zona_id === 16 ? "Zona Libre" : `Zona ${z.zona_id}`,
+            nombre: nombreZona_(z.zona_id),
             por: z.registrado_por || "",
             desde: z.registrado_at || null,
           } : null,

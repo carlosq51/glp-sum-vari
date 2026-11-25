@@ -22,6 +22,7 @@
 // =========================
 
 import { CORE, escapeHtml, postJSON } from "../../core/core.js";
+import { esPlaza_ } from "../../core/zona-nombre.js";
 
 const ROL_LABEL = { MOTOR: "Delantero", TANQUE: "Tanquero" };
 
@@ -98,7 +99,7 @@ function carroDePanel_(panel, { zonaId, vin }) {
   const donde = [...(panel.zonas || []), ...(panel.sinZona || [])];
   const porVin = vin ? donde.find(z => z.vin === vin) : null;
   if (porVin) return porVin;
-  if (zonaId >= 1 && zonaId <= 15) return donde.find(z => z.zona_id === zonaId) || null;
+  if (esPlaza_(zonaId)) return donde.find(z => z.zona_id === zonaId) || null;
   return null;
 }
 

@@ -55,6 +55,7 @@ import { renderAvance_ } from "./tec-avance.js";
 import { renderApoyo_ } from "./tec-apoyo.js";
 import { startPoll, stopPoll } from "../../core/poll.js";
 import { cfg } from "../../core/config.js";
+import { etiquetaZona_ } from "../../core/zona-nombre.js";
 
 // --------------------------
 // TEC CARD NAVIGATION
@@ -555,7 +556,7 @@ function showCarroAsignadoBanner_({ zona_id, modelo, rol_trabajo, vin }) {
     html: `
       <div style="flex:1;min-width:0;">
         <div style="font-size:1.05rem;font-weight:800;line-height:1.25;">
-          🚗 Carro asignado — ve a la zona ${escapeHtml(String(zona_id ?? "?"))}
+          🚗 Carro asignado — ve a la zona ${escapeHtml(zona_id != null ? etiquetaZona_(zona_id) : "?")}
         </div>
         ${detalle ? `<div style="font-size:.9rem;font-weight:600;opacity:.9;margin-top:3px;">${escapeHtml(detalle)}</div>` : ""}
         ${vin ? `<div style="font-size:.78rem;opacity:.8;margin-top:2px;font-family:monospace;">${escapeHtml(vin)}</div>` : ""}

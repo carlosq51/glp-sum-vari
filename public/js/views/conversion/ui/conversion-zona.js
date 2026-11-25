@@ -9,6 +9,7 @@
 import { CORE, escapeHtml, getJSON, createVinSuggest_ } from "../../../core/core.js";
 import { createScanner } from "../../../core/qr-scanner.js";
 import { promptZonaForVin } from "../../zonas/zonas-mapa.js";
+import { nombreZona_ } from "../../../core/zona-nombre.js";
 
 const zonaScanner_ = createScanner("tecZonaQrReader");
 
@@ -51,7 +52,7 @@ async function showZonaActual_(vin) {
     const j = await getJSON(`/api/zonas/vin/${encodeURIComponent(vin)}`);
     if (!j?.ok) throw new Error(j?.error || "Error");
     box.innerHTML = j.zona_id
-      ? `<div class="small">Ahora mismo está en <b>Zona ${j.zona_id}</b>. Si lo asignas de nuevo, se moverá.</div>`
+      ? `<div class="small">Ahora mismo está en <b>${nombreZona_(j.zona_id)}</b>. Si lo asignas de nuevo, se moverá.</div>`
       : `<div class="small muted">Todavía no tiene zona asignada.</div>`;
   } catch {
     box.innerHTML = "";
@@ -65,7 +66,7 @@ function elegirZona_() {
   const nombre = miNombre_();
   setMsg_("");
   promptZonaForVin(vin, (zonaId) => {
-    const dondeTxt = zonaId === 16 ? "Zona Libre" : `Zona ${zonaId}`;
+    const dondeTxt = nombreZona_(zonaId);
     setMsg_(`✅ <b>${escapeHtml(vin)}</b> registrado en <b>${dondeTxt}</b>${nombre ? ` a nombre de ${escapeHtml(nombre)}` : ""}.`, "ok");
     const inp = $id("tecZonaVin");
     if (inp) inp.value = "";

@@ -20,6 +20,7 @@ import { emitEvent_ } from "../lib/events.js";
 import { cachedByTopics_ } from "../lib/poll-cache.js";
 import { ttlConRealtime_ } from "../lib/realtime.js";
 import { sendPushToEmails_ } from "../lib/push.js";
+import { etiquetaZona_, codigoZona_ } from "../lib/zonas-nombre.js";
 import {
   jornadaFecha_, jornadaRango_, horaPeru_, minutosDelDia_, hhmmAMinutos_,
   slotActual_, firmarSlot_, verificarToken_, tokenEstatico_,
@@ -1653,7 +1654,7 @@ async function aplicarDuplasAuto_(fecha, { formar, disolver }, t) {
     for (const f of formadas) {
       const ancla = nombres.get(f.anclaId) || "tu compañero";
       const ayuda = nombres.get(f.ayudanteId) || "tu compañero";
-      const zona  = f.zonaId != null ? `zona ${f.zonaId}` : "su carro";
+      const zona  = f.zonaId != null ? `zona ${etiquetaZona_(f.zonaId)}` : "su carro";
       await sendPushToEmails_([emails.get(f.ayudanteId)].filter(Boolean), {
         title: `🤝 Apoya a ${primerNombre_(ancla)}`,
         body: `${zona} · ${f.rol} · el carro queda a su nombre`,
@@ -1821,7 +1822,7 @@ async function avisarAsignados_(propuestas, tecnicos) {
           .map(m => porId.get(m)?.nombre).filter(Boolean).join(", "))
       : "";
     await sendPushToEmails_(destinos, {
-      title: `🚗 Te toca la zona ${p.zona_id}`,
+      title: `🚗 Te toca la zona ${etiquetaZona_(p.zona_id)}`,
       body: `${p.rol_trabajo} · ${p.modelo || "Vehículo"}${compa}`,
     }).catch(() => {});
   }
@@ -1990,7 +1991,7 @@ export async function correrMotor_({ persistir = true, simularAsistencia = false
         // Además del log: al resumen. Un fallo que solo existe en stdout es un
         // fallo invisible — el motor puede pasarse horas reintentando lo mismo
         // sin que nada lo delate en pantalla ni en /motor/preview.
-        console.warn(`[Despacho] Z${p.zona_id} ${p.rol_trabajo}: ${r.error}`);
+        console.warn(`[Despacho] ${codigoZona_(p.zona_id)} ${p.rol_trabajo}: ${r.error}`);
         resumen.fallidas.push({
           zona_id: p.zona_id, vin: p.vin, rol_trabajo: p.rol_trabajo, error: r.error,
         });

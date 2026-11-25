@@ -1,7 +1,7 @@
 // =========================
 // public/js/views/zonas/zonas-mapa.js
-// Componente compartido: mapa visual de las 15 zonas de conversión.
-// Layout: 9 zonas izquierda | carretera | 6 zonas derecha | Zona Libre
+// Componente compartido: mapa visual de las 15 zonas de conversión + E16-E18.
+// Layout: E18-E16 y Z15-Z10 izquierda | carretera | Z9-Z1 derecha | Zona Libre
 // =========================
 
 import { escapeHtml, postJSON, createVinSuggest_, getEmail } from "../../core/core.js";
@@ -11,6 +11,7 @@ import { zonaCardHTML_, zonasGridHTML_ } from "./zonas-layout.js";
 import { puedeDespachar_, montarPuestos_, CONSOLA_DESPACHO } from "./zonas-despacho.js";
 import { etaDeZona_, etaBadgeHTML_, etaLineaHTML_, tiemposDeZona_ } from "./zonas-eta.js";
 import { fmtElapsedMin_ } from "../../core/format.js";
+import { nombreZona_, codigoZona_ } from "../../core/zona-nombre.js";
 
 // Toda escritura del mapa va firmada con la cuenta en sesión: el servidor
 // resuelve el nombre contra `usuarios` y lo guarda en zonas_historial. Antes
@@ -195,7 +196,7 @@ function openActionSheet_(zona, onRefresh) {
   const label   = ESTADO_LABEL[zona.estado] || "Libre";
   const hasVin  = !!zona.vin;
   const esLibre = zona.zona_id === 16;
-  const zonaNom = esLibre ? "Zona Libre" : `Zona ${zona.zona_id}`;
+  const zonaNom = nombreZona_(zona.zona_id);
 
   // Mover técnicos es cosa de supervisión. Para el movilizador la hoja sigue
   // siendo exactamente la de antes: asignar carro y liberar plaza.
@@ -213,7 +214,7 @@ function openActionSheet_(zona, onRefresh) {
   sheet.innerHTML = `
     <div class="zonasActionBox zonasActionBox--scroll" role="dialog" aria-modal="true" aria-label="${zonaNom}">
       <div class="zonasActionHead">
-        <span class="zonasActionZona zonasActionZona--${css}">${esLibre ? "ZL" : `Z${zona.zona_id}`}</span>
+        <span class="zonasActionZona zonasActionZona--${css}">${codigoZona_(zona.zona_id)}</span>
         <div class="zonasActionHeadTxt">
           <div class="zonasActionTitle">${zonaNom}
             <span class="zonasActionEstado zonasActionEstado--${css}">${label}</span>
@@ -308,7 +309,7 @@ function escCierra_(e) { if (e.key === "Escape") closeActionSheet_(); }
 
 // Mini form para asignar un VIN a una zona específica (desde click en spot)
 function openPickerForZone_(zonaId, onRefresh) {
-  const zonaNom = zonaId === 16 ? "Zona Libre" : `Zona ${zonaId}`;
+  const zonaNom = nombreZona_(zonaId);
 
   const sheet = document.createElement("div");
   sheet.className = "zonasActionSheet";

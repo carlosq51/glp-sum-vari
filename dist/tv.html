@@ -21,10 +21,10 @@
     Escena 2 · MAPA      — el taller completo, rotado a horizontal
 
   El mapa se rota 90° respecto de la app: en el celular son dos columnas
-  verticales, aquí son dos filas (6 zonas arriba, 9 abajo) con el pasillo
-  horizontal en medio. Ambas filas usan la MISMA rejilla de 9 columnas, así
-  que las 6 de arriba miden igual que las de abajo y quedan alineadas a la
-  izquierda — que es como está el taller.
+  verticales, aquí son dos filas (Z10-Z15 + E16-E18 arriba, Z1-Z9 abajo) con
+  el pasillo horizontal en medio. Ambas filas usan la MISMA rejilla de 12
+  columnas (arriba las 3 que sobran son el QR), así que todas las plazas miden
+  igual y quedan alineadas a la izquierda — que es como está el taller.
 
   EL COLOR DEL CARRO dice dos cosas a la vez, y se lee desde lejos sin texto:
   cuánta gente tiene (blanco nadie · amarillo uno · azul la dupla) y qué lado
@@ -409,12 +409,13 @@
     padding: calc(var(--u) * .7);
   }
 
-  /* LAS DOS FILAS COMPARTEN REJILLA DE 9 COLUMNAS: así las 6 de arriba miden
-     exactamente igual que las 9 de abajo, y quedan alineadas a la izquierda
-     sin necesidad de calcular anchos. */
+  /* LAS DOS FILAS COMPARTEN REJILLA DE 12 COLUMNAS: arriba van Z10-Z15, las
+     tres de emergencia E16-E18 y el QR (3 columnas); abajo Z1-Z9. Así todas
+     las plazas miden igual y quedan alineadas a la izquierda sin calcular
+     anchos. (Eran 9 columnas hasta que se agregaron E16-E18, 2026-11-25.) */
   .fila {
     display: grid;
-    grid-template-columns: repeat(9, 1fr);
+    grid-template-columns: repeat(12, 1fr);
     gap: calc(var(--u) * .45);
     min-height: 0;
   }
@@ -497,6 +498,9 @@
     color: var(--amber);
     font-variant-numeric: tabular-nums;
   }
+  /* Zonas de emergencia E16-E18: el número en rojo, el resto igual. */
+  .spot--emer { border-style: dashed; }
+  .spot--emer .spotZona { color: var(--danger); }
   .spotTiempo {
     font-size: calc(var(--u) * .8);
     color: var(--muted);
@@ -933,8 +937,13 @@
   // Layout físico del taller. En la app móvil las columnas van de mayor a
   // menor (Z15 arriba, Z9 arriba); aquí van ASCENDENTES desde la izquierda,
   // que es como se recorre el taller a pie: Z10 y Z1 son las de la entrada.
-  const FILA_ARRIBA = [10, 11, 12, 13, 14, 15];
+  // 116-118 = zonas de emergencia E16-E18, encima de la Z15. Se guardan así
+  // porque el 16 ya es Zona Libre (lib/zonas-nombre.js); se muestran id − 100.
+  const FILA_ARRIBA = [10, 11, 12, 13, 14, 15, 116, 117, 118];
   const FILA_ABAJO  = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+  const esEmer = n => n >= 116 && n <= 118;
+  const zEtq   = n => n == null || n === "" ? "" : esEmer(Number(n)) ? "E" + (n - 100) : String(n); // "7" · "E16"
+  const zCod   = n => esEmer(Number(n)) ? zEtq(n) : "Z" + n;                                       // "Z7" · "E16"
 
   const $ = id => document.getElementById(id);
   const esc = s => String(s ?? "").replace(/[&<>"]/g, c =>
@@ -1168,7 +1177,7 @@
         .map(c => "asig--" + c).join(" ");
       return `
         <article class="asig ${cls} ${nueva ? "nueva" : ""}">
-          <div class="zona"><b>${esc(a.zona ?? "–")}</b><small>Zona</small></div>
+          <div class="zona"><b>${esc(a.zona != null ? zEtq(a.zona) : "–")}</b><small>Zona</small></div>
           <div>
             <div class="duo">
               <span><span class="rol motor">M</span> ${esc(a.motor || "—")}${
@@ -1197,7 +1206,7 @@
     $("cola").innerHTML = lista.length
       ? lista.map(c => `
           <div class="colaItem">
-            <span class="z">Z${esc(c.zona)}</span>
+            <span class="z">${esc(zCod(c.zona))}</span>
             <span class="m">${esc(c.modelo || "")}</span>
             <span class="e">${esc(c.espera || "")}</span>
           </div>`).join("")
@@ -1242,8 +1251,8 @@
     const h = Math.floor(p.minutos / 60);
     a.hidden = false;
     a.textContent = lista.length === 1
-      ? `Z${p.zona} varado ${h} h`
-      : `${lista.length} varados · Z${p.zona} ${h} h`;
+      ? `${zCod(p.zona)} varado ${h} h`
+      : `${lista.length} varados · ${zCod(p.zona)} ${h} h`;
   }
 
   // ─── Render · producción del pie ───
@@ -1292,8 +1301,8 @@
   function spotHTML(z) {
     // Plaza sin carro: sigue siendo el asfalto vacío, no un carro blanco.
     if (!z.vin) {
-      return `<div class="spot spot--libre">
-        <div class="spotTop"><span class="spotZona">Z${z.zona_id}</span></div>
+      return `<div class="spot spot--libre${esEmer(z.zona_id) ? " spot--emer" : ""}">
+        <div class="spotTop"><span class="spotZona">${zCod(z.zona_id)}</span></div>
         <div class="spotVacio">P</div>
         <div class="spotPie"></div>
       </div>`;
@@ -1321,9 +1330,9 @@
       ? linea("M", del, finD) + linea("T", tan, finT)
       : `<div class="spotTec"><span class="spotTecNom">Sin asignar</span></div>`;
 
-    return `<div class="spot ${cls}">
+    return `<div class="spot ${cls}${esEmer(z.zona_id) ? " spot--emer" : ""}">
       <div class="spotTop">
-        <span class="spotZona">Z${z.zona_id}</span>
+        <span class="spotZona">${zCod(z.zona_id)}</span>
         <span class="spotTiempo">${transcurrido(z.registrado_at)}</span>
       </div>
       <div class="spotTecs">${tecs}</div>
@@ -1334,7 +1343,7 @@
     </div>`;
   }
 
-  // La fila de arriba tiene 6 zonas en una rejilla de 9: sobran 3 columnas.
+  // La fila de arriba tiene 9 plazas (6 + E16-E18) en una rejilla de 12: sobran 3 columnas.
   // Ese hueco es el mejor sitio de toda la pantalla para el QR — grande, a la
   // altura de la vista y sin quitarle espacio a nada.
   const qrMapaHTML = () => `

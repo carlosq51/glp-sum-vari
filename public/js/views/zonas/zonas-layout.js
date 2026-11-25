@@ -10,9 +10,12 @@
 
 import { escapeHtml } from "../../core/core.js";
 import { fmtElapsedMin_ } from "../../core/format.js";
+import { codigoZona_, esEmergencia_ } from "../../core/zona-nombre.js";
 
 // ── Layout físico del taller ─────────────────────────────────────────────────
-export const COL_IZQUIERDA = [15, 14, 13, 12, 11, 10];   // Z15 arriba → Z10 abajo
+// 118/117/116 son las zonas de emergencia E18/E17/E16, encima de la Z15
+// (core/zona-nombre.js explica por qué no son 16-18).
+export const COL_IZQUIERDA = [118, 117, 116, 15, 14, 13, 12, 11, 10]; // E18 arriba → Z10 abajo
 export const COL_DERECHA   = [9, 8, 7, 6, 5, 4, 3, 2, 1]; // Z9 arriba  → Z1 abajo
 
 /**
@@ -35,14 +38,15 @@ export function zonaCardHTML_(z, { variant = "libre", clickable = true, attrs = 
   const modelo    = z.modelo || "";
   const tiempo    = isOcupada ? fmtElapsedMin_(z.registrado_at) : "";
   const roClass   = clickable ? "" : " readOnly";
+  const emerClass = esEmergencia_(z.zona_id) ? " zonaCard--emergencia" : "";
 
   return `
-    <div class="zonaCard zonaCard--${variant}${extraClass ? ` ${extraClass}` : ""}${roClass}"
+    <div class="zonaCard zonaCard--${variant}${extraClass ? ` ${extraClass}` : ""}${emerClass}${roClass}"
          data-zona="${z.zona_id}"
          data-vin="${escapeHtml(z.vin || "")}"
          ${attrs}
          role="${clickable ? "button" : "presentation"}" tabindex="${clickable ? "0" : "-1"}">
-      <span class="zonaNum">Z${z.zona_id}</span>
+      <span class="zonaNum">${codigoZona_(z.zona_id)}</span>
       ${isOcupada ? `
         <div class="zonaCarOuter">
           <div class="zonaCarShape">

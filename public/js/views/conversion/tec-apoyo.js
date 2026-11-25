@@ -21,6 +21,7 @@
 import { getJSON } from "../../core/api.js";
 import { escapeHtml } from "../../core/format.js";
 import { CORE } from "../../core/core.js";
+import { etiquetaZona_ } from "../../core/zona-nombre.js";
 
 function emailActual_() {
   const p = CORE.state.currentProfile;
@@ -52,7 +53,7 @@ export function apoyoHTML_(dupla, miUserId) {
   const soyTitular = dupla.lider_user_id === miUserId;
   const otro  = escapeHtml(primerNombre_(companeroDe_(dupla, miUserId)));
   const zona  = dupla.zonaId != null
-    ? ` en la <b>zona ${escapeHtml(String(dupla.zonaId))}</b>` : "";
+    ? ` en la <b>zona ${escapeHtml(etiquetaZona_(dupla.zonaId))}</b>` : "";
   const vin   = dupla.vin ? `<div class="tecApoyoVin">${escapeHtml(dupla.vin)}</div>` : "";
 
   // El titular necesita saber que le llegó ayuda; el ayudante, adónde ir y de

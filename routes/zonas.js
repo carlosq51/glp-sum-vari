@@ -7,6 +7,7 @@ import { fechaPeruMenosDias_ } from "../lib/utils.js";
 import { dispararMotor_, despachoReparteAhora_ } from "./despacho.js";
 import { getUsuarioByEmail_, mapaUsuarios_ } from "../lib/authz.js";
 import { medianasPorCelda_, medianasParaRed_ } from "../lib/eta-carro.js";
+import { esPlaza_, codigoZona_, ZONAS_EMERGENCIA } from "../lib/zonas-nombre.js";
 
 const router = Router();
 
@@ -57,7 +58,7 @@ async function estadoPrevioZonas_(vin, zonaNum) {
     // el filtro se arma solo con lo que hay.
     const cond = [];
     if (vin) cond.push(`vin.eq.${encodeURIComponent(vin)}`);
-    if (zonaNum >= 1 && zonaNum <= 15) cond.push(`zona_id.eq.${zonaNum}`);
+    if (esPlaza_(zonaNum)) cond.push(`zona_id.eq.${zonaNum}`);
     if (!cond.length) return { dondeEstaba: null, ocupante: "" };
     const r = await fetch(
       `${process.env.SUPABASE_URL}/rest/v1/conversion_zonas?or=(${cond.join(",")})&select=zona_id,vin`,
@@ -168,7 +169,7 @@ async function medianasDelTaller_(cfg) {
 }
 
 // GET /api/zonas
-// 15 zonas físicas + zona 16 virtual (VINs sin zona asignada).
+// 15 zonas físicas + E16-E18 de emergencia (ids 116-118) + Zona Libre aparte.
 // El estado de cada zona se computa desde work_orders en tiempo real.
 //
 // El armado va aparte del handler porque la respuesta se sirve CACHEADA: la
@@ -485,7 +486,7 @@ router.get("/api/zonas", async (req, res) => {
 });
 
 // POST /api/zonas/asignar
-// body: { zona_id (1-15 o 16=sin ubicación), vin, email, origen? }
+// body: { zona_id (1-15, 116-118 = E16-E18, o 16 = Zona Libre), vin, email, origen? }
 //
 // `usuario` ya no se lee: el nombre sale de la cuenta, no del body.
 // Ver identidadZona_().
@@ -508,6 +509,19 @@ router.post("/api/zonas/asignar", async (req, res) => {
     // lee ahora porque los PATCH de abajo borran ambas cosas.
     const previo = await estadoPrevioZonas_(vinNorm, zonaNum);
 
+    // E16-E18 solo existen si se corrió la migración 016. Se comprueba ANTES
+    // de tocar nada: el paso 1 saca el carro de donde está, y un PATCH a una
+    // fila que no existe responde 200 igual — el carro se quedaría sin sitio
+    // y la respuesta diría ok.
+    if (ZONAS_EMERGENCIA.includes(zonaNum)) {
+      const chk = await fetch(`${SUPABASE_URL}/rest/v1/conversion_zonas?zona_id=eq.${zonaNum}&select=zona_id`,
+        { method: "GET", headers });
+      if (!chk.ok || !(await chk.json()).length) {
+        return res.status(503).json({ ok: false,
+          error: `La zona ${codigoZona_(zonaNum)} aún no existe en la base. Falta correr supabase/migrations/016_zonas-emergencia.sql.` });
+      }
+    }
+
     // 1. Quitar el VIN de cualquier zona donde esté actualmente
     await fetch(
       `${SUPABASE_URL}/rest/v1/conversion_zonas?vin=eq.${encodeURIComponent(vinNorm)}`,
@@ -518,8 +532,9 @@ router.post("/api/zonas/asignar", async (req, res) => {
       }
     );
 
-    // 2. Si zona 1-15, asignar a esa zona (desplaza al anterior si la ocupa)
-    if (zonaNum >= 1 && zonaNum <= 15) {
+    // 2. Si es plaza (1-15 o emergencia E16-E18), asignar a esa zona
+    // (desplaza al anterior si la ocupa)
+    if (esPlaza_(zonaNum)) {
       const r = await fetch(
         `${SUPABASE_URL}/rest/v1/conversion_zonas?zona_id=eq.${zonaNum}`,
         {
@@ -558,7 +573,7 @@ router.post("/api/zonas/asignar", async (req, res) => {
     // Dos filas cuando hay desplazamiento: la del que entra y la del que sale.
     // Sin la segunda, el historial del carro expulsado saldría vacío — y ese
     // es el carro que acaba siendo "fantasma": OT viva y ninguna plaza.
-    const zonaFinal = zonaNum >= 1 && zonaNum <= 15 ? zonaNum : 16;
+    const zonaFinal = esPlaza_(zonaNum) ? zonaNum : 16;
     const comun = {
       ocurrido_at: now,
       usuario_email:  quien.email,
@@ -587,9 +602,9 @@ router.post("/api/zonas/asignar", async (req, res) => {
     // Fire-and-forget a propósito: la respuesta del registro no puede quedar
     // colgada de una corrida del motor, que consulta media base. Si falla, el
     // intervalo lo recoge igual — el disparo es un atajo, nunca el único camino.
-    if (zonaNum >= 1 && zonaNum <= 15) {
+    if (esPlaza_(zonaNum)) {
       despachoReparteAhora_()
-        .then(puede => { if (puede) return dispararMotor_(`registro de ${vinNorm} en Z${zonaNum}`); })
+        .then(puede => { if (puede) return dispararMotor_(`registro de ${vinNorm} en ${codigoZona_(zonaNum)}`); })
         .catch(err => console.warn("[Zonas] Disparo del motor falló:", err.message));
     }
 
@@ -607,13 +622,13 @@ router.post("/api/zonas/asignar", async (req, res) => {
 });
 
 // POST /api/zonas/liberar
-// body: { zona_id (1-15), email, origen? }
+// body: { zona_id (1-15 o 116-118), email, origen? }
 router.post("/api/zonas/liberar", async (req, res) => {
   try {
     const { zona_id, origen } = req.body || {};
     const zonaNum = Number(zona_id);
-    if (!zonaNum || zonaNum < 1 || zonaNum > 15)
-      return res.status(400).json({ ok: false, error: "zona_id inválido (1-15)" });
+    if (!esPlaza_(zonaNum))
+      return res.status(400).json({ ok: false, error: "zona_id inválido (1-15 o E16-E18)" });
 
     const quien = await identidadZona_(req);
     if (!quien.ok) return res.status(403).json({ ok: false, error: quien.error, motivo: quien.motivo });
@@ -696,7 +711,7 @@ router.get("/api/zonas/historial", async (req, res) => {
       const p = encodeURIComponent(`*${vin}*`);
       q += `&or=(vin.like.${p},vin_relacionado.like.${p})`;
     }
-    if (zonaId >= 1 && zonaId <= 16) q += `&zona_id=eq.${zonaId}`;
+    if (esPlaza_(zonaId) || zonaId === 16) q += `&zona_id=eq.${zonaId}`;
     if (desde) q += `&ocurrido_at=gte.${encodeURIComponent(desde)}`;
 
     const r = await fetch(q, { method: "GET", headers: supabaseHeaders_() });

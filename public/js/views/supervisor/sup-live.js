@@ -51,6 +51,7 @@ import { relTimeText, startRelTimeTicker, countUp, skeletonHTML } from "../../co
 import { openDrilldown, closeDrilldown } from "../../core/drilldown.js";
 import { clasificarDuplas_, cumplioMeta_, ROLES_DUPLA } from "./sup-duplas.js";
 import { CANVAS, montarLiveCharts_, destruirLiveCharts_ } from "./sup-live-charts.js";
+import { codigoZona_ } from "../../core/zona-nombre.js";
 
 let liveActive_   = false;
 let liveLastData_ = null;   // último fetch, para re-abrir detalle actualizado
@@ -1638,7 +1639,7 @@ function cardHTML_(t, metaTec) {
           // El ayudante no tiene OT propia: el carro es del compañero. Sin esta
           // línea su card se lee "sin VIN activo", o sea parado, cuando en
           // realidad está trabajando en la zona de al lado.
-          ? `<span class="lvVin lvVin--dupla" title="Trabaja en el carro de ${escapeHtml(dupla.conNombre || "su compañero")}">🤝 ${escapeHtml(dupla.vin || "carro de " + primerNombre_(dupla.conNombre))}${dupla.zonaId != null ? ` · Z${escapeHtml(String(dupla.zonaId))}` : ""}</span>`
+          ? `<span class="lvVin lvVin--dupla" title="Trabaja en el carro de ${escapeHtml(dupla.conNombre || "su compañero")}">🤝 ${escapeHtml(dupla.vin || "carro de " + primerNombre_(dupla.conNombre))}${dupla.zonaId != null ? ` · ${escapeHtml(codigoZona_(dupla.zonaId))}` : ""}</span>`
           : `<span class="lvVin lvVin--none">sin VIN activo</span>`}
       ${tiempo ? `<span class="lvCard__time">⏱ ${escapeHtml(tiempo)}</span>` : ""}
     </div>

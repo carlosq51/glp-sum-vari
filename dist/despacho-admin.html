@@ -352,8 +352,13 @@
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
   // Layout físico del taller en horizontal, el mismo orden que la TV.
-  const FILA_ARRIBA = [10, 11, 12, 13, 14, 15];
+  // 116-118 = zonas de emergencia E16-E18, encima de la Z15. Se guardan así
+  // porque el 16 ya es Zona Libre (lib/zonas-nombre.js); se muestran id − 100.
+  const FILA_ARRIBA = [10, 11, 12, 13, 14, 15, 116, 117, 118];
   const FILA_ABAJO  = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+  const esEmer  = n => n >= 116 && n <= 118;
+  const zEtq    = n => esEmer(n) ? "E" + (n - 100) : String(n);   // "7" · "E16"
+  const zCod    = n => esEmer(n) ? zEtq(n) : "Z" + n;             // "Z7" · "E16"
 
   const ROL_LABEL   = { MOTOR: "Delantero", TANQUE: "Tanquero" };
   const ESTADO_LABEL = { SIN_INICIAR: "sin arrancar", TRABAJANDO: "trabajando",
@@ -457,7 +462,7 @@
   function plazaHTML(z) {
     if (!z.vin) {
       return `<div class="plaza plaza--libre" data-zona="${z.zona_id}">
-        <span class="plazaNum">Z${z.zona_id}</span><span class="plazaP">P</span></div>`;
+        <span class="plazaNum">${zCod(z.zona_id)}</span><span class="plazaP">P</span></div>`;
     }
     const cls = pintaCarro(z).map(c => "plaza--" + c).join(" ");
     const etiqueta = (rol) => {
@@ -470,7 +475,7 @@
     };
     return `
       <div class="plaza ${cls}" data-zona="${z.zona_id}">
-        <span class="plazaNum">Z${z.zona_id}</span>
+        <span class="plazaNum">${zCod(z.zona_id)}</span>
         <div class="carroOuter">
           <div class="carro">
             ${etiqueta("MOTOR")}
@@ -562,7 +567,7 @@
           valor: `${c.vin}|${rol}`,
           nombre: p.nombre || "—",
           rol,
-          zona: c.zona_id === 16 ? "sin plaza" : `zona ${c.zona_id}`,
+          zona: c.zona_id === 16 ? "sin plaza" : `zona ${zEtq(c.zona_id)}`,
           // Elegir un puesto que ya tiene apoyo es válido: el servidor deshace
           // el anterior y pone al nuevo. Es la forma de CAMBIAR de ayudante.
           conApoyo: !!p.ayudante,
@@ -870,7 +875,7 @@
         /^(SELECT|INPUT|TEXTAREA)$/.test(act.tagName)) return;
 
     const previo = sheetEl;
-    const nombreZona = carro.zona_id === 16 ? "Sin plaza" : `Zona ${carro.zona_id}`;
+    const nombreZona = carro.zona_id === 16 ? "Sin plaza" : `Zona ${zEtq(carro.zona_id)}`;
 
     const cuerpo = !carro.vin
       ? `<div class="vacio">Plaza libre — no hay carro estacionado.<br>
