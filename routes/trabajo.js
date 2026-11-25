@@ -26,7 +26,7 @@ import {
   puedeColaborar_, notaApoyo_, notaDupla_, combinarNotas_,
   ESTADOS_CALIDAD_COLABORATIVA,
 } from "../lib/colaboracion.js";
-import { accionesDe_ } from "../lib/ot-estados.js";
+import { accionesDe_, esBloqueo_ } from "../lib/ot-estados.js";
 
 const router = Router();
 
@@ -757,6 +757,24 @@ router.post("/api/evento", async (req, res) => {
           errorType: "DESPACHO_DIRIGIDO",
           vin,
         });
+      }
+
+      // Retomar un carro bloqueado por insumo mientras corre otro dejaría dos
+      // cronómetros contando a la vez, que es justo lo que el bloqueo evita.
+      if (accion === "REANUDAR" && esBloqueo_(asignacion?.last_nota)) {
+        const otros = await fetch(
+          `${process.env.SUPABASE_URL}/rest/v1/asignaciones?user_id=eq.${userId}&activo=eq.true` +
+          `&estado_actual=eq.TRABAJANDO&tipo_ot=eq.CONVERSION&id=neq.${asignacion.id}&select=id`,
+          { headers: supabaseHeaders_() },
+        ).then(r => r.ok ? r.json() : []).catch(() => []);
+        if (otros.length) {
+          return res.status(409).json({
+            ok: false,
+            error: "Tienes otro carro corriendo. Termínalo, o pide al supervisor que lo pause, antes de retomar el bloqueado.",
+            errorType: "BLOQUEO_CON_OTRO_ACTIVO",
+            vin,
+          });
+        }
       }
 
       if (enReal && !deSupervisor && accion === "PAUSA") {

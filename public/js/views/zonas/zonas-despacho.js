@@ -198,6 +198,10 @@ function puestoHTML_(carro, tecnicos, rol, tiempo) {
         <button class="zdChip" type="button" data-pausa="${escapeHtml(p.asignacionId)}" data-min="${m}">
           ${m ? `${m} min` : "Sin límite"}
         </button>`).join("")}
+      <button class="zdChip" type="button" data-bloquear="${escapeHtml(p.asignacionId)}"
+        title="Falta un insumo crítico: el carro se pausa a su nombre y el despacho le da otro">
+        🔒 Falta insumo
+      </button>
     </div>` : "";
 
   const claseEstado = p.pausado ? "PAUSADO" : (p.estadoOt || "");
@@ -212,7 +216,7 @@ function puestoHTML_(carro, tecnicos, rol, tiempo) {
         </div>
         ${estado ? `<span class="zdEstado zdEstado--${escapeHtml(claseEstado)}">${escapeHtml(estado)}</span>` : ""}
       </div>
-      ${p.pausado && p.pausaTxt ? `<div class="zdNota">⏸ ${escapeHtml(p.pausaTxt)}</div>` : ""}
+      ${p.pausado && p.pausaTxt ? `<div class="zdNota">${p.bloqueado ? "" : "⏸ "}${escapeHtml(p.pausaTxt)}</div>` : ""}
       ${tiempoHTML_(p, tiempo)}
       ${p.razon ? `<div class="zdRazon">${escapeHtml(p.razon)}</div>` : ""}
       <div class="zdAcciones">
@@ -427,6 +431,20 @@ export async function montarPuestos_(contenedor, zona, cbs = {}, fresco = false)
       });
       if (!d?.ok) throw new Error(d?.error || "No se pudo pausar");
     });
+  });
+
+  // Bloqueo por insumo: se pide QUÉ falta, porque es lo que el supervisor
+  // tiene que ir a conseguir y lo que se lee después en el carro.
+  contenedor.querySelectorAll("[data-bloquear]").forEach(btn => {
+    btn.onclick = () => {
+      const motivo = (prompt("¿Qué insumo falta? (queda escrito en el carro)") || "").trim();
+      if (!motivo) return;
+      correr(btn, async () => {
+        const d = await postJSON("/api/despacho/bloquear-ot",
+          { email: email_(), asignacionId: btn.dataset.bloquear, motivo });
+        if (!d?.ok) throw new Error(d?.error || "No se pudo bloquear");
+      });
+    };
   });
 
   contenedor.querySelectorAll("[data-reanudar]").forEach(btn => {

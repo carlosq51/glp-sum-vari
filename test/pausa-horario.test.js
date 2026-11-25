@@ -43,6 +43,26 @@ describe("eventosHorario_", () => {
     const claves = eventosHorario_({ ...CFG, HORARIO_DESCANSO_INICIO: "16:20" }).map(e => e.clave);
     expect(claves).toEqual(["COMIDA_INI", "COMIDA_FIN"]);
   });
+
+  it("almuerzo y cena en dos tandas, y el fin del sábado solo los sábados", () => {
+    const evs = eventosHorario_({
+      ...CFG, HORARIO_COMIDA_SEGUNDA: "13:05",
+      HORARIO_CENA_INICIO: "19:20", HORARIO_CENA_SEGUNDA: "19:35", HORARIO_CENA_FIN: "20:30",
+      SABADO_FIN_TURNO: "11:30",
+    });
+    const por = Object.fromEntries(evs.map(e => [e.clave, e]));
+    expect(Object.keys(por)).toEqual(
+      ["COMIDA_INI", "COMIDA_INI_2", "COMIDA_FIN", "CENA_INI", "CENA_INI_2", "CENA_FIN", "SABADO_FIN"]);
+    expect(por.COMIDA_INI_2.min).toBe(min_(13, 5));
+    expect(por.CENA_INI.hasta).toBe(min_(20, 30));
+    expect(por.CENA_FIN.min).toBe(min_(20, 30));
+    expect(por.SABADO_FIN.soloSabado).toBe(true);
+  });
+
+  it("una segunda tanda fuera de su comida no se dispara", () => {
+    const claves = eventosHorario_({ ...CFG, HORARIO_COMIDA_SEGUNDA: "15:00" }).map(e => e.clave);
+    expect(claves).not.toContain("COMIDA_INI_2");
+  });
 });
 
 describe("tocaDisparar_", () => {

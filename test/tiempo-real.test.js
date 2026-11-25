@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 
 const {
   salidaEstimada_, presenciaDelUsuario_, tiempoCorregido_, estandaresDe_, normalDe_,
-  enDia_, jornadaDeMs_, MIN_N_TECNICO,
+  enDia_, jornadaDeMs_, MIN_N_TECNICO, finesDeCortes_,
 } = await import("../lib/tiempo-real.js");
 const { proyeccionEnVivoTecnico_ } = await import("../lib/proyeccion.js");
 const { relojesPorPuesto_ } = await import("../lib/eta-carro.js");
@@ -176,5 +176,40 @@ describe("proyeccionEnVivoTecnico_", () => {
     });
     expect(v.abierta).toBe(1);
     expect(v.extra).toBeGreaterThan(0.5);
+  });
+});
+
+describe("la regla de operaciones: fin del corte de su última actividad", () => {
+
+  const CORTES = "05:00-10:30|07:00–10:30,10:30-13:00,13:00-16:30,16:30-19:30,19:30-23:00,23:00-02:00|23:00–01:00";
+  const fines = finesDeCortes_(CORTES);
+  const COMIDAS = [COMIDA, { iniMin: 1160, finMin: 1230 }];   // + cena 19:20–20:30
+  const pres_ = (ini, extra = {}) => presenciaDelUsuario_({
+    marcas: [], actividadMs: ini, ahoraMs: at("2026-11-30", "12:00"), finesCorteMin: fines,
+    finTurnoSabadoMin: 690, ...extra,
+  });
+
+  it("empezó a las 14:00 y cerró a las 08:00 → se fue a las 16:30", () => {
+    const p = pres_([at(D, "14:00"), at(D2, "08:00")]);
+    const c = tiempoCorregido_({ rawMs: 18 * H, desdeMs: at(D, "14:00"), hastaMs: at(D2, "08:00"), presencia: p, comida: COMIDAS });
+    expect(c.ms).toBe(2.5 * H + 1 * H);
+  });
+
+  it("empezó a las 17:00 (hora extra) y cerró a las 08:00 → se fue a las 19:30", () => {
+    const p = pres_([at(D, "17:00"), at(D2, "08:00")]);
+    const c = tiempoCorregido_({ rawMs: 15 * H, desdeMs: at(D, "17:00"), hastaMs: at(D2, "08:00"), presencia: p, comida: COMIDAS });
+    // 17:00–19:30 menos la cena desde 19:20, y 07:00–08:00 al día siguiente
+    expect(c.ms).toBe(2.5 * H - 10 * MIN + 1 * H);
+  });
+
+  it("quien se queda hasta la 1 sin anotar nada: su último botón manda", () => {
+    const p = pres_([at(D, "08:00"), at(D, "23:40")]);
+    expect(p[0].b).toBe(enDia_(D, 26 * 60));   // 02:00, fin del corte de noche
+  });
+
+  it("sábado: empezó a las 10:00 y cerró el lunes → se fue a las 11:30", () => {
+    const SAB = "2026-11-28", LUN = "2026-11-30";
+    const p = pres_([at(SAB, "10:00"), at(LUN, "08:00")]);
+    expect(p[0].b).toBe(at(SAB, "11:30"));
   });
 });

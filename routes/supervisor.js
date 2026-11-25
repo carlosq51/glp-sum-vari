@@ -9,7 +9,7 @@ import { proyeccionDeJornada_ } from "./produccion.js";
 import { usuariosActivos_ } from "../lib/authz.js";
 import { copiasDelLive_ } from "../lib/fotos-huella.js";
 import { tiemposEstandarSiListo_ } from "../lib/tiempos-estandar.js";
-import { normalDe_, hhmm_ } from "../lib/tiempo-real.js";
+import { normalDe_, hhmm_, esSabado_ } from "../lib/tiempo-real.js";
 import { proyeccionEnVivoTecnico_ } from "../lib/proyeccion.js";
 import { minutosUtiles_ } from "../lib/eta-carro.js";
 import { minutosDelDia_ } from "../lib/despacho.js";
@@ -646,7 +646,12 @@ function proyeccionEnVivo_(proyeccion, techs, cfg) {
   let ahora = minutosDelDia_();
   if (ahora < 360) ahora += 24 * 60;
   const turnoUtilMin = minutosUtiles_({ ahoraMin: ini, finTurnoMin: fin, ...comida });
-  const restaTurnoMin = minutosUtiles_({ ahoraMin: Math.max(ahora, ini), finTurnoMin: fin, ...comida });
+  // El sábado el turno acaba a media mañana: el ritmo por minuto es el mismo,
+  // lo que se acorta es lo que queda.
+  const finHoy = esSabado_(jornadaFecha_()) ? (hhmm_(cfg.SABADO_FIN_TURNO) ?? 690) : fin;
+  const restaTurnoMin = minutosUtiles_({ ahoraMin: Math.max(ahora, ini), finTurnoMin: finHoy, ...comida });
+  // La hora extra sin la cena.
+  const cena = { comidaIniMin: hhmm_(cfg.HORARIO_CENA_INICIO), comidaFinMin: hhmm_(cfg.HORARIO_CENA_FIN) };
 
   const porClave = new Map(techs.map(t => [`${t.userId}__${t.rol}`, t]));
   for (const pt of proyeccion.tecnicos) {
@@ -661,7 +666,8 @@ function proyeccionEnVivo_(proyeccion, techs, cfg) {
 
     let hasta = hhmm_(pt.hasta);
     if (hasta != null && hasta < 360) hasta += 24 * 60;
-    const restaExtraMin = hasta != null ? Math.max(0, hasta - Math.max(ahora, fin)) : 0;
+    const restaExtraMin = hasta != null
+      ? minutosUtiles_({ ahoraMin: Math.max(ahora, finHoy), finTurnoMin: hasta, ...cena }) : 0;
 
     const v = proyeccionEnVivoTecnico_({
       cerradas,

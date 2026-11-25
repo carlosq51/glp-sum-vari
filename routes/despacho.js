@@ -32,7 +32,8 @@ import {
   motivoDuplaAuto_, motivoAyudaManual_, vinDeDuplaApoyo_, validarAyudante_,
 } from "../lib/despacho.js";
 import { construirPool_, generarPropuestas_, puntuar_, ESPERA_TOPE_MIN } from "../lib/despacho-motor.js";
-import { salidaEstimada_, enDia_, hhmm_ } from "../lib/tiempo-real.js";
+import { salidaEstimadaDe_ } from "../lib/salida-estimada.js";
+import { NOTA_BLOQUEO, esBloqueo_ } from "../lib/ot-estados.js";
 import { estadoGeneralDeConversion_, fechaPeruMenosDias_ } from "../lib/utils.js";
 
 // El modelo de emparejamiento vive donde lo deja routes/ml.js al entrenar.
@@ -199,10 +200,12 @@ async function tecnicosOcupados_() {
   try {
     const r = await fetch(
       `${SB()}/rest/v1/asignaciones?activo=eq.true&estado_actual=in.(SIN_INICIAR,TRABAJANDO,PAUSADO)` +
-      `&tipo_ot=eq.CONVERSION&select=user_id`,
+      `&tipo_ot=eq.CONVERSION&select=user_id,last_nota`,
       { headers: supabaseHeaders_() },
     );
-    if (r.ok) for (const a of await r.json()) ocupados.add(a.user_id);
+    // Un carro bloqueado por falta de insumo sigue siendo suyo, pero no lo
+    // ocupa: es justo lo que le permite recibir otro (lib/ot-estados.js).
+    if (r.ok) for (const a of await r.json()) if (!esBloqueo_(a.last_nota)) ocupados.add(a.user_id);
   } catch { /* sin datos → nadie ocupado */ }
   return ocupados;
 }
@@ -1072,31 +1075,6 @@ export async function cerrarJornadaPendiente_() {
 }
 
 /**
- * A qué hora se fue alguien que no marcó la salida: su última actividad en la
- * app esa jornada, con piso en el fin de su turno (16:30 o su hora extra).
- */
-async function salidaEstimadaDe_(userId, fecha, cfg, desdeMs) {
-  const ahora = Date.now();
-  let actividad = [], extra = null;
-  try {
-    const desdeIso = new Date(desdeMs).toISOString();
-    const [ev, hx] = await Promise.all([
-      fetch(`${SB()}/rest/v1/eventos?user_id=eq.${userId}&timestamp=gte.${encodeURIComponent(desdeIso)}` +
-        `&select=timestamp&order=timestamp.desc&limit=20`, { headers: supabaseHeaders_() })
-        .then(r => r.ok ? r.json() : []).catch(() => []),
-      fetch(`${SB()}/rest/v1/produccion_horas_extra?jornada_fecha=eq.${fecha}&user_id=eq.${userId}&select=hasta`,
-        { headers: supabaseHeaders_() }).then(r => r.ok ? r.json() : []).catch(() => []),
-    ]);
-    actividad = ev.map(e => new Date(e.timestamp).getTime());
-    extra = hhmm_(hx[0]?.hasta);
-  } catch { /* sin datos: vale el fin de turno */ }
-  if (extra != null && extra < 6 * 60) extra += 24 * 60;   // "00:30" es de madrugada
-  const finTurno = hhmm_(cfg?.PROYECCION_FIN_TURNO) ?? 990;
-  const piso = enDia_(fecha, Math.max(finTurno, extra ?? 0));
-  return salidaEstimada_({ desdeMs, hastaMs: ahora, actividadMs: actividad, pisoMs: piso });
-}
-
-/**
  * reanudarTraspasado_ — un carro pausado por la salida de su dueño anterior,
  * pasado a alguien que ya está en el taller, vuelve a correr.
  *
@@ -1264,7 +1242,7 @@ async function contextoDelTaller_(cfg, fecha) {
     const ids = wos.map(w => w.id).map(encodeURIComponent).join(",");
     const r = await fetch(
       `${SB()}/rest/v1/asignaciones?work_order_id=in.(${ids})` +
-      `&select=work_order_id,user_id,rol_trabajo,activo,estado_actual,updated_at,fecha_asignacion` +
+      `&select=work_order_id,user_id,rol_trabajo,activo,estado_actual,updated_at,fecha_asignacion,last_nota` +
       `&order=updated_at.desc`,
       { headers: h },
     );
@@ -1307,7 +1285,8 @@ async function contextoDelTaller_(cfg, fecha) {
   // ayudar ("al que lleva más rato en el carro").
   const abiertas = new Map();
   for (const a of asgs) {
-    if (!a.activo || a.estado_actual === "FINALIZADO") continue;
+    // El bloqueado por insumo no es "lo que está trabajando": espera un repuesto.
+    if (!a.activo || a.estado_actual === "FINALIZADO" || esBloqueo_(a.last_nota)) continue;
     const vin = woVin.get(a.work_order_id);
     if (!vin) continue;
     const prev = abiertas.get(a.user_id);
@@ -1373,7 +1352,7 @@ async function contextoDelTaller_(cfg, fecha) {
   // sigue aportando cualquier estado que la consulta global no enumere.
   const ocupadosIds = new Set([
     ...ocupadosGlobal,
-    ...asgs.filter(a => a.activo && a.estado_actual !== "FINALIZADO").map(a => a.user_id),
+    ...asgs.filter(a => a.activo && a.estado_actual !== "FINALIZADO" && !esBloqueo_(a.last_nota)).map(a => a.user_id),
   ]);
   const turnoMin = hhmmAMinutos_(cfg.DESPACHO_TURNO_INICIO) ?? 420;
   const turnoFin = hhmmAMinutos_(cfg.DESPACHO_TURNO_FIN) ?? 60;
@@ -2013,8 +1992,11 @@ export async function correrMotor_({ persistir = true, simularAsistencia = false
     ...vivas.map(p => ({ vin: p.vin, rol_trabajo: p.rol_trabajo })),
   ];
 
-  // Una unidad con propuesta viva ya tiene carro: no recibe otro.
-  const conPropuesta = new Set(vivas.flatMap(p =>
+  // Una unidad con propuesta viva ya tiene carro: no recibe otro. Salvo que
+  // ese carro esté bloqueado por insumo: el puesto sigue ocupado (arriba, en
+  // ocupadosConPropuestas), pero la persona queda libre para otro.
+  const bloqueadas = await asignacionesBloqueadas_();
+  const conPropuesta = new Set(vivas.filter(p => !bloqueadas.has(p.asignacion_id)).flatMap(p =>
     p.unidad_dupla_id
       ? (t.duplas.find(d => d.id === p.unidad_dupla_id)?.miembros || [p.user_id])
       : [p.user_id]));
@@ -2383,7 +2365,7 @@ async function zonasConPuestos_(props) {
     asgs = await fetch(
       `${SB()}/rest/v1/asignaciones?work_order_id=in.(${ids})&activo=eq.true` +
       `&estado_actual=in.(SIN_INICIAR,TRABAJANDO,PAUSADO,FINALIZADO)` +
-      `&select=id,work_order_id,user_id,rol_trabajo,estado_actual,pausa_hasta,updated_at` +
+      `&select=id,work_order_id,user_id,rol_trabajo,estado_actual,pausa_hasta,updated_at,last_nota` +
       `&order=updated_at.desc`,
       { headers: h },
     ).then(r => r.ok ? r.json() : []).catch(() => []);
@@ -2432,7 +2414,9 @@ async function zonasConPuestos_(props) {
       asignacionId: a.id, propuestaId: prop?.id || null,
       razon: prop?.razon || "", estadoOt: a.estado_actual, pausado,
       terminado: String(a.estado_actual || "").toUpperCase() === "FINALIZADO",
-      pausaTxt: pausado ? (restan !== null ? `${restan} min restantes` : "pausa indefinida") : "",
+      pausaTxt: !pausado ? "" : esBloqueo_(a.last_nota) ? a.last_nota
+        : (restan !== null ? `${restan} min restantes` : "pausa indefinida"),
+      bloqueado: pausado && esBloqueo_(a.last_nota),
       // El ayudante solo vale si el titular del puesto sigue siendo el mismo:
       // tras un cambio de técnico la dupla ya no describe a esta pareja, y el
       // motor la deshará en su próxima corrida.
@@ -2537,7 +2521,7 @@ async function armarPanelDespacho_() {
     const estados = new Map();
     if (asgIds.length) {
       const rows = await fetch(
-        `${SB()}/rest/v1/asignaciones?id=in.(${asgIds.join(",")})&select=id,estado_actual,pausa_hasta`,
+        `${SB()}/rest/v1/asignaciones?id=in.(${asgIds.join(",")})&select=id,estado_actual,pausa_hasta,last_nota`,
         { headers: supabaseHeaders_() },
       ).then(r => r.ok ? r.json() : []).catch(() => []);
       for (const a of rows) estados.set(a.id, a);
@@ -2557,7 +2541,9 @@ async function armarPanelDespacho_() {
           ...p, nombre: nombres.get(p.user_id) || "",
           estadoOt: a?.estado_actual || null,
           pausado,
-          pausaTxt: pausado ? (restan !== null ? `${restan} min restantes` : "pausa indefinida") : "",
+          pausaTxt: !pausado ? "" : esBloqueo_(a.last_nota) ? a.last_nota
+            : (restan !== null ? `${restan} min restantes` : "pausa indefinida"),
+          bloqueado: pausado && esBloqueo_(a.last_nota),
         };
       }),
       tecnicos: t.tecnicosCtx.map(x => ({
@@ -3249,6 +3235,72 @@ router.post("/api/despacho/pausa-ot", requireModoActivo_,
 
     emitEvent_("asignaciones", { accion: "PAUSA_SUPERVISOR", id: a.id });
     res.json({ ok: true, minutos: mins, hasta: mins ? new Date(ahora.getTime() + mins * 60_000) : null });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+/** Ids de las asignaciones abiertas bloqueadas por falta de insumo. */
+async function asignacionesBloqueadas_() {
+  const r = await fetch(
+    `${SB()}/rest/v1/asignaciones?activo=eq.true&estado_actual=eq.PAUSADO&select=id,last_nota`,
+    { headers: supabaseHeaders_() },
+  ).then(x => x.ok ? x.json() : []).catch(() => []);
+  return new Set(r.filter(a => esBloqueo_(a.last_nota)).map(a => a.id));
+}
+
+// POST /api/despacho/bloquear-ot  { email, asignacionId, motivo }
+// Falta un insumo crítico: el carro se pausa sin límite, sigue a nombre del
+// técnico, y el despacho le reparte otro. Se levanta con "Reanudar" (aquí o
+// desde el celular, cuando ya no tenga otro carro corriendo).
+router.post("/api/despacho/bloquear-ot", requireModoActivo_,
+  requireRol_("SUPERVISOR", "ADMIN"), async (req, res) => {
+  try {
+    const { email, asignacionId } = req.body || {};
+    const motivo = String(req.body?.motivo || "").trim().slice(0, 120);
+    if (!asignacionId) return res.status(400).json({ ok: false, error: "Falta la asignación" });
+    if (!motivo) return res.status(400).json({ ok: false, error: "Di qué insumo falta: queda escrito en el carro." });
+    const sup = await userPorEmail_(email);
+
+    const filas = await fetch(
+      `${SB()}/rest/v1/asignaciones?id=eq.${encodeURIComponent(asignacionId)}` +
+      `&select=id,user_id,work_order_id,tipo_ot,rol_trabajo,estado_actual,running_since,tiempo_trab_ms&limit=1`,
+      { headers: supabaseHeaders_() },
+    ).then(r => r.ok ? r.json() : []).catch(() => []);
+    const a = filas[0];
+    if (!a) return res.status(404).json({ ok: false, error: "Asignación no encontrada" });
+    if (a.estado_actual === "FINALIZADO") return res.status(409).json({ ok: false, error: "Esa OT ya está finalizada" });
+
+    const corrido = a.estado_actual === "TRABAJANDO" && a.running_since
+      ? Math.max(0, Date.now() - new Date(a.running_since).getTime()) : 0;
+    const ahora = new Date().toISOString();
+    const nota = `${NOTA_BLOQUEO} · ${motivo}`;
+    const up = await fetch(`${SB()}/rest/v1/asignaciones?id=eq.${a.id}`, {
+      method: "PATCH",
+      headers: { ...supabaseHeaders_(), Prefer: "return=minimal" },
+      body: JSON.stringify({
+        estado_actual: "PAUSADO", running_since: null,
+        tiempo_trab_ms: (a.tiempo_trab_ms || 0) + corrido,
+        pausa_hasta: null, updated_at: ahora, last_nota: nota, last_nota_ts: ahora,
+      }),
+    });
+    if (!up.ok) throw new Error((await up.text()).slice(0, 200));
+
+    await fetch(`${SB()}/rest/v1/eventos`, {
+      method: "POST",
+      headers: { ...supabaseHeaders_(), Prefer: "return=minimal" },
+      body: JSON.stringify({
+        timestamp: ahora, user_id: a.user_id, work_order_id: a.work_order_id, tipo_ot: a.tipo_ot,
+        rol_trabajo: a.rol_trabajo, accion: "PAUSA",
+        nota: `${nota}${sup?.nombre ? " (" + sup.nombre + ")" : ""}`,
+      }),
+    }).catch(() => {});
+
+    emitEvent_("asignaciones", { accion: "BLOQUEO_INSUMO", id: a.id });
+    emitEvent_("despacho", { tipo: "BLOQUEO_INSUMO", asignacion_id: a.id });
+    // Queda libre ya: sin esto esperaba al intervalo del motor.
+    repartirTrasEvento_(`carro bloqueado por insumo (${a.id})`);
+    res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }
