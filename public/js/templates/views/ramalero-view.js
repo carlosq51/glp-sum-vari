@@ -89,6 +89,16 @@ export function ramaleroView() {
           </span>
         </div>
 
+        <!-- Aviso de notificaciones apagadas en ESTE celular (ramalero.js).
+             El permiso se pide con un toque: pedido solo al cargar, el
+             celular lo ignora y el ramalero nunca se entera de la cola. -->
+        <div id="ramNotifAviso" class="small" style="display:none;align-items:center;gap:10px;flex-wrap:wrap;
+             margin-bottom:10px;padding:10px 12px;border-radius:var(--radiusSm);
+             background:var(--warnBgFade);border:1px solid var(--warn);">
+          <span id="ramNotifTxt" style="flex:1;min-width:180px;font-weight:700;">🔕 Este celular no te avisa de solicitudes nuevas.</span>
+          <button type="button" id="ramNotifBtn" class="btn3" style="font-weight:800;">🔔 Activar avisos</button>
+        </div>
+
         <!-- Lo único que el ramalero necesita saber de un vistazo: cuántos
              le están esperando. El resto de cifras va al pie. -->
         <div class="ramCola__head">
