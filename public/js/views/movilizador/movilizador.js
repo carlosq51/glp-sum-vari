@@ -15,7 +15,10 @@ import { initZonasMapa } from "../zonas/zonas-mapa.js";
 import { nombreZona_ } from "../../core/zona-nombre.js";
 import { startPoll, stopPoll } from "../../core/poll.js";
 import { exportCsv_ } from "../../core/csv.js";
-import { requestNotifPermission } from "../../core/push-client.js";
+import { montarAvisoNotif } from "../../core/push-client.js";
+import { getEmail } from "../../core/auth.js";
+
+let _avisoNotif = null;   // push "carro listo para salida" (lib/aviso-listos.js)
 
 // VINs del panel salida que aún no tienen OT según el último render
 let _vinsSinOT_ = new Set();
@@ -2220,8 +2223,13 @@ function alertarSiSubenListos_(n) {
 export function init() {
   // Push nativo: el movilizador recibe "carro listo para salida" cuando un
   // carro del mapa se pone verde (ver lib/aviso-listos.js).
-  const email = String(CORE.state.currentProfile?.email || document.getElementById("email")?.value || "").trim().toLowerCase();
-  if (email) requestNotifPermission(email);
+  // Antes se pedía aquí una sola vez y sin toque del usuario: en el bootstrap
+  // el email podía no estar aún y Chrome Android descarta el pedido sin
+  // gesto, así que nadie quedaba suscrito. Ahora: al entrar + botón.
+  _avisoNotif = montarAvisoNotif({
+    box: "movNotifAviso", txt: "movNotifTxt", btn: "movNotifBtn",
+    getEmail, que: "carros listos para salida",
+  });
 
   document.getElementById("btnMovRefresh")?.addEventListener("click", () => {
     refreshAll_({ fresh: true }).catch(() => {});
@@ -2423,6 +2431,7 @@ export function init() {
 export function enter() {
   // Al entrar y no en init(): init() corre en el bootstrap, cuando la pantalla
   // del movilizador todavía puede no estar en el DOM.
+  _avisoNotif?.().catch(() => {});
   paintRedir_();
   paintOrdenLista_();
   // GPS que quedaron por guardar (app cerrada, sin señal): se retoman.

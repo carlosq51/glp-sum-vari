@@ -31,7 +31,7 @@ router.post("/api/push/subscribe", async (req, res) => {
     // Upsert por endpoint — service key para bypassear RLS
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const headers = supabaseServiceHeaders_();
-    await fetch(
+    const r = await fetch(
       `${SUPABASE_URL}/rest/v1/push_subscriptions?on_conflict=endpoint`,
       {
         method: "POST",
@@ -39,6 +39,13 @@ router.post("/api/push/subscribe", async (req, res) => {
         body: JSON.stringify(record),
       }
     );
+    // Antes respondía ok aunque Supabase rechazara el guardado: el celular
+    // creía estar suscrito y el aviso "Activar avisos" no aparecía.
+    if (!r.ok) {
+      const t = await r.text().catch(() => "");
+      console.error("[POST /api/push/subscribe] Supabase", r.status, t.slice(0, 200));
+      return res.status(502).json({ ok: false, error: `Supabase ${r.status}` });
+    }
     return res.json({ ok: true });
   } catch (e) {
     console.error("[POST /api/push/subscribe]", e.message);

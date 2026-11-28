@@ -81,6 +81,15 @@ export function movilizadorView() {
           <strong><span id="movOfflineCount">0</span></strong> registro(s) guardados sin conexión — se sincronizarán cuando haya internet
         </div>
 
+        <!-- Aviso de notificaciones apagadas en ESTE celular (push-client.js
+             montarAvisoNotif). Sin él, "carro listo para salida" no llega. -->
+        <div id="movNotifAviso" class="small" style="display:none;align-items:center;gap:10px;flex-wrap:wrap;
+             margin:0 0 10px;padding:10px 12px;border-radius:var(--radiusSm);
+             background:var(--warnBgFade);border:1px solid var(--warn);">
+          <span id="movNotifTxt" style="flex:1;min-width:180px;font-weight:700;">🔕 Este celular no te avisa de carros listos para salida.</span>
+          <button type="button" id="movNotifBtn" class="btn3" style="font-weight:800;">🔔 Activar avisos</button>
+        </div>
+
         <div class="hubGrid" id="movCardGrid"></div>
       </div>
 

@@ -98,6 +98,50 @@ export async function requestNotifPermission(email, { force = false } = {}) {
 }
 
 /**
+ * Aviso "este celular no te avisa" con botón "Activar avisos".
+ * El pedido automático al entrar llega sin un toque del usuario y Chrome en
+ * Android lo descarta en silencio; el botón lo pide con un toque real.
+ * Devuelve pintar(): llamarla al entrar a la vista (suscribe si ya hay
+ * permiso, y muestra/oculta el aviso).
+ * @param {{ box:string, txt:string, btn:string, getEmail:()=>string, que:string }} o
+ *   que: de qué avisa ("solicitudes nuevas", "carros listos para salida").
+ */
+export function montarAvisoNotif({ box, txt, btn, getEmail, que }) {
+  const $ = id => document.getElementById(id);
+
+  async function pintar() {
+    const b = $(box), t = $(txt), k = $(btn);
+    if (!b) return;
+    const st = await getNotifStatus();
+    if (!st.soporta || (st.permiso === "granted" && st.suscrito)) {
+      b.style.display = "none";
+      return;
+    }
+    b.style.display = "flex";
+    if (st.permiso === "denied") {
+      t.textContent = `🔕 Las notificaciones están bloqueadas en este celular. Actívalas en Ajustes de Chrome → Notificaciones para enterarte de ${que}.`;
+      k.style.display = "none";
+    } else {
+      t.textContent = `🔕 Este celular no te avisa de ${que}.`;
+      k.style.display = "";
+    }
+  }
+
+  $(btn)?.addEventListener("click", async (e) => {
+    const k = e.currentTarget;
+    k.disabled = true;
+    try { await requestNotifPermission(getEmail(), { force: true }); }
+    finally { k.disabled = false; pintar(); }
+  });
+
+  return async function entrar() {
+    const email = getEmail();
+    if (email) await requestNotifPermission(email);
+    await pintar();
+  };
+}
+
+/**
  * Da de baja ESTE dispositivo: desuscribe el navegador y borra el endpoint
  * del servidor. El permiso del navegador queda intacto (re-activar no vuelve
  * a preguntar). Devuelve true si quedó desuscrito.
